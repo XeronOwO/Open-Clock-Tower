@@ -1,7 +1,7 @@
 # OpenClockTower 文档
 
 《血染钟楼》(Blood on the Clocktower) 线上平台的工程文档。**中文优先**，见
-[决策 D-0006](decisions/active.md#d-0006-语言策略中文优先)。
+[决策 D-0016](decisions/active.md#d-0016-语言策略修订注释与日志用中文)。
 
 ## 从哪里读起
 

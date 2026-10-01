@@ -71,8 +71,9 @@ dotnet format OpenClockTower.slnx
 
 ## 约定
 
-- 语言：代码、标识符、注释、提交信息用英文；人工文档与界面用中文；术语以
-  `docs/standard/terminology.md` 为准（角色名「英文 slug + 中文名」成对）。详见 `docs/decisions/active.md`。
+- 语言：**中文优先、不强制英文**——文档、注释、日志、提交信息用中文；代码标识符用英文 slug
+  （`docs/standard/terminology.md` §1 的标识唯一性要求，禁止拼音与中文转写）。
+  术语以 `docs/standard/terminology.md` 为准（角色名「英文 slug + 中文名」成对）。详见 `docs/decisions/active.md` D-0016。
 - 提交信息：`type(scope): summary`，类型限 `feat fix docs test chore refactor perf revert build ci style`。
 - 空目录保留用 0 字节 `.gitkeep`。
 - 不提交官方美术资源；图片在运行期外链。见 `docs/decisions/active.md`。

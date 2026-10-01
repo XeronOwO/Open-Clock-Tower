@@ -15,7 +15,7 @@
 | `evidence/` | 交付清单与验证证据 | 中文 |
 | `development/` | 代理工作细则 | 中文 |
 
-- 人工文档**只有中文一份**（`docs/decisions/active.md` D-0006）。**不建 `docs/en/` 镜像**，
+- 人工文档**只有中文一份**（`docs/decisions/active.md` D-0016）。**不建 `docs/en/` 镜像**，
   除非将来真正国际化。
 - 规则类知识**不放这里**，放 `standard/`；架构推演放 `architecture/`；一次性过程记录不进文档。
 
