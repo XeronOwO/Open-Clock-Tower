@@ -175,7 +175,7 @@ Kestrel 真实进程 + 真实 TCP SignalR 客户端（完整输出在 `artifacts
 4. EF Core 目前用 `EnsureCreated`；首个可部署版本前补迁移。
 5. ~~演示步骤表是显式占位~~ **已解决**：`DemoStepPlan` 已从生产代码删除，宿主不再自动开阶段；
    集成测试改用测试夹具 `TestNightPlan`（`tests/` 内、非规则数据）。
-   真实顺序表见 `src/OpenClockTower.Rules`（两套口径，R-0014）；建表属 `todo/settlement-engine.md`。
+   真实顺序表见 `src/OpenClockTower.Rules`（两套口径，R-0014）；建表属 `in-progress/settlement-engine.md`。
 6. **说书人上帝视角**（每步状态归因 + 最终计算结论）已单独立票
    `docs/backlog/in-progress/storyteller-step-insights.md`；本票据只落了数据面
    （`SeatStateChangedEvent` + `RecentSeatChanges` / `CurrentSlotActor` / `CurrentSlotContext`）。

@@ -139,10 +139,18 @@ DecisionPoint
   └── 处决（处决 ≠ 死亡）
 ```
 
-**已落地的输入**：《梦殒春宵》的完整夜晚顺序表已在 `OpenClockTower.Rules`
-（`NightOrderTable`：黄昏 / 信息环节 / 角色行动 / 黎明，含原本 / 推荐两种口径与逐条来源引用，R-0014）。
-按它**建表**、逐步结算、能力生效判定与事件产出属本节的引擎——
-见 `docs/backlog/todo/settlement-engine.md`。
+**已落地（2026-10-02）**：
+
+| 环节 | 实现 | 依据 |
+|---|---|---|
+| 输入 | `OpenClockTower.Rules` 的 `NightOrderTable`：黄昏 / 爪牙信息 / 恶魔信息 / 信息环节开始 / 角色行动 / 黎明，两套口径 + 逐条来源 | R-0014 |
+| 建表 | `NightPlanBuilder`：顺序表 + 状态账 + 席位名单 + 行动契约 → `StepPlan`；非角色条目 → 节拍 / 黎明槽位；角色不在场 / 已死亡 → 空槽位（照样走配额）；**缺角色 / 缺生死 / 缺契约显式拒绝** | D-0013 §1 / D-0015 |
+| 口径记录 | 选择结果写进 `StepPlan.Variant`，随 `PhaseStartedEvent` 进事件流 | R-0014 |
+| 行动契约 | `INightAction`（提示契约：上下文 / 合法选项 / 无选项行为）+ 首批角色（钟表匠 / 筑梦师） | D-0002 / R-0009 |
+| 入口 | `AssignCharactersCommand`（开局分配）+ `StartNightCommand`（服务端建表后开阶段） | D-0017 / R-0015 / D-0012 |
+
+逐步结算、能力生效判定、信息类结果与效果事件产出仍未落地——
+见 `docs/backlog/in-progress/settlement-engine.md`。
 
 ### 2.7 步骤机与操作请求（D-0011）
 
@@ -182,10 +190,12 @@ StepMachine（步骤机）
 | 概念 | 实现（`src/OpenClockTower.Kernel` / `.Application` / `.Server`） |
 |---|---|
 | 同源选择原语 | `ChoicePrompt`；`DecisionPoint`（说书人）与 `OperationRequest`（玩家）是它的两套投影 |
-| 步骤表与槽位 | `StepPlan` / `StepSlot`（`Action` / `Empty` / `DawnWait`）；空槽位照样消耗配额 |
+| 步骤表与槽位 | `StepPlan` / `StepSlot`（`Action` / `Empty` / `Beat` 节拍 / `DawnWait`）；空槽位与节拍照样消耗配额 |
 | 挂起 | `StepMachineState` 的 `PendingRequest` / `AwaitingDecision` / `Block`；请求**没有超时字段**（门禁锁死） |
 | 推进条件 | `SlotQuotaState`：配额是**最短**时间；自动推进 = 配额走完 **且** 无挂起；强推可越过（D-0014） |
-| 事件与重放 | 19 种 `GameEvent`（含 4 种状态账事件）；`StepMachine.Handle` 产事件、`Apply` 折叠重建；重启 = 重放，恢复 = 重放后替换快照 |
+| 事件与重放 | 19 种 `GameEvent`（含 4 种状态账事件）；`StepMachine.Handle` 产事件、`StepMachineFolder` 折叠重建；**账事件可先于任何阶段**（开局分配），此时步骤机保持"尚未开始"；重启 = 重放，恢复 = 重放后替换快照 |
+| 开局分配 | `AssignCharactersCommand`：每席一条 `SeatStateChangedEvent`（角色 + 初始生死 = 存活），只允许在首个阶段开始前使用（D-0017 / R-0015） |
+| 建表 | `NightPlanBuilder` + `StartNightCommand`：口径进 `StepPlan.Variant`；缺事实显式拒绝，不猜（R-0014 / D-0013） |
 | 状态变化归因 | `SeatStateChangedEvent`（座位 + 实际观测维度 + 原因 + 导致方）；说书人视图给 `RecentSeatChanges` / `CurrentSlotActor` / `CurrentSlotContext` |
 | 玩家可见事件 | 重连补齐只下发 `PlayerEvent` **白名单投影**（公开阶段 + 发给自己的请求 / 响应 / 作废），**绝不下发原始事件流** |
 | 控制模式 | `ControlMode.Automatic` / `StorytellerTakeover`；接管时节拍器不自动推进，交还后恢复 |
@@ -231,9 +241,9 @@ StepMachine（步骤机）
 - **维度翻转不属于账本**（D-0015）：账本只报"哪条效果终止了"，
   把目标的中毒改回健康必须有另一条状态变化事件。
 
-**写入方**：现阶段是说书人上报（`ApplySeatStateCommand` / `GameHub.ReportSeatState`）；
-结算引擎落地后由引擎产出同样的事件。**效果事件的产生方目前还不存在**（结算引擎未建）——
-本轮交付的是契约、折叠与查询，内核测试与后续引擎可直接使用。
+**写入方**：现阶段有两处——开局分配（`AssignCharactersCommand`：角色 + 初始生死，仅首阶段前）与
+说书人上报（`ApplySeatStateCommand` / `GameHub.ReportSeatState`）；结算引擎落地后由引擎产出同样的事件。
+**效果事件的产生方目前还不存在**（结算引擎未建）——已交付的是契约、折叠与查询，内核测试与后续引擎可直接使用。
 
 **已落地映射（2026-10-02）**：
 
@@ -328,14 +338,14 @@ StepMachine（步骤机）
 | 模块 | 说明 | 状态 |
 |---|---|---|
 | `OpenClockTower.Kernel` | 纯规则内核 | 已建（六状态 + 效果生命周期 + 两本账 + 裁定点契约 + 步骤机/操作请求/事件模型 + 状态账与效果归因；不含结算与角色） |
-| `OpenClockTower.Rules` | 梦殒春宵角色、剧本、相克数据 | 已建（夜晚顺序表：两套口径 + 逐条来源引用）；角色与相克数据待补 |
-| `OpenClockTower.Application` | 命令/查询/裁定编排 | 已建（四道闸、会话编排、投影与重连包、房间重建；`GameSession`） |
+| `OpenClockTower.Rules` | 梦殒春宵角色、剧本、相克数据 | 已建（夜晚顺序表两套口径 + 逐条来源；花名册 25 人；`NightPlanBuilder` 建表；行动契约骨架：钟表匠 / 筑梦师）；逐角色实现与相克数据待补 |
+| `OpenClockTower.Application` | 命令/查询/裁定编排 | 已建（四道闸、会话编排、投影与重连包、房间重建；`GameSession` + `GameCommandDispatcher`：开局分配 / 开夜 / 步骤机输入） |
 | `OpenClockTower.Contracts` | 前后端共享契约（由 OpenAPI 生成前端客户端） | 已建（SignalR 推送与命令回执 DTO） |
-| `OpenClockTower.Server` | ASP.NET Core 宿主、SignalR、EF Core | 已建（定向单播、EF Core + SQLite 事件/快照/回执/票据、服务端节拍器；不再自动开阶段，夜晚计划由引擎按 Rules 顺序表构建） |
-| `tests/OpenClockTower.Kernel.Tests` | 内核行为测试 | 已建（89 条：六状态 13 / 效果 8 / 两本账 8 / 裁定点与疯狂 6 / 步骤机与操作请求 28 / 状态账与效果归因 26） |
-| `tests/OpenClockTower.Rules.Tests` | 规则数据测试 | 已建（17 条：顺序逐条 4 / 结构不变量 10 / 变体差异 3） |
-| `tests/OpenClockTower.NormativeGates.Tests` | 把规范写成会失败的测试 | 已建（11 条门禁；新增「效果终止必须带原因」「单文件 ≤ 600 行」「演示计划不进生产代码」，逐条先红后绿） |
-| `tests/OpenClockTower.Integration.Tests` | 多客户端端到端 | 已建（25 条：真实宿主 + 真实 SignalR 客户端；含真实进程重启、损坏载荷恢复、状态账重启恢复与引导不开阶段的证据） |
+| `OpenClockTower.Server` | ASP.NET Core 宿主、SignalR、EF Core | 已建（定向单播、EF Core + SQLite 事件/快照/回执/票据、服务端节拍器；不再自动开阶段；`AssignCharacters` / `StartNight` 入口；心跳产生的通知照常分发） |
+| `tests/OpenClockTower.Kernel.Tests` | 内核行为测试 | 已建（92 条：六状态 13 / 效果 8 / 两本账 8 / 裁定点与疯狂 6 / 步骤机与操作请求 31 / 状态账与效果归因 26） |
+| `tests/OpenClockTower.Rules.Tests` | 规则数据测试 | 已建（32 条：顺序逐条 4 / 结构不变量 10 / 变体差异 3 / 建表与花名册 15） |
+| `tests/OpenClockTower.NormativeGates.Tests` | 把规范写成会失败的测试 | 已建（14 条门禁；本轮新增「会话票据不承载角色」「行动契约带规则来源」「计划不进 wire」，逐条先红后绿） |
+| `tests/OpenClockTower.Integration.Tests` | 多客户端端到端 | 已建（29 条：真实宿主 + 真实 SignalR 客户端；含真实进程重启、损坏载荷恢复、状态账重启恢复、分配→开夜→请求/裁定点） |
 | `web/` | Vue 3 + TS 前端 | 未建 |
 | `tools/` | 抓取、索引、数据生成、来源核对 | 已建（`fetch-wiki.ps1`：79 页快照 + SHA256 索引；`check-night-order.ps1`：顺序表与快照逐条核对） |
 
@@ -354,6 +364,9 @@ StepMachine（步骤机）
 | 效果终止带原因 | 内核里出现无参 `Terminate()`——终止必须可归因（票据「说书人上帝视角」第 2 条） |
 | 单文件 ≤ 600 行 | 源文件超过 600 行（AGENTS.md「架构硬约束」：超限先拆再改） |
 | 演示计划不进生产代码 | `src/` 里出现 `DemoStepPlan` 或同类占位计划（会被误当成规则） |
+| 会话票据不承载角色 | `GameSetup` / 会话表出现角色字段（角色分配必须走事件流，D-0017） |
+| 行动契约带规则来源 | `INightAction` 实现缺「百科《…》+ 抓取日期」引用 |
+| 计划不进 wire | `Contracts` 出现 `StepPlan` / `StepSlot`（客户端不提供计划、也不该看到计划） |
 
 ## 7. 相关阅读
 

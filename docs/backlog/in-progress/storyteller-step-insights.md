@@ -3,7 +3,7 @@
 - Status: InProgress
 - Priority: High
 - Depends on: 自动步骤机与操作请求（review 中）；**结算引擎与游戏状态（未建；已立票
-  `todo/settlement-engine.md`）**——它既是状态账的写入方，也是"能力是否生效 / 信息真假"的输入来源
+  `in-progress/settlement-engine.md`）**——它既是状态账的写入方，也是"能力是否生效 / 信息真假"的输入来源
 
 ## 要解决的问题
 
@@ -135,20 +135,20 @@
 
 ## 尚未完成（按依赖排序）
 
-1. **效果事件没有产生方**：已立票 `todo/settlement-engine.md`——契约 + 折叠 + 查询已就位，
+1. **效果事件没有产生方**：已立票 `in-progress/settlement-engine.md`——契约 + 折叠 + 查询已就位，
    引擎落地后由它产出同样的事件，账本不用改。
 2. **"能力是否生效"（矩阵 1 / 2 / 4）与"信息真假由说书人决定"（矩阵 3）**：并入
-   `todo/settlement-engine.md`；账本已给出它的现成输入：`OperativeEffectsOn`、逐维度归因、效果终止原因。
+   `in-progress/settlement-engine.md`；账本已给出它的现成输入：`OperativeEffectsOn`、逐维度归因、效果终止原因。
 3. **疯狂要求的产生方**同样在裁定点链路：`MadnessRequirementIssuedEvent` 已能被折叠，
    但"裁定点 → 结构化疯狂要求"的那一步随说书人裁定面交付。
-4. **维度解除只做到账本侧**：属 `todo/settlement-engine.md` 第 7 条——效果终止有据可查，
+4. **维度解除只做到账本侧**：属 `in-progress/settlement-engine.md` 第 7 条——效果终止有据可查，
    但把目标的中毒改回健康必须由写入方再报一条状态变化（D-0015 明写下来的边界，不是遗漏）。
 5. **重建报告不覆盖状态账**：已立票 `todo/rebuild-state-ledger-comparison.md`
    （状态账与步骤机同源折叠，需补 `GameState` 等价比较器）。
 6. **说书人面板呈现**（第 5 条）随 `web/` 前端票据；本轮只做到"视图里真的有数据"。
-7. **两条账本尚未安家**：并入 `todo/settlement-engine.md` 第 5 条——`AbilityUseLedger` /
+7. **两条账本尚未安家**：并入 `in-progress/settlement-engine.md` 第 5 条——`AbilityUseLedger` /
    `MalfunctionLedger` 已在 Kernel 里，引擎落地时把它们挂进 `GameState`，不要另起状态仓。
-8. **维度 → 效果没有结构化链接**（复核 M1 / M2）：并入 `todo/settlement-engine.md` 第 6 条——
+8. **维度 → 效果没有结构化链接**（复核 M1 / M2）：并入 `in-progress/settlement-engine.md` 第 6 条——
    状态变化事件要能携带 `EffectId`，说书人视图才能回答"这一格中毒是哪条效果造成的"、
    并提示"这一格已经过期"（来源效果已终止但维度还写着中毒）。
 9. **恢复失败后视图缺降级标记**（复核 M11）：已立票 `todo/room-health-degradation-flag.md`——
