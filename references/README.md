@@ -4,7 +4,8 @@
 
 | 路径 | 内容 | 提交进仓库 |
 |---|---|---|
-| `wiki-index.json` | 百科抓取索引：页名 + 抓取日期 + 字节数 + SHA256 | **是** |
+| `wiki-index.json` | 百科抓取索引：页名 + 抓取日期 + 字节数 + SHA256（79 页） | **是** |
+| `wiki-all-pages-2026-10-01.txt` | 百科全站页名清单（431 页，2026-10-01 列举），用于核对页名是否存在 | **是** |
 | `wiki/` | 百科页面的原始 wikitext 快照 | **否**（gitignored） |
 | `images/` | 本机缓存的图片（若将来需要） | **否**（gitignored） |
 
@@ -17,9 +18,18 @@
 
 ## 怎么生成
 
-由 `tools/fetch-wiki.ps1` 生成（尚未实现，见
-[../docs/backlog/todo/wiki-knowledge-baseline.md](../docs/backlog/todo/wiki-knowledge-baseline.md)）。
-脚本走 MediaWiki API，抓取范围必须**显式列举**，禁止全站递归。
+由 `tools/fetch-wiki.ps1` 生成：
+
+```powershell
+pwsh -File tools/fetch-wiki.ps1
+```
+
+- 抓取范围在脚本里**显式列举**（剧本页 + 角色页 + 规则 / 机制页），禁止全站递归；扩展范围时手工加页名。
+- 幂等：同一天重复运行产出逐字节一致的快照与索引；任一页失败则不写索引。
+- 删掉 `wiki/` 后重跑即可完整重建（脚本自建目录）。
+
+全站页名清单来自一次 `allpages` 列举的输出（2026-10-01，431 页），不随脚本更新；
+将来需要重新列举时新增带日期的文件，不覆盖已有快照。
 
 ## 相关阅读
 

@@ -258,7 +258,7 @@ StepMachine（步骤机）
 | `tests/OpenClockTower.NormativeGates.Tests` | 把规范写成会失败的测试 | 已建（4 条门禁，均见过红） |
 | `tests/OpenClockTower.Integration.Tests` | 多客户端端到端 | 已建（暂仅程序集级依赖检查） |
 | `web/` | Vue 3 + TS 前端 | 未建 |
-| `tools/` | 抓取、索引、数据生成 | 未建 |
+| `tools/` | 抓取、索引、数据生成 | 已建（`fetch-wiki.ps1`：79 页快照 + SHA256 索引） |
 
 门禁清单（每条都做过"见红"验证）：
 
