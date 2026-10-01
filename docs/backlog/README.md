@@ -60,12 +60,14 @@ todo/  →  in-progress/  →  review/  →  done/
 
 ### Todo
 
-- [自动步骤机与操作请求](todo/operation-request-step-machine.md) — **High** — 轮到你时服务端主动推送请求；无超时，靠说书人作废/代填对冲
 - [零信任安全模型](todo/zero-trust-security-model.md) — **High** — 鉴权两级凭据 + 操作四道闸 + 服务端强制投影，负向测试为主
+- [说书人上帝视角：每步状态信息、归因与最终计算结论](todo/storyteller-step-insights.md) — **High** — 每步摘要 + 状态变化归因 + 能力生效结论；依赖结算引擎
 
 ### In progress
 
 ### Review
+
+- [自动步骤机与操作请求](review/operation-request-step-machine.md) — **High** — 轮到你时服务端主动推送请求；无超时，说书人可接管/强推/重建；行 16 待 web 前端验收
 
 ### Done
 

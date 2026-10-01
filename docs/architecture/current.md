@@ -171,6 +171,21 @@ StepMachine（步骤机）
    角色不在场 / 已死亡 / 被跳过一律生成**空槽位**并**照样走完时间配额**；
    作废与代填**不得缩短**夜晚。否则"今晚有几个技能位"会通过耗时泄漏给所有人——那是场外信息。
 
+**已落地映射（2026-10-01）**：
+
+| 概念 | 实现（`src/OpenClockTower.Kernel` / `.Application` / `.Server`） |
+|---|---|
+| 同源选择原语 | `ChoicePrompt`；`DecisionPoint`（说书人）与 `OperationRequest`（玩家）是它的两套投影 |
+| 步骤表与槽位 | `StepPlan` / `StepSlot`（`Action` / `Empty` / `DawnWait`）；空槽位照样消耗配额 |
+| 挂起 | `StepMachineState` 的 `PendingRequest` / `AwaitingDecision` / `Block`；请求**没有超时字段**（门禁锁死） |
+| 推进条件 | `SlotQuotaState`：配额是**最短**时间；自动推进 = 配额走完 **且** 无挂起；强推可越过（D-0014） |
+| 事件与重放 | 16 种 `GameEvent`；`StepMachine.Handle` 产事件、`Apply` 折叠重建；重启 = 重放，恢复 = 重放后替换快照 |
+| 状态变化归因 | `SeatStateChangedEvent`（座位 + 实际观测维度 + 原因 + 导致方）；说书人视图给 `RecentSeatChanges` / `CurrentSlotActor` / `CurrentSlotContext` |
+| 玩家可见事件 | 重连补齐只下发 `PlayerEvent` **白名单投影**（公开阶段 + 发给自己的请求 / 响应 / 作废），**绝不下发原始事件流** |
+| 控制模式 | `ControlMode.Automatic` / `StorytellerTakeover`；接管时节拍器不自动推进，交还后恢复 |
+| 作废 | 座位依赖（`SeatDependency`）失效 → 自动作废并写明原因；说书人可强制作废 |
+| 推送 | SignalR 定向单播；断线重连 = 快照 + 补齐 + **重投未响应请求**；说书人变更也推送（不需要轮询） |
+
 ## 3. 数据流：命令 → 事件 → 投影
 
 ```text
@@ -218,6 +233,10 @@ StepMachine（步骤机）
 
 任何一闸不过：**拒绝、记录、不改状态**。拒绝也要有日志上下文（谁、哪一闸、什么输入）。
 
+**实现顺序（2026-10-01）**：身份 → **幂等** → 阶段 → 合法性。幂等闸提前到阶段闸之前：
+重复投递必须返回首次结果，否则阶段闸会把"请求已了结"的重复命令误判成非法。
+第 ①③④ 闸的语义不变，只有顺序按实现需要调整——这是唯一一处与本节图顺序不同的地方。
+
 ### 4.3 信息只在**下发方向**校验
 
 - 服务端按接收者投影；**越权信息根本不下发**，不依赖"前端不显示"。
@@ -249,14 +268,14 @@ StepMachine（步骤机）
 
 | 模块 | 说明 | 状态 |
 |---|---|---|
-| `OpenClockTower.Kernel` | 纯规则内核 | 已建（六状态正交 + 效果生命周期 + 两本账 + 裁定点契约；不含结算） |
+| `OpenClockTower.Kernel` | 纯规则内核 | 已建（六状态 + 效果生命周期 + 两本账 + 裁定点契约 + 步骤机/操作请求/事件模型；不含结算与角色） |
 | `OpenClockTower.Rules` | 梦殒春宵角色、剧本、相克数据 | 项目已建，内容未写 |
-| `OpenClockTower.Application` | 命令/查询/裁定编排 | 项目已建，内容未写 |
-| `OpenClockTower.Contracts` | 前后端共享契约（由 OpenAPI 生成前端客户端） | 项目已建，内容未写 |
-| `OpenClockTower.Server` | ASP.NET Core 宿主、SignalR、EF Core | 未建 |
-| `tests/OpenClockTower.Kernel.Tests` | 内核行为测试 | 已建（共 35 条：六状态不变量 13 / 效果生命周期 8 / 两本账 8 / 裁定点与疯狂 6） |
-| `tests/OpenClockTower.NormativeGates.Tests` | 把规范写成会失败的测试 | 已建（6 条门禁检查；六状态正交为本轮新增并见红） |
-| `tests/OpenClockTower.Integration.Tests` | 多客户端端到端 | 已建（暂仅程序集级依赖检查） |
+| `OpenClockTower.Application` | 命令/查询/裁定编排 | 已建（四道闸、会话编排、投影与重连包、房间重建；`GameSession`） |
+| `OpenClockTower.Contracts` | 前后端共享契约（由 OpenAPI 生成前端客户端） | 已建（SignalR 推送与命令回执 DTO） |
+| `OpenClockTower.Server` | ASP.NET Core 宿主、SignalR、EF Core | 已建（定向单播、EF Core + SQLite 事件/快照/回执/票据、服务端节拍器；演示步骤表是占位） |
+| `tests/OpenClockTower.Kernel.Tests` | 内核行为测试 | 已建（63 条：六状态 13 / 效果 8 / 两本账 8 / 裁定点与疯狂 6 / 步骤机与操作请求 28） |
+| `tests/OpenClockTower.NormativeGates.Tests` | 把规范写成会失败的测试 | 已建（8 条门禁；本轮新增两条并逐条见红） |
+| `tests/OpenClockTower.Integration.Tests` | 多客户端端到端 | 已建（22 条：真实宿主 + 真实 SignalR 客户端；含真实进程重启与损坏载荷恢复证据） |
 | `web/` | Vue 3 + TS 前端 | 未建 |
 | `tools/` | 抓取、索引、数据生成 | 已建（`fetch-wiki.ps1`：79 页快照 + SHA256 索引） |
 
@@ -270,6 +289,8 @@ StepMachine（步骤机）
 | 六状态正交 | `SeatState` 的状态属性被写成自定义访问器（把两个维度耦合起来） |
 | 指令文件体量 | 仓库根之下的 `AGENTS.md` 超过 5,120 字节 |
 | 程序集级依赖方向 | 编译产物里实际存在的向上引用（补 csproj 检查的盲区） |
+| 请求无超时 | `OperationRequest` 契约里出现超时 / 时间字段（D-0011 硬约束 3） |
+| 玩家投影无进度 | 玩家投影 / 请求 DTO 出现轮次、槽位、进度字段（D-0013 §5） |
 
 ## 7. 相关阅读
 
