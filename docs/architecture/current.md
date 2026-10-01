@@ -249,13 +249,13 @@ StepMachine（步骤机）
 
 | 模块 | 说明 | 状态 |
 |---|---|---|
-| `OpenClockTower.Kernel` | 纯规则内核 | 已建（六状态正交已落地） |
+| `OpenClockTower.Kernel` | 纯规则内核 | 已建（六状态正交 + 效果生命周期 + 两本账 + 裁定点契约；不含结算） |
 | `OpenClockTower.Rules` | 梦殒春宵角色、剧本、相克数据 | 项目已建，内容未写 |
 | `OpenClockTower.Application` | 命令/查询/裁定编排 | 项目已建，内容未写 |
 | `OpenClockTower.Contracts` | 前后端共享契约（由 OpenAPI 生成前端客户端） | 项目已建，内容未写 |
 | `OpenClockTower.Server` | ASP.NET Core 宿主、SignalR、EF Core | 未建 |
-| `tests/OpenClockTower.Kernel.Tests` | 内核行为测试 | 已建（六状态不变量 6 条） |
-| `tests/OpenClockTower.NormativeGates.Tests` | 把规范写成会失败的测试 | 已建（4 条门禁，均见过红） |
+| `tests/OpenClockTower.Kernel.Tests` | 内核行为测试 | 已建（共 35 条：六状态不变量 13 / 效果生命周期 8 / 两本账 8 / 裁定点与疯狂 6） |
+| `tests/OpenClockTower.NormativeGates.Tests` | 把规范写成会失败的测试 | 已建（6 条门禁检查；六状态正交为本轮新增并见红） |
 | `tests/OpenClockTower.Integration.Tests` | 多客户端端到端 | 已建（暂仅程序集级依赖检查） |
 | `web/` | Vue 3 + TS 前端 | 未建 |
 | `tools/` | 抓取、索引、数据生成 | 已建（`fetch-wiki.ps1`：79 页快照 + SHA256 索引） |
@@ -267,6 +267,7 @@ StepMachine（步骤机）
 | 内核纯净 | `Kernel` 内的时间 / 随机 / IO / 并发等待调用（D-0008） |
 | 依赖方向 | 下层引用上层（csproj 层） |
 | 一文件一顶层类型 | 文件名与类型名失配 |
+| 六状态正交 | `SeatState` 的状态属性被写成自定义访问器（把两个维度耦合起来） |
 | 指令文件体量 | 仓库根之下的 `AGENTS.md` 超过 5,120 字节 |
 | 程序集级依赖方向 | 编译产物里实际存在的向上引用（补 csproj 检查的盲区） |
 
