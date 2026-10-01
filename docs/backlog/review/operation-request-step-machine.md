@@ -96,7 +96,7 @@
 - **Application**：`GameSession` 编排（四道闸 → 内核 → 事件 + 快照 + 回执**原子提交** → 投影 / 通知）；
   玩家 / 说书人投影（玩家投影无轮次与进度字段）；重连包（快照 + 补齐）；卡点时长；房间重建。
 - **Server**：ASP.NET Core 宿主 + SignalR **定向单播**；EF Core + SQLite（事件 / 快照 / 回执 / 会话票据）；
-  服务端节拍器（接管暂停、重启补 tick）；演示步骤表为**显式占位**（真实顺序表属 `OpenClockTower.Rules`）。
+  服务端节拍器（接管暂停、重启补 tick）；演示步骤表为**显式占位**（真实顺序表属 `OpenClockTower.Rules`；**已被取代**，见残余事项 5）。
 - **依赖安全**：EF Core 10.0.0 传递依赖的 `SQLitePCLRaw.lib.e_sqlite3` 2.1.11 有已知高危漏洞
   （GHSA-2m69-gcr7-jv3q / CVE-2025-6965），已显式升到修复版 2.1.13，未压制 NU1903。
 - **测试**：Kernel 61 / 规范门禁 8 / 集成 19 = **88 条全绿**；新增两条门禁先见红后复绿。
@@ -173,7 +173,9 @@ Kestrel 真实进程 + 真实 TCP SignalR 客户端（完整输出在 `artifacts
 2. 开新阶段目前是**宿主动作**（引导 / 测试）；说书人端开阶段入口随 web / 说书人面板票据提供。
 3. 回退 / 撤销到任意序号（截断重放）按 D-0010 属后续能力；本票据只交付"按事件重建"。
 4. EF Core 目前用 `EnsureCreated`；首个可部署版本前补迁移。
-5. 演示步骤表是显式占位，不得当成《梦殒春宵》规则。
+5. ~~演示步骤表是显式占位~~ **已解决**：`DemoStepPlan` 已从生产代码删除，宿主不再自动开阶段；
+   集成测试改用测试夹具 `TestNightPlan`（`tests/` 内、非规则数据）。
+   真实顺序表见 `src/OpenClockTower.Rules`（两套口径，R-0014）；建表属 `todo/settlement-engine.md`。
 6. **说书人上帝视角**（每步状态归因 + 最终计算结论）已单独立票
    `docs/backlog/in-progress/storyteller-step-insights.md`；本票据只落了数据面
    （`SeatStateChangedEvent` + `RecentSeatChanges` / `CurrentSlotActor` / `CurrentSlotContext`）。

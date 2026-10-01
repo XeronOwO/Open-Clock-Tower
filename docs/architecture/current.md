@@ -139,6 +139,11 @@ DecisionPoint
   └── 处决（处决 ≠ 死亡）
 ```
 
+**已落地的输入**：《梦殒春宵》的完整夜晚顺序表已在 `OpenClockTower.Rules`
+（`NightOrderTable`：黄昏 / 信息环节 / 角色行动 / 黎明，含原本 / 推荐两种口径与逐条来源引用，R-0014）。
+按它**建表**、逐步结算、能力生效判定与事件产出属本节的引擎——
+见 `docs/backlog/todo/settlement-engine.md`。
+
 ### 2.7 步骤机与操作请求（D-0011）
 
 "自动步骤系统"不是一个 UI 特性，它是内核里的一台状态机。
@@ -323,15 +328,16 @@ StepMachine（步骤机）
 | 模块 | 说明 | 状态 |
 |---|---|---|
 | `OpenClockTower.Kernel` | 纯规则内核 | 已建（六状态 + 效果生命周期 + 两本账 + 裁定点契约 + 步骤机/操作请求/事件模型 + 状态账与效果归因；不含结算与角色） |
-| `OpenClockTower.Rules` | 梦殒春宵角色、剧本、相克数据 | 项目已建，内容未写 |
+| `OpenClockTower.Rules` | 梦殒春宵角色、剧本、相克数据 | 已建（夜晚顺序表：两套口径 + 逐条来源引用）；角色与相克数据待补 |
 | `OpenClockTower.Application` | 命令/查询/裁定编排 | 已建（四道闸、会话编排、投影与重连包、房间重建；`GameSession`） |
 | `OpenClockTower.Contracts` | 前后端共享契约（由 OpenAPI 生成前端客户端） | 已建（SignalR 推送与命令回执 DTO） |
-| `OpenClockTower.Server` | ASP.NET Core 宿主、SignalR、EF Core | 已建（定向单播、EF Core + SQLite 事件/快照/回执/票据、服务端节拍器；演示步骤表是占位） |
+| `OpenClockTower.Server` | ASP.NET Core 宿主、SignalR、EF Core | 已建（定向单播、EF Core + SQLite 事件/快照/回执/票据、服务端节拍器；不再自动开阶段，夜晚计划由引擎按 Rules 顺序表构建） |
 | `tests/OpenClockTower.Kernel.Tests` | 内核行为测试 | 已建（89 条：六状态 13 / 效果 8 / 两本账 8 / 裁定点与疯狂 6 / 步骤机与操作请求 28 / 状态账与效果归因 26） |
-| `tests/OpenClockTower.NormativeGates.Tests` | 把规范写成会失败的测试 | 已建（10 条门禁；新增「效果终止必须带原因」「单文件 ≤ 600 行」并逐条先红后绿） |
-| `tests/OpenClockTower.Integration.Tests` | 多客户端端到端 | 已建（24 条：真实宿主 + 真实 SignalR 客户端；含真实进程重启、损坏载荷恢复与状态账重启恢复证据） |
+| `tests/OpenClockTower.Rules.Tests` | 规则数据测试 | 已建（17 条：顺序逐条 4 / 结构不变量 10 / 变体差异 3） |
+| `tests/OpenClockTower.NormativeGates.Tests` | 把规范写成会失败的测试 | 已建（11 条门禁；新增「效果终止必须带原因」「单文件 ≤ 600 行」「演示计划不进生产代码」，逐条先红后绿） |
+| `tests/OpenClockTower.Integration.Tests` | 多客户端端到端 | 已建（25 条：真实宿主 + 真实 SignalR 客户端；含真实进程重启、损坏载荷恢复、状态账重启恢复与引导不开阶段的证据） |
 | `web/` | Vue 3 + TS 前端 | 未建 |
-| `tools/` | 抓取、索引、数据生成 | 已建（`fetch-wiki.ps1`：79 页快照 + SHA256 索引） |
+| `tools/` | 抓取、索引、数据生成、来源核对 | 已建（`fetch-wiki.ps1`：79 页快照 + SHA256 索引；`check-night-order.ps1`：顺序表与快照逐条核对） |
 
 门禁清单（每条都做过"见红"验证）：
 
@@ -347,6 +353,7 @@ StepMachine（步骤机）
 | 玩家投影无进度 | 玩家投影 / 请求 DTO 出现轮次、槽位、进度字段（D-0013 §5） |
 | 效果终止带原因 | 内核里出现无参 `Terminate()`——终止必须可归因（票据「说书人上帝视角」第 2 条） |
 | 单文件 ≤ 600 行 | 源文件超过 600 行（AGENTS.md「架构硬约束」：超限先拆再改） |
+| 演示计划不进生产代码 | `src/` 里出现 `DemoStepPlan` 或同类占位计划（会被误当成规则） |
 
 ## 7. 相关阅读
 

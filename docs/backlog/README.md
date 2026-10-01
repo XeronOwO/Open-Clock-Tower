@@ -61,6 +61,9 @@ todo/  →  in-progress/  →  review/  →  done/
 ### Todo
 
 - [零信任安全模型](todo/zero-trust-security-model.md) — **High** — 鉴权两级凭据 + 操作四道闸 + 服务端强制投影，负向测试为主
+- [结算引擎与能力生效判定](todo/settlement-engine.md) — **High** — 建表 + 逐步结算 + 能力生效判定 + 状态账唯一写入方；逐角色实现另立
+- [重建报告对比状态账](todo/rebuild-state-ledger-comparison.md) — **Medium** — 重建报告补上状态账等价对比，半个结论变完整
+- [恢复失败后的房间健康位](todo/room-health-degradation-flag.md) — **Medium** — 区分「空账」与「数据丢了」，降级标记显式重建才清除
 
 ### In progress
 
@@ -69,6 +72,7 @@ todo/  →  in-progress/  →  review/  →  done/
 ### Review
 
 - [自动步骤机与操作请求](review/operation-request-step-machine.md) — **High** — 轮到你时服务端主动推送请求；无超时，说书人可接管/强推/重建；行 16 待 web 前端验收
+- [《梦殒春宵》夜晚顺序表（结算引擎的输入）](review/sects-and-violets-night-order.md) — **High** — 规则层第一块数据：两套口径 + 逐条来源 + 占位移除；建表属结算引擎
 
 ### Done
 
