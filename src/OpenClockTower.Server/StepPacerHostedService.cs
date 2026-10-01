@@ -13,16 +13,19 @@ namespace OpenClockTower.Server;
 public sealed class StepPacerHostedService : BackgroundService
 {
     private readonly GameSession _session;
+    private readonly NotificationDispatcher _dispatcher;
     private readonly GameServerOptions _options;
     private readonly ILogger<StepPacerHostedService> _logger;
 
     /// <summary>构造节拍器。</summary>
     public StepPacerHostedService(
         GameSession session,
+        NotificationDispatcher dispatcher,
         IOptions<GameServerOptions> options,
         ILogger<StepPacerHostedService> logger)
     {
         _session = session;
+        _dispatcher = dispatcher;
         _options = options.Value;
         _logger = logger;
     }
@@ -38,7 +41,13 @@ public sealed class StepPacerHostedService : BackgroundService
             try
             {
                 await timer.WaitForNextTickAsync(stoppingToken);
-                await _session.TickAsync(stoppingToken);
+                var result = await _session.TickAsync(stoppingToken);
+                if (result is not null)
+                {
+                    // 心跳是"命令入口"之一：产生的操作请求 / 说书人视图变更必须照常推送，
+                    // 否则请求只会留在服务端（集成测试 AssignedDreamer_ReceivesRealOperationRequest 盯这条链路）。
+                    await _dispatcher.DispatchAsync(result, stoppingToken);
+                }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {

@@ -23,6 +23,7 @@ namespace OpenClockTower.Application;
 public sealed class GameSession
 {
     private readonly IGameStore _store;
+    private readonly IGameCatalog _catalog;
     private readonly IClock _clock;
     private readonly PacingOptions _pacing;
     private readonly ILogger<GameSession> _logger;
@@ -39,15 +40,21 @@ public sealed class GameSession
     private long _lastSequence;
 
     /// <summary>构造一局的编排器。</summary>
+    /// <remarks>
+    /// 依赖会话目录（<see cref="IGameCatalog"/>）只为开局分配与开夜：这两条命令需要**服务端持有的
+    /// 席位名单**（客户端送来的席位声明不可信，D-0012）；其余命令不读目录。
+    /// </remarks>
     public GameSession(
         GameId gameId,
         IGameStore store,
+        IGameCatalog catalog,
         IClock clock,
         PacingOptions pacing,
         ILogger<GameSession> logger)
     {
         GameId = gameId;
         _store = store;
+        _catalog = catalog;
         _clock = clock;
         _pacing = pacing;
         _logger = logger;
@@ -66,7 +73,7 @@ public sealed class GameSession
             try
             {
                 var storedEvents = await _store.ReadEventsAsync(GameId, afterSequence: 0, cancellationToken);
-                var machine = default(StepMachineState);
+                StepMachineState? machine = null;
                 var state = GameState.Empty;
                 var lastSequence = 0L;
 
@@ -129,9 +136,10 @@ public sealed class GameSession
     /// </summary>
     /// <remarks>
     /// 接管模式下不做任何自动推进（D-0014 能力 2）；没有起点信息（异常数据）时宁可不动，
-    /// 等说书人重建或强推。
+    /// 等说书人重建或强推。**返回本次心跳的提交结果**（没有到点时为 null）——
+    /// 调用方拿到结果后必须照常分发通知，否则这一步产生的操作请求只会留在服务端。
     /// </remarks>
-    public async Task TickAsync(CancellationToken cancellationToken)
+    public async Task<CommandResult?> TickAsync(CancellationToken cancellationToken)
     {
         await _gate.WaitAsync(cancellationToken);
         try
@@ -139,17 +147,17 @@ public sealed class GameSession
             var machine = _machine;
             if (machine is null || machine.IsPlanCompleted)
             {
-                return;
+                return null;
             }
 
             if (machine.Control != ControlMode.Automatic || machine.Quota != SlotQuotaState.Running)
             {
-                return;
+                return null;
             }
 
             if (_trackers.SlotStartedAt is not { } startedAt || _clock.UtcNow < startedAt + _pacing.SlotQuota)
             {
-                return;
+                return null;
             }
 
             var slot = machine.CurrentSlot!;
@@ -159,7 +167,7 @@ public sealed class GameSession
                 Actor = Actor.System,
                 IdempotencyKey = $"slot-elapsed:{machine.Plan.Label}:{slot.Id}",
             };
-            await ExecuteCoreAsync(envelope, cancellationToken);
+            return await ExecuteCoreAsync(envelope, cancellationToken);
         }
         finally
         {
@@ -249,7 +257,8 @@ public sealed class GameSession
         try
         {
             var receipt = await _store.FindReceiptAsync(GameId, envelope.IdempotencyKey, cancellationToken);
-            var decision = CommandGatePipeline.Evaluate(envelope, _machine, receipt);
+            var setup = await LoadSetupIfNeededAsync(envelope, cancellationToken);
+            var decision = CommandGatePipeline.Evaluate(envelope, _machine, receipt, setup);
 
             switch (decision.Kind)
             {
@@ -266,17 +275,16 @@ public sealed class GameSession
                 return await RebuildAsync(envelope, rebuild, cancellationToken);
             }
 
-            var dispatch = Dispatch(envelope);
+            var dispatch = GameCommandDispatcher.Dispatch(envelope, _machine, setup, _state, GameId, _logger);
             if (dispatch.Rejection is not null)
             {
                 return Reject(envelope, dispatch.Rejection);
             }
 
-            var kernelOutcome = dispatch.Outcome!;
             var recordedAt = _clock.UtcNow;
-            var drafts = new List<StoredEventDraft>(kernelOutcome.Events.Count);
+            var drafts = new List<StoredEventDraft>(dispatch.Events.Count);
             var sequence = _lastSequence;
-            foreach (var gameEvent in kernelOutcome.Events)
+            foreach (var gameEvent in dispatch.Events)
             {
                 sequence++;
                 drafts.Add(new StoredEventDraft
@@ -299,7 +307,7 @@ public sealed class GameSession
                     Snapshot = new StoredSnapshot
                     {
                         Sequence = sequence,
-                        Machine = kernelOutcome.State,
+                        Machine = dispatch.Machine,
                         RecordedAt = recordedAt,
                     },
                     Receipt = new CommandReceipt
@@ -312,27 +320,27 @@ public sealed class GameSession
                 cancellationToken);
 
             var previousMachine = _machine;
-            _machine = kernelOutcome.State;
+            _machine = dispatch.Machine;
             _state = nextState;
             _lastSequence = sequence;
             _trackers.Update(drafts, recordedAt);
 
-            var notifications = GameNotificationBuilder.Build(kernelOutcome.Events, previousMachine);
+            var notifications = GameNotificationBuilder.Build(dispatch.Events, previousMachine);
             _logger.LogInformation(
                 "命令已接受：game={GameId} actor={ActorKind} command={Command} 事件数={EventCount} 序号={Sequence} 挂起={Held} clientSequence={ClientSequence}",
                 GameId,
                 envelope.Actor.Kind,
                 envelope.Command.GetType().Name,
-                kernelOutcome.Events.Count,
+                dispatch.Events.Count,
                 _lastSequence,
-                _machine.IsHeld,
+                _machine?.IsHeld,
                 envelope.ClientSequence);
 
             return new CommandResult
             {
                 Kind = CommandResultKind.Accepted,
                 Sequence = _lastSequence,
-                Events = kernelOutcome.Events,
+                Events = dispatch.Events,
                 Notifications = notifications,
             };
         }
@@ -490,53 +498,13 @@ public sealed class GameSession
         }
     }
 
-    private (StepMachineOutcome? Outcome, CommandRejection? Rejection) Dispatch(CommandEnvelope envelope)
-    {
-        if (envelope.Command is StartPhaseCommand start)
-        {
-            return (StepMachine.StartPhase(start.Plan, start.Control), null);
-        }
-
-        if (_machine is null)
-        {
-            return (
-                null,
-                new CommandRejection
-                {
-                    Code = "kernel.not_started",
-                    Message = "步骤机尚未开启任何阶段",
-                    Gate = "kernel",
-                });
-        }
-
-        var input = KernelInputMapper.ToInput(envelope.Command);
-        if (input is null)
-        {
-            return (
-                null,
-                new CommandRejection
-                {
-                    Code = "kernel.unsupported",
-                    Message = $"未支持的命令：{envelope.Command.GetType().Name}",
-                    Gate = "kernel",
-                });
-        }
-
-        var outcome = StepMachine.Handle(_machine, input);
-        if (outcome.Kind == StepMachineOutcomeKind.Rejected)
-        {
-            return (
-                null,
-                new CommandRejection
-                {
-                    Code = $"kernel.{outcome.RejectionReason}",
-                    Message = outcome.RejectionNote ?? "内核拒绝了这条输入",
-                    Gate = "kernel",
-                });
-        }
-
-        return (outcome, null);
-    }
+    /// <summary>开局分配与开夜需要会话席位名单；其余命令不读目录，避免给命令路径加无谓 IO。</summary>
+    private async Task<GameSetup?> LoadSetupIfNeededAsync(
+        CommandEnvelope envelope,
+        CancellationToken cancellationToken) =>
+        envelope.Command is AssignCharactersCommand or StartNightCommand
+            ? await _catalog.FindAsync(GameId, cancellationToken)
+            : null;
 
     private CommandResult Reject(CommandEnvelope envelope, CommandRejection rejection)
     {

@@ -42,6 +42,23 @@ public sealed class StepMachineTests
         Assert.Contains(advanced.Events, e => e is SlotEnteredEvent { SlotIndex: 1 });
     }
 
+    /// <summary>节拍槽位（黄昏 / 信息环节）没有请求，配额照走；与空槽位同样是纯时间配额。</summary>
+    [Fact]
+    public void BeatSlot_ConsumesQuota_AndIssuesNoRequest()
+    {
+        var plan = StepFixture.Plan("test:night", StepFixture.Beat("beat-1"), StepFixture.Empty("empty-1"));
+        var started = StepMachine.StartPhase(plan);
+
+        Assert.Null(started.State.PendingRequest);
+        Assert.Equal(StepSlotKind.Beat, started.State.CurrentSlot!.Kind);
+
+        var advanced = StepMachine.Handle(started.State, new SlotQuotaElapsedInput());
+
+        Assert.Equal(1, advanced.State.SlotIndex);
+        Assert.Contains(advanced.Events, e => e is SlotAdvancedEvent { FromIndex: 0, ToIndex: 1 });
+        Assert.Contains(advanced.Events, e => e is SlotEnteredEvent { SlotIndex: 1 });
+    }
+
     /// <summary>秒回不提前推进：响应只把挂起解除，仍要等配额走完（D-0013 §4）。</summary>
     [Fact]
     public void ResponseDoesNotAdvanceBeforeQuotaElapsed()

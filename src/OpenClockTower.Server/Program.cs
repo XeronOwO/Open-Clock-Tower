@@ -23,6 +23,7 @@ builder.Services.AddSingleton<IGameCatalog, EfGameCatalog>();
 builder.Services.AddSingleton(provider => new GameSession(
     provider.GetRequiredService<GameId>(),
     provider.GetRequiredService<IGameStore>(),
+    provider.GetRequiredService<IGameCatalog>(),
     provider.GetRequiredService<IClock>(),
     provider.GetRequiredService<PacingOptions>(),
     provider.GetRequiredService<ILogger<GameSession>>()));

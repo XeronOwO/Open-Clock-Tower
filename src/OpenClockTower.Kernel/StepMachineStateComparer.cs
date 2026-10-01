@@ -33,7 +33,9 @@ public static class StepMachineStateComparer
 
     private static bool PlanEquivalent(StepPlan left, StepPlan right)
     {
-        if (!string.Equals(left.Label, right.Label, StringComparison.Ordinal) || left.Phase != right.Phase)
+        if (!string.Equals(left.Label, right.Label, StringComparison.Ordinal)
+            || left.Phase != right.Phase
+            || !string.Equals(left.Variant, right.Variant, StringComparison.Ordinal))
         {
             return false;
         }

@@ -34,7 +34,8 @@ public static class StepMachine
         {
             new PhaseStartedEvent { Plan = plan, Control = control },
         };
-        var state = Apply(null, events[0]);
+        var state = Apply(null, events[0])
+            ?? throw new InvalidOperationException("事件流损坏：开启阶段没有产出步骤机状态");
         if (!state.IsPlanCompleted)
         {
             EnterCurrentSlot(state, events);
@@ -70,86 +71,21 @@ public static class StepMachine
     /// <summary>
     /// 把一条事件折叠回状态——重放、重启恢复、撤销的共同基础。
     /// </summary>
+    /// <returns>
+    /// 折叠后的状态；账事件（座位状态 / 效果 / 疯狂要求）不创建状态，阶段未开始时为 null。
+    /// </returns>
     /// <exception cref="InvalidOperationException">
     /// 事件流顺序损坏时抛出：恢复必须**显式失败**，绝不静默继续（D-0014 能力 3）。
     /// </exception>
-    public static StepMachineState Apply(StepMachineState? state, GameEvent gameEvent)
-    {
-        ArgumentNullException.ThrowIfNull(gameEvent);
-
-        return gameEvent switch
-        {
-            PhaseStartedEvent started => new StepMachineState
-            {
-                Plan = started.Plan,
-                SlotIndex = 0,
-                Quota = SlotQuotaState.Running,
-                Control = started.Control,
-            },
-            SlotEnteredEvent entered => Require(state, entered) with
-            {
-                SlotIndex = entered.SlotIndex,
-                Quota = SlotQuotaState.Running,
-                PendingRequest = null,
-                AwaitingDecision = null,
-                Block = null,
-            },
-            OperationRequestIssuedEvent issued => Require(state, issued) with
-            {
-                PendingRequest = issued.Request,
-            },
-            OperationRequestAnsweredEvent answered => Require(state, answered) with
-            {
-                PendingRequest = RequireOpenPending(state, answered.RequestId) with
-                {
-                    Status = OperationRequestStatus.Answered,
-                    Answer = answered.Answer,
-                },
-            },
-            OperationRequestVoidedEvent voided => Require(state, voided) with
-            {
-                PendingRequest = RequireOpenPending(state, voided.RequestId) with
-                {
-                    Status = OperationRequestStatus.Voided,
-                    Voided = voided.Void,
-                },
-            },
-            SlotQuotaElapsedEvent elapsed => Require(state, elapsed) with
-            {
-                Quota = SlotQuotaState.Elapsed,
-            },
-            SlotAdvancedEvent advanced => ApplyAdvance(state, advanced.FromIndex, advanced.ToIndex),
-            SlotForceAdvancedEvent forceAdvanced => ApplyAdvance(state, forceAdvanced.FromIndex, forceAdvanced.ToIndex),
-            PhaseCompletedEvent completed => Require(state, completed),
-            ControlModeChangedEvent control => Require(state, control) with { Control = control.Mode },
-            PromptSkippedEvent skipped => Require(state, skipped),
-            SeatStateChangedEvent seatChanged => Require(state, seatChanged),
-            DecisionPointRaisedEvent raised => Require(state, raised) with
-            {
-                AwaitingDecision = raised.DecisionPoint,
-            },
-            DecisionPointResolvedEvent resolved => ResolveDecision(state, resolved),
-            SlotBlockedEvent blocked => Require(state, blocked) with
-            {
-                Block = new StepBlock { Reason = blocked.Reason },
-            },
-
-            // 状态账的事件：进同一条事件流，但步骤机状态不由它们改变
-            // （座位状态变化对步骤机的影响是"作废依赖失效的挂起请求"，在 Handle 阶段已经处理完）。
-            PersistentEffectAppliedEvent => Require(state, gameEvent),
-            PersistentEffectTerminatedEvent => Require(state, gameEvent),
-            InstantaneousEffectAppliedEvent => Require(state, gameEvent),
-            MadnessRequirementIssuedEvent => Require(state, gameEvent),
-
-            _ => throw new InvalidOperationException($"未知事件类型：{gameEvent.GetType().Name}"),
-        };
-    }
+    public static StepMachineState? Apply(StepMachineState? state, GameEvent gameEvent) =>
+        StepMachineFolder.Apply(state, gameEvent);
 
     /// <summary>从事件流重建状态（重放、重启恢复、撤销的基础）。</summary>
-    public static StepMachineState Fold(IEnumerable<GameEvent> events)
+    /// <returns>事件流里还没有任何阶段事件时返回 null（例如只有开局分配与初始状态）。</returns>
+    public static StepMachineState? Fold(IEnumerable<GameEvent> events)
     {
         ArgumentNullException.ThrowIfNull(events);
-        return ApplyAll(null, events);
+        return StepMachineFolder.ApplyAll(null, events);
     }
 
     private static StepMachineOutcome HandleQuotaElapsed(StepMachineState state)
@@ -280,7 +216,8 @@ public static class StepMachine
             });
         }
 
-        var afterHolds = ApplyAll(state, events);
+        var afterHolds = StepMachineFolder.ApplyAll(state, events)
+            ?? throw new InvalidOperationException("事件流损坏：处理输入后丢失步骤机状态");
         AppendForceAdvance(afterHolds, events, input.Reason);
         return Applied(state, events);
     }
@@ -381,7 +318,8 @@ public static class StepMachine
 
     private static List<GameEvent> WithAutoAdvance(StepMachineState state, List<GameEvent> events)
     {
-        var after = ApplyAll(state, events);
+        var after = StepMachineFolder.ApplyAll(state, events)
+            ?? throw new InvalidOperationException("事件流损坏：处理输入后丢失步骤机状态");
         if (CanAutoAdvance(after))
         {
             AppendAdvance(after, events);
@@ -407,7 +345,10 @@ public static class StepMachine
             return;
         }
 
-        EnterCurrentSlot(Apply(state, events[^1]), events);
+        EnterCurrentSlot(
+            StepMachineFolder.Apply(state, events[^1])
+                ?? throw new InvalidOperationException("事件流损坏：推进后丢失步骤机状态"),
+            events);
     }
 
     private static void AppendForceAdvance(StepMachineState state, List<GameEvent> events, string reason)
@@ -421,7 +362,10 @@ public static class StepMachine
             return;
         }
 
-        EnterCurrentSlot(Apply(state, events[^1]), events);
+        EnterCurrentSlot(
+            StepMachineFolder.Apply(state, events[^1])
+                ?? throw new InvalidOperationException("事件流损坏：推进后丢失步骤机状态"),
+            events);
     }
 
     private static void EnterCurrentSlot(StepMachineState state, List<GameEvent> events)
@@ -491,7 +435,8 @@ public static class StepMachine
         new()
         {
             Kind = StepMachineOutcomeKind.Applied,
-            State = ApplyAll(state, events),
+            State = StepMachineFolder.ApplyAll(state, events)
+                ?? throw new InvalidOperationException("事件流损坏：处理输入后丢失步骤机状态"),
             Events = events,
         };
 
@@ -499,7 +444,8 @@ public static class StepMachine
         new()
         {
             Kind = StepMachineOutcomeKind.Applied,
-            State = ApplyAll(null, events),
+            State = StepMachineFolder.ApplyAll(null, events)
+                ?? throw new InvalidOperationException("事件流为空：无法从空事件重建状态"),
             Events = events,
         };
 
@@ -516,72 +462,4 @@ public static class StepMachine
             RejectionNote = note,
         };
 
-    private static StepMachineState ApplyAll(StepMachineState? state, IEnumerable<GameEvent> events)
-    {
-        var current = state;
-        foreach (var gameEvent in events)
-        {
-            current = Apply(current, gameEvent);
-        }
-
-        return current ?? throw new InvalidOperationException("事件流为空：无法从空事件重建状态");
-    }
-
-    private static StepMachineState Require(StepMachineState? state, GameEvent gameEvent) =>
-        state ?? throw new InvalidOperationException($"事件流顺序损坏：{gameEvent.GetType().Name} 之前没有状态");
-
-    private static OperationRequest RequireOpenPending(StepMachineState? state, OperationRequestId requestId)
-    {
-        var pending = state?.PendingRequest;
-        if (pending is null || pending.Id != requestId)
-        {
-            throw new InvalidOperationException($"事件流顺序损坏：{requestId} 不是当前挂起的请求");
-        }
-
-        if (pending.Status != OperationRequestStatus.Pending)
-        {
-            throw new InvalidOperationException($"事件流顺序损坏：请求 {requestId} 已经了结，不能再次了结");
-        }
-
-        return pending;
-    }
-
-    private static StepMachineState ResolveDecision(StepMachineState? state, DecisionPointResolvedEvent resolved)
-    {
-        var current = Require(state, resolved);
-        var decision = current.AwaitingDecision;
-        if (decision is null || decision.Id != resolved.DecisionPointId)
-        {
-            throw new InvalidOperationException(
-                $"事件流顺序损坏：{resolved.DecisionPointId} 不是当前挂起的裁定点");
-        }
-
-        return current with { AwaitingDecision = null };
-    }
-
-    private static StepMachineState ApplyAdvance(StepMachineState? state, int fromIndex, int toIndex)
-    {
-        var current = state
-            ?? throw new InvalidOperationException("事件流顺序损坏：推进事件之前没有状态");
-
-        if (fromIndex != current.SlotIndex)
-        {
-            throw new InvalidOperationException(
-                $"事件流顺序损坏：推进起点 {fromIndex} 与当前槽位 {current.SlotIndex} 不一致");
-        }
-
-        if (toIndex < fromIndex || toIndex > current.Plan.Slots.Count)
-        {
-            throw new InvalidOperationException($"事件流顺序损坏：推进目标 {toIndex} 越界");
-        }
-
-        return current with
-        {
-            SlotIndex = toIndex,
-            Quota = SlotQuotaState.Running,
-            PendingRequest = null,
-            AwaitingDecision = null,
-            Block = null,
-        };
-    }
 }

@@ -47,6 +47,9 @@ internal static class StepFixture
     /// <summary>构造一个"要求该座位存活"的依赖（声明行动者自身事实时使用）。</summary>
     internal static SeatDependency Alive(SeatId seat) => new() { Seat = seat, RequiredLife = LifeState.Alive };
 
+    /// <summary>构造一个节拍槽位。</summary>
+    internal static StepSlot Beat(string id) => StepSlot.Beat(new StepSlotId(id));
+
     /// <summary>构造一个黎明等待槽位。</summary>
     internal static StepSlot DawnWait(string id) => StepSlot.DawnWait(new StepSlotId(id));
 }

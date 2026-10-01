@@ -1,4 +1,5 @@
 using OpenClockTower.Kernel;
+using OpenClockTower.Rules;
 
 namespace OpenClockTower.Application;
 
@@ -22,7 +23,8 @@ public static class CommandGatePipeline
     public static GateDecision Evaluate(
         CommandEnvelope envelope,
         StepMachineState? machine,
-        CommandReceipt? receipt)
+        CommandReceipt? receipt,
+        GameSetup? setup = null)
     {
         ArgumentNullException.ThrowIfNull(envelope);
 
@@ -43,7 +45,7 @@ public static class CommandGatePipeline
             return GateDecision.Reject(phase);
         }
 
-        var legality = CheckLegality(envelope, machine);
+        var legality = CheckLegality(envelope, machine, setup);
         if (legality is not null)
         {
             return GateDecision.Reject(legality);
@@ -79,6 +81,18 @@ public static class CommandGatePipeline
             RebuildRoomCommand => Reject(
                 "identity.storyteller_only",
                 "只有说书人或宿主可以重建房间",
+                "identity"),
+
+            AssignCharactersCommand when actor.Kind is ActorKind.Host or ActorKind.Storyteller => null,
+            AssignCharactersCommand => Reject(
+                "identity.host_only",
+                "只有宿主或说书人可以开局分配角色",
+                "identity"),
+
+            StartNightCommand when actor.Kind is ActorKind.Host or ActorKind.Storyteller => null,
+            StartNightCommand => Reject(
+                "identity.host_only",
+                "只有宿主或说书人可以开启夜晚",
                 "identity"),
 
             _ when actor.Kind == ActorKind.Storyteller => null,
@@ -144,6 +158,28 @@ public static class CommandGatePipeline
 
                 return null;
 
+            case AssignCharactersCommand:
+                if (machine is not null)
+                {
+                    return Reject(
+                        "phase.already_started",
+                        "角色分配只允许在首个阶段开始前进行（开局设置）",
+                        "phase");
+                }
+
+                return null;
+
+            case StartNightCommand:
+                if (machine is not null && !machine.IsPlanCompleted)
+                {
+                    return Reject(
+                        "phase.phase_running",
+                        "当前阶段还没有走完；请先推进、强推或重建，不要静默丢弃挂起",
+                        "phase");
+                }
+
+                return null;
+
             default:
                 if (machine is null)
                 {
@@ -154,9 +190,14 @@ public static class CommandGatePipeline
         }
     }
 
-    private static CommandRejection? CheckLegality(CommandEnvelope envelope, StepMachineState? machine) =>
+    private static CommandRejection? CheckLegality(
+        CommandEnvelope envelope,
+        StepMachineState? machine,
+        GameSetup? setup) =>
         envelope.Command switch
         {
+            AssignCharactersCommand assign => CheckAssignments(assign, setup),
+            StartNightCommand startNight => CheckStartNight(startNight, machine, setup),
             SubmitResponseCommand submit => CheckOption(machine, submit.RequestId, submit.OptionValue),
             ProxyFillCommand proxy => CheckOption(machine, proxy.RequestId, proxy.OptionValue),
             VoidRequestCommand voidRequest => Enum.IsDefined(voidRequest.Reason)
@@ -164,6 +205,94 @@ public static class CommandGatePipeline
                 : Reject("legality.reason_invalid", $"未知作废原因：{voidRequest.Reason}", "legality"),
             _ => null,
         };
+
+    /// <summary>开局分配的合法性：席位属于本局、角色在首版花名册里、同批不重复（角色唯一）。</summary>
+    private static CommandRejection? CheckAssignments(AssignCharactersCommand command, GameSetup? setup)
+    {
+        if (command.Assignments.Count == 0)
+        {
+            return Reject("legality.assignment_empty", "开局分配至少要给出一名席位的角色", "legality");
+        }
+
+        if (setup is null)
+        {
+            return Reject("legality.setup_missing", "本局还没有会话信息（席位名单）", "legality");
+        }
+
+        var seats = new HashSet<SeatId>();
+        var characters = new HashSet<CharacterId>();
+        foreach (var assignment in command.Assignments)
+        {
+            if (!setup.Seats.Any(item => item.Seat == assignment.Seat))
+            {
+                return Reject(
+                    "legality.seat_unknown",
+                    $"席位 {assignment.Seat.Value} 不在本局席位名单里",
+                    "legality");
+            }
+
+            if (!seats.Add(assignment.Seat))
+            {
+                return Reject(
+                    "legality.seat_duplicated",
+                    $"同一批分配里席位 {assignment.Seat.Value} 出现了多次",
+                    "legality");
+            }
+
+            if (!SectsAndVioletsRoster.Contains(assignment.Character))
+            {
+                return Reject(
+                    "legality.character_unknown",
+                    $"角色 {assignment.Character.Value} 不是《梦殒春宵》首版角色",
+                    "legality");
+            }
+
+            if (!characters.Add(assignment.Character))
+            {
+                return Reject(
+                    "legality.character_duplicated",
+                    $"同一批分配里角色 {assignment.Character.Value} 出现了多次（角色唯一）",
+                    "legality");
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>开夜的合法性：夜晚序号、口径、会话席位名单（建表完整性由建表器校验）。</summary>
+    private static CommandRejection? CheckStartNight(
+        StartNightCommand command,
+        StepMachineState? machine,
+        GameSetup? setup)
+    {
+        if (command.NightNumber < 1)
+        {
+            return Reject(
+                "legality.night_number_invalid",
+                $"夜晚序号必须从 1 开始：{command.NightNumber}",
+                "legality");
+        }
+
+        if (machine is null && command.NightNumber != 1)
+        {
+            return Reject(
+                "legality.first_night_must_be_one",
+                "本局还没有开始过任何阶段：第一夜必须是第 1 夜",
+                "legality");
+        }
+
+        if (!Enum.IsDefined(command.Variant))
+        {
+            return Reject("legality.variant_invalid", $"未知的夜晚顺序口径：{command.Variant}", "legality");
+        }
+
+        if (setup is null)
+        {
+            return Reject("legality.setup_missing", "本局还没有会话信息（席位名单）", "legality");
+        }
+
+        return null;
+    }
 
     private static CommandRejection? CheckOption(
         StepMachineState? machine,

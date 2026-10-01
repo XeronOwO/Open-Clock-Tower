@@ -10,7 +10,7 @@ namespace OpenClockTower.Server;
 /// <remarks>
 /// <para>
 /// 夜晚计划**不在引导阶段自动构建**：真实的《梦殒春宵》夜晚顺序表在 <c>OpenClockTower.Rules</c>，
-/// 按它建表需要角色分配与角色行动契约，属结算引擎（docs/backlog/todo/settlement-engine.md）。
+/// 按它建表需要角色分配与角色行动契约，属结算引擎（docs/backlog/in-progress/settlement-engine.md）。
 /// 在那之前，开阶段是宿主 / 说书人的显式动作——引导阶段不伪造计划。
 /// </para>
 /// <para>

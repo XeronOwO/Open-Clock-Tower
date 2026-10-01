@@ -57,6 +57,7 @@ public sealed class StepMachineReplayTests
 
         var folded = StepMachine.Fold(events);
 
+        Assert.NotNull(folded);
         Assert.True(StepMachineStateComparer.AreEquivalent(state, folded));
         Assert.True(folded.IsPlanCompleted);
         Assert.Contains(events, e => e is PhaseCompletedEvent);
@@ -89,5 +90,46 @@ public sealed class StepMachineReplayTests
             SlotIndex = 0,
             SlotId = new StepSlotId("slot-1"),
         }));
+    }
+
+    /// <summary>账事件可以**先于任何阶段**出现（开局分配 + 初始状态）：折叠时既不创建也不改变步骤机状态。</summary>
+    [Fact]
+    public void Fold_LedgerEventsBeforeAnyPhase_YieldsNoMachine()
+    {
+        var folded = StepMachine.Fold(
+        [
+            new SeatStateChangedEvent
+            {
+                Seat = new SeatId(1),
+                Character = new CharacterId("dreamer"),
+                Life = LifeState.Alive,
+                Reason = "setup.assignment",
+            },
+        ]);
+
+        Assert.Null(folded);
+    }
+
+    /// <summary>阶段前账事件 + 开阶段：账事件被忽略、阶段照常重建（重启恢复的关键路径）。</summary>
+    [Fact]
+    public void Fold_LedgerEventsThenPhaseStarted_RebuildsMachine()
+    {
+        var plan = StepFixture.Plan("test:night", StepFixture.Empty("empty-1"));
+        var started = StepMachine.StartPhase(plan);
+
+        var folded = StepMachine.Fold(
+        [
+            new SeatStateChangedEvent
+            {
+                Seat = new SeatId(1),
+                Character = new CharacterId("dreamer"),
+                Life = LifeState.Alive,
+                Reason = "setup.assignment",
+            },
+            .. started.Events,
+        ]);
+
+        Assert.NotNull(folded);
+        Assert.True(StepMachineStateComparer.AreEquivalent(started.State, folded));
     }
 }

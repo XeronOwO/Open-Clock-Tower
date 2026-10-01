@@ -14,6 +14,12 @@ public enum StepSlotKind
     /// </summary>
     Empty,
 
+    /// <summary>
+    /// 节拍槽位：黄昏 / 爪牙信息 / 恶魔信息 / 信息环节开始等**非角色行动**的顺序表条目。
+    /// 消耗配额、不产生请求；与 <see cref="Empty"/>（角色不在场 / 已死亡）语义不同，不互相顶替。
+    /// </summary>
+    Beat,
+
     /// <summary>黎明宣布的等待：纳入同一节奏，不是独立计时（D-0013 §3）。</summary>
     DawnWait,
 }

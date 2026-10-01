@@ -9,7 +9,7 @@ namespace OpenClockTower.Integration.Tests;
 /// <para>
 /// **这是测试夹具，不是规则数据。** 真实的《梦殒春宵》夜晚顺序表在
 /// <c>src/OpenClockTower.Rules</c>；按它建表（含角色分配与行动契约）属结算引擎
-/// （docs/backlog/todo/settlement-engine.md）。夹具只用于驱动请求 / 节奏 / 恢复链路，
+/// （docs/backlog/in-progress/settlement-engine.md）。夹具只用于驱动请求 / 节奏 / 恢复链路，
 /// 禁止被当成规则，也禁止复制回生产代码。
 /// </para>
 /// <para>

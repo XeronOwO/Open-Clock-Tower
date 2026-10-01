@@ -16,6 +16,13 @@ public sealed record StepPlan
     /// <summary>该计划所属阶段。</summary>
     public required GamePhase Phase { get; init; }
 
+    /// <summary>
+    /// 建表口径标签（由上层规则层填入，如 <c>Original</c> / <c>Recommended</c>）；
+    /// null = 未注明（测试夹具或占位数据）。Kernel 只记录与透传，不解释取值：
+    /// R-0014 要求「本局实际口径」有处可查，<see cref="PhaseStartedEvent"/> 存下计划即留下这条记录。
+    /// </summary>
+    public string? Variant { get; init; }
+
     /// <summary>有序槽位表；顺序就是夜晚顺序（含空槽位与黎明等待）。</summary>
     public required IReadOnlyList<StepSlot> Slots { get; init; }
 }

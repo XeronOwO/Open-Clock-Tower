@@ -1,7 +1,7 @@
 namespace OpenClockTower.Kernel;
 
 /// <summary>
-/// 步骤表上的一个槽位：一次角色行动、一个空槽位，或黎明等待。
+/// 步骤表上的一个槽位：一次角色行动、一个空槽位、一个节拍环节，或黎明等待。
 /// </summary>
 /// <remarks>
 /// <para>
@@ -51,4 +51,7 @@ public sealed record StepSlot
 
     /// <summary>构造一个黎明等待槽位。</summary>
     public static StepSlot DawnWait(StepSlotId id) => new() { Id = id, Kind = StepSlotKind.DawnWait };
+
+    /// <summary>构造一个节拍槽位（黄昏 / 信息环节等非角色行动条目）。</summary>
+    public static StepSlot Beat(StepSlotId id) => new() { Id = id, Kind = StepSlotKind.Beat };
 }

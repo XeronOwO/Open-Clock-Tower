@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.SignalR;
 using OpenClockTower.Application;
 using OpenClockTower.Contracts;
 using OpenClockTower.Kernel;
+using OpenClockTower.Rules;
 
 namespace OpenClockTower.Server;
 
@@ -200,6 +201,55 @@ public sealed class GameHub : Hub<IGameClient>
                 Reason = reason,
                 CausedBy = causedBySeat is { } causer ? new SeatId(causer) : null,
             },
+            idempotencyKey);
+    }
+
+    /// <summary>
+    /// 说书人 / 宿主开局分配：为席位绑定角色，并记录初始生死（仅首个阶段开始前可用）。
+    /// </summary>
+    /// <remarks>
+    /// 本方法只做"翻译"：席位号与角色 slug 都会在 Application 层按会话席位名单与首版花名册
+    /// 重新校验（D-0012：客户端声明不可信）。
+    /// </remarks>
+    public Task<CommandResultDto> AssignCharacters(
+        SeatCharacterAssignmentDto[] assignments,
+        string idempotencyKey)
+    {
+        if (assignments is null)
+        {
+            throw new HubException("分配列表不能为空");
+        }
+
+        var mapped = assignments
+            .Select(item => new SeatCharacterAssignment
+            {
+                Seat = new SeatId(item.Seat),
+                Character = new CharacterId(item.Character),
+            })
+            .ToArray();
+
+        return ExecuteAsync(
+            ResolveStorytellerActor(),
+            new AssignCharactersCommand { Assignments = mapped },
+            idempotencyKey);
+    }
+
+    /// <summary>说书人 / 宿主开启夜晚：服务端按规则表建表（口径是引擎输入，R-0014）。</summary>
+    public Task<CommandResultDto> StartNight(
+        int nightNumber,
+        string variant,
+        string idempotencyKey)
+    {
+        // 只认名字不认数字：给 Enum.TryParse 传数字会把序号当口径（与零信任相悖）。
+        if (!Enum.TryParse<NightOrderVariant>(variant, ignoreCase: false, out var parsed)
+            || !Enum.IsDefined(parsed))
+        {
+            throw new HubException($"未知的夜晚顺序口径：{variant}（只接受 Original / Recommended）");
+        }
+
+        return ExecuteAsync(
+            ResolveStorytellerActor(),
+            new StartNightCommand { NightNumber = nightNumber, Variant = parsed },
             idempotencyKey);
     }
 
