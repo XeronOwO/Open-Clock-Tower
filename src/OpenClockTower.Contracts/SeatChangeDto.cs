@@ -14,6 +14,15 @@ public sealed record SeatChangeDto
     /// <summary>变化后的角色；null = 未观测。</summary>
     public string? Character { get; init; }
 
+    /// <summary>变化后的阵营；null = 未观测。</summary>
+    public string? Alignment { get; init; }
+
+    /// <summary>变化后的醉酒状态；null = 未观测。</summary>
+    public string? Drunk { get; init; }
+
+    /// <summary>变化后的中毒状态；null = 未观测。</summary>
+    public string? Poison { get; init; }
+
     /// <summary>变化原因。</summary>
     public required string Reason { get; init; }
 

@@ -20,6 +20,9 @@ public sealed record EffectDto
     /// <summary>作用对象席位。</summary>
     public required int Target { get; init; }
 
+    /// <summary>施加时来源的角色——来源换角色即失去原能力，该效果随之终止；即时型效果没有这一项。</summary>
+    public string? SourceCharacter { get; init; }
+
     /// <summary>是否已终止（终止不可逆）。</summary>
     public required bool Terminated { get; init; }
 

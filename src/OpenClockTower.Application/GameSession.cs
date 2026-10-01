@@ -28,18 +28,15 @@ public sealed class GameSession
     private readonly ILogger<GameSession> _logger;
     private readonly SemaphoreSlim _gate = new(initialCount: 1, maxCount: 1);
 
-    private const int RecentSeatChangeCapacity = 20;
-
-    private readonly List<SeatChangeSnapshot> _recentSeatChanges = [];
+    /// <summary>会话级派生跟踪器：卡点起算、槽位起算、最近状态变化。</summary>
+    private readonly SessionTrackers _trackers = new();
 
     private StepMachineState? _machine;
 
-    /// <summary>状态账（六维度已知态 + 效果归因）。与步骤机同源折叠，见 <see cref="GameStateMachine"/>。</summary>
+    /// <summary>状态账（五个可观测维度的已知态 + 效果归因）。与步骤机同源折叠，见 <see cref="GameStateMachine"/>。</summary>
     private GameState _state = GameState.Empty;
 
     private long _lastSequence;
-    private DateTimeOffset? _slotStartedAt;
-    private DateTimeOffset? _pendingRequestSince;
 
     /// <summary>构造一局的编排器。</summary>
     public GameSession(
@@ -72,25 +69,18 @@ public sealed class GameSession
                 var machine = default(StepMachineState);
                 var state = GameState.Empty;
                 var lastSequence = 0L;
-                var lastSlotEnteredAt = default(DateTimeOffset?);
 
                 foreach (var stored in storedEvents)
                 {
                     machine = StepMachine.Apply(machine, stored.Event);
                     state = GameStateMachine.Apply(state, stored.Event);
                     lastSequence = stored.Sequence;
-                    if (stored.Event is SlotEnteredEvent)
-                    {
-                        lastSlotEnteredAt = stored.RecordedAt;
-                    }
                 }
 
                 _machine = machine;
                 _state = state;
                 _lastSequence = lastSequence;
-                _slotStartedAt = lastSlotEnteredAt;
-                RecoverPendingSince(storedEvents, machine);
-                RecoverRecentSeatChanges(storedEvents);
+                _trackers.Recover(storedEvents, machine);
 
                 _logger.LogInformation(
                     "步骤机状态已从事件流恢复：game={GameId} 事件数={EventCount} 序号={Sequence} 槽位={SlotIndex} 挂起={Held}",
@@ -100,15 +90,15 @@ public sealed class GameSession
                     _machine?.SlotIndex,
                     _machine?.IsHeld);
             }
-            catch (InvalidOperationException)
+            catch (Exception exception) when (exception is not OperationCanceledException)
             {
-                // 事件流损坏：停在空状态，但保留序号连续性——新事件不得与库里旧行的主键冲突
+                // 事件流损坏或恢复失败：停在空状态，但保留序号连续性——新事件不得与库里旧行的主键冲突。
+                // 刻意不放过任何异常：宁可让这一局显式不可用（等说书人重建），
+                // 也不能把上一次的旧状态继续当成现状对外服务。
                 _machine = null;
                 _state = GameState.Empty;
                 _lastSequence = await _store.FindLastSequenceAsync(GameId, cancellationToken);
-                _slotStartedAt = null;
-                _pendingRequestSince = null;
-                _recentSeatChanges.Clear();
+                _trackers.Clear();
                 throw;
             }
         }
@@ -157,7 +147,7 @@ public sealed class GameSession
                 return;
             }
 
-            if (_slotStartedAt is not { } startedAt || _clock.UtcNow < startedAt + _pacing.SlotQuota)
+            if (_trackers.SlotStartedAt is not { } startedAt || _clock.UtcNow < startedAt + _pacing.SlotQuota)
             {
                 return;
             }
@@ -201,9 +191,9 @@ public sealed class GameSession
                 _machine,
                 _state,
                 _lastSequence,
-                _pendingRequestSince,
+                _trackers.PendingRequestSince,
                 _clock.UtcNow,
-                [.. _recentSeatChanges]);
+                _trackers.RecentSeatChanges);
         }
         finally
         {
@@ -217,31 +207,41 @@ public sealed class GameSession
         long afterSequence,
         CancellationToken cancellationToken)
     {
-        var clamped = Math.Clamp(afterSequence, 0, _lastSequence);
-        var all = await _store.ReadEventsAsync(GameId, afterSequence: 0, cancellationToken);
-        var addressees = BuildAddresseeLookup(all);
-
-        var events = new List<PlayerEvent>();
-        foreach (var stored in all)
+        // 与其它视图读取同一把锁：重连包是"快照 + 补齐"的同一份事实，
+        // 不加锁会在并发提交时把新序号与旧事件拼在一起（D-0010 的反面教材）。
+        await _gate.WaitAsync(cancellationToken);
+        try
         {
-            if (stored.Sequence <= clamped)
+            var clamped = Math.Clamp(afterSequence, 0, _lastSequence);
+            var all = await _store.ReadEventsAsync(GameId, afterSequence: 0, cancellationToken);
+            var addressees = PlayerEventProjection.AddresseeLookup(all);
+
+            var events = new List<PlayerEvent>();
+            foreach (var stored in all)
             {
-                continue;
+                if (stored.Sequence <= clamped)
+                {
+                    continue;
+                }
+
+                var playerEvent = PlayerEventProjection.ForSeat(stored, seat, addressees);
+                if (playerEvent is not null)
+                {
+                    events.Add(playerEvent);
+                }
             }
 
-            var playerEvent = ProjectForSeat(stored, seat, addressees);
-            if (playerEvent is not null)
+            return new ReconnectBundle
             {
-                events.Add(playerEvent);
-            }
+                Sequence = _lastSequence,
+                View = GameProjection.ForSeat(_machine, _lastSequence, seat),
+                EventsSince = events,
+            };
         }
-
-        return new ReconnectBundle
+        finally
         {
-            Sequence = _lastSequence,
-            View = GameProjection.ForSeat(_machine, _lastSequence, seat),
-            EventsSince = events,
-        };
+            _gate.Release();
+        }
     }
 
     private async Task<CommandResult> ExecuteCoreAsync(CommandEnvelope envelope, CancellationToken cancellationToken)
@@ -287,6 +287,10 @@ public sealed class GameSession
                 });
             }
 
+            // 先把这一步的账在内存里折出来：折不动就整条命令失败，绝不落库。
+            // 否则会留下"事件已落库、账没折"的中间态，而重投会被当成 Duplicate —— 分叉永远暴露不出来。
+            var nextState = FoldLedger(_state, drafts);
+
             await _store.CommitAsync(
                 new GameCommit
                 {
@@ -309,9 +313,9 @@ public sealed class GameSession
 
             var previousMachine = _machine;
             _machine = kernelOutcome.State;
+            _state = nextState;
             _lastSequence = sequence;
-            Track(drafts, recordedAt);
-            AppendToStateLedger(drafts);
+            _trackers.Update(drafts, recordedAt);
 
             var notifications = GameNotificationBuilder.Build(kernelOutcome.Events, previousMachine);
             _logger.LogInformation(
@@ -438,8 +442,7 @@ public sealed class GameSession
             _machine = rebuilt;
             _state = rebuiltState;
             _lastSequence = lastSequence;
-            RecoverTrackers(storedEvents, rebuilt);
-            RecoverRecentSeatChanges(storedEvents);
+            _trackers.Recover(storedEvents, rebuilt);
 
             _logger.LogWarning(
                 "房间已按事件日志重建：game={GameId} reason={Reason} 内存一致={MachineEquivalent} 快照一致={SnapshotEquivalent} 事件数={EventCount} 序号={Sequence}",
@@ -506,7 +509,7 @@ public sealed class GameSession
                 });
         }
 
-        var input = ToKernelInput(envelope.Command);
+        var input = KernelInputMapper.ToInput(envelope.Command);
         if (input is null)
         {
             return (
@@ -535,51 +538,6 @@ public sealed class GameSession
         return (outcome, null);
     }
 
-    private static StepMachineInput? ToKernelInput(GameCommand command) => command switch
-    {
-        SubmitResponseCommand submit => new SubmitResponseInput
-        {
-            RequestId = submit.RequestId,
-            OptionValue = submit.OptionValue,
-            Source = ResponseSource.Player,
-        },
-        ProxyFillCommand proxy => new SubmitResponseInput
-        {
-            RequestId = proxy.RequestId,
-            OptionValue = proxy.OptionValue,
-            Source = ResponseSource.StorytellerProxy,
-            Note = proxy.Note,
-        },
-        VoidRequestCommand voidRequest => new VoidRequestInput
-        {
-            RequestId = voidRequest.RequestId,
-            Reason = voidRequest.Reason,
-            Note = voidRequest.Note,
-        },
-        ForceAdvanceCommand force => new ForceAdvanceInput { Reason = force.Reason },
-        TakeOverCommand takeOver => new TakeOverInput { Reason = takeOver.Reason },
-        ReleaseControlCommand release => new ReleaseControlInput { Reason = release.Reason },
-        ResolveDecisionPointCommand resolve => new ResolveDecisionPointInput
-        {
-            DecisionPointId = resolve.DecisionPointId,
-            Decision = resolve.Decision,
-            Note = resolve.Note,
-        },
-        ApplySeatStateCommand seat => new SeatStateChangedInput
-        {
-            Seat = seat.Seat,
-            Life = seat.Life,
-            Character = seat.Character,
-            Alignment = seat.Alignment,
-            Drunk = seat.Drunk,
-            Poison = seat.Poison,
-            Reason = seat.Reason,
-            CausedBy = seat.CausedBy,
-        },
-        SlotQuotaElapsedCommand => new SlotQuotaElapsedInput(),
-        _ => null,
-    };
-
     private CommandResult Reject(CommandEnvelope envelope, CommandRejection rejection)
     {
         _logger.LogWarning(
@@ -602,165 +560,22 @@ public sealed class GameSession
         };
     }
 
-    private void Track(IReadOnlyList<StoredEventDraft> drafts, DateTimeOffset recordedAt)
-    {
-        foreach (var draft in drafts)
-        {
-            switch (draft.Event)
-            {
-                case SlotEnteredEvent:
-                    _slotStartedAt = recordedAt;
-                    _pendingRequestSince = null;
-                    break;
-                case OperationRequestIssuedEvent:
-                    _pendingRequestSince = recordedAt;
-                    break;
-                case OperationRequestAnsweredEvent:
-                case OperationRequestVoidedEvent:
-                case SlotAdvancedEvent:
-                case SlotForceAdvancedEvent:
-                    _pendingRequestSince = null;
-                    break;
-                case SeatStateChangedEvent seatChanged:
-                    AppendRecentSeatChange(seatChanged, draft.Sequence, recordedAt);
-                    break;
-            }
-        }
-    }
-
     /// <summary>
-    /// 把本批事件折进状态账。与步骤机状态同源、同一批事件：提交了就必须折，否则账会掉队。
+    /// 把一批事件折进状态账的**副本**（与步骤机状态同源、同一批事件）。
     /// </summary>
-    private void AppendToStateLedger(IReadOnlyList<StoredEventDraft> drafts)
+    /// <remarks>
+    /// 刻意不改 <see cref="_state"/>：调用方先在内存里折成功，才允许把事件提交落库，
+    /// 提交成功后才把结果赋回去。这样"折不动"等价于"这条命令失败"，不会出现半提交的账。
+    /// </remarks>
+    private static GameState FoldLedger(GameState state, IReadOnlyList<StoredEventDraft> drafts)
     {
+        var next = state;
         foreach (var draft in drafts)
         {
-            _state = GameStateMachine.Apply(_state, draft.Event);
+            next = GameStateMachine.Apply(next, draft.Event);
         }
+
+        return next;
     }
 
-    private void AppendRecentSeatChange(SeatStateChangedEvent seatChanged, long sequence, DateTimeOffset recordedAt)
-    {
-        _recentSeatChanges.Add(new SeatChangeSnapshot
-        {
-            Seat = seatChanged.Seat,
-            Life = seatChanged.Life,
-            Character = seatChanged.Character,
-            Reason = seatChanged.Reason,
-            CausedBy = seatChanged.CausedBy,
-            Sequence = sequence,
-            RecordedAt = recordedAt,
-        });
-
-        if (_recentSeatChanges.Count > RecentSeatChangeCapacity)
-        {
-            _recentSeatChanges.RemoveAt(0);
-        }
-    }
-
-    private void RecoverRecentSeatChanges(IReadOnlyList<StoredEvent> storedEvents)
-    {
-        _recentSeatChanges.Clear();
-        foreach (var stored in storedEvents)
-        {
-            if (stored.Event is SeatStateChangedEvent seatChanged)
-            {
-                AppendRecentSeatChange(seatChanged, stored.Sequence, stored.RecordedAt);
-            }
-        }
-    }
-
-    private void RecoverTrackers(IReadOnlyList<StoredEvent> storedEvents, StepMachineState? machine)
-    {
-        DateTimeOffset? lastSlotEnteredAt = null;
-        foreach (var stored in storedEvents)
-        {
-            if (stored.Event is SlotEnteredEvent)
-            {
-                lastSlotEnteredAt = stored.RecordedAt;
-            }
-        }
-
-        _slotStartedAt = lastSlotEnteredAt;
-        RecoverPendingSince(storedEvents, machine);
-    }
-
-    private void RecoverPendingSince(IReadOnlyList<StoredEvent> storedEvents, StepMachineState? machine)
-    {
-        OperationRequestId? lastIssuedRequestId = null;
-        DateTimeOffset? lastIssuedAt = null;
-
-        foreach (var stored in storedEvents)
-        {
-            if (stored.Event is OperationRequestIssuedEvent issued)
-            {
-                lastIssuedRequestId = issued.Request.Id;
-                lastIssuedAt = stored.RecordedAt;
-            }
-        }
-
-        var pending = machine?.PendingRequest;
-        _pendingRequestSince = null;
-        if (pending is { Status: OperationRequestStatus.Pending } && pending.Id == lastIssuedRequestId)
-        {
-            _pendingRequestSince = lastIssuedAt;
-        }
-    }
-
-    private static Dictionary<string, SeatId> BuildAddresseeLookup(IReadOnlyList<StoredEvent> storedEvents)
-    {
-        var lookup = new Dictionary<string, SeatId>(StringComparer.Ordinal);
-        foreach (var stored in storedEvents)
-        {
-            if (stored.Event is OperationRequestIssuedEvent issued)
-            {
-                lookup[issued.Request.Id.Value] = issued.Request.Addressee;
-            }
-        }
-
-        return lookup;
-    }
-
-    private static PlayerEvent? ProjectForSeat(
-        StoredEvent stored,
-        SeatId seat,
-        IReadOnlyDictionary<string, SeatId> addressees) =>
-        stored.Event switch
-        {
-            PhaseStartedEvent started => new PlayerEvent
-            {
-                Sequence = stored.Sequence,
-                Kind = PlayerEventKind.PhaseStarted,
-                Phase = started.Plan.Phase,
-            },
-            OperationRequestIssuedEvent issued when issued.Request.Addressee == seat => new PlayerEvent
-            {
-                Sequence = stored.Sequence,
-                Kind = PlayerEventKind.RequestIssued,
-                Request = issued.Request,
-            },
-            OperationRequestAnsweredEvent answered
-                when IsRequestOfSeat(answered.RequestId, seat, addressees) => new PlayerEvent
-                {
-                    Sequence = stored.Sequence,
-                    Kind = PlayerEventKind.RequestAnswered,
-                    RequestId = answered.RequestId,
-                    OptionValue = answered.Answer.OptionValue,
-                },
-            OperationRequestVoidedEvent voided
-                when IsRequestOfSeat(voided.RequestId, seat, addressees) => new PlayerEvent
-                {
-                    Sequence = stored.Sequence,
-                    Kind = PlayerEventKind.RequestVoided,
-                    RequestId = voided.RequestId,
-                    Void = voided.Void,
-                },
-            _ => null,
-        };
-
-    private static bool IsRequestOfSeat(
-        OperationRequestId requestId,
-        SeatId seat,
-        IReadOnlyDictionary<string, SeatId> addressees) =>
-        addressees.TryGetValue(requestId.Value, out var addressee) && addressee == seat;
 }

@@ -18,6 +18,8 @@ public sealed class EffectAttributionTests
     private static readonly EffectId KillEffectId = new("imp-kill:2:3");
     private static readonly AbilityId PoisonAbility = new("poisoner");
     private static readonly AbilityId KillAbility = new("imp");
+    private static readonly CharacterId PoisonerCharacter = new("poisoner");
+    private static readonly CharacterId SeamstressCharacter = new("seamstress");
 
     /// <summary>施加一条持续型效果：谁施加、用哪个能力、作用于谁，一个都不能少。</summary>
     [Fact]
@@ -81,12 +83,11 @@ public sealed class EffectAttributionTests
         var state = GameStateMachine.Fold(
         [
             HealthySeat(Poisoner, "开局：说书人分配"),
-            new SeatStateChangedEvent { Seat = Poisoner, Character = new CharacterId("poisoner"), Reason = "开局：说书人分配" },
             new PersistentEffectAppliedEvent { Effect = Poison() },
             new SeatStateChangedEvent
             {
                 Seat = Poisoner,
-                Character = new CharacterId("seamstress"),
+                Character = SeamstressCharacter,
                 Reason = "理发师：交换角色",
                 CausedBy = Demon,
             },
@@ -96,6 +97,102 @@ public sealed class EffectAttributionTests
         Assert.True(effect.IsTerminated);
         Assert.Equal(EffectTerminationKind.SourceLostAbility, effect.Termination!.Kind);
         Assert.Equal(Demon, effect.Termination.CausedBy);
+    }
+
+    /// <summary>
+    /// 复核补丁（原盲区）：来源的角色**从未被观测过**，第一次观测到就已经是新角色时也必须终止。
+    /// 判定依据是效果自己记录的施加时角色，而不是"上一次观测到的角色"——后者会静默漏判。
+    /// </summary>
+    [Fact]
+    public void SourceCharacterFirstObservedAsDifferent_TerminatesItsEffects()
+    {
+        var state = GameStateMachine.Fold(
+        [
+            HealthySeat(Poisoner, "开局：说书人分配"),
+            new PersistentEffectAppliedEvent { Effect = Poison() },
+            new SeatStateChangedEvent
+            {
+                Seat = Poisoner,
+                Character = SeamstressCharacter,
+                Reason = "第一次观测到 5 号的角色：早就换过了",
+            },
+        ]);
+
+        var effect = Assert.Single(state.EffectsOn(Victim));
+        Assert.True(effect.IsTerminated);
+        Assert.Equal(EffectTerminationKind.SourceLostAbility, effect.Termination!.Kind);
+        Assert.NotEqual(true, state.IsOperative(effect));
+    }
+
+    /// <summary>观测到的角色与施加时一致 → 能力还在，效果不动：不能把"报了一次角色"当成换角色。</summary>
+    [Fact]
+    public void SourceCharacterReobservedAsSame_KeepsTheEffectOperative()
+    {
+        var state = GameStateMachine.Fold(
+        [
+            HealthySeat(Poisoner, "开局：说书人分配"),
+            new PersistentEffectAppliedEvent { Effect = Poison() },
+            new SeatStateChangedEvent { Seat = Poisoner, Character = PoisonerCharacter, Reason = "重申角色" },
+        ]);
+
+        var effect = Assert.Single(state.EffectsOn(Victim));
+        Assert.False(effect.IsTerminated);
+        Assert.True(state.IsOperative(effect));
+    }
+
+    /// <summary>同一条事件里既报死亡又报换角色：按死亡终止（更强、且不可逆的那个原因）。</summary>
+    [Fact]
+    public void DeathAndCharacterChangeInOneEvent_TerminatesWithSourceDied()
+    {
+        var state = GameStateMachine.Fold(
+        [
+            HealthySeat(Poisoner, "开局：说书人分配"),
+            new PersistentEffectAppliedEvent { Effect = Poison() },
+            new SeatStateChangedEvent
+            {
+                Seat = Poisoner,
+                Life = LifeState.Dead,
+                Character = SeamstressCharacter,
+                Reason = "同一条事件里既死亡又换角色",
+            },
+        ]);
+
+        var effect = Assert.Single(state.EffectsOn(Victim));
+        Assert.Equal(EffectTerminationKind.SourceDied, effect.Termination!.Kind);
+    }
+
+    /// <summary>LiveEffectsOn 只给未终止的；已终止的仍留在 EffectsOn 里——那正是"为什么解毒了"的答案。</summary>
+    [Fact]
+    public void LiveEffectsOn_ExcludesTerminatedEffects()
+    {
+        var state = GameStateMachine.Fold(
+        [
+            HealthySeat(Poisoner, "开局：说书人分配"),
+            new PersistentEffectAppliedEvent { Effect = Poison() },
+            new SeatStateChangedEvent { Seat = Poisoner, Life = LifeState.Dead, Reason = "被投死" },
+        ]);
+
+        Assert.Empty(state.LiveEffectsOn(Victim));
+        Assert.Empty(state.OperativeEffectsOn(Victim));
+        Assert.Single(state.EffectsOn(Victim));
+    }
+
+    /// <summary>同一个裁定点重复签发同一条疯狂要求 = 事件流损坏，与效果路径同一失败姿态。</summary>
+    [Fact]
+    public void DuplicateMadnessRequirement_IsRejectedLoudly()
+    {
+        var requirement = new MadnessRequirement
+        {
+            Seat = Victim,
+            ProveToBe = "clockmaker",
+            IssuedBy = new DecisionPointId("sv:night-1:cerenovus:decision"),
+        };
+        var state = GameStateMachine.Fold([new MadnessRequirementIssuedEvent { Requirement = requirement }]);
+
+        var exception = Assert.Throws<InvalidOperationException>(
+            () => GameStateMachine.Apply(state, new MadnessRequirementIssuedEvent { Requirement = requirement }));
+
+        Assert.Contains("不能重复签发", exception.Message);
     }
 
     /// <summary>来源醉酒 / 中毒**不终止**效果，只是让它暂时不生效；来源恢复后继续生效，且不是重新施加。</summary>
@@ -294,5 +391,6 @@ public sealed class EffectAttributionTests
         Source = Poisoner,
         Ability = PoisonAbility,
         Target = Victim,
+        SourceCharacter = PoisonerCharacter,
     };
 }

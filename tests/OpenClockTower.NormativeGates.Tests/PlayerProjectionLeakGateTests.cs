@@ -22,12 +22,22 @@ public sealed class PlayerProjectionLeakGateTests
 
     private static readonly string[] ForbiddenTokens =
     [
+        // 轮次 / 进度（D-0013 §5）
         "Slot",
         "Step",
         "Progress",
         "Round",
         "Turn",
         "Remaining",
+
+        // 状态账与效果归因（D-0012 §4.3）：它们是说书人视角的数据，不许出现在玩家投影里
+        "Ledger",
+        "Facts",
+        "CausedBy",
+        "Effects",
+        "Termination",
+        "Madness",
+        "Seats",
     ];
 
     /// <summary>玩家投影 / 玩家请求 DTO 里不得出现进度类字段。</summary>

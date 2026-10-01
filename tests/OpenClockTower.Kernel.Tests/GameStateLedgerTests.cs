@@ -202,6 +202,52 @@ public sealed class GameStateLedgerTests
         Assert.Empty(outcome.Events);
     }
 
+    /// <summary>
+    /// 与账无关的步骤机事件必须**真的什么都不做**：那条显式直通清单不是装饰，
+    /// 将来谁把"会改状态"的事件顺手丢进直通组，这条用例会红。
+    /// </summary>
+    [Fact]
+    public void StepMachineEvents_DoNotTouchTheLedger()
+    {
+        var events = new List<GameEvent>();
+
+        var started = StepMachine.StartPhase(Plan("sv:night-1", Action("slot-1", seat: 1), Empty("empty-2")));
+        events.AddRange(started.Events);
+
+        var quotaOfAction = StepMachine.Handle(started.State, new SlotQuotaElapsedInput());
+        events.AddRange(quotaOfAction.Events);
+
+        var answered = StepMachine.Handle(
+            quotaOfAction.State,
+            new SubmitResponseInput
+            {
+                RequestId = started.State.PendingRequest!.Id,
+                OptionValue = "option-a",
+                Source = ResponseSource.Player,
+            });
+        events.AddRange(answered.Events);
+
+        var quotaOfEmpty = StepMachine.Handle(answered.State, new SlotQuotaElapsedInput());
+        events.AddRange(quotaOfEmpty.Events);
+
+        var takenOver = StepMachine.Handle(quotaOfEmpty.State, new TakeOverInput { Reason = "测试接管" });
+        events.AddRange(takenOver.Events);
+
+        var released = StepMachine.Handle(takenOver.State, new ReleaseControlInput { Reason = "测试交还" });
+        events.AddRange(released.Events);
+
+        Assert.NotEmpty(events);
+        Assert.Contains(events, gameEvent => gameEvent is PhaseStartedEvent);
+        Assert.Contains(events, gameEvent => gameEvent is SlotAdvancedEvent);
+        Assert.Contains(events, gameEvent => gameEvent is PhaseCompletedEvent);
+
+        var state = GameStateMachine.Fold(events);
+
+        Assert.Empty(state.Seats);
+        Assert.Empty(state.PersistentEffects);
+        Assert.Empty(state.InstantaneousEffects);
+    }
+
     /// <summary>测试专用的"未知事件"，用来证明折叠对陌生事件不会装看不见。</summary>
     private sealed record UnknownEvent : GameEvent;
 }

@@ -212,6 +212,12 @@ public sealed class GameHub : Hub<IGameClient>
             return null;
         }
 
+        // 只认名字不认数字：Enum.TryParse 会把 "0" 解析成首个枚举值，那是"客户端说了算"，与零信任相悖。
+        if (raw.Length == 0 || char.IsAsciiDigit(raw[0]))
+        {
+            throw new HubException($"未知的{label}：{raw}（只接受枚举名）");
+        }
+
         if (!Enum.TryParse<TEnum>(raw, ignoreCase: false, out var value) || !Enum.IsDefined(value))
         {
             throw new HubException($"未知的{label}：{raw}");

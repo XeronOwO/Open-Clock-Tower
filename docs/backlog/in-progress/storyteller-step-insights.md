@@ -92,9 +92,10 @@
 | 门禁 | 结果 |
 |---|---|
 | `dotnet build OpenClockTower.slnx` | 0 警告 0 错误 |
-| `dotnet test OpenClockTower.slnx` | 116/116 通过（内核 83 + 门禁 9 + 集成 24） |
+| `dotnet test OpenClockTower.slnx` | 123/123 通过（内核 89 + 门禁 10 + 集成 24） |
 | `dotnet format OpenClockTower.slnx --verify-no-changes` | exit 0 |
-| 新门禁先红 | 临时植入无参 `PersistentEffect.Terminate()` → `EffectTerminationGateTests` FAIL，报告精确指向 `src\OpenClockTower.Kernel\PersistentEffect.cs → Terminate()`；删除后复绿 |
+| 新门禁先红 · 效果终止带原因 | 临时植入 `Terminate( )` → `EffectTerminationGateTests` FAIL，报告指向 `src\OpenClockTower.Kernel\PersistentEffect.cs → Terminate()`；删除后复绿（改成正则后连"空白绕过"也拦得住） |
+| 新门禁先红 · 单文件 ≤ 600 行 | 临时把 `StepMachineStateComparer.cs` 填到 616 行 → `SourceFileLengthGateTests` FAIL 并点名该文件；还原后复绿 |
 
 **运行时证据（真宿主 + 真 SignalR + 真 SQLite）**：`StateLedgerHostTests`
 
@@ -104,6 +105,33 @@
 2. 换一个宿主进程、同一个库重启后，状态账按事件流重放恢复，2 号的醉酒事实仍在、归因不变。
 3. 内核侧 20 条新用例覆盖：逐维度归因不串味、未观测即未知（`IsOperative` 返回 null 且不猜）、
    来源死亡 / 换角色终止、来源醉酒挂起与恢复、即时型不回滚、显式终止、四类损坏流显式抛错。
+
+### 独立对抗性复核（2026-10-02）
+
+按项目要求，把冻结版本交给独立子代理做**只读**对抗性复核，其结论是"不接受为完整交付"，
+报 3 高 / 11 中 / 9 低。本轮已修掉的（每条都补了回归或用例）：
+
+| 复核发现 | 处置 |
+|---|---|
+| 高 H1：来源角色**从未被观测过**时，"换角色"判定静默漏判，早该失效的效果继续被算成生效 | 效果改为记录**施加时的来源角色**（`PersistentEffect.SourceCharacter`），判据不再依赖"上一次观测值"；新增两条回归：首次观测到就是新角色 → 终止，观测到与记录一致 → 不终止 |
+| 高 H2："醉酒 / 中毒时效果是终止还是挂起"是百科同段自相矛盾，未登记裁定 | 新增 `rulings.md` **R-0012**（Contested，取挂起），并在 `PersistentEffect`、`EffectLifecycleTests` 注释里引用裁定号 |
+| 高 H3：折账发生在 `CommitAsync` **之后**，折失败会留下"事件已落库、账没折"，重投还被当成 Duplicate 掩盖分叉 | 改为**先折副本、再提交**：折不动 = 整条命令失败且不落库；提交成功后才把结果赋回 |
+| 中 M4：疯狂要求重复签发被静默追加，与效果路径的失败姿态不一致 | 改为显式抛错（按 `IssuedBy + Seat + ProveToBe` 去重），补回归用例 |
+| 中 M5：14 个"与账无关"的直通分支没有任何账级断言 | 新增内核用例：跑一条完整步骤机事件流（阶段 / 槽位 / 请求 / 推进 / 接管 / 交还）折进账，断言三个集合为空 |
+| 中 M7：`GameSession` 789 行、`StepMachine` 612 行越过 600 行硬阈值，且仓库没有这条门禁 | 拆出 4 个内聚类型（`SessionTrackers` / `PlayerEventProjection` / `KernelInputMapper` / `SeatDependencyCheck`）→ 581 / 587 行；新增第 10 条门禁「单文件 ≤ 600 行」并先红后绿 |
+| 中 M8：状态账"不下发玩家"只有一条运行时断言，没有门禁 | 扩展 `PlayerProjectionLeakGateTests` 令牌表（`Ledger` / `Facts` / `CausedBy` / `Effects` / `Termination` / `Madness` / `Seats`），玩家面向的 6 个文件全部纳入 |
+| 中 M9 与低 L1 / L2 / L3：引用区号错（二-3 被写成三-3、流放条写成 一-3）、五 / 六维度措辞不一、事件条数过期 | 逐条改正：`PersistentEffect` 与 `EffectLifecycleTests` 的区号、`rulings.md` R-0007 改 一-4、术语与架构统一成"五个可观测维度 + 疯狂要求另列"、事件数按实测改为 19 |
+| 中 M10：即时型"不回滚"是从沉默反推出来的规则断言 | 新增 `rulings.md` **R-0013**（Open，暂取不回滚），`InstantaneousEffect` 注释引用裁定号 |
+| 低 L4：终止门禁用纯文本匹配，`Terminate( )` 可绕过 | 改成正则 `Terminate\s*\(\s*\)`，并用"带空格"的违规重做先红后绿 |
+| 低 L5：`ReportSeatState` 接受数字枚举名（`"0"` → Alive） | 拒绝数字开头的取值，只认枚举名 |
+| 低 L7：重连包读取没进会话锁，并发下可能拼出撕裂包 | 重连包读取纳入同一把锁 |
+| 低 L8：若干次要分支没有覆盖 | 补：同一条事件里"死亡 + 换角色"的优先序、`LiveEffectsOn` 的终止过滤、疯狂重复签发 |
+| 低 L9：恢复只捕 `InvalidOperationException`，其它异常会把旧状态继续当现状服务 | 改为捕全部非取消异常，并停在空状态 |
+
+**复核中"已核对通过"的项**：五维正交与逐维度归因、来源死亡终止且不可逆、醉酒中毒挂起与恢复、
+即时型不回滚、四类损坏流显式抛错、未知事件抛错、空流 = 空账、未观测不猜、
+确定性（无字典枚举 / 时间 / 随机 / IO，`Fold ≡ 逐条 Apply` 有用例）、
+信息隔离三条出口逐条走查、一文件一顶层类型、内核纯净。
 
 ## 尚未完成（按依赖排序）
 
@@ -121,6 +149,15 @@
 7. **两条账本尚未安家**：`AbilityUseLedger` / `MalfunctionLedger` 已在 Kernel 里，
    但本轮刻意不动——它们要等"能力被使用 / 未正常生效"这两类事件，而产生方同样是结算引擎。
    引擎落地时把它们挂进 `GameState`，不要另起一个状态仓。
+8. **维度 → 效果没有结构化链接**（复核 M1 / M2）：`StateFact` 只有文本原因 + 导致方席位，
+   没有 `EffectId`；说书人视图因此既无法编程回答"这一格中毒是哪条效果造成的"，
+   也无法提示"这一格已经过期"（来源效果已终止但维度还写着中毒）。要修就得让状态变化事件
+   能携带效果标识，并由账本把二者对上。
+9. **恢复失败后视图缺降级标记**（复核 M11）：事件流损坏时房间以空账启动（记 Critical），
+   但视图里的空账与"还没观测到任何东西"长得一模一样，说书人分不出"没数据"和"数据丢了"。
+   应加房间健康位，并要求显式重建才清除。
+10. **视图暴露的内部集合可被强转篡改**（复核 L6）：`StorytellerView.Seats` / `PersistentEffects`
+    名义上只读，实际是 `List` / 数组；要改成不可变集合或只读包装。
 
 ## 决定与依据
 

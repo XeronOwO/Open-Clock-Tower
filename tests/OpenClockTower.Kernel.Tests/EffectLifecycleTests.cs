@@ -7,7 +7,8 @@ namespace OpenClockTower.Kernel.Tests;
 /// 效果生命周期：即时型已生效不回滚；持续型来源失效即挂起、来源恢复即继续、来源死亡即终止。
 /// </summary>
 /// <remarks>
-/// 依据：百科《重要细节》二-3、三-3、二-7，以及《术语汇总》「死亡」。
+/// 依据：百科《重要细节》二-3、二-7、三-3，以及《术语汇总》「死亡」；
+/// "醉酒 / 中毒 = 挂起而非终止"取 <c>docs/standard/rulings.md</c> R-0012。
 /// </remarks>
 public sealed class EffectLifecycleTests
 {
@@ -118,5 +119,6 @@ public sealed class EffectLifecycleTests
         Source = SourceSeat,
         Ability = SharedAbility,
         Target = TargetSeat,
+        SourceCharacter = new CharacterId("test-ability-owner"),
     };
 }

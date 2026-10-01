@@ -1,3 +1,5 @@
+using System.Text.RegularExpressions;
+
 namespace OpenClockTower.NormativeGates.Tests;
 
 /// <summary>
@@ -5,18 +7,20 @@ namespace OpenClockTower.NormativeGates.Tests;
 /// </summary>
 /// <remarks>
 /// <para>
-/// 依据票据「说书人上帝视角」第 2 条，以及百科《重要细节》二-7 / 三-3：
-/// 持续型效果会随来源死亡或角色变化而终止，这句话正是"投毒者死了，所以他下的毒解了"要被回答的地方。
+/// 依据票据「说书人上帝视角」第 2 条，以及百科《重要细节》二-3 / 二-7（见 `rulings.md` R-0012）：
+/// 持续型效果会随来源死亡或换角色而终止，这句话正是"投毒者死了，所以他下的毒解了"要被回答的地方。
 /// "效果没了"却不写明为什么，等于把上帝视角最需要的那一步留白。
 /// </para>
 /// <para>
 /// 这条不变量靠自觉守不住，所以写成会失败的测试：谁再写一个无参终止，
-/// 门禁就在提交前红给他看，而不是等复盘时才发现账里缺了半句话。
+/// 门禁就在提交前红给他看（含 <c>Terminate( )</c>、跨行括号等写法），而不是等复盘时才发现账里缺了半句话。
 /// </para>
 /// </remarks>
-public sealed class EffectTerminationGateTests
+public sealed partial class EffectTerminationGateTests
 {
-    private const string ParameterlessTerminate = "Terminate()";
+    /// <summary>匹配无参终止的声明或调用：<c>Terminate()</c> / <c>Terminate( )</c> / <c>Terminate(\n)</c>。</summary>
+    [GeneratedRegex(@"Terminate\s*\(\s*\)")]
+    private static partial Regex ParameterlessTerminate();
 
     /// <summary>内核任何位置都不得出现无参终止。</summary>
     [Fact]
@@ -29,9 +33,9 @@ public sealed class EffectTerminationGateTests
         foreach (var relativePath in files)
         {
             var code = SourceText.StripCommentsAndLiterals(File.ReadAllText(RepositoryLayout.PathOf(relativePath)));
-            if (code.Contains(ParameterlessTerminate, StringComparison.Ordinal))
+            if (ParameterlessTerminate().IsMatch(code))
             {
-                violations.Add($"{relativePath} → {ParameterlessTerminate}");
+                violations.Add($"{relativePath} → Terminate()");
             }
         }
 

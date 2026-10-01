@@ -334,7 +334,7 @@ public static class StepMachine
             return Applied(state, events);
         }
 
-        var violated = pending.Dependencies.FirstOrDefault(dependency => IsViolated(dependency, input));
+        var violated = SeatDependencyCheck.FirstViolated(pending.Dependencies, input);
         if (violated is null)
         {
             return Applied(state, events);
@@ -346,35 +346,10 @@ public static class StepMachine
             Void = new OperationRequestVoid
             {
                 Reason = OperationRequestVoidReason.DependencyViolated,
-                Note = DescribeViolation(violated, input),
+                Note = SeatDependencyCheck.Describe(violated, input),
             },
         });
         return Applied(state, WithAutoAdvance(state, events));
-    }
-
-    private static bool IsViolated(SeatDependency dependency, SeatStateChangedInput input) =>
-        dependency.Seat == input.Seat
-        && ((dependency.RequiredLife is { } requiredLife && input.Life is { } life && life != requiredLife)
-            || (dependency.RequiredCharacter is { } requiredCharacter
-                && input.Character is { } character
-                && character != requiredCharacter));
-
-    private static string DescribeViolation(SeatDependency dependency, SeatStateChangedInput input)
-    {
-        var parts = new List<string>();
-        if (input.Life is { } life && dependency.RequiredLife is { } requiredLife && life != requiredLife)
-        {
-            parts.Add($"生死 {life} ≠ 要求 {requiredLife}");
-        }
-
-        if (input.Character is { } character
-            && dependency.RequiredCharacter is { } requiredCharacter
-            && character != requiredCharacter)
-        {
-            parts.Add($"角色 {character} ≠ 要求 {requiredCharacter}");
-        }
-
-        return $"座位 {dependency.Seat} 的状态变化使请求失去意义（{string.Join("；", parts)}）";
     }
 
     private static StepMachineOutcome HandleDecisionResolved(StepMachineState state, ResolveDecisionPointInput input)

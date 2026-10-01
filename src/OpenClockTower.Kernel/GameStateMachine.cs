@@ -86,7 +86,6 @@ public static class GameStateMachine
         }
 
         var existing = state.Seat(changed.Seat);
-        var previousCharacter = existing?.CharacterValue;
 
         var entry = (existing ?? new SeatStateEntry { Seat = changed.Seat }) with
         {
@@ -97,7 +96,7 @@ public static class GameStateMachine
             Poison = ObservedFact(changed.Poison, changed, existing?.Poison),
         };
 
-        return TerminateEffectsSourcedBy(ReplaceSeat(state, entry), changed, previousCharacter);
+        return TerminateEffectsLosingAbility(ReplaceSeat(state, entry), changed);
     }
 
     /// <summary>
@@ -113,30 +112,38 @@ public static class GameStateMachine
             : previous;
 
     /// <summary>
-    /// 来源失效传播：来源死亡 → 其持续型效果立即终止；来源换了角色（失去原角色能力）同样终止。
-    /// 醉酒 / 中毒**不终止**效果，只是让它暂时不生效（<see cref="PersistentEffect.IsOperative"/>）。
+    /// 来源失效传播（《重要细节》二-3 / 二-7，口径见 <c>docs/standard/rulings.md</c> R-0012）：
+    /// 来源死亡 → 它施加的持续型效果**立即终止**；来源的角色已不是施加该效果时的角色
+    /// （= 失去了原角色能力）→ 同样终止。醉酒 / 中毒**不终止**，只是暂时不生效。
     /// </summary>
-    private static GameState TerminateEffectsSourcedBy(
-        GameState state,
-        SeatStateChangedEvent changed,
-        CharacterId? previousCharacter)
+    /// <remarks>
+    /// "角色是不是变了"用**效果自己记录的 <see cref="PersistentEffect.SourceCharacter"/>** 判定，
+    /// 而不是"上一次观测到的角色"：后者在来源角色从未被观测过时会静默漏判，
+    /// 让一条早就该终止的效果继续被算成生效。
+    /// </remarks>
+    private static GameState TerminateEffectsLosingAbility(GameState state, SeatStateChangedEvent changed)
     {
-        var termination = BuildTermination(changed, previousCharacter);
+        var termination = BuildTermination(changed);
         if (termination is null)
         {
             return state;
         }
 
         var effects = state.PersistentEffects
-            .Select(effect => effect.Source == changed.Seat && !effect.IsTerminated
-                ? effect.Terminate(termination)
-                : effect)
+            .Select(effect => LosesAbility(effect, changed) ? effect.Terminate(termination) : effect)
             .ToArray();
 
         return state with { PersistentEffects = effects };
     }
 
-    private static EffectTermination? BuildTermination(SeatStateChangedEvent changed, CharacterId? previousCharacter)
+    /// <summary>来源死亡一律终止；来源角色与效果记录的施加时角色不同也终止。已终止的不重复处理。</summary>
+    private static bool LosesAbility(PersistentEffect effect, SeatStateChangedEvent changed) =>
+        effect.Source == changed.Seat
+        && !effect.IsTerminated
+        && (changed.Life == LifeState.Dead
+            || (changed.Character is { } character && character != effect.SourceCharacter));
+
+    private static EffectTermination? BuildTermination(SeatStateChangedEvent changed)
     {
         if (changed.Life == LifeState.Dead)
         {
@@ -148,14 +155,12 @@ public static class GameStateMachine
             };
         }
 
-        if (changed.Character is { } newCharacter
-            && previousCharacter is { } oldCharacter
-            && oldCharacter != newCharacter)
+        if (changed.Character is { } character)
         {
             return new EffectTermination
             {
                 Kind = EffectTerminationKind.SourceLostAbility,
-                Reason = $"来源席位 {changed.Seat} 的角色由 {oldCharacter} 变为 {newCharacter}，"
+                Reason = $"来源席位 {changed.Seat} 的角色已变为 {character}，不再是施加该效果时的角色，"
                     + $"原角色能力不再存在，其持续型效果立即终止（{changed.Reason}）",
                 CausedBy = changed.CausedBy,
             };
@@ -210,6 +215,17 @@ public static class GameStateMachine
     {
         var requirement = issued.Requirement;
         var existing = state.Seat(requirement.Seat) ?? new SeatStateEntry { Seat = requirement.Seat };
+
+        // 与效果路径同一失败姿态：同一个裁定点重复签发同一条要求属于事件流损坏，不许静默堆两条。
+        if (existing.Madnesses.Any(current =>
+                current.IssuedBy == requirement.IssuedBy
+                && current.Seat == requirement.Seat
+                && string.Equals(current.ProveToBe, requirement.ProveToBe, StringComparison.Ordinal)))
+        {
+            throw new InvalidOperationException(
+                $"事件流损坏：裁定点 {requirement.IssuedBy} 对座位 {requirement.Seat} 的疯狂要求已经存在，不能重复签发");
+        }
+
         var entry = existing with { Madnesses = [.. existing.Madnesses, requirement] };
         return ReplaceSeat(state, entry);
     }
