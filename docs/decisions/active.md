@@ -256,7 +256,7 @@
 - **可测性**（不可测的防泄漏等于没做）：
   构造两个夜晚——「全部夜间角色死亡」与「全部夜间角色存活」——记录两条**客户端可观测时间线**，
   必须**观察不到可区分的差异**。验收行见
-  `docs/backlog/todo/operation-request-step-machine.md`。
+  `docs/backlog/review/operation-request-step-machine.md`。
 
 ---
 

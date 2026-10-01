@@ -142,6 +142,20 @@ public sealed class NightBuildHostTests
         Assert.Equal("Rejected", duplicated.Kind);
         Assert.Equal("legality.character_duplicated", duplicated.RejectionCode);
 
+        // 跨批重复：同一角色分两批给两个席位 —— 角色唯一是全局不变量，提交时就拒绝。
+        var crossBatchFirst = await storyteller.InvokeAsync<CommandResultDto>(
+            "AssignCharacters",
+            new[] { new SeatCharacterAssignmentDto { Seat = 1, Character = "dreamer" } },
+            "test-build-cross-batch-first");
+        Assert.Equal("Accepted", crossBatchFirst.Kind);
+
+        var crossBatchDuplicate = await storyteller.InvokeAsync<CommandResultDto>(
+            "AssignCharacters",
+            new[] { new SeatCharacterAssignmentDto { Seat = 2, Character = "dreamer" } },
+            "test-build-cross-batch-duplicate");
+        Assert.Equal("Rejected", crossBatchDuplicate.Kind);
+        Assert.Equal("legality.character_duplicated", crossBatchDuplicate.RejectionCode);
+
         var empty = await storyteller.InvokeAsync<CommandResultDto>(
             "AssignCharacters",
             Array.Empty<SeatCharacterAssignmentDto>(),

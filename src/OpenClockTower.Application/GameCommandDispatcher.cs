@@ -33,7 +33,7 @@ internal static class GameCommandDispatcher
 
         if (envelope.Command is AssignCharactersCommand assign)
         {
-            return DispatchAssignCharacters(assign, setup);
+            return DispatchAssignCharacters(assign, setup, state);
         }
 
         if (envelope.Command is StartNightCommand startNight)
@@ -81,11 +81,31 @@ internal static class GameCommandDispatcher
     /// 只允许在首个阶段开始前（阶段闸保证）；事件按席位号排序，同一批分配不受客户端排列影响（D-0008）。
     /// 初始生死的依据与"为什么这不是维度耦合"见 <see cref="AssignCharactersCommand"/> 与 rulings.md R-0015。
     /// </remarks>
-    private static CommandDispatchResult DispatchAssignCharacters(AssignCharactersCommand command, GameSetup? setup)
+    private static CommandDispatchResult DispatchAssignCharacters(
+        AssignCharactersCommand command,
+        GameSetup? setup,
+        GameState state)
     {
         if (setup is null)
         {
             return MissingSetup();
+        }
+
+        // 角色唯一是全局不变量：分配闸管同批重复，这里查已进账的既有角色——
+        // 否则跨批重复要拖到开夜才暴露，角色不在夜晚顺序表时甚至永远不暴露。
+        foreach (var assignment in command.Assignments)
+        {
+            var holder = state.Seats.FirstOrDefault(entry =>
+                entry.Seat != assignment.Seat && entry.CharacterValue == assignment.Character);
+            if (holder is not null)
+            {
+                return CommandDispatchResult.Rejected(new CommandRejection
+                {
+                    Code = "legality.character_duplicated",
+                    Message = $"角色 {assignment.Character.Value} 已经属于席位 {holder.Seat.Value}；角色唯一",
+                    Gate = "legality",
+                });
+            }
         }
 
         var events = command.Assignments

@@ -39,8 +39,10 @@ public sealed class NightBuildGateTests
     [Fact]
     public void NightActionContracts_MustCiteTheirRuleSource()
     {
-        var files = RepositoryLayout.EnumerateSourceFiles("src", "OpenClockTower.Rules");
-        var contracts = files
+        // 与门禁 1/3 同口径：只扫被 git 跟踪的文件（未提交的草稿不得制造假红）。
+        var contracts = RepositoryLayout.EnumerateTrackedTextFiles()
+            .Where(path => path.Replace('\\', '/').StartsWith("src/OpenClockTower.Rules/", StringComparison.Ordinal))
+            .Where(path => path.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
             .Where(path => Regex.IsMatch(
                 File.ReadAllText(RepositoryLayout.PathOf(path)),
                 @":\s*INightAction\b"))

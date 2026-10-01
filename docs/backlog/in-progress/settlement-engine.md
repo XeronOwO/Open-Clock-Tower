@@ -35,9 +35,9 @@
 | 项 | 状态 |
 |---|---|
 | 1 建表 | **已落地**：`NightPlanBuilder`（顺序表 + 状态账 + 席位名单 + 行动契约 → `StepPlan`）；口径记录进 `StepPlan.Variant`（R-0014）；说书人选择入口仍随面板 |
-| 前置：角色分配载体 | **已落地**：`AssignCharactersCommand` 进事件流（D-0017），同一条事件记录角色 + 初始生死（R-0015） |
+| 前置：角色分配载体 | **已落地**：`AssignCharactersCommand` 进事件流（D-0017），同一条事件记录角色 + 初始生死（R-0015）；角色唯一在提交时跨批校验 |
 | 前置：阶段前事件可重放 | **已落地**：步骤机折叠容忍账事件先于任何阶段（重启恢复路径的硬前提） |
-| 行动契约骨架 | **已落地**：`INightAction` + 首批（钟表匠 / 筑梦师）；25 个角色的逐角色实现另立票 |
+| 行动契约骨架 | **已落地**：`INightAction` + 首批（钟表匠 / 筑梦师）；未实现契约的夜晚角色在场时开夜显式拒绝（架构 §2.6 能力边界），25 个角色的逐角色实现另立票 |
 | 2–7 逐步结算 / 能力生效判定 / 信息类结果 / 两本账 / 维度链接 / 解除 | 未开始（下一步） |
 
 运行证据：
@@ -47,7 +47,7 @@
 | `dotnet build OpenClockTower.slnx` | 0 警告 0 错误 |
 | `dotnet test OpenClockTower.slnx` | **167/167**（门禁 14 / 内核 92 / 规则 32 / 集成 29） |
 | `dotnet format OpenClockTower.slnx --verify-no-changes` | exit 0 |
-| 新门禁先红后绿 | `NightBuildGateTests` 三条逐条先红后绿（探针还原后 `git status` 为空） |
+| 新门禁先红后绿 | `NightBuildGateTests` 三条逐条先红后绿（先红输出均为「失败: 1」；探针还原后 `git status` 为空） |
 | 真实宿主集成（`NightBuildHostTests`） | 分配→开夜→筑梦师收到真实操作请求；钟表匠产生说书人裁定点；非法命令逐条拒绝；重启后分配与计划仍在（`PhaseStartedEvent.Plan.Variant == Original`） |
 | 既有缺陷 | 节拍器心跳原先只推进、不分发通知：请求会留在服务端。本轮修好（`TickAsync` 返回结果，节拍器照常分发），由「筑梦师收到请求」这条集成链路盯住 |
 
