@@ -60,7 +60,6 @@ todo/  →  in-progress/  →  review/  →  done/
 
 ### Todo
 
-- [百科知识基线与引用索引](todo/wiki-knowledge-baseline.md) — **High** — 规则依据散在临时目录、无索引不可复核，25 个角色类型未核对
 - [内核领域模型与六状态不变量](todo/kernel-domain-model.md) — **High** — 「状态属于玩家」这条头号不变量目前没有任何代码在守
 - [自动步骤机与操作请求](todo/operation-request-step-machine.md) — **High** — 轮到你时服务端主动推送请求；无超时，靠说书人作废/代填对冲
 - [零信任安全模型](todo/zero-trust-security-model.md) — **High** — 鉴权两级凭据 + 操作四道闸 + 服务端强制投影，负向测试为主
@@ -72,6 +71,7 @@ todo/  →  in-progress/  →  review/  →  done/
 ### Done
 
 - [建解决方案、项目骨架与门禁工程](done/solution-and-gates-bootstrap.md) — **High** — 7 个项目 + 4 条规范门禁，三条提交门禁全绿且逐条见红验证
+- [百科知识基线与引用索引](done/wiki-knowledge-baseline.md) — **High** — 显式 79 页抓取脚本与 SHA256 索引，25 角色类型与 slug 核对完毕，规则细节与范例清单落库
 
 ### Future
 

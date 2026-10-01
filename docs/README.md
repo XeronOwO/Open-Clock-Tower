@@ -13,6 +13,7 @@
 | **哪些规则还没定论** | [standard/rulings.md](standard/rulings.md) |
 | 规则断言的依据从哪来 | [standard/sources.md](standard/sources.md) |
 | 某个词在这里是什么意思 | [standard/terminology.md](standard/terminology.md) |
+| 某个角色怎么实现、依据在哪 | [standard/character-rules.md](standard/character-rules.md) |
 | 还剩什么没做 | [backlog/README.md](backlog/README.md) |
 
 ## 三条最该先记住的事
