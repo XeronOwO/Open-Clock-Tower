@@ -66,13 +66,13 @@ todo/  →  in-progress/  →  review/  →  done/
 
 ### In progress
 
-- [结算引擎与能力生效判定](in-progress/settlement-engine.md) — **High** — 建表 + 逐步结算 + 能力生效判定 + 状态账唯一写入方；逐角色实现另立
-- [说书人上帝视角：每步状态信息、归因与最终计算结论](in-progress/storyteller-step-insights.md) — **High** — 每步摘要 + 状态变化归因 + 能力生效结论；依赖结算引擎
+- [说书人上帝视角：每步状态信息、归因与最终计算结论](in-progress/storyteller-step-insights.md) — **High** — 每步摘要 + 状态变化归因 + 能力生效结论；引擎侧已就位，剩面板呈现
 
 ### Review
 
 - [自动步骤机与操作请求](review/operation-request-step-machine.md) — **High** — 轮到你时服务端主动推送请求；无超时，说书人可接管/强推/重建；行 16 待 web 前端验收
 - [《梦殒春宵》夜晚顺序表（结算引擎的输入）](review/sects-and-violets-night-order.md) — **High** — 规则层第一块数据：两套口径 + 逐条来源 + 占位移除；建表属结算引擎
+- [结算引擎与能力生效判定](review/settlement-engine.md) — **High** — 逐步结算 + 能力生效判定 + 信息结果 + 维度 → 效果链接与解除；逐角色实现另立
 
 ### Done
 

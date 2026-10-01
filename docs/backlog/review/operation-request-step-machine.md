@@ -175,7 +175,7 @@ Kestrel 真实进程 + 真实 TCP SignalR 客户端（完整输出在 `artifacts
 4. EF Core 目前用 `EnsureCreated`；首个可部署版本前补迁移。
 5. ~~演示步骤表是显式占位~~ **已解决**：`DemoStepPlan` 已从生产代码删除，宿主不再自动开阶段；
    集成测试改用测试夹具 `TestNightPlan`（`tests/` 内、非规则数据）。
-   真实顺序表见 `src/OpenClockTower.Rules`（两套口径，R-0014）；建表属 `in-progress/settlement-engine.md`。
+   真实顺序表见 `src/OpenClockTower.Rules`（两套口径，R-0014）；建表属 `review/settlement-engine.md`。
 6. **说书人上帝视角**（每步状态归因 + 最终计算结论）已单独立票
    `docs/backlog/in-progress/storyteller-step-insights.md`；本票据只落了数据面
    （`SeatStateChangedEvent` + `RecentSeatChanges` / `CurrentSlotActor` / `CurrentSlotContext`）。
@@ -183,5 +183,7 @@ Kestrel 真实进程 + 真实 TCP SignalR 客户端（完整输出在 `artifacts
    `SeatStateChangedEvent` 由 2 个观测维度扩到 5 个。
 7. 事件载荷损坏时房间以**空状态**启动（记 Critical、保留序号连续性），续屋需宿主显式重开阶段：
    这是明示的数据损失，不是静默继续；"从损坏事件流里抢救部分状态"不在本票据范围。
-8. 说书人视图的"能力是否生效 / 信息是否可能错误"目前**不计算**：它需要结算引擎与角色实现，
-   属第 6 条那张票据。
+8. 说书人视图的"能力是否生效 / 信息是否可能错误"已由结算引擎算出来并进视图
+   （`LastResolution` / 账本 / 裁定点的上下文与合法选项，见 `review/settlement-engine.md`）；
+   每步摘要（StepDigest）的面板呈现仍属
+   `docs/backlog/in-progress/storyteller-step-insights.md`。

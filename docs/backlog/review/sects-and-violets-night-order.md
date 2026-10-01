@@ -75,11 +75,11 @@ SignalR 请求标识由 `demo:night-1:demo-seat-1` 变为 `test:night-1:test-sea
 - 剧本范围与两套口径：`docs/standard/rulings.md` R-0014
 - 步骤表按剧本完整顺序表展开、空槽位照样走配额：`docs/decisions/active.md` D-0013
 - 规则断言必须有来源：`docs/standard/sources.md` §5
-- 建表与后续消费（含说书人选择口径的入口）：`docs/backlog/in-progress/settlement-engine.md`
+- 建表与后续消费（含说书人选择口径的入口）：`docs/backlog/review/settlement-engine.md`
 
 ## 残余
 
-- **建表**（顺序表 + 角色分配 → `StepPlan`）与首批角色行动契约：已在
-  `docs/backlog/in-progress/settlement-engine.md` 落地（2026-10-02）；
+- **建表**（顺序表 + 角色分配 → `StepPlan`）与角色契约（钟表匠 / 筑梦师 / 诺-达鲺）：已在
+  `docs/backlog/review/settlement-engine.md` 落地（2026-10-02）；
   说书人选择口径的入口仍随说书人面板。
 - 规则层其余数据（角色类型元数据、相克表）仍未开始，属后续票据。

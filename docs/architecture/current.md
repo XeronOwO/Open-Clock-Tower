@@ -146,15 +146,22 @@ DecisionPoint
 | 输入 | `OpenClockTower.Rules` 的 `NightOrderTable`：黄昏 / 爪牙信息 / 恶魔信息 / 信息环节开始 / 角色行动 / 黎明，两套口径 + 逐条来源 | R-0014 |
 | 建表 | `NightPlanBuilder`：顺序表 + 状态账 + 席位名单 + 行动契约 → `StepPlan`；非角色条目 → 节拍 / 黎明槽位；角色不在场 / 已死亡 → 空槽位（照样走配额）；**席位缺角色 / 生死未观测 / 角色重复 / 契约未实现 / 未知口径一律显式拒绝** | D-0013 §1 / D-0015 |
 | 口径记录 | 选择结果写进 `StepPlan.Variant`，随 `PhaseStartedEvent` 进事件流 | R-0014 |
-| 行动契约 | `INightAction`（提示契约：上下文 / 合法选项 / 无选项行为）+ 首批角色（钟表匠 / 筑梦师） | D-0002 / R-0009 |
-| 入口 | `AssignCharactersCommand`（开局分配）+ `StartNightCommand`（服务端建表后开阶段） | D-0017 / R-0015 / D-0012 |
+| 行动契约 | `INightAction`（提示契约：上下文 / 合法选项 / 无选项行为）+ `IAbilityResolution`（结算契约，同批角色对象同时实现）；首批角色：钟表匠 / 筑梦师 / 诺-达鲺 | D-0002 / R-0009 |
+| 入口 | `AssignCharactersCommand`（开局分配：角色 + 存活 + 清醒 + 健康）+ `StartNightCommand`（服务端建表后开阶段） | D-0017 / R-0015 / R-0016 / D-0012 |
+| 逐步结算 | `AbilitySettlement`：行动槽位在「玩家答毕 / 说书人裁毕」后按 `StepSlot.Owner` 取结算契约并产出事件；信息类契约先要一次说书人裁定（`BuildPostChoiceDecision`）再结算 | D-0002 / D-0011 |
+| 生效判定 | `AbilityEffectivenessEvaluator`：存活 + 清醒 + 健康 → 生效；中毒 / 醉酒 / 死亡 → 不生效；维度未观测 → 整条输入被拒绝（不猜） | 百科《重要细节》三-3 / D-0015 |
+| 事件与账 | `AbilityResolvedEvent` 折进 `GameState.AbilityUses` / `GameState.Malfunctions`（用过 ≠ 生效过）；`PersistentEffectApplied` / `Terminated` / `InstantaneousEffectApplied` 由角色契约与对账产出 | 架构 §2.2 / D-0015 |
+| 信息结果 | `InformationResultIssuedEvent`：说书人裁定的内容 + 「可能为假」标记；**标记只说书人可见**，玩家只收内容并按收件人投影 | D-0002 / 百科《重要细节》三-1 |
+| 维度 → 效果 | `SeatStateChangedEvent.EffectId` 折进 `StateFact<T>.EffectId`；`PersistentEffect.Dimension` 声明这条效果压制哪一维 | 票据第 6 条 |
+| 维度解除 | `SettlementReconciler` 固定点对账 + `DimensionEffectReconciler`：效果终止 / 挂起 → 解除，恢复 → 重挂，支持效果迁移 → 换链接；已终止的同源效果不复用标识——重新获得能力产生**新的一条**（世代规则，R-0012 第 4 条）；派生事件与业务事件同批落库 | D-0015 推论 1 / R-0012 |
+| 常驻效果 | `IStandingEffectSource`（Rules 实现）+ 诺-达鲺的常驻中毒（顺 / 逆时针最近的镇民，跳过非镇民，动态重算） | 百科《诺-达鲺》 |
 
-**能力边界（2026-10-02）**：行动契约当前只实现钟表匠 / 筑梦师。其他在夜晚顺序表上的角色一旦在场，
-开夜会被显式拒绝（`plan.contract_missing`），等后续按角色分批补——刻意的"宁可开不了、也不静默跳过"。
-不在夜晚顺序表上的角色（艺术家 / 呆瓜 / 畸形秀演员 / 博学者）不受影响。
+**能力边界（2026-10-02）**：行动契约与结算契约当前只实现钟表匠 / 筑梦师 / 诺-达鲺。其他在夜晚顺序表上的
+角色一旦在场，开夜会被显式拒绝（`plan.contract_missing`），等后续按角色分批补——刻意的"宁可开不了、
+也不静默跳过"。不在夜晚顺序表上的角色（艺术家 / 呆瓜 / 畸形秀演员 / 博学者）不受影响。
 
-逐步结算、能力生效判定、信息类结果与效果事件产出仍未落地——
-见 `docs/backlog/in-progress/settlement-engine.md`。
+逐角色实现（25 个角色）仍按票分批补，残余事项见
+`docs/backlog/review/settlement-engine.md`。
 
 ### 2.7 步骤机与操作请求（D-0011）
 
@@ -245,9 +252,10 @@ StepMachine（步骤机）
 - **维度翻转不属于账本**（D-0015）：账本只报"哪条效果终止了"，
   把目标的中毒改回健康必须有另一条状态变化事件。
 
-**写入方**：现阶段有两处——开局分配（`AssignCharactersCommand`：角色 + 初始生死，仅首阶段前）与
-说书人上报（`ApplySeatStateCommand` / `GameHub.ReportSeatState`）；结算引擎落地后由引擎产出同样的事件。
-**效果事件的产生方目前还不存在**（结算引擎未建）——已交付的是契约、折叠与查询，内核测试与后续引擎可直接使用。
+**写入方**：三处——开局分配（`AssignCharactersCommand`：角色 + 存活 + 清醒 + 健康，仅首阶段前）、
+说书人上报（`ApplySeatStateCommand` / `GameHub.ReportSeatState`）与**结算引擎**
+（角色契约产出效果 / 信息事件，`SettlementReconciler` 产出常驻效果与维度解除事件）。
+结算引擎是状态的**推演方**：它读账算生效、产出事件；账本本身仍然只记事实，不替它翻维度（D-0015）。
 
 **已落地映射（2026-10-02）**：
 
@@ -341,15 +349,15 @@ StepMachine（步骤机）
 
 | 模块 | 说明 | 状态 |
 |---|---|---|
-| `OpenClockTower.Kernel` | 纯规则内核 | 已建（六状态 + 效果生命周期 + 两本账 + 裁定点契约 + 步骤机/操作请求/事件模型 + 状态账与效果归因；不含结算与角色） |
-| `OpenClockTower.Rules` | 梦殒春宵角色、剧本、相克数据 | 已建（夜晚顺序表两套口径 + 逐条来源；花名册 25 人；`NightPlanBuilder` 建表；行动契约骨架：钟表匠 / 筑梦师）；逐角色实现与相克数据待补 |
-| `OpenClockTower.Application` | 命令/查询/裁定编排 | 已建（四道闸、会话编排、投影与重连包、房间重建；`GameSession` + `GameCommandDispatcher`：开局分配 / 开夜 / 步骤机输入） |
+| `OpenClockTower.Kernel` | 纯规则内核 | 已建（六状态 + 效果生命周期 + 两本账 + 裁定点契约 + 步骤机/操作请求/事件模型 + 状态账与效果归因 + 结算调度 / 生效判定 / 常驻效果与维度对账；角色行为在 Rules） |
+| `OpenClockTower.Rules` | 梦殒春宵角色、剧本、相克数据 | 已建（夜晚顺序表两套口径 + 逐条来源；花名册 25 人与类型 / 中文名；`NightPlanBuilder` 建表；角色契约：钟表匠 / 筑梦师 / 诺-达鲺）；逐角色实现与相克数据待补 |
+| `OpenClockTower.Application` | 命令/查询/裁定编排 | 已建（四道闸、会话编排、结算管线、投影与重连包、房间重建；`GameSession` + `GameCommandDispatcher` + `SessionSettlement`） |
 | `OpenClockTower.Contracts` | 前后端共享契约（由 OpenAPI 生成前端客户端） | 已建（SignalR 推送与命令回执 DTO） |
 | `OpenClockTower.Server` | ASP.NET Core 宿主、SignalR、EF Core | 已建（定向单播、EF Core + SQLite 事件/快照/回执/票据、服务端节拍器；不再自动开阶段；`AssignCharacters` / `StartNight` 入口；心跳产生的通知照常分发） |
-| `tests/OpenClockTower.Kernel.Tests` | 内核行为测试 | 已建（92 条：六状态 13 / 效果 8 / 两本账 8 / 裁定点与疯狂 6 / 步骤机与操作请求 31 / 状态账与效果归因 26） |
-| `tests/OpenClockTower.Rules.Tests` | 规则数据测试 | 已建（32 条：顺序逐条 4 / 结构不变量 10 / 变体差异 3 / 建表与花名册 15） |
-| `tests/OpenClockTower.NormativeGates.Tests` | 把规范写成会失败的测试 | 已建（14 条门禁；本轮新增「会话票据不承载角色」「行动契约带规则来源」「计划不进 wire」，逐条先红后绿） |
-| `tests/OpenClockTower.Integration.Tests` | 多客户端端到端 | 已建（29 条：真实宿主 + 真实 SignalR 客户端；含真实进程重启、损坏载荷恢复、状态账重启恢复、分配→开夜→请求/裁定点） |
+| `tests/OpenClockTower.Kernel.Tests` | 内核行为测试 | 已建（123 条：六状态 / 效果生命周期 / 两本账 / 裁定点与疯狂 / 步骤机与操作请求 / 状态账与效果归因 / 能力生效判定 / 结算调度 / 维度对账） |
+| `tests/OpenClockTower.Rules.Tests` | 规则数据测试 | 已建（57 条：夜晚顺序表 / 结构不变量 / 变体差异 / 建表 / 花名册档案 / 诺-达鲺常驻中毒与角色契约） |
+| `tests/OpenClockTower.NormativeGates.Tests` | 把规范写成会失败的测试 | 已建（14 条门禁，逐条先红后绿） |
+| `tests/OpenClockTower.Integration.Tests` | 多客户端端到端 | 已建（32 条：真实宿主 + 真实 SignalR 客户端；含真实进程重启、损坏载荷恢复、分配→开夜→请求/裁定点，以及结算引擎验收矩阵 1–8 的 3 条真宿主链路） |
 | `web/` | Vue 3 + TS 前端 | 未建 |
 | `tools/` | 抓取、索引、数据生成、来源核对 | 已建（`fetch-wiki.ps1`：79 页快照 + SHA256 索引；`check-night-order.ps1`：顺序表与快照逐条核对） |
 
