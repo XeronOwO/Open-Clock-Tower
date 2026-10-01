@@ -1,0 +1,41 @@
+# 顶层约定：UTF-8 / LF / 4 空格（C#），2 空格（前端与配置）
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+[*.{cs,csx}]
+indent_size = 4
+dotnet_sort_system_directives_first = true
+csharp_style_namespace_declarations = file_scoped:error
+csharp_style_prefer_switch_expression = true:suggestion
+csharp_style_prefer_pattern_matching = true:suggestion
+csharp_style_expression_bodied_methods = when_on_single_line:suggestion
+csharp_prefer_braces = when_multiline:suggestion
+csharp_using_directive_placement = outside_namespace:error
+dotnet_diagnostic.IDE0066.severity = warning
+
+# 领域词汇在代码中的形态：英文 slug 标识符 + 中文只在数据/文档里出现
+# 因此禁止用拼音或中文转写充当标识符
+dotnet_diagnostic.IDE1006.severity = warning
+
+[*.{json,yml,yaml,js,ts,vue,css,scss,html}]
+indent_size = 2
+
+[*.{csproj,props,targets,slnx,xml}]
+indent_size = 2
+
+[*.md]
+trim_trailing_whitespace = false
+indent_size = 2
+
+[*.{ps1,psm1}]
+indent_size = 4
+
+[*.{bat,cmd}]
+end_of_line = crlf
