@@ -4,6 +4,7 @@
     <Project Path="src/OpenClockTower.Contracts/OpenClockTower.Contracts.csproj" />
     <Project Path="src/OpenClockTower.Kernel/OpenClockTower.Kernel.csproj" />
     <Project Path="src/OpenClockTower.Rules/OpenClockTower.Rules.csproj" />
+    <Project Path="src/OpenClockTower.Server/OpenClockTower.Server.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/OpenClockTower.Integration.Tests/OpenClockTower.Integration.Tests.csproj" />

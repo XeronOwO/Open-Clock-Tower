@@ -1,0 +1,280 @@
+using Microsoft.AspNetCore.SignalR;
+using OpenClockTower.Application;
+using OpenClockTower.Contracts;
+using OpenClockTower.Kernel;
+
+namespace OpenClockTower.Server;
+
+/// <summary>
+/// 游戏 Hub：会话绑定、命令入口、定向推送。
+/// </summary>
+/// <remarks>
+/// <para>
+/// 本层只做"翻译"：票据 → 身份、wire 参数 → 命令、结果 → DTO / 推送；一切判定都在
+/// Application / Kernel（架构 §1：Server 不做领域判断）。
+/// </para>
+/// <para>
+/// 占位说明：连接级私有凭据、票据撤销与完整负向套件属「零信任」票据；
+/// 这里先做到"身份由服务端从票据推导，客户端不能自称"。
+/// </para>
+/// </remarks>
+public sealed class GameHub : Hub<IGameClient>
+{
+    private readonly IGameCatalog _catalog;
+    private readonly GameId _gameId;
+    private readonly GameSession _session;
+    private readonly ConnectionRegistry _registry;
+    private readonly NotificationDispatcher _dispatcher;
+    private readonly ILogger<GameHub> _logger;
+
+    /// <summary>构造 Hub。</summary>
+    public GameHub(
+        IGameCatalog catalog,
+        GameId gameId,
+        GameSession session,
+        ConnectionRegistry registry,
+        NotificationDispatcher dispatcher,
+        ILogger<GameHub> logger)
+    {
+        _catalog = catalog;
+        _gameId = gameId;
+        _session = session;
+        _registry = registry;
+        _dispatcher = dispatcher;
+        _logger = logger;
+    }
+
+    /// <summary>玩家加入 / 重连：票据定位席位，返回重连包并**重投**未响应请求。</summary>
+    public async Task<ReconnectBundleDto> JoinSeat(string ticket, long lastSequence)
+    {
+        var setup = await LoadSetupAsync();
+        var seatTicket = setup.Seats.FirstOrDefault(
+            item => string.Equals(item.Ticket, ticket, StringComparison.Ordinal));
+        if (seatTicket is null)
+        {
+            _logger.LogWarning("加入被拒：席位票据无效 connection={ConnectionId}", Context.ConnectionId);
+            throw new HubException("会话票据无效");
+        }
+
+        _registry.BindSeat(seatTicket.Seat, Context.ConnectionId);
+        var bundle = await _session.GetReconnectBundleAsync(seatTicket.Seat, lastSequence, Context.ConnectionAborted);
+
+        if (bundle.View.PendingRequest is { } pending)
+        {
+            await Clients.Caller.ReceiveOperationRequest(ProjectionMapper.ToDto(pending));
+        }
+
+        _logger.LogInformation(
+            "玩家已加入：seat={Seat} connection={ConnectionId} 序号={Sequence} 重投请求={Redelivered}",
+            seatTicket.Seat,
+            Context.ConnectionId,
+            bundle.Sequence,
+            bundle.View.PendingRequest is not null);
+
+        return ProjectionMapper.ToDto(bundle);
+    }
+
+    /// <summary>说书人加入：票据定位身份。</summary>
+    public async Task<StorytellerViewDto> JoinStoryteller(string ticket)
+    {
+        var setup = await LoadSetupAsync();
+        if (!string.Equals(setup.StorytellerTicket, ticket, StringComparison.Ordinal))
+        {
+            _logger.LogWarning("说书人加入被拒：票据无效 connection={ConnectionId}", Context.ConnectionId);
+            throw new HubException("说书人票据无效");
+        }
+
+        _registry.BindStoryteller(Context.ConnectionId);
+        var view = ProjectionMapper.ToDto(_session.GetStorytellerView());
+        _logger.LogInformation(
+            "说书人已加入：connection={ConnectionId} 序号={Sequence} 挂起={Held}",
+            Context.ConnectionId,
+            view.Sequence,
+            view.Pending is not null);
+        return view;
+    }
+
+    /// <summary>玩家提交响应。</summary>
+    public Task<CommandResultDto> SubmitResponse(string requestId, string optionValue, string idempotencyKey, long clientSequence) =>
+        ExecuteAsync(
+            ResolvePlayerActor(),
+            new SubmitResponseCommand
+            {
+                RequestId = new OperationRequestId(requestId),
+                OptionValue = optionValue,
+            },
+            idempotencyKey,
+            clientSequence);
+
+    /// <summary>说书人强制作废。</summary>
+    public Task<CommandResultDto> VoidRequest(string requestId, string reason, string? note, string idempotencyKey) =>
+        ExecuteAsync(
+            ResolveStorytellerActor(),
+            new VoidRequestCommand
+            {
+                RequestId = new OperationRequestId(requestId),
+                Reason = ParseVoidReason(reason),
+                Note = note,
+            },
+            idempotencyKey);
+
+    /// <summary>说书人代填。</summary>
+    public Task<CommandResultDto> ProxyFill(string requestId, string optionValue, string? note, string idempotencyKey) =>
+        ExecuteAsync(
+            ResolveStorytellerActor(),
+            new ProxyFillCommand
+            {
+                RequestId = new OperationRequestId(requestId),
+                OptionValue = optionValue,
+                Note = note,
+            },
+            idempotencyKey);
+
+    /// <summary>说书人强推当前槽位（D-0014 兜底）。</summary>
+    public Task<CommandResultDto> ForceAdvance(string reason, string idempotencyKey) =>
+        ExecuteAsync(ResolveStorytellerActor(), new ForceAdvanceCommand { Reason = reason }, idempotencyKey);
+
+    /// <summary>说书人接管。</summary>
+    public Task<CommandResultDto> TakeOver(string reason, string idempotencyKey) =>
+        ExecuteAsync(ResolveStorytellerActor(), new TakeOverCommand { Reason = reason }, idempotencyKey);
+
+    /// <summary>说书人交还自动化。</summary>
+    public Task<CommandResultDto> ReleaseControl(string reason, string idempotencyKey) =>
+        ExecuteAsync(ResolveStorytellerActor(), new ReleaseControlCommand { Reason = reason }, idempotencyKey);
+
+    /// <summary>说书人了结裁定点（R-0009 自由决定）。</summary>
+    public Task<CommandResultDto> ResolveDecisionPoint(
+        string decisionPointId,
+        string? decision,
+        string? note,
+        string idempotencyKey) =>
+        ExecuteAsync(
+            ResolveStorytellerActor(),
+            new ResolveDecisionPointCommand
+            {
+                DecisionPointId = new DecisionPointId(decisionPointId),
+                Decision = decision,
+                Note = note,
+            },
+            idempotencyKey);
+
+    /// <summary>
+    /// 说书人上报座位状态变化（含原因与归因；依赖失效时内核自动作废挂起请求）。
+    /// 只上报本次观测到的维度，至少给一个；不给的维度不参与判定。
+    /// </summary>
+    public Task<CommandResultDto> ReportSeatState(
+        int seat,
+        string? life,
+        string? character,
+        string reason,
+        int? causedBySeat,
+        string idempotencyKey)
+    {
+        if (life is null && character is null)
+        {
+            throw new HubException("至少需要给出一个观测到的状态维度（生死或角色）");
+        }
+
+        LifeState? parsedLife = null;
+        if (life is not null)
+        {
+            if (!Enum.TryParse<LifeState>(life, ignoreCase: false, out var lifeValue) || !Enum.IsDefined(lifeValue))
+            {
+                throw new HubException($"未知的生死状态：{life}");
+            }
+
+            parsedLife = lifeValue;
+        }
+
+        return ExecuteAsync(
+            ResolveStorytellerActor(),
+            new ApplySeatStateCommand
+            {
+                Seat = new SeatId(seat),
+                Life = parsedLife,
+                Character = character is null ? null : new CharacterId(character),
+                Reason = reason,
+                CausedBy = causedBySeat is { } causer ? new SeatId(causer) : null,
+            },
+            idempotencyKey);
+    }
+
+    /// <summary>说书人 / 宿主按事件日志重建房间（D-0014 恢复）。</summary>
+    public Task<CommandResultDto> RebuildRoom(string reason, string idempotencyKey) =>
+        ExecuteAsync(ResolveStorytellerActor(), new RebuildRoomCommand { Reason = reason }, idempotencyKey);
+
+    /// <summary>说书人查询当前视图（变更时同时会推送，客户端不需要轮询）。</summary>
+    public StorytellerViewDto GetStorytellerView()
+    {
+        _ = ResolveStorytellerActor();
+        return ProjectionMapper.ToDto(_session.GetStorytellerView());
+    }
+
+    /// <inheritdoc />
+    public override async Task OnDisconnectedAsync(Exception? exception)
+    {
+        _registry.Remove(Context.ConnectionId);
+        _logger.LogInformation(
+            "连接已断开：connection={ConnectionId} 异常={Exception}",
+            Context.ConnectionId,
+            exception?.Message);
+        await base.OnDisconnectedAsync(exception);
+    }
+
+    private async Task<CommandResultDto> ExecuteAsync(
+        Actor actor,
+        GameCommand command,
+        string idempotencyKey,
+        long clientSequence = 0)
+    {
+        var result = await _session.ExecuteAsync(
+            new CommandEnvelope
+            {
+                Command = command,
+                Actor = actor,
+                IdempotencyKey = idempotencyKey,
+                ClientSequence = clientSequence,
+            },
+            Context.ConnectionAborted);
+
+        await _dispatcher.DispatchAsync(result, Context.ConnectionAborted);
+        return ProjectionMapper.ToDto(result);
+    }
+
+    private async Task<GameSetup> LoadSetupAsync()
+    {
+        var setup = await _catalog.FindAsync(_gameId, Context.ConnectionAborted);
+        if (setup is null)
+        {
+            throw new HubException("本局还没有会话信息");
+        }
+
+        return setup;
+    }
+
+    private Actor ResolvePlayerActor()
+    {
+        var seat = _registry.FindSeat(Context.ConnectionId);
+        if (seat is null)
+        {
+            throw new HubException("当前连接没有绑定席位，请先加入");
+        }
+
+        return Actor.Player(seat.Value);
+    }
+
+    private Actor ResolveStorytellerActor()
+    {
+        if (!_registry.IsStoryteller(Context.ConnectionId))
+        {
+            throw new HubException("当前连接不是说书人连接");
+        }
+
+        return Actor.Storyteller();
+    }
+
+    private static OperationRequestVoidReason ParseVoidReason(string reason) =>
+        Enum.TryParse<OperationRequestVoidReason>(reason, ignoreCase: false, out var parsed)
+            ? parsed
+            : (OperationRequestVoidReason)(-1);
+}

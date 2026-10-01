@@ -2,6 +2,8 @@
 
   <!-- 多客户端端到端：断线重连、双端一致、信息隔离。依赖见 Directory.Build.props -->
   <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio" />
@@ -16,6 +18,7 @@
     <ProjectReference Include="..\..\src\OpenClockTower.Rules\OpenClockTower.Rules.csproj" />
     <ProjectReference Include="..\..\src\OpenClockTower.Application\OpenClockTower.Application.csproj" />
     <ProjectReference Include="..\..\src\OpenClockTower.Contracts\OpenClockTower.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\OpenClockTower.Server\OpenClockTower.Server.csproj" />
   </ItemGroup>
 
 </Project>

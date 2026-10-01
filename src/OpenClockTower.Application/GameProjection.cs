@@ -1,0 +1,68 @@
+using OpenClockTower.Kernel;
+
+namespace OpenClockTower.Application;
+
+/// <summary>
+/// 投影：把步骤机状态折算成"某个受众该看到什么"。
+/// </summary>
+/// <remarks>
+/// 依据 D-0012 §4.3：越权信息**根本不下发**——玩家投影里没有槽位、进度、他人活动（D-0013 §5）。
+/// </remarks>
+public static class GameProjection
+{
+    /// <summary>某个玩家的投影。</summary>
+    public static PlayerView ForSeat(StepMachineState? machine, long sequence, SeatId seat)
+    {
+        var pending = machine?.PendingRequest;
+        var deliverable = pending is { Status: OperationRequestStatus.Pending } && pending.Addressee == seat
+            ? pending
+            : null;
+
+        return new PlayerView
+        {
+            Seat = seat,
+            Phase = machine?.Plan.Phase,
+            PendingRequest = deliverable,
+            Sequence = sequence,
+        };
+    }
+
+    /// <summary>说书人视图（含卡点时长与状态变化归因；时长由应用层时钟算出）。</summary>
+    public static StorytellerView ForStoryteller(
+        StepMachineState? machine,
+        long sequence,
+        DateTimeOffset? pendingSince,
+        DateTimeOffset now,
+        IReadOnlyList<SeatChangeSnapshot> recentSeatChanges)
+    {
+        PendingRequestSummary? pendingSummary = null;
+        if (machine?.PendingRequest is { Status: OperationRequestStatus.Pending } request)
+        {
+            pendingSummary = new PendingRequestSummary
+            {
+                Seat = request.Addressee,
+                RequestId = request.Id,
+                SlotId = request.SlotId,
+                SlotIndex = request.IssuedAtSlotIndex,
+                Waiting = pendingSince is { } since ? now - since : null,
+            };
+        }
+
+        return new StorytellerView
+        {
+            Sequence = sequence,
+            Phase = machine?.Plan.Phase,
+            Control = machine?.Control,
+            SlotIndex = machine?.SlotIndex ?? 0,
+            SlotCount = machine?.Plan.Slots.Count ?? 0,
+            CurrentSlotId = machine?.CurrentSlot?.Id,
+            PlanCompleted = machine?.IsPlanCompleted ?? false,
+            Pending = pendingSummary,
+            AwaitingDecision = machine?.AwaitingDecision,
+            BlockedReason = machine?.Block?.Reason,
+            CurrentSlotActor = machine?.CurrentSlot?.Actor,
+            CurrentSlotContext = machine?.CurrentSlot?.Prompt?.Context,
+            RecentSeatChanges = recentSeatChanges,
+        };
+    }
+}

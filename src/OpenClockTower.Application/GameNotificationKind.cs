@@ -1,0 +1,17 @@
+namespace OpenClockTower.Application;
+
+/// <summary>需要推送给客户端的通知类别。</summary>
+public enum GameNotificationKind
+{
+    /// <summary>向被请求的玩家定向推送操作请求。</summary>
+    OperationRequestIssued,
+
+    /// <summary>向被请求的玩家推送"你的请求被作废了及原因"。</summary>
+    OperationRequestVoided,
+
+    /// <summary>说书人视图有变化（卡点列表 / 控制模式 / 阻塞等）。</summary>
+    StorytellerViewChanged,
+
+    /// <summary>房间已按事件日志重建完成。</summary>
+    RoomRebuilt,
+}

@@ -6,6 +6,10 @@
     绝不允许 Kernel 或 Rules 反向引用本层。
   -->
   <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\OpenClockTower.Kernel\OpenClockTower.Kernel.csproj" />
     <ProjectReference Include="..\OpenClockTower.Rules\OpenClockTower.Rules.csproj" />
     <ProjectReference Include="..\OpenClockTower.Contracts\OpenClockTower.Contracts.csproj" />
