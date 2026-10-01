@@ -9,8 +9,8 @@ public sealed class GameServerOptions
     /// <summary>默认游戏标识（首版单局单进程）。</summary>
     public string GameId { get; set; } = "default";
 
-    /// <summary>演示局席位数量（规则数据未接入前的显式占位）。</summary>
-    public int DemoSeatCount { get; set; } = 5;
+    /// <summary>单局席位数（建局能力落地前的配置输入）。</summary>
+    public int SeatCount { get; set; } = 5;
 
     /// <summary>SQLite 数据库路径（相对内容根）。</summary>
     public string DatabasePath { get; set; } = "openclocktower.db";

@@ -22,7 +22,7 @@ public sealed class TakeoverAndRecoveryTests
     {
         await using var host = new TestServerHost(slotQuotaSeconds: 3600, seatCount: 2);
         await using var storyteller = await host.ConnectStorytellerAsync();
-        await CompleteDemoNightAsync(storyteller);
+        await CompleteTestNightAsync(storyteller);
 
         var plan = new StepPlan
         {
@@ -68,7 +68,7 @@ public sealed class TakeoverAndRecoveryTests
     {
         await using var host = new TestServerHost(slotQuotaSeconds: 1.0, seatCount: 2);
         await using var storyteller = await host.ConnectStorytellerAsync();
-        await CompleteDemoNightAsync(storyteller);
+        await CompleteTestNightAsync(storyteller);
 
         var plan = new StepPlan
         {
@@ -196,7 +196,8 @@ public sealed class TakeoverAndRecoveryTests
             await using var revived = new TestServerHost(
                 slotQuotaSeconds: 3600,
                 seatCount: 2,
-                databasePath: databasePath);
+                databasePath: databasePath,
+                autoStartTestNight: false);
             Assert.Null(revived.Session.GetStorytellerView().Phase); // 停在空状态，不静默继续
 
             await using var storyteller = await revived.ConnectStorytellerAsync();
@@ -209,7 +210,7 @@ public sealed class TakeoverAndRecoveryTests
 
             // 兜底入口：宿主显式重开阶段（数据损失是显式的，不是静默继续）
             var restarted = await revived.ExecuteHostCommandAsync(
-                new StartPhaseCommand { Plan = DemoStepPlan.CreateFirstNight(2) },
+                new StartPhaseCommand { Plan = TestNightPlan.CreateFirstNight(2) },
                 "test-corrupt-restart",
                 CancellationToken.None);
             Assert.Equal(CommandResultKind.Accepted, restarted.Kind);
@@ -221,7 +222,7 @@ public sealed class TakeoverAndRecoveryTests
         }
     }
 
-    private static async Task CompleteDemoNightAsync(HubConnection storyteller)
+    private static async Task CompleteTestNightAsync(HubConnection storyteller)
     {
         var view = await storyteller.InvokeAsync<StorytellerViewDto>("GetStorytellerView");
         var guard = 0;
@@ -229,13 +230,13 @@ public sealed class TakeoverAndRecoveryTests
         {
             var result = await storyteller.InvokeAsync<CommandResultDto>(
                 "ForceAdvance",
-                "测试：结束演示夜",
-                $"test-clear-demo-{guard}");
+                "测试：结束测试夜",
+                $"test-clear-night-{guard}");
             Assert.Equal("Accepted", result.Kind);
             view = await storyteller.InvokeAsync<StorytellerViewDto>("GetStorytellerView");
         }
 
-        Assert.True(view.PlanCompleted, "演示夜应被强推走完");
+        Assert.True(view.PlanCompleted, "启动测试夜应被强推走完");
     }
 
     private static void DeleteFiles(string databasePath)

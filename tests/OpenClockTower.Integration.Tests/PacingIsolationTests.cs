@@ -34,7 +34,7 @@ public sealed class PacingIsolationTests
 
         var view = await TestServerHost.WaitForViewAsync(storyteller, v => v.PlanCompleted, TimeSpan.FromSeconds(10));
         Assert.NotNull(view);
-        Assert.True(view!.PlanCompleted, "演示夜应走完（含黎明槽位）");
+        Assert.True(view!.PlanCompleted, "测试夜应走完（含黎明槽位）");
 
         var events = await host.Store.ReadEventsAsync(TestServerHost.GameId, 0, CancellationToken.None);
         var entered = events
@@ -42,7 +42,7 @@ public sealed class PacingIsolationTests
             .Select(item => item.RecordedAt)
             .ToArray();
         var completedAt = events
-            .Single(item => item.Event is PhaseCompletedEvent { PlanLabel: "demo:night-1" })
+            .Single(item => item.Event is PhaseCompletedEvent { PlanLabel: "test:night-1" })
             .RecordedAt;
 
         Assert.Equal(4, entered.Length); // 行动槽位 + 2 个空槽位 + 黎明
@@ -117,7 +117,7 @@ public sealed class PacingIsolationTests
             .Select(item => item.RecordedAt)
             .ToArray();
         var completedAt = events
-            .Single(item => item.Event is PhaseCompletedEvent { PlanLabel: "demo:night-1" })
+            .Single(item => item.Event is PhaseCompletedEvent { PlanLabel: "test:night-1" })
             .RecordedAt;
         var durations = Durations([.. entered, completedAt]);
 
@@ -166,17 +166,17 @@ public sealed class PacingIsolationTests
         await using var seat2 = await host.ConnectSeatAsync(new SeatId(2), observerMessages.Enqueue);
         await using var storyteller = await host.ConnectStorytellerAsync();
 
-        // 先把演示夜强推走完（两个变体一致处理，不影响被测时间线）
-        var demoView = await storyteller.InvokeAsync<StorytellerViewDto>("GetStorytellerView");
+        // 先把启动时的测试夹具夜强推走完（两个变体一致处理，不影响被测时间线）
+        var testView = await storyteller.InvokeAsync<StorytellerViewDto>("GetStorytellerView");
         var guard = 0;
-        while (!demoView.PlanCompleted && guard++ < 10)
+        while (!testView.PlanCompleted && guard++ < 10)
         {
             var forced = await storyteller.InvokeAsync<CommandResultDto>(
                 "ForceAdvance",
-                "测试：清理演示夜",
+                "测试：清理测试夜",
                 $"test-clear-{guard}");
             Assert.Equal("Accepted", forced.Kind);
-            demoView = await storyteller.InvokeAsync<StorytellerViewDto>("GetStorytellerView");
+            testView = await storyteller.InvokeAsync<StorytellerViewDto>("GetStorytellerView");
         }
 
         var label = withActor ? "test:actor" : "test:no-actor";
@@ -204,7 +204,7 @@ public sealed class PacingIsolationTests
             CancellationToken.None);
         Assert.Equal(CommandResultKind.Accepted, started.Kind);
 
-        var expectedRequests = withActor ? 2 : 1; // 演示夜 1 条 + 受控夜 1 条
+        var expectedRequests = withActor ? 2 : 1; // 启动测试夜 1 条 + 受控夜 1 条
         if (withActor)
         {
             Assert.True(

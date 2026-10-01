@@ -17,7 +17,8 @@ namespace OpenClockTower.Integration.Tests;
 /// </summary>
 /// <remarks>
 /// 验收规程要求关键链路在**真实运行**里被证明：这里跑的是真宿主、真 Hub 协议与真 SQLite
-/// （临时文件），而不是直接调用领域方法。
+/// （临时文件），而不是直接调用领域方法。生产宿主不再自动开阶段（占位计划已移除），
+/// 需要步骤机的用例由本装置按需开启一个**测试夹具**夜晚（<see cref="TestNightPlan"/>）。
 /// </remarks>
 public sealed class TestServerHost : IAsyncDisposable
 {
@@ -27,11 +28,19 @@ public sealed class TestServerHost : IAsyncDisposable
     private readonly List<HubConnection> _connections = [];
 
     /// <summary>启动一个测试宿主。</summary>
+    /// <param name="slotQuotaSeconds">槽位配额（秒）。</param>
+    /// <param name="seatCount">席位数量（同时用于票据播种与测试夹具计划）。</param>
+    /// <param name="databasePath">SQLite 路径；null 时用临时文件。</param>
+    /// <param name="deleteDatabaseOnDispose">销毁时是否删除库文件。</param>
+    /// <param name="autoStartTestNight">
+    /// 启动后是否开启测试夹具夜晚。恢复失败等待显式重开的场景传 false。
+    /// </param>
     public TestServerHost(
         double slotQuotaSeconds = 3600,
         int seatCount = 3,
         string? databasePath = null,
-        bool deleteDatabaseOnDispose = true)
+        bool deleteDatabaseOnDispose = true,
+        bool autoStartTestNight = true)
     {
         _databasePath = databasePath ?? Path.Combine(Path.GetTempPath(), $"oct-test-{Guid.NewGuid():N}.db");
         _deleteDatabaseOnDispose = deleteDatabaseOnDispose;
@@ -39,12 +48,21 @@ public sealed class TestServerHost : IAsyncDisposable
         {
             builder.UseSetting("GameServer:DatabasePath", _databasePath);
             builder.UseSetting("GameServer:SlotQuotaSeconds", slotQuotaSeconds.ToString(CultureInfo.InvariantCulture));
-            builder.UseSetting("GameServer:DemoSeatCount", seatCount.ToString(CultureInfo.InvariantCulture));
+            builder.UseSetting("GameServer:SeatCount", seatCount.ToString(CultureInfo.InvariantCulture));
             builder.UseSetting("GameServer:PacerIntervalMilliseconds", "50");
         });
 
-        // 触发宿主启动：建库、恢复事件流、播种会话票据、开启演示阶段
+        // 触发宿主启动：建库、恢复事件流、播种会话票据
         _ = _factory.Services;
+
+        // 按需开启测试夹具夜晚：已有阶段（重启恢复等场景）不重开，保持与旧引导行为一致
+        if (autoStartTestNight && Session.GetStorytellerView().Phase is null)
+        {
+            ExecuteHostCommandAsync(
+                new StartPhaseCommand { Plan = TestNightPlan.CreateFirstNight(seatCount) },
+                "test-bootstrap:test-night-1",
+                CancellationToken.None).GetAwaiter().GetResult();
+        }
     }
 
     /// <summary>宿主服务容器。</summary>

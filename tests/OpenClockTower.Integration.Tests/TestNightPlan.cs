@@ -1,0 +1,64 @@
+using OpenClockTower.Kernel;
+
+namespace OpenClockTower.Integration.Tests;
+
+/// <summary>
+/// 集成测试夹具：一个最小夜晚计划（1 个行动槽位 + 空槽位 + 黎明）。
+/// </summary>
+/// <remarks>
+/// <para>
+/// **这是测试夹具，不是规则数据。** 真实的《梦殒春宵》夜晚顺序表在
+/// <c>src/OpenClockTower.Rules</c>；按它建表（含角色分配与行动契约）属结算引擎
+/// （docs/backlog/todo/settlement-engine.md）。夹具只用于驱动请求 / 节奏 / 恢复链路，
+/// 禁止被当成规则，也禁止复制回生产代码。
+/// </para>
+/// <para>
+/// 形状与旧演示表一致：1 个行动槽位（1 号，2 个选项）+ 其余空槽位 + 黎明槽位——
+/// 依赖槽位数量与请求标识的既有验收用例只需替换标识前缀。
+/// </para>
+/// </remarks>
+internal static class TestNightPlan
+{
+    /// <summary>构造测试首夜计划：1 号行动 + 其余空槽位 + 黎明等待。</summary>
+    internal static StepPlan CreateFirstNight(int seatCount)
+    {
+        var actor = new SeatId(1);
+        var slots = new List<StepSlot>
+        {
+            StepSlot.Action(
+                new StepSlotId("test-seat-1"),
+                actor,
+                new ChoicePrompt
+                {
+                    Context = "测试夹具：1 号玩家选择一名玩家",
+                    Options =
+                    [
+                        new DecisionOption { Value = "seat:2", Preview = "选择 2 号玩家" },
+                        new DecisionOption { Value = "seat:3", Preview = "选择 3 号玩家" },
+                    ],
+                    OnNoOption = NoOptionBehavior.Skip,
+                },
+                [
+                    new SeatDependency
+                    {
+                        Seat = actor,
+                        RequiredLife = LifeState.Alive,
+                        RequiredCharacter = new CharacterId("test-character"),
+                    },
+                ]),
+        };
+
+        for (var seat = 2; seat <= seatCount; seat++)
+        {
+            slots.Add(StepSlot.Empty(new StepSlotId($"test-seat-{seat}")));
+        }
+
+        slots.Add(StepSlot.DawnWait(new StepSlotId("test-dawn")));
+        return new StepPlan
+        {
+            Label = "test:night-1",
+            Phase = GamePhase.FirstNight,
+            Slots = slots,
+        };
+    }
+}

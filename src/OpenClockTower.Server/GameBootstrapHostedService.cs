@@ -5,11 +5,18 @@ using OpenClockTower.Application;
 namespace OpenClockTower.Server;
 
 /// <summary>
-/// 启动引导：建库 → 恢复事件流 → 播种会话票据 → （恢复成功时）开启演示阶段。
+/// 启动引导：建库 → 恢复事件流 → 播种会话票据。
 /// </summary>
 /// <remarks>
+/// <para>
+/// 夜晚计划**不在引导阶段自动构建**：真实的《梦殒春宵》夜晚顺序表在 <c>OpenClockTower.Rules</c>，
+/// 按它建表需要角色分配与角色行动契约，属结算引擎（docs/backlog/todo/settlement-engine.md）。
+/// 在那之前，开阶段是宿主 / 说书人的显式动作——引导阶段不伪造计划。
+/// </para>
+/// <para>
 /// 恢复失败时**不自动继续**：记录 Critical 并停在空状态，等说书人 / 宿主显式重建或开新阶段
 /// （D-0014 能力 3：重建失败显式报错、不静默继续）。
+/// </para>
 /// </remarks>
 public sealed class GameBootstrapHostedService : IHostedService
 {
@@ -61,30 +68,21 @@ public sealed class GameBootstrapHostedService : IHostedService
         var setup = await _catalog.FindAsync(_gameId, cancellationToken);
         if (setup is null)
         {
-            setup = GameSetupFactory.Create(_gameId, _options.DemoSeatCount);
+            setup = GameSetupFactory.Create(_gameId, _options.SeatCount);
             await _catalog.SaveAsync(setup, cancellationToken);
             _logger.LogWarning(
-                "已创建演示局（规则数据未接入前的占位）：game={GameId} 席位={SeatCount} 说书人票据={StorytellerTicket} 票据={Tickets}",
+                "已创建单局（会话票据仍是占位实现）：game={GameId} 席位={SeatCount} 说书人票据={StorytellerTicket} 票据={Tickets}",
                 _gameId,
                 setup.Seats.Count,
                 setup.StorytellerTicket,
                 string.Join(",", setup.Seats.Select(seat => $"{seat.Seat.Value}:{seat.Ticket}")));
         }
 
-        if (!restored || _session.GetStorytellerView().Phase is not null)
+        if (restored && _session.GetStorytellerView().Phase is null)
         {
-            return;
+            _logger.LogInformation(
+                "未自动开启夜晚阶段：等待宿主 / 说书人显式开阶段（顺序表数据在 OpenClockTower.Rules，建表属结算引擎）");
         }
-
-        await _session.ExecuteAsync(
-            new CommandEnvelope
-            {
-                Command = new StartPhaseCommand { Plan = DemoStepPlan.CreateFirstNight(_options.DemoSeatCount) },
-                Actor = Actor.Host,
-                IdempotencyKey = "bootstrap:demo-night-1",
-            },
-            cancellationToken);
-        _logger.LogInformation("演示阶段已开启：plan={Plan}", "demo:night-1");
     }
 
     /// <inheritdoc />

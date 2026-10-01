@@ -42,7 +42,7 @@ public sealed class StepMachineHostTests
         Assert.Empty(seat2Voids);
         var request = seat1.First();
         Assert.Equal(1, request.Seat);
-        Assert.Equal("demo:night-1:demo-seat-1", request.RequestId);
+        Assert.Equal("test:night-1:test-seat-1", request.RequestId);
         Assert.NotEmpty(request.Options);
     }
 
@@ -107,7 +107,7 @@ public sealed class StepMachineHostTests
 
         Assert.NotNull(view.Pending);
         Assert.Equal(1, view.Pending!.Seat);
-        Assert.Equal("demo-seat-1", view.Pending.SlotId);
+        Assert.Equal("test-seat-1", view.Pending.SlotId);
         Assert.Equal(0, view.Pending.SlotIndex);
         Assert.NotNull(view.Pending.WaitingSeconds);
         Assert.True(view.Pending.WaitingSeconds > 0.5, "等待时长应随真实时间增长");
@@ -307,7 +307,7 @@ public sealed class StepMachineHostTests
         Assert.DoesNotContain(otherRequestId, seat2Json, StringComparison.Ordinal);
         Assert.DoesNotContain("slot", seat2Json, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("planlabel", seat2Json, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("demo:night-1", seat2Json, StringComparison.Ordinal);
+        Assert.DoesNotContain("test:night-1", seat2Json, StringComparison.Ordinal);
 
         var seat1Bundle = host.Bundles[new SeatId(1)];
         Assert.Contains(
