@@ -18,6 +18,15 @@ public sealed record SeatStateChangedInput : StepMachineInput
     /// <summary>本次观测到的角色；null = 未观测（不参与判定）。</summary>
     public CharacterId? Character { get; init; }
 
+    /// <summary>本次观测到的阵营；null = 未观测（不参与判定）。</summary>
+    public Alignment? Alignment { get; init; }
+
+    /// <summary>本次观测到的醉酒状态；null = 未观测（不参与判定）。</summary>
+    public DrunkState? Drunk { get; init; }
+
+    /// <summary>本次观测到的中毒状态；null = 未观测（不参与判定）。</summary>
+    public PoisonState? Poison { get; init; }
+
     /// <summary>变化原因（谁的能力 / 哪个效果 / 人工修正）。</summary>
     public required string Reason { get; init; }
 

@@ -18,6 +18,15 @@ public sealed record SeatStateChangedEvent : GameEvent
     /// <summary>变化后的角色；null = 本次未观测。</summary>
     public CharacterId? Character { get; init; }
 
+    /// <summary>变化后的阵营；null = 本次未观测。</summary>
+    public Alignment? Alignment { get; init; }
+
+    /// <summary>变化后的醉酒状态；null = 本次未观测。</summary>
+    public DrunkState? Drunk { get; init; }
+
+    /// <summary>变化后的中毒状态；null = 本次未观测。</summary>
+    public PoisonState? Poison { get; init; }
+
     /// <summary>变化原因。</summary>
     public required string Reason { get; init; }
 

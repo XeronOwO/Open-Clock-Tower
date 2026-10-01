@@ -1,7 +1,7 @@
 namespace OpenClockTower.Kernel;
 
 /// <summary>
-/// 即时型效果：生效当下改变局面，事后**不因来源失效而回滚**。
+/// 即时型效果：生效当下改变局面，事后**不因来源失效而回滚**；带完整归因——谁施加、用哪个能力、作用对象是谁。
 /// </summary>
 /// <remarks>
 /// <para>
@@ -18,8 +18,14 @@ public sealed record InstantaneousEffect
     /// <summary>效果标识。</summary>
     public required EffectId Id { get; init; }
 
-    /// <summary>产生这条效果的玩家席位。</summary>
+    /// <summary>施加者（产生这条效果的玩家席位）。</summary>
     public required SeatId Source { get; init; }
+
+    /// <summary>产生这条效果的能力。</summary>
+    public required AbilityId Ability { get; init; }
+
+    /// <summary>作用对象（这条效果落在谁身上）。</summary>
+    public required SeatId Target { get; init; }
 
     /// <summary>
     /// 已生效的即时型效果不会因来源之后死亡/醉酒/中毒而撤销。

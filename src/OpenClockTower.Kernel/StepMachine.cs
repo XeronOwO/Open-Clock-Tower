@@ -133,6 +133,14 @@ public static class StepMachine
             {
                 Block = new StepBlock { Reason = blocked.Reason },
             },
+
+            // 状态账的事件：进同一条事件流，但步骤机状态不由它们改变
+            // （座位状态变化对步骤机的影响是"作废依赖失效的挂起请求"，在 Handle 阶段已经处理完）。
+            PersistentEffectAppliedEvent => Require(state, gameEvent),
+            PersistentEffectTerminatedEvent => Require(state, gameEvent),
+            InstantaneousEffectAppliedEvent => Require(state, gameEvent),
+            MadnessRequirementIssuedEvent => Require(state, gameEvent),
+
             _ => throw new InvalidOperationException($"未知事件类型：{gameEvent.GetType().Name}"),
         };
     }
@@ -293,6 +301,18 @@ public static class StepMachine
 
     private static StepMachineOutcome HandleSeatStateChanged(StepMachineState state, SeatStateChangedInput input)
     {
+        if (input.Life is null
+            && input.Character is null
+            && input.Alignment is null
+            && input.Drunk is null
+            && input.Poison is null)
+        {
+            return Reject(
+                state,
+                StepMachineRejectionReason.UnexpectedInput,
+                "座位状态变化至少要给出一个观测维度");
+        }
+
         var events = new List<GameEvent>
         {
             new SeatStateChangedEvent
@@ -300,6 +320,9 @@ public static class StepMachine
                 Seat = input.Seat,
                 Life = input.Life,
                 Character = input.Character,
+                Alignment = input.Alignment,
+                Drunk = input.Drunk,
+                Poison = input.Poison,
                 Reason = input.Reason,
                 CausedBy = input.CausedBy,
             },

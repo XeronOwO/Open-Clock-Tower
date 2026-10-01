@@ -92,7 +92,73 @@ public static class ProjectionMapper
         CurrentSlotActor = view.CurrentSlotActor?.Value,
         CurrentSlotContext = view.CurrentSlotContext,
         RecentSeatChanges = view.RecentSeatChanges.Select(ToDto).ToArray(),
+        Seats = view.Seats.Select(ToDto).ToArray(),
+        Effects =
+        [
+            .. view.PersistentEffects.Select(effect => ToDto(effect)),
+            .. view.InstantaneousEffects.Select(effect => ToDto(effect)),
+        ],
     };
+
+    /// <summary>状态账一行 → DTO：只列已观测的维度，未观测的维度不出现。</summary>
+    public static SeatStateDto ToDto(SeatStateEntry entry)
+    {
+        var facts = new List<SeatStateFactDto>(capacity: 5);
+        AddFact(facts, "Life", entry.Life);
+        AddFact(facts, "Character", entry.Character);
+        AddFact(facts, "Alignment", entry.Alignment);
+        AddFact(facts, "Drunk", entry.Drunk);
+        AddFact(facts, "Poison", entry.Poison);
+
+        return new SeatStateDto
+        {
+            Seat = entry.Seat.Value,
+            Facts = [.. facts],
+            Madnesses = [.. entry.Madnesses.Select(requirement => requirement.ProveToBe)],
+        };
+    }
+
+    /// <summary>持续型效果 → DTO（含终止原因；未终止时终止字段为空）。</summary>
+    public static EffectDto ToDto(PersistentEffect effect) => new()
+    {
+        EffectId = effect.Id.Value,
+        Kind = "Persistent",
+        Ability = effect.Ability.Value,
+        Source = effect.Source.Value,
+        Target = effect.Target.Value,
+        Terminated = effect.IsTerminated,
+        TerminationKind = effect.Termination?.Kind.ToString(),
+        TerminationReason = effect.Termination?.Reason,
+        TerminationCausedBy = effect.Termination?.CausedBy?.Value,
+    };
+
+    /// <summary>即时型效果 → DTO（即时型不回滚，因此没有终止字段）。</summary>
+    public static EffectDto ToDto(InstantaneousEffect effect) => new()
+    {
+        EffectId = effect.Id.Value,
+        Kind = "Instantaneous",
+        Ability = effect.Ability.Value,
+        Source = effect.Source.Value,
+        Target = effect.Target.Value,
+        Terminated = false,
+    };
+
+    private static void AddFact<T>(List<SeatStateFactDto> facts, string dimension, StateFact<T>? fact)
+        where T : struct
+    {
+        if (fact is null)
+        {
+            return;
+        }
+
+        facts.Add(new SeatStateFactDto
+        {
+            Dimension = dimension,
+            Value = fact.Value.ToString() ?? string.Empty,
+            Reason = fact.Reason,
+            CausedBy = fact.CausedBy?.Value,
+        });
+    }
 
     /// <summary>状态变化记录 → DTO。</summary>
     public static SeatChangeDto ToDto(SeatChangeSnapshot change) => new()

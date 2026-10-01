@@ -186,6 +186,56 @@ StepMachine（步骤机）
 | 作废 | 座位依赖（`SeatDependency`）失效 → 自动作废并写明原因；说书人可强制作废 |
 | 推送 | SignalR 定向单播；断线重连 = 快照 + 补齐 + **重投未响应请求**；说书人变更也推送（不需要轮询） |
 
+### 2.8 状态账与效果归因链（D-0015）
+
+> 回答"这一步为什么会变成这样"。它与 §2.7 的步骤机是**同一条事件流上的两个派生视图**（D-0010）。
+
+```text
+事件流 ──┬─> StepMachineState   推进到哪一步、在等谁
+         └─> GameState（状态账）  谁现在是什么样、身上挂着什么效果、从哪来
+```
+
+| 账里的内容 | 承载 |
+|---|---|
+| 每个席位的已知态（角色 / 阵营 / 生死 / 醉酒 / 中毒） | `SeatStateEntry`，五个维度各带一条 `StateFact`（值 + 原因 + 导致方） |
+| 疯狂要求（只由裁定写入，引擎不判定） | `SeatStateEntry.Madnesses`；依据 `rulings.md` R-0003 |
+| 持续型效果 | `PersistentEffect`：施加者 / 能力 / 作用对象 / 终止事实 |
+| 即时型效果 | `InstantaneousEffect`：已生效即不回滚 |
+
+**折叠规则**（`GameStateMachine`，纯计算）：
+
+| 事件 | 账的变动 |
+|---|---|
+| `SeatStateChangedEvent` | 只覆盖**本次观测到的维度**，其余维度连同归因一起保留（六维度独立） |
+| 同上，且观测到来源死亡 | 该席位施加的持续型效果**立即终止**（原因 `SourceDied`），且不可逆 |
+| 同上，且观测到来源换了角色 | 同样立即终止（原因 `SourceLostAbility`，依据《重要细节》二-7） |
+| 同上，来源醉酒 / 中毒 | **不终止**，只是 `IsOperative` 变 false；来源恢复即继续生效（同一效果，不是重新施加） |
+| `PersistentEffectAppliedEvent` / `InstantaneousEffectAppliedEvent` | 记入效果账（含施加者与作用对象） |
+| `PersistentEffectTerminatedEvent` | 只用于折叠推导不出来的终止（如说书人强制作废） |
+
+**边界与失败姿态**：
+
+- 未观测 ≠ 默认值：维度为 null，`IsOperative` 返回 `null`（无法判定），**不猜**；
+  `OperativeEffectsOn` 只收"确实生效"的，无法判定的不进结果。
+- 空事件流 = 空账（"还没观测到任何东西"是合法状态）。
+- 顺序损坏（终止不存在的效果、重复终止、重复施加同一条持续型效果、不带任何维度的状态变化）**显式抛错**。
+- **维度翻转不属于账本**（D-0015）：账本只报"哪条效果终止了"，
+  把目标的中毒改回健康必须有另一条状态变化事件。
+
+**写入方**：现阶段是说书人上报（`ApplySeatStateCommand` / `GameHub.ReportSeatState`）；
+结算引擎落地后由引擎产出同样的事件。**效果事件的产生方目前还不存在**（结算引擎未建）——
+本轮交付的是契约、折叠与查询，内核测试与后续引擎可直接使用。
+
+**已落地映射（2026-10-02）**：
+
+| 概念 | 实现 |
+|---|---|
+| 状态账 | `GameState`（`Seats` / `PersistentEffects` / `InstantaneousEffects`）+ `SeatStateEntry` |
+| 逐维度归因 | `StateFact<T>`（值 / 原因 / 导致方） |
+| 效果归因 | `PersistentEffect` / `InstantaneousEffect` 的 `Source` / `Ability` / `Target` / `Termination` |
+| 折叠 | `GameStateMachine.Apply` / `Fold`（与 `StepMachine.Apply` 同一套路数） |
+| 说书人视图 | `StorytellerView.Seats` / `PersistentEffects` / `InstantaneousEffects`；玩家投影里**没有**它（D-0012） |
+
 ## 3. 数据流：命令 → 事件 → 投影
 
 ```text
@@ -268,14 +318,14 @@ StepMachine（步骤机）
 
 | 模块 | 说明 | 状态 |
 |---|---|---|
-| `OpenClockTower.Kernel` | 纯规则内核 | 已建（六状态 + 效果生命周期 + 两本账 + 裁定点契约 + 步骤机/操作请求/事件模型；不含结算与角色） |
+| `OpenClockTower.Kernel` | 纯规则内核 | 已建（六状态 + 效果生命周期 + 两本账 + 裁定点契约 + 步骤机/操作请求/事件模型 + 状态账与效果归因；不含结算与角色） |
 | `OpenClockTower.Rules` | 梦殒春宵角色、剧本、相克数据 | 项目已建，内容未写 |
 | `OpenClockTower.Application` | 命令/查询/裁定编排 | 已建（四道闸、会话编排、投影与重连包、房间重建；`GameSession`） |
 | `OpenClockTower.Contracts` | 前后端共享契约（由 OpenAPI 生成前端客户端） | 已建（SignalR 推送与命令回执 DTO） |
 | `OpenClockTower.Server` | ASP.NET Core 宿主、SignalR、EF Core | 已建（定向单播、EF Core + SQLite 事件/快照/回执/票据、服务端节拍器；演示步骤表是占位） |
-| `tests/OpenClockTower.Kernel.Tests` | 内核行为测试 | 已建（63 条：六状态 13 / 效果 8 / 两本账 8 / 裁定点与疯狂 6 / 步骤机与操作请求 28） |
-| `tests/OpenClockTower.NormativeGates.Tests` | 把规范写成会失败的测试 | 已建（8 条门禁；本轮新增两条并逐条见红） |
-| `tests/OpenClockTower.Integration.Tests` | 多客户端端到端 | 已建（22 条：真实宿主 + 真实 SignalR 客户端；含真实进程重启与损坏载荷恢复证据） |
+| `tests/OpenClockTower.Kernel.Tests` | 内核行为测试 | 已建（83 条：六状态 13 / 效果 8 / 两本账 8 / 裁定点与疯狂 6 / 步骤机与操作请求 28 / 状态账与效果归因 20） |
+| `tests/OpenClockTower.NormativeGates.Tests` | 把规范写成会失败的测试 | 已建（9 条门禁；新增「效果终止必须带原因」并做先红后绿） |
+| `tests/OpenClockTower.Integration.Tests` | 多客户端端到端 | 已建（24 条：真实宿主 + 真实 SignalR 客户端；含真实进程重启、损坏载荷恢复与状态账重启恢复证据） |
 | `web/` | Vue 3 + TS 前端 | 未建 |
 | `tools/` | 抓取、索引、数据生成 | 已建（`fetch-wiki.ps1`：79 页快照 + SHA256 索引） |
 
@@ -291,6 +341,7 @@ StepMachine（步骤机）
 | 程序集级依赖方向 | 编译产物里实际存在的向上引用（补 csproj 检查的盲区） |
 | 请求无超时 | `OperationRequest` 契约里出现超时 / 时间字段（D-0011 硬约束 3） |
 | 玩家投影无进度 | 玩家投影 / 请求 DTO 出现轮次、槽位、进度字段（D-0013 §5） |
+| 效果终止带原因 | 内核里出现无参 `Terminate()`——终止必须可归因（票据「说书人上帝视角」第 2 条） |
 
 ## 7. 相关阅读
 

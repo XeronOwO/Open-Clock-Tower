@@ -41,4 +41,10 @@ public sealed record StorytellerViewDto
 
     /// <summary>最近的状态变化（含原因与归因，最新在后）。</summary>
     public required SeatChangeDto[] RecentSeatChanges { get; init; }
+
+    /// <summary>状态账：每个已观测席位的六维度已知态与逐维度归因。</summary>
+    public required SeatStateDto[] Seats { get; init; }
+
+    /// <summary>效果归因链（含已终止的效果）。</summary>
+    public required EffectDto[] Effects { get; init; }
 }

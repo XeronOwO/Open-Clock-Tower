@@ -33,6 +33,10 @@ public sealed class GameSession
     private readonly List<SeatChangeSnapshot> _recentSeatChanges = [];
 
     private StepMachineState? _machine;
+
+    /// <summary>状态账（六维度已知态 + 效果归因）。与步骤机同源折叠，见 <see cref="GameStateMachine"/>。</summary>
+    private GameState _state = GameState.Empty;
+
     private long _lastSequence;
     private DateTimeOffset? _slotStartedAt;
     private DateTimeOffset? _pendingRequestSince;
@@ -66,12 +70,14 @@ public sealed class GameSession
             {
                 var storedEvents = await _store.ReadEventsAsync(GameId, afterSequence: 0, cancellationToken);
                 var machine = default(StepMachineState);
+                var state = GameState.Empty;
                 var lastSequence = 0L;
                 var lastSlotEnteredAt = default(DateTimeOffset?);
 
                 foreach (var stored in storedEvents)
                 {
                     machine = StepMachine.Apply(machine, stored.Event);
+                    state = GameStateMachine.Apply(state, stored.Event);
                     lastSequence = stored.Sequence;
                     if (stored.Event is SlotEnteredEvent)
                     {
@@ -80,6 +86,7 @@ public sealed class GameSession
                 }
 
                 _machine = machine;
+                _state = state;
                 _lastSequence = lastSequence;
                 _slotStartedAt = lastSlotEnteredAt;
                 RecoverPendingSince(storedEvents, machine);
@@ -97,6 +104,7 @@ public sealed class GameSession
             {
                 // 事件流损坏：停在空状态，但保留序号连续性——新事件不得与库里旧行的主键冲突
                 _machine = null;
+                _state = GameState.Empty;
                 _lastSequence = await _store.FindLastSequenceAsync(GameId, cancellationToken);
                 _slotStartedAt = null;
                 _pendingRequestSince = null;
@@ -191,6 +199,7 @@ public sealed class GameSession
         {
             return GameProjection.ForStoryteller(
                 _machine,
+                _state,
                 _lastSequence,
                 _pendingRequestSince,
                 _clock.UtcNow,
@@ -302,6 +311,7 @@ public sealed class GameSession
             _machine = kernelOutcome.State;
             _lastSequence = sequence;
             Track(drafts, recordedAt);
+            AppendToStateLedger(drafts);
 
             var notifications = GameNotificationBuilder.Build(kernelOutcome.Events, previousMachine);
             _logger.LogInformation(
@@ -382,9 +392,11 @@ public sealed class GameSession
         try
         {
             var storedEvents = await _store.ReadEventsAsync(GameId, afterSequence: 0, cancellationToken);
-            var rebuilt = storedEvents.Count == 0
-                ? null
-                : StepMachine.Fold(storedEvents.Select(item => item.Event));
+            var eventStream = storedEvents.Select(item => item.Event).ToArray();
+            var rebuilt = eventStream.Length == 0 ? null : StepMachine.Fold(eventStream);
+
+            // 状态账与步骤机同源折叠：同一条事件流，两个派生视图必须一起重算，否则重建后账会陈旧。
+            var rebuiltState = GameStateMachine.Fold(eventStream);
             var machineEquivalent = StepMachineStateComparer.AreEquivalent(_machine, rebuilt);
             bool? snapshotEquivalent;
             try
@@ -424,6 +436,7 @@ public sealed class GameSession
                 cancellationToken);
 
             _machine = rebuilt;
+            _state = rebuiltState;
             _lastSequence = lastSequence;
             RecoverTrackers(storedEvents, rebuilt);
             RecoverRecentSeatChanges(storedEvents);
@@ -557,6 +570,9 @@ public sealed class GameSession
             Seat = seat.Seat,
             Life = seat.Life,
             Character = seat.Character,
+            Alignment = seat.Alignment,
+            Drunk = seat.Drunk,
+            Poison = seat.Poison,
             Reason = seat.Reason,
             CausedBy = seat.CausedBy,
         },
@@ -609,6 +625,17 @@ public sealed class GameSession
                     AppendRecentSeatChange(seatChanged, draft.Sequence, recordedAt);
                     break;
             }
+        }
+    }
+
+    /// <summary>
+    /// 把本批事件折进状态账。与步骤机状态同源、同一批事件：提交了就必须折，否则账会掉队。
+    /// </summary>
+    private void AppendToStateLedger(IReadOnlyList<StoredEventDraft> drafts)
+    {
+        foreach (var draft in drafts)
+        {
+            _state = GameStateMachine.Apply(_state, draft.Event);
         }
     }
 

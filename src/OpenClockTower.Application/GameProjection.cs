@@ -27,9 +27,10 @@ public static class GameProjection
         };
     }
 
-    /// <summary>说书人视图（含卡点时长与状态变化归因；时长由应用层时钟算出）。</summary>
+    /// <summary>说书人视图（含卡点时长、状态账与状态变化归因；时长由应用层时钟算出）。</summary>
     public static StorytellerView ForStoryteller(
         StepMachineState? machine,
+        GameState state,
         long sequence,
         DateTimeOffset? pendingSince,
         DateTimeOffset now,
@@ -63,6 +64,9 @@ public static class GameProjection
             CurrentSlotActor = machine?.CurrentSlot?.Actor,
             CurrentSlotContext = machine?.CurrentSlot?.Prompt?.Context,
             RecentSeatChanges = recentSeatChanges,
+            Seats = state.Seats,
+            PersistentEffects = state.PersistentEffects,
+            InstantaneousEffects = state.InstantaneousEffects,
         };
     }
 }

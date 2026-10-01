@@ -13,6 +13,8 @@ public sealed class EffectLifecycleTests
 {
     private static readonly EffectId SharedEffect = new("test-effect");
     private static readonly SeatId SourceSeat = new(2);
+    private static readonly SeatId TargetSeat = new(3);
+    private static readonly AbilityId SharedAbility = new("test-ability");
 
     /// <summary>持续型效果只在来源存活且清醒健康时生效。</summary>
     /// <remarks>
@@ -31,7 +33,7 @@ public sealed class EffectLifecycleTests
         PoisonState poison,
         bool expected)
     {
-        var effect = new PersistentEffect { Id = SharedEffect, Source = SourceSeat };
+        var effect = Persistent(SharedEffect);
 
         Assert.Equal(expected, effect.IsOperative(Seat(life: life, drunk: drunk, poison: poison)));
     }
@@ -45,7 +47,7 @@ public sealed class EffectLifecycleTests
     [Fact]
     public void PersistentEffect_Resumes_WhenSourceSobernsUp_WithoutBeingReapplied()
     {
-        var effect = new PersistentEffect { Id = SharedEffect, Source = SourceSeat };
+        var effect = Persistent(SharedEffect);
         var drunkSource = Seat(drunk: DrunkState.Drunk);
         var soberSource = drunkSource with { Drunk = DrunkState.Sober };
 
@@ -67,12 +69,16 @@ public sealed class EffectLifecycleTests
     [Fact]
     public void PersistentEffect_IsTerminatedBySourceDeath_AndStaysTerminated()
     {
-        var effect = new PersistentEffect { Id = SharedEffect, Source = SourceSeat };
+        var effect = Persistent(SharedEffect);
         var deadSource = Seat(life: LifeState.Dead);
 
         Assert.False(effect.IsOperative(deadSource));
 
-        var terminated = effect.Terminate();
+        var terminated = effect.Terminate(new EffectTermination
+        {
+            Kind = EffectTerminationKind.SourceDied,
+            Reason = "来源死亡",
+        });
         var sourceAliveAgain = Seat(life: LifeState.Alive);
 
         Assert.True(terminated.IsTerminated);
@@ -87,8 +93,14 @@ public sealed class EffectLifecycleTests
     [Fact]
     public void InstantaneousEffect_IsNotRolledBack_WhenSourceIsImpaired()
     {
-        var instantaneous = new InstantaneousEffect { Id = SharedEffect, Source = SourceSeat };
-        var persistent = new PersistentEffect { Id = new EffectId("same-source-persistent"), Source = SourceSeat };
+        var instantaneous = new InstantaneousEffect
+        {
+            Id = SharedEffect,
+            Source = SourceSeat,
+            Ability = SharedAbility,
+            Target = TargetSeat,
+        };
+        var persistent = Persistent(new EffectId("same-source-persistent"));
 
         var poisonedSource = Seat(poison: PoisonState.Poisoned);
         var deadSource = Seat(life: LifeState.Dead);
@@ -99,4 +111,12 @@ public sealed class EffectLifecycleTests
         Assert.True(instantaneous.RemainsInEffect());
         Assert.False(persistent.IsOperative(deadSource));
     }
+
+    private static PersistentEffect Persistent(EffectId id) => new()
+    {
+        Id = id,
+        Source = SourceSeat,
+        Ability = SharedAbility,
+        Target = TargetSeat,
+    };
 }

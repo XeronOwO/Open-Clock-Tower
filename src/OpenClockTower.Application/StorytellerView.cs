@@ -48,4 +48,16 @@ public sealed record StorytellerView
 
     /// <summary>最近的状态变化（含原因与归因，最新在后）。</summary>
     public required IReadOnlyList<SeatChangeSnapshot> RecentSeatChanges { get; init; }
+
+    /// <summary>
+    /// 状态账：每个已观测席位的六维度已知态与**逐维度归因**（谁、因何）。
+    /// 这是上帝视角要回答"这一步为什么是这样"的地方；玩家投影里没有它（D-0012 §4.3）。
+    /// </summary>
+    public required IReadOnlyList<SeatStateEntry> Seats { get; init; }
+
+    /// <summary>持续型效果（谁施加、用哪个能力、作用于谁、是否已终止及终止原因）。</summary>
+    public required IReadOnlyList<PersistentEffect> PersistentEffects { get; init; }
+
+    /// <summary>即时型效果（已生效即不回滚）。</summary>
+    public required IReadOnlyList<InstantaneousEffect> InstantaneousEffects { get; init; }
 }

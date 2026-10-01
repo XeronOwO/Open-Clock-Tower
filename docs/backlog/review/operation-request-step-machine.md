@@ -175,8 +175,10 @@ Kestrel 真实进程 + 真实 TCP SignalR 客户端（完整输出在 `artifacts
 4. EF Core 目前用 `EnsureCreated`；首个可部署版本前补迁移。
 5. 演示步骤表是显式占位，不得当成《梦殒春宵》规则。
 6. **说书人上帝视角**（每步状态归因 + 最终计算结论）已单独立票
-   `docs/backlog/todo/storyteller-step-insights.md`；本票据只落了数据面
+   `docs/backlog/in-progress/storyteller-step-insights.md`；本票据只落了数据面
    （`SeatStateChangedEvent` + `RecentSeatChanges` / `CurrentSlotActor` / `CurrentSlotContext`）。
+   该票的**第二片**（状态账 + 效果归因链）已落地，事件模型由 16 种扩到 20 种，
+   `SeatStateChangedEvent` 由 2 个观测维度扩到 5 个。
 7. 事件载荷损坏时房间以**空状态**启动（记 Critical、保留序号连续性），续屋需宿主显式重开阶段：
    这是明示的数据损失，不是静默继续；"从损坏事件流里抢救部分状态"不在本票据范围。
 8. 说书人视图的"能力是否生效 / 信息是否可能错误"目前**不计算**：它需要结算引擎与角色实现，

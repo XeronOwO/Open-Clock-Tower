@@ -160,30 +160,31 @@ public sealed class GameHub : Hub<IGameClient>
 
     /// <summary>
     /// 说书人上报座位状态变化（含原因与归因；依赖失效时内核自动作废挂起请求）。
-    /// 只上报本次观测到的维度，至少给一个；不给的维度不参与判定。
+    /// 只上报本次观测到的维度，至少给一个；不给的维度不参与判定，也不会进状态账。
     /// </summary>
     public Task<CommandResultDto> ReportSeatState(
         int seat,
         string? life,
         string? character,
+        string? alignment,
+        string? drunk,
+        string? poison,
         string reason,
         int? causedBySeat,
         string idempotencyKey)
     {
-        if (life is null && character is null)
-        {
-            throw new HubException("至少需要给出一个观测到的状态维度（生死或角色）");
-        }
+        var parsedLife = ParseDimension<LifeState>(life, "生死");
+        var parsedAlignment = ParseDimension<Alignment>(alignment, "阵营");
+        var parsedDrunk = ParseDimension<DrunkState>(drunk, "醉酒状态");
+        var parsedPoison = ParseDimension<PoisonState>(poison, "中毒状态");
 
-        LifeState? parsedLife = null;
-        if (life is not null)
+        if (parsedLife is null
+            && character is null
+            && parsedAlignment is null
+            && parsedDrunk is null
+            && parsedPoison is null)
         {
-            if (!Enum.TryParse<LifeState>(life, ignoreCase: false, out var lifeValue) || !Enum.IsDefined(lifeValue))
-            {
-                throw new HubException($"未知的生死状态：{life}");
-            }
-
-            parsedLife = lifeValue;
+            throw new HubException("至少需要给出一个观测到的状态维度（生死 / 角色 / 阵营 / 醉酒 / 中毒）");
         }
 
         return ExecuteAsync(
@@ -193,10 +194,30 @@ public sealed class GameHub : Hub<IGameClient>
                 Seat = new SeatId(seat),
                 Life = parsedLife,
                 Character = character is null ? null : new CharacterId(character),
+                Alignment = parsedAlignment,
+                Drunk = parsedDrunk,
+                Poison = parsedPoison,
                 Reason = reason,
                 CausedBy = causedBySeat is { } causer ? new SeatId(causer) : null,
             },
             idempotencyKey);
+    }
+
+    /// <summary>把客户端传来的维度字符串解析成枚举；null = 本次未观测，非法值当场拒绝。</summary>
+    private static TEnum? ParseDimension<TEnum>(string? raw, string label)
+        where TEnum : struct, Enum
+    {
+        if (raw is null)
+        {
+            return null;
+        }
+
+        if (!Enum.TryParse<TEnum>(raw, ignoreCase: false, out var value) || !Enum.IsDefined(value))
+        {
+            throw new HubException($"未知的{label}：{raw}");
+        }
+
+        return value;
     }
 
     /// <summary>说书人 / 宿主按事件日志重建房间（D-0014 恢复）。</summary>

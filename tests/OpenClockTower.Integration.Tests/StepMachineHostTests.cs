@@ -235,6 +235,9 @@ public sealed class StepMachineHostTests
             1,
             "Dead",
             "clockmaker",
+            null,
+            null,
+            null,
             "测试：1 号被投毒致死",
             2,
             "test-seatchange-1");
@@ -268,6 +271,9 @@ public sealed class StepMachineHostTests
             1,
             null,
             "soldier",
+            null,
+            null,
+            null,
             "测试：1 号角色被交换",
             null,
             "test-seatchar-1");

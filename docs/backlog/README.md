@@ -61,9 +61,10 @@ todo/  →  in-progress/  →  review/  →  done/
 ### Todo
 
 - [零信任安全模型](todo/zero-trust-security-model.md) — **High** — 鉴权两级凭据 + 操作四道闸 + 服务端强制投影，负向测试为主
-- [说书人上帝视角：每步状态信息、归因与最终计算结论](todo/storyteller-step-insights.md) — **High** — 每步摘要 + 状态变化归因 + 能力生效结论；依赖结算引擎
 
 ### In progress
+
+- [说书人上帝视角：每步状态信息、归因与最终计算结论](in-progress/storyteller-step-insights.md) — **High** — 每步摘要 + 状态变化归因 + 能力生效结论；依赖结算引擎
 
 ### Review
 
