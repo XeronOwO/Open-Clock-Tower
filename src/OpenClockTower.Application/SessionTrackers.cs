@@ -3,11 +3,11 @@ using OpenClockTower.Kernel;
 namespace OpenClockTower.Application;
 
 /// <summary>
-/// 会话级派生跟踪器：最近状态变化、当前槽位起算时刻、当前请求挂起时刻。
+/// 会话级派生跟踪器：最近状态变化、最近一次能力结算、发给各席位的信息结果、卡点起算与槽位起算。
 /// </summary>
 /// <remarks>
 /// <para>
-/// 三者都是**由事件流派生**的，不是新的事实来源：重启恢复走 <see cref="Recover"/>，
+/// 这些都是**由事件流派生**的，不是新的事实来源：重启恢复走 <see cref="Recover"/>，
 /// 提交后推进走 <see cref="Update"/>，事件流损坏停在空状态时走 <see cref="Clear"/>。
 /// </para>
 /// <para>
@@ -19,6 +19,7 @@ public sealed class SessionTrackers
     private const int RecentSeatChangeCapacity = 20;
 
     private readonly List<SeatChangeSnapshot> _recentSeatChanges = [];
+    private readonly List<(SeatId Recipient, InformationResultSnapshot Result)> _informationResults = [];
 
     /// <summary>当前槽位的起算时刻；没有起点信息（异常数据）时为 null，此时宁可不动。</summary>
     public DateTimeOffset? SlotStartedAt { get; private set; }
@@ -26,8 +27,15 @@ public sealed class SessionTrackers
     /// <summary>当前挂起请求的起算时刻；没有挂起时为 null（说书人视图据此算"卡了多久"）。</summary>
     public DateTimeOffset? PendingRequestSince { get; private set; }
 
-    /// <summary>最近的状态变化（最新在后）；说书人视图的"刚发生了什么"。</summary>
+    /// <summary>最近的状态变化（最新在后）；说书人视图的「刚发生了什么」。</summary>
     public IReadOnlyList<SeatChangeSnapshot> RecentSeatChanges => [.. _recentSeatChanges];
+
+    /// <summary>最近一次能力结算的结论；还没有结算过时为 null。</summary>
+    public AbilityResolutionSnapshot? LastResolution { get; private set; }
+
+    /// <summary>取某个席位收到的全部信息结果（按发生顺序）；投影时只把它给收件人。</summary>
+    public IReadOnlyList<InformationResultSnapshot> InformationResultsFor(SeatId seat) =>
+        [.. _informationResults.Where(item => item.Recipient == seat).Select(item => item.Result)];
 
     /// <summary>把一批**已提交**的事件记进跟踪器。</summary>
     /// <param name="drafts">刚提交的事件草案（带序号与发生时刻）。</param>
@@ -56,6 +64,12 @@ public sealed class SessionTrackers
                 case SeatStateChangedEvent seatChanged:
                     AppendSeatChange(seatChanged, draft.Sequence, recordedAt);
                     break;
+                case AbilityResolvedEvent resolved:
+                    LastResolution = ToSnapshot(resolved, draft.Sequence);
+                    break;
+                case InformationResultIssuedEvent information:
+                    AppendInformationResult(information, draft.Sequence);
+                    break;
             }
         }
     }
@@ -68,6 +82,8 @@ public sealed class SessionTrackers
         ArgumentNullException.ThrowIfNull(storedEvents);
 
         _recentSeatChanges.Clear();
+        _informationResults.Clear();
+        LastResolution = null;
         SlotStartedAt = null;
         PendingRequestSince = null;
 
@@ -89,6 +105,12 @@ public sealed class SessionTrackers
                 case SeatStateChangedEvent seatChanged:
                     AppendSeatChange(seatChanged, stored.Sequence, stored.RecordedAt);
                     break;
+                case AbilityResolvedEvent resolved:
+                    LastResolution = ToSnapshot(resolved, stored.Sequence);
+                    break;
+                case InformationResultIssuedEvent information:
+                    AppendInformationResult(information, stored.Sequence);
+                    break;
             }
         }
 
@@ -105,8 +127,31 @@ public sealed class SessionTrackers
     public void Clear()
     {
         _recentSeatChanges.Clear();
+        _informationResults.Clear();
+        LastResolution = null;
         SlotStartedAt = null;
         PendingRequestSince = null;
+    }
+
+    private static AbilityResolutionSnapshot ToSnapshot(AbilityResolvedEvent resolved, long sequence) =>
+        new()
+        {
+            Actor = resolved.Actor,
+            Ability = resolved.Ability,
+            Effective = resolved.Effective,
+            Malfunction = resolved.Malfunction,
+            Note = resolved.Note,
+            Sequence = sequence,
+        };
+
+    private void AppendInformationResult(InformationResultIssuedEvent information, long sequence)
+    {
+        _informationResults.Add((information.Recipient, new InformationResultSnapshot
+        {
+            Ability = information.Ability,
+            Content = information.Content,
+            Sequence = sequence,
+        }));
     }
 
     private void AppendSeatChange(SeatStateChangedEvent seatChanged, long sequence, DateTimeOffset recordedAt)
@@ -121,6 +166,7 @@ public sealed class SessionTrackers
             Poison = seatChanged.Poison,
             Reason = seatChanged.Reason,
             CausedBy = seatChanged.CausedBy,
+            EffectId = seatChanged.EffectId,
             Sequence = sequence,
             RecordedAt = recordedAt,
         });

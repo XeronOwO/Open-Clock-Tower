@@ -28,15 +28,30 @@ public sealed record StepSlot
     /// <summary>给行动者的选择契约；仅 Action 槽位需要。</summary>
     public ChoicePrompt? Prompt { get; init; }
 
+    /// <summary>
+    /// 行动者的角色 slug（建表时写入）；结算时按它从注入目录取结算契约。
+    /// </summary>
+    /// <remarks>
+    /// 这里刻意只存**数据**不存行为对象：计划随 <see cref="PhaseStartedEvent"/> 进事件流、
+    /// 步骤机状态进 JSON 快照，接口类型的成员过不了序列化往返。
+    /// </remarks>
+    public CharacterId? Owner { get; init; }
+
     /// <summary>座位依赖：任一不满足即自动作废该请求。</summary>
     public IReadOnlyList<SeatDependency> Dependencies { get; init; } = [];
 
     /// <summary>构造一个角色行动槽位。</summary>
+    /// <param name="id">槽位标识。</param>
+    /// <param name="actor">行动者席位。</param>
+    /// <param name="prompt">选择契约。</param>
+    /// <param name="dependencies">座位依赖。</param>
+    /// <param name="owner">行动者角色（结算契约的检索键）。</param>
     public static StepSlot Action(
         StepSlotId id,
         SeatId actor,
         ChoicePrompt prompt,
-        IReadOnlyList<SeatDependency>? dependencies = null) =>
+        IReadOnlyList<SeatDependency>? dependencies = null,
+        CharacterId? owner = null) =>
         new()
         {
             Id = id,
@@ -44,6 +59,7 @@ public sealed record StepSlot
             Actor = actor,
             Prompt = prompt,
             Dependencies = dependencies ?? [],
+            Owner = owner,
         };
 
     /// <summary>构造一个空槽位（角色不在场 / 已死亡 / 被跳过）。</summary>

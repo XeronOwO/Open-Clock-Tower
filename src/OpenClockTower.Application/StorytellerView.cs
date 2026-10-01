@@ -60,4 +60,13 @@ public sealed record StorytellerView
 
     /// <summary>即时型效果（已生效即不回滚）。</summary>
     public required IReadOnlyList<InstantaneousEffect> InstantaneousEffects { get; init; }
+
+    /// <summary>能力使用账本：用过没有、生效过没有（架构 §2.2）。</summary>
+    public required IReadOnlyList<AbilityUse> AbilityUses { get; init; }
+
+    /// <summary>失效账本：每次「能力未正常生效」及原因（R-0004，数学家要的数字来源）。</summary>
+    public required IReadOnlyList<Malfunction> Malfunctions { get; init; }
+
+    /// <summary>最近一次能力结算的结论（是否生效、为什么没生效）；还没有结算过时为 null。</summary>
+    public AbilityResolutionSnapshot? LastResolution { get; init; }
 }

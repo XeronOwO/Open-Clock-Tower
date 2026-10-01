@@ -13,4 +13,7 @@ public sealed record PlayerViewDto
 
     /// <summary>发给该玩家的挂起请求；没有时为 null。</summary>
     public OperationRequestDto? PendingRequest { get; init; }
+
+    /// <summary>发给该玩家的信息类结果（他自己能力得到的信息），按发生顺序。</summary>
+    public required IReadOnlyList<InformationResultDto> InformationResults { get; init; }
 }

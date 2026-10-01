@@ -11,8 +11,18 @@ namespace OpenClockTower.Application;
 public static class GameProjection
 {
     /// <summary>某个玩家的投影。</summary>
-    public static PlayerView ForSeat(StepMachineState? machine, long sequence, SeatId seat)
+    /// <param name="machine">步骤机状态。</param>
+    /// <param name="sequence">投影对应的事件序号。</param>
+    /// <param name="seat">接收者席位。</param>
+    /// <param name="informationResults">派生自事件流、发给该席位的信息结果。</param>
+    public static PlayerView ForSeat(
+        StepMachineState? machine,
+        long sequence,
+        SeatId seat,
+        IReadOnlyList<InformationResultSnapshot> informationResults)
     {
+        ArgumentNullException.ThrowIfNull(informationResults);
+
         var pending = machine?.PendingRequest;
         var deliverable = pending is { Status: OperationRequestStatus.Pending } && pending.Addressee == seat
             ? pending
@@ -23,18 +33,20 @@ public static class GameProjection
             Seat = seat,
             Phase = machine?.Plan.Phase,
             PendingRequest = deliverable,
+            InformationResults = informationResults,
             Sequence = sequence,
         };
     }
 
-    /// <summary>说书人视图（含卡点时长、状态账与状态变化归因；时长由应用层时钟算出）。</summary>
+    /// <summary>说书人视图（含卡点时长、状态账、效果归因与能力结算结论；时长由应用层时钟算出）。</summary>
     public static StorytellerView ForStoryteller(
         StepMachineState? machine,
         GameState state,
         long sequence,
         DateTimeOffset? pendingSince,
         DateTimeOffset now,
-        IReadOnlyList<SeatChangeSnapshot> recentSeatChanges)
+        IReadOnlyList<SeatChangeSnapshot> recentSeatChanges,
+        AbilityResolutionSnapshot? lastResolution = null)
     {
         PendingRequestSummary? pendingSummary = null;
         if (machine?.PendingRequest is { Status: OperationRequestStatus.Pending } request)
@@ -67,6 +79,9 @@ public static class GameProjection
             Seats = state.Seats,
             PersistentEffects = state.PersistentEffects,
             InstantaneousEffects = state.InstantaneousEffects,
+            AbilityUses = state.AbilityUses.Entries,
+            Malfunctions = state.Malfunctions.Entries,
+            LastResolution = lastResolution,
         };
     }
 }

@@ -1,5 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using OpenClockTower.Application;
+using OpenClockTower.Kernel;
+using OpenClockTower.Rules;
 using OpenClockTower.Server;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -20,10 +22,15 @@ builder.Services.AddDbContextFactory<GameDbContext>(options => options.UseSqlite
     $"Data Source={Path.Combine(builder.Environment.ContentRootPath, serverOptions.DatabasePath)}"));
 builder.Services.AddSingleton<IGameStore, EfGameStore>();
 builder.Services.AddSingleton<IGameCatalog, EfGameCatalog>();
+// 规则层的角色契约：提示目录与结算目录指向同一批实现（NightActions），常驻效果来源单列。
+builder.Services.AddSingleton<IAbilityResolutionCatalog>(NightActions.Resolutions);
+builder.Services.AddSingleton<IReadOnlyList<IStandingEffectSource>>(NightActions.StandingEffects);
 builder.Services.AddSingleton(provider => new GameSession(
     provider.GetRequiredService<GameId>(),
     provider.GetRequiredService<IGameStore>(),
     provider.GetRequiredService<IGameCatalog>(),
+    provider.GetRequiredService<IAbilityResolutionCatalog>(),
+    provider.GetRequiredService<IReadOnlyList<IStandingEffectSource>>(),
     provider.GetRequiredService<IClock>(),
     provider.GetRequiredService<PacingOptions>(),
     provider.GetRequiredService<ILogger<GameSession>>()));

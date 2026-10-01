@@ -24,4 +24,7 @@ public sealed record GameNotification
 
     /// <summary>作废内容（Voided 时非空）。</summary>
     public OperationRequestVoid? Void { get; init; }
+
+    /// <summary>信息类结果（InformationResultIssued 时非空）。</summary>
+    public InformationResultIssuedEvent? Information { get; init; }
 }

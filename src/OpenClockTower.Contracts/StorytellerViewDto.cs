@@ -30,6 +30,12 @@ public sealed record StorytellerViewDto
     /// <summary>等待说书人裁定的裁定点标识；没有时为 null。</summary>
     public string? AwaitingDecisionId { get; init; }
 
+    /// <summary>等待裁定的上下文（为什么需要说书人决定，D-0002）。</summary>
+    public string? AwaitingDecisionContext { get; init; }
+
+    /// <summary>等待裁定的合法选项（引擎算出的候选）；无选项的裁定点为 null。</summary>
+    public DecisionOptionDto[]? AwaitingDecisionOptions { get; init; }
+
     /// <summary>阻塞原因；没有阻塞时为 null。</summary>
     public string? BlockedReason { get; init; }
 
@@ -47,4 +53,13 @@ public sealed record StorytellerViewDto
 
     /// <summary>效果归因链（含已终止的效果）。</summary>
     public required EffectDto[] Effects { get; init; }
+
+    /// <summary>能力使用账本（用过没有 / 生效过没有，架构 §2.2）。</summary>
+    public required AbilityUseDto[] AbilityUses { get; init; }
+
+    /// <summary>失效账本（未正常生效及原因分类，R-0004）。</summary>
+    public required MalfunctionDto[] Malfunctions { get; init; }
+
+    /// <summary>最近一次能力结算的结论；还没有结算过时为 null。</summary>
+    public AbilityResolutionDto? LastResolution { get; init; }
 }

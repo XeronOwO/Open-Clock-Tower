@@ -31,4 +31,10 @@ public sealed record PlayerEvent
 
     /// <summary>作废原因与说明（仅 RequestVoided）。</summary>
     public OperationRequestVoid? Void { get; init; }
+
+    /// <summary>
+    /// 发给他的信息类结果（仅 InformationResultIssued）。
+    /// 事件里的「可能为假」标记**不下发**：那会让玩家立刻知道自己醉酒 / 中毒（《重要细节》三-1）。
+    /// </summary>
+    public InformationResultIssuedEvent? Information { get; init; }
 }

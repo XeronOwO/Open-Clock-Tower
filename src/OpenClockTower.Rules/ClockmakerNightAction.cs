@@ -12,14 +12,24 @@ namespace OpenClockTower.Rules;
 /// 「在计算距离时，距离值等同于：恶魔与爪牙这两名玩家之间的玩家数量+1」。
 /// </para>
 /// <para>
-/// 平台不替说书人算（D-0002）：本契约产出**说书人裁定点**（无玩家选项 + StorytellerDecides）。
-/// 信息的下发与「可能错误」提示属票据后续项，本契约只到「该谁说、该说什么」。
+/// 平台不替说书人算（D-0002）：本契约产出**说书人裁定点**（无玩家选项 + StorytellerDecides），
+/// 裁定结果原样记成信息结果，下发给钟表匠本人；能力未生效时标「可能错误」（只说书人可见）。
 /// </para>
 /// </remarks>
-internal sealed class ClockmakerNightAction : INightAction
+internal sealed class ClockmakerNightAction : INightAction, IAbilityResolution
 {
-    public CharacterId Character => new("clockmaker");
+    /// <summary>钟表匠信息能力标识。</summary>
+    public static readonly AbilityId InfoAbility = new("clockmaker");
 
+    private static readonly CharacterId Clockmaker = new("clockmaker");
+
+    /// <inheritdoc />
+    public CharacterId Character => Clockmaker;
+
+    /// <inheritdoc />
+    public AbilityId Ability => InfoAbility;
+
+    /// <inheritdoc />
     public ChoicePrompt BuildPrompt(NightActionContext context)
     {
         ArgumentNullException.ThrowIfNull(context);
@@ -30,5 +40,33 @@ internal sealed class ClockmakerNightAction : INightAction
             Options = [],
             OnNoOption = NoOptionBehavior.StorytellerDecides,
         };
+    }
+
+    /// <inheritdoc />
+    public ChoicePrompt? BuildPostChoiceDecision(AbilityResolutionContext context) => null;
+
+    /// <inheritdoc />
+    public IReadOnlyList<GameEvent> Resolve(AbilityResolutionContext context)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+
+        if (string.IsNullOrWhiteSpace(context.Decision))
+        {
+            throw new InvalidOperationException("钟表匠的信息必须由说书人裁定给出，不能是空的");
+        }
+
+        return
+        [
+            new InformationResultIssuedEvent
+            {
+                Recipient = context.Actor,
+                Ability = Ability,
+                Content = context.Decision,
+                MayBeFalse = !context.Outcome.Effective,
+                Note = context.Outcome.Effective
+                    ? "说书人按场上情况算出的实时信息"
+                    : context.Outcome.Note,
+            },
+        ];
     }
 }

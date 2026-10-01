@@ -24,15 +24,20 @@ public sealed class GameSession
 {
     private readonly IGameStore _store;
     private readonly IGameCatalog _catalog;
+    private readonly IAbilityResolutionCatalog _abilities;
+    private readonly IReadOnlyList<IStandingEffectSource> _standingEffects;
     private readonly IClock _clock;
     private readonly PacingOptions _pacing;
     private readonly ILogger<GameSession> _logger;
     private readonly SemaphoreSlim _gate = new(initialCount: 1, maxCount: 1);
 
-    /// <summary>会话级派生跟踪器：卡点起算、槽位起算、最近状态变化。</summary>
+    /// <summary>会话级派生跟踪器：卡点起算、槽位起算、最近状态变化、结算结论与信息结果。</summary>
     private readonly SessionTrackers _trackers = new();
 
     private StepMachineState? _machine;
+
+    /// <summary>服务端持有的会话信息（席位名单）；读一次后缓存（记录不可变）。</summary>
+    private GameSetup? _setup;
 
     /// <summary>状态账（五个可观测维度的已知态 + 效果归因）。与步骤机同源折叠，见 <see cref="GameStateMachine"/>。</summary>
     private GameState _state = GameState.Empty;
@@ -48,6 +53,8 @@ public sealed class GameSession
         GameId gameId,
         IGameStore store,
         IGameCatalog catalog,
+        IAbilityResolutionCatalog abilities,
+        IReadOnlyList<IStandingEffectSource> standingEffects,
         IClock clock,
         PacingOptions pacing,
         ILogger<GameSession> logger)
@@ -55,6 +62,8 @@ public sealed class GameSession
         GameId = gameId;
         _store = store;
         _catalog = catalog;
+        _abilities = abilities;
+        _standingEffects = standingEffects;
         _clock = clock;
         _pacing = pacing;
         _logger = logger;
@@ -181,7 +190,11 @@ public sealed class GameSession
         _gate.Wait();
         try
         {
-            return GameProjection.ForSeat(_machine, _lastSequence, seat);
+            return GameProjection.ForSeat(
+                _machine,
+                _lastSequence,
+                seat,
+                _trackers.InformationResultsFor(seat));
         }
         finally
         {
@@ -201,7 +214,8 @@ public sealed class GameSession
                 _lastSequence,
                 _trackers.PendingRequestSince,
                 _clock.UtcNow,
-                _trackers.RecentSeatChanges);
+                _trackers.RecentSeatChanges,
+                _trackers.LastResolution);
         }
         finally
         {
@@ -242,7 +256,11 @@ public sealed class GameSession
             return new ReconnectBundle
             {
                 Sequence = _lastSequence,
-                View = GameProjection.ForSeat(_machine, _lastSequence, seat),
+                View = GameProjection.ForSeat(
+                    _machine,
+                    _lastSequence,
+                    seat,
+                    _trackers.InformationResultsFor(seat)),
                 EventsSince = events,
             };
         }
@@ -257,7 +275,7 @@ public sealed class GameSession
         try
         {
             var receipt = await _store.FindReceiptAsync(GameId, envelope.IdempotencyKey, cancellationToken);
-            var setup = await LoadSetupIfNeededAsync(envelope, cancellationToken);
+            var setup = await EnsureSetupAsync(cancellationToken);
             var decision = CommandGatePipeline.Evaluate(envelope, _machine, receipt, setup);
 
             switch (decision.Kind)
@@ -275,7 +293,14 @@ public sealed class GameSession
                 return await RebuildAsync(envelope, rebuild, cancellationToken);
             }
 
-            var dispatch = GameCommandDispatcher.Dispatch(envelope, _machine, setup, _state, GameId, _logger);
+            var settlement = SessionSettlement.BuildContext(_setup, _state, _abilities, _standingEffects);
+            var dispatch = GameCommandDispatcher.Dispatch(
+                envelope,
+                _machine,
+                setup,
+                settlement,
+                GameId,
+                _logger);
             if (dispatch.Rejection is not null)
             {
                 return Reject(envelope, dispatch.Rejection);
@@ -298,6 +323,30 @@ public sealed class GameSession
             // 先把这一步的账在内存里折出来：折不动就整条命令失败，绝不落库。
             // 否则会留下"事件已落库、账没折"的中间态，而重投会被当成 Duplicate —— 分叉永远暴露不出来。
             var nextState = FoldLedger(_state, drafts);
+
+            // 固定点对账：常驻效果（诺-达鲺的中毒等）与由效果压制的维度重算（D-0015 推论 1）。
+            // 派生事件与业务事件**同一次提交**落库；重放只折事件，恢复不重算。
+            var reconciliation = SessionSettlement.Reconcile(nextState, settlement);
+            foreach (var diagnostic in reconciliation.Diagnostics)
+            {
+                _logger.LogDebug(
+                    "结算对账本次未重算：{Diagnostic} game={GameId}",
+                    diagnostic,
+                    GameId);
+            }
+
+            foreach (var derived in reconciliation.Events)
+            {
+                sequence++;
+                drafts.Add(new StoredEventDraft
+                {
+                    Sequence = sequence,
+                    Event = derived,
+                    RecordedAt = recordedAt,
+                });
+            }
+
+            nextState = reconciliation.State;
 
             await _store.CommitAsync(
                 new GameCommit
@@ -327,11 +376,12 @@ public sealed class GameSession
 
             var notifications = GameNotificationBuilder.Build(dispatch.Events, previousMachine);
             _logger.LogInformation(
-                "命令已接受：game={GameId} actor={ActorKind} command={Command} 事件数={EventCount} 序号={Sequence} 挂起={Held} clientSequence={ClientSequence}",
+                "命令已接受：game={GameId} actor={ActorKind} command={Command} 事件数={EventCount} 派生事件数={DerivedCount} 序号={Sequence} 挂起={Held} clientSequence={ClientSequence}",
                 GameId,
                 envelope.Actor.Kind,
                 envelope.Command.GetType().Name,
                 dispatch.Events.Count,
+                reconciliation.Events.Count,
                 _lastSequence,
                 _machine?.IsHeld,
                 envelope.ClientSequence);
@@ -498,13 +548,12 @@ public sealed class GameSession
         }
     }
 
-    /// <summary>开局分配与开夜需要会话席位名单；其余命令不读目录，避免给命令路径加无谓 IO。</summary>
-    private async Task<GameSetup?> LoadSetupIfNeededAsync(
-        CommandEnvelope envelope,
-        CancellationToken cancellationToken) =>
-        envelope.Command is AssignCharactersCommand or StartNightCommand
-            ? await _catalog.FindAsync(GameId, cancellationToken)
-            : null;
+    /// <summary>
+    /// 取本局会话信息（席位名单）：读一次目录后缓存（记录不可变）。
+    /// 结算的座次、常驻效果对账、开夜与分配都靠它；读不到时相关命令照旧显式拒绝。
+    /// </summary>
+    private async Task<GameSetup?> EnsureSetupAsync(CancellationToken cancellationToken) =>
+        _setup ??= await _catalog.FindAsync(GameId, cancellationToken);
 
     private CommandResult Reject(CommandEnvelope envelope, CommandRejection rejection)
     {

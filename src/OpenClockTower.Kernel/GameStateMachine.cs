@@ -51,8 +51,10 @@ public static class GameStateMachine
                 InstantaneousEffects = [.. current.InstantaneousEffects, applied.Effect],
             },
             MadnessRequirementIssuedEvent issued => ApplyMadnessRequirementIssued(current, issued),
+            AbilityResolvedEvent resolved => ApplyAbilityResolved(current, resolved),
 
             // 与状态账无关的事件：步骤机推进、请求生命周期、控制模式、裁定点。
+            // 信息类结果是发给单个玩家的秘密，不进账（只在事件流里按收件人投影）。
             // 它们照样进事件流，只是不改账里的六维度与效果。
             PhaseStartedEvent => current,
             SlotEnteredEvent => current,
@@ -68,6 +70,7 @@ public static class GameStateMachine
             OperationRequestIssuedEvent => current,
             OperationRequestAnsweredEvent => current,
             OperationRequestVoidedEvent => current,
+            InformationResultIssuedEvent => current,
 
             _ => throw new InvalidOperationException($"未知事件类型：{gameEvent.GetType().Name}"),
         };
@@ -108,7 +111,13 @@ public static class GameStateMachine
         StateFact<T>? previous)
         where T : struct =>
         observed is { } value
-            ? new StateFact<T> { Value = value, Reason = changed.Reason, CausedBy = changed.CausedBy }
+            ? new StateFact<T>
+            {
+                Value = value,
+                Reason = changed.Reason,
+                CausedBy = changed.CausedBy,
+                EffectId = changed.EffectId,
+            }
             : previous;
 
     /// <summary>
@@ -229,6 +238,22 @@ public static class GameStateMachine
         var entry = existing with { Madnesses = [.. existing.Madnesses, requirement] };
         return ReplaceSeat(state, entry);
     }
+
+    /// <summary>
+    /// 能力结算 → 两本账：一次使用无论是否生效都记「用过」（三-3：醉酒 / 中毒期间使用即被浪费）；
+    /// 只有未正常生效才进失效账本，分类原样保留（R-0004；Open 的留在待核对清单里）。
+    /// </summary>
+    private static GameState ApplyAbilityResolved(GameState state, AbilityResolvedEvent resolved) =>
+        state with
+        {
+            AbilityUses = state.AbilityUses.RecordUse(
+                resolved.Actor,
+                resolved.Ability,
+                resolved.Effective),
+            Malfunctions = resolved.Malfunction is { } kind
+                ? state.Malfunctions.Record(resolved.Actor, resolved.Ability, kind)
+                : state.Malfunctions,
+        };
 
     /// <summary>写入一行并保持座位按席位号升序——顺序确定是重放可对齐的前提（D-0008）。</summary>
     private static GameState ReplaceSeat(GameState state, SeatStateEntry entry)

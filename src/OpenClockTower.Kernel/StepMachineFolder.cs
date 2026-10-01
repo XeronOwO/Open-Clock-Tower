@@ -80,6 +80,8 @@ internal static class StepMachineFolder
             PersistentEffectTerminatedEvent => state,
             InstantaneousEffectAppliedEvent => state,
             MadnessRequirementIssuedEvent => state,
+            AbilityResolvedEvent => state,
+            InformationResultIssuedEvent => state,
 
             _ => throw new InvalidOperationException($"未知事件类型：{gameEvent.GetType().Name}"),
         };

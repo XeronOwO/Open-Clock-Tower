@@ -29,17 +29,19 @@ internal static class StepFixture
         Slots = slots,
     };
 
-    /// <summary>构造一个行动槽位。</summary>
+    /// <summary>构造一个行动槽位；<paramref name="owner"/> 是结算契约的检索键。</summary>
     internal static StepSlot Action(
         string id,
         int seat,
         ChoicePrompt? prompt = null,
-        IReadOnlyList<SeatDependency>? dependencies = null) =>
+        IReadOnlyList<SeatDependency>? dependencies = null,
+        string? owner = null) =>
         StepSlot.Action(
             new StepSlotId(id),
             new SeatId(seat),
             prompt ?? Prompt("option-a", "option-b"),
-            dependencies);
+            dependencies,
+            owner is null ? null : new CharacterId(owner));
 
     /// <summary>构造一个空槽位。</summary>
     internal static StepSlot Empty(string id) => StepSlot.Empty(new StepSlotId(id));

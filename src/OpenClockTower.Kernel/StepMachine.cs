@@ -22,6 +22,11 @@ namespace OpenClockTower.Kernel;
 /// <see cref="Handle"/> 与 <see cref="Apply"/> 成对：前者产出事件，后者把事件折叠回状态；
 /// 测试断言两者一致，重放（重启恢复、断线补齐）因此可信。
 /// </para>
+/// <para>
+/// **结算**：行动槽位的「玩家选完 / 说书人裁完」由 <see cref="AbilitySettlement"/> 收口——
+/// 它读状态账判生效、按槽位角色取契约产出事件；信息类能力会在这里再挂一次
+/// <see cref="DecisionPoint"/>（D-0002）。判不了（账不全）时整条输入被拒绝，不猜（D-0015）。
+/// </para>
 /// </remarks>
 public static class StepMachine
 {
@@ -48,22 +53,33 @@ public static class StepMachine
         return AppliedFromNothing(events);
     }
 
-    /// <summary>处理一条输入；非法输入被拒绝而不抛异常。</summary>
-    public static StepMachineOutcome Handle(StepMachineState state, StepMachineInput input)
+    /// <summary>
+    /// 处理一条输入（无结算上下文）：等价于传 <see cref="SettlementContext.Empty"/>——
+    /// 只推进步骤机、不产出结算事件，供只关心推进的夹具使用。
+    /// </summary>
+    public static StepMachineOutcome Handle(StepMachineState state, StepMachineInput input) =>
+        Handle(state, SettlementContext.Empty, input);
+
+    /// <summary>处理一条输入；非法输入被拒绝而不抛异常。结算要读账与契约，走 <paramref name="context"/>。</summary>
+    public static StepMachineOutcome Handle(
+        StepMachineState state,
+        SettlementContext context,
+        StepMachineInput input)
     {
         ArgumentNullException.ThrowIfNull(state);
+        ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(input);
 
         return input switch
         {
             SlotQuotaElapsedInput => HandleQuotaElapsed(state),
-            SubmitResponseInput response => HandleResponse(state, response),
+            SubmitResponseInput response => HandleResponse(state, context, response),
             VoidRequestInput voidRequest => HandleVoid(state, voidRequest),
             ForceAdvanceInput forceAdvance => HandleForceAdvance(state, forceAdvance),
             TakeOverInput takeOver => HandleControlChange(state, ControlMode.StorytellerTakeover, takeOver.Reason),
             ReleaseControlInput release => HandleControlChange(state, ControlMode.Automatic, release.Reason),
             SeatStateChangedInput seatChanged => HandleSeatStateChanged(state, seatChanged),
-            ResolveDecisionPointInput resolve => HandleDecisionResolved(state, resolve),
+            ResolveDecisionPointInput resolve => HandleDecisionResolved(state, context, resolve),
             _ => Reject(state, StepMachineRejectionReason.UnexpectedInput, $"未知输入：{input.GetType().Name}"),
         };
     }
@@ -107,7 +123,10 @@ public static class StepMachine
         return Applied(state, WithAutoAdvance(state, events));
     }
 
-    private static StepMachineOutcome HandleResponse(StepMachineState state, SubmitResponseInput input)
+    private static StepMachineOutcome HandleResponse(
+        StepMachineState state,
+        SettlementContext context,
+        SubmitResponseInput input)
     {
         if (state.IsPlanCompleted)
         {
@@ -148,6 +167,42 @@ public static class StepMachine
                 },
             },
         };
+
+        // 玩家选完 → 结算：要么直接产出事件，要么再挂一次「信息类裁定」（D-0002）。
+        if (state.CurrentSlot is { } slot)
+        {
+            var settlement = AbilitySettlement.Plan(
+                slot,
+                state,
+                context,
+                input.OptionValue,
+                decision: null);
+            switch (settlement.Kind)
+            {
+                case AbilitySettlementPlan.PlanKind.Indeterminate:
+                    return Reject(
+                        state,
+                        StepMachineRejectionReason.LedgerIncomplete,
+                        settlement.FailureNote!);
+                case AbilitySettlementPlan.PlanKind.RequiresDecision when settlement.DecisionPrompt is { } prompt:
+                    events.Add(new DecisionPointRaisedEvent
+                    {
+                        SlotId = slot.Id,
+                        DecisionPoint = new DecisionPoint
+                        {
+                            Id = AbilitySettlement.DecisionPointIdOf(state, slot),
+                            Prompt = prompt,
+                        },
+                    });
+                    return Applied(state, events);
+                case AbilitySettlementPlan.PlanKind.Resolved:
+                    events.AddRange(settlement.Events);
+                    break;
+                default:
+                    break;
+            }
+        }
+
         return Applied(state, WithAutoAdvance(state, events));
     }
 
@@ -289,7 +344,10 @@ public static class StepMachine
         return Applied(state, WithAutoAdvance(state, events));
     }
 
-    private static StepMachineOutcome HandleDecisionResolved(StepMachineState state, ResolveDecisionPointInput input)
+    private static StepMachineOutcome HandleDecisionResolved(
+        StepMachineState state,
+        SettlementContext context,
+        ResolveDecisionPointInput input)
     {
         if (state.AwaitingDecision is null)
         {
@@ -313,6 +371,40 @@ public static class StepMachine
                 Note = input.Note,
             },
         };
+
+        // 裁定点属于行动槽位时，裁定本身可能就是这一步的结算输入：
+        // 入口裁定（该步没有玩家选择）与选择后裁定都在这里收口。
+        if (state.CurrentSlot is { } slot)
+        {
+            var choice = state.PendingRequest is
+            {
+                Status: OperationRequestStatus.Answered,
+                Answer: { } answer,
+            } pending && pending.SlotId == slot.Id
+                ? answer.OptionValue
+                : null;
+
+            var settlement = AbilitySettlement.Plan(slot, state, context, choice, input.Decision);
+            switch (settlement.Kind)
+            {
+                case AbilitySettlementPlan.PlanKind.Indeterminate:
+                    return Reject(
+                        state,
+                        StepMachineRejectionReason.LedgerIncomplete,
+                        settlement.FailureNote!);
+                case AbilitySettlementPlan.PlanKind.RequiresDecision:
+                    return Reject(
+                        state,
+                        StepMachineRejectionReason.UnexpectedInput,
+                        "结算契约在已有裁定之后仍要求再说书人裁定一次（契约缺陷）");
+                case AbilitySettlementPlan.PlanKind.Resolved:
+                    events.AddRange(settlement.Events);
+                    break;
+                default:
+                    break;
+            }
+        }
+
         return Applied(state, WithAutoAdvance(state, events));
     }
 
@@ -408,7 +500,7 @@ public static class StepMachine
                     SlotId = slot.Id,
                     DecisionPoint = new DecisionPoint
                     {
-                        Id = new DecisionPointId($"{state.Plan.Label}:{slot.Id}:decision"),
+                        Id = AbilitySettlement.DecisionPointIdOf(state, slot),
                         Prompt = slot.Prompt,
                     },
                 });

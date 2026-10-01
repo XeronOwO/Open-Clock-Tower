@@ -18,4 +18,7 @@ public enum PlayerEventKind
 
     /// <summary>他自己请求的作废与原因。</summary>
     RequestVoided,
+
+    /// <summary>发给他的信息类结果（他自己能力得到的信息）。</summary>
+    InformationResultIssued,
 }

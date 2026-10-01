@@ -29,6 +29,9 @@ public sealed record SeatChangeDto
     /// <summary>导致变化的一方；无人导致时为 null。</summary>
     public int? CausedBy { get; init; }
 
+    /// <summary>本次变化由哪条持续型效果导致；null = 与效果无关（开局分配 / 说书人上报等）。</summary>
+    public string? EffectId { get; init; }
+
     /// <summary>对应事件序号。</summary>
     public required long Sequence { get; init; }
 

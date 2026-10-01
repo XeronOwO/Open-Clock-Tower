@@ -16,12 +16,15 @@ internal static class GameCommandDispatcher
     /// <summary>开局分配事件的固定原因：机器可读，便于在事件流里筛出"设置"而不是"对局中的变化"。</summary>
     private const string SetupAssignmentReason = "setup.assignment";
 
-    /// <summary>分派一条命令；步骤机尚未开启时，只有开始阶段 / 开局分配 / 开夜三类命令会走到这里。</summary>
+    /// <summary>
+    /// 分派一条命令；步骤机尚未开启时，只有开始阶段 / 开局分配 / 开夜三类命令会走到这里。
+    /// <paramref name="settlement"/> 携带当前账、座次与结算契约目录——行动槽位结算要靠它。
+    /// </summary>
     internal static CommandDispatchResult Dispatch(
         CommandEnvelope envelope,
         StepMachineState? machine,
         GameSetup? setup,
-        GameState state,
+        SettlementContext settlement,
         GameId gameId,
         ILogger logger)
     {
@@ -33,12 +36,12 @@ internal static class GameCommandDispatcher
 
         if (envelope.Command is AssignCharactersCommand assign)
         {
-            return DispatchAssignCharacters(assign, setup, state);
+            return DispatchAssignCharacters(assign, setup, settlement.State);
         }
 
         if (envelope.Command is StartNightCommand startNight)
         {
-            return DispatchStartNight(startNight, setup, state, gameId, logger);
+            return DispatchStartNight(startNight, setup, settlement.State, gameId, logger);
         }
 
         if (machine is null)
@@ -62,7 +65,7 @@ internal static class GameCommandDispatcher
             });
         }
 
-        var outcome2 = StepMachine.Handle(machine, input);
+        var outcome2 = StepMachine.Handle(machine, settlement, input);
         if (outcome2.Kind == StepMachineOutcomeKind.Rejected)
         {
             return CommandDispatchResult.Rejected(new CommandRejection
@@ -108,6 +111,9 @@ internal static class GameCommandDispatcher
             }
         }
 
+        // 初始生死 = 存活（R-0015）；初始醉酒 = 清醒、中毒 = 健康（R-0016，依据《重要细节》三-3：
+        // 任意时间点玩家必居二者之一，而开局没有任何醉酒 / 中毒来源）。这是补全初始条件，
+        // 不是运行期把维度耦合在一起：运行期的状态观测仍是一次只报本次观测到的维度。
         var events = command.Assignments
             .OrderBy(assignment => assignment.Seat.Value)
             .Select(assignment => (GameEvent)new SeatStateChangedEvent
@@ -115,6 +121,8 @@ internal static class GameCommandDispatcher
                 Seat = assignment.Seat,
                 Character = assignment.Character,
                 Life = LifeState.Alive,
+                Drunk = DrunkState.Sober,
+                Poison = PoisonState.Healthy,
                 Reason = SetupAssignmentReason,
             })
             .ToArray();

@@ -43,6 +43,15 @@ public sealed record PersistentEffect
     public required CharacterId SourceCharacter { get; init; }
 
     /// <summary>
+    /// 这条效果压制哪个玩家维度（中毒 / 醉酒）；null = 不压制维度（保护、诅咒等）。
+    /// </summary>
+    /// <remarks>
+    /// 「按仍生效的效果重算目标维度」是引擎义务（D-0015 推论 1）——没有这条声明，
+    /// 引擎只能知道「效果终止了」，不知道要把目标的哪一格改回去。
+    /// </remarks>
+    public EffectDimension? Dimension { get; init; }
+
+    /// <summary>
     /// 终止事实（原因分类 + 说明 + 导致方）；null = 尚未终止。
     /// 由来源状态变化推导，或由说书人显式作废，**不可逆**。
     /// </summary>

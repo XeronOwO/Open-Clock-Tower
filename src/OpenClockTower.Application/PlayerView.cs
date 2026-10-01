@@ -20,6 +20,12 @@ public sealed record PlayerView
     /// <summary>只包含发给该席位、且仍在等待响应的请求。</summary>
     public OperationRequest? PendingRequest { get; init; }
 
+    /// <summary>
+    /// 本局发给该席位的信息类结果（自己能力得到的信息），按发生顺序。
+    /// 只含内容；「可能为假」标记只说书人可见（百科《重要细节》三-1：不要告诉玩家他醉酒或中毒）。
+    /// </summary>
+    public required IReadOnlyList<InformationResultSnapshot> InformationResults { get; init; }
+
     /// <summary>投影对应的事件流序号（重连补齐用）。</summary>
     public required long Sequence { get; init; }
 }

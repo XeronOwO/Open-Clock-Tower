@@ -13,4 +13,7 @@ public interface IGameClient
 
     /// <summary>说书人视图发生变化（卡点 / 控制模式 / 阻塞等）。</summary>
     Task ReceiveStorytellerViewChanged(StorytellerViewDto view);
+
+    /// <summary>服务端推给某个玩家的信息类结果（定向单播；只有内容）。</summary>
+    Task ReceiveInformationResult(InformationResultDto information);
 }

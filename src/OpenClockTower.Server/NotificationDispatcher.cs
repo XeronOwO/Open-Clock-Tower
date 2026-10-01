@@ -70,6 +70,28 @@ public sealed class NotificationDispatcher
 
                     break;
 
+                case GameNotificationKind.InformationResultIssued
+                    when notification.Seat is { } informationSeat
+                         && notification.Information is { } information:
+                    if (_registry.TryGetSeatConnection(informationSeat, out var informationConnectionId))
+                    {
+                        await _hub.Clients.Client(informationConnectionId)
+                            .ReceiveInformationResult(ProjectionMapper.ToDto(information));
+                        _logger.LogInformation(
+                            "已推送信息结果：seat={Seat} ability={Ability}",
+                            informationSeat,
+                            information.Ability);
+                    }
+                    else
+                    {
+                        _logger.LogWarning(
+                            "信息结果无在线连接（玩家重连时按序号补齐）：seat={Seat} ability={Ability}",
+                            informationSeat,
+                            information.Ability);
+                    }
+
+                    break;
+
                 case GameNotificationKind.StorytellerViewChanged:
                 case GameNotificationKind.RoomRebuilt:
                     await PushStorytellerViewAsync(cancellationToken);

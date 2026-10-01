@@ -62,6 +62,12 @@ public static class PlayerEventProjection
                     RequestId = voided.RequestId,
                     Void = voided.Void,
                 },
+            InformationResultIssuedEvent information when information.Recipient == seat => new PlayerEvent
+            {
+                Sequence = stored.Sequence,
+                Kind = PlayerEventKind.InformationResultIssued,
+                Information = information,
+            },
             _ => null,
         };
 

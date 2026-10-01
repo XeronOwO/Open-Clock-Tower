@@ -14,4 +14,10 @@ public sealed record SeatStateFactDto
 
     /// <summary>导致这条事实的席位；无人可归因时为空。</summary>
     public int? CausedBy { get; init; }
+
+    /// <summary>
+    /// 支撑这条事实的持续型效果标识（第 6 条的「维度 → 效果链接」）；
+    /// null = 没有效果链接（说书人上报 / 开局分配等）。
+    /// </summary>
+    public string? EffectId { get; init; }
 }

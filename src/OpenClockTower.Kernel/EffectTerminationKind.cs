@@ -18,4 +18,10 @@ public enum EffectTerminationKind
 
     /// <summary>说书人强制作废（D-0014 兜底）。</summary>
     StorytellerVoided,
+
+    /// <summary>
+    /// 常驻效果重算：条件不再满足（例如诺-达鲺的邻近镇民换了人），由引擎终止并补新的效果。
+    /// 与"来源失效"不同——这里终结的是"这条效果的对象 / 条件"，来源本身可能还活着。
+    /// </summary>
+    NoLongerApplies,
 }

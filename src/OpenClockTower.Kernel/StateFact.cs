@@ -24,4 +24,11 @@ public sealed record StateFact<T>
 
     /// <summary>导致这条事实的席位；说书人直接修正等场景可为空。</summary>
     public SeatId? CausedBy { get; init; }
+
+    /// <summary>
+    /// 支撑这条事实的持续型效果；null = 没有效果链接（说书人上报 / 开局分配等）。
+    /// 有了它，面板才能回答「这一格中毒是哪条效果造成的」，并在来源效果终止后提示
+    /// 「效果已终止、维度还没解除」（票据第 6 条）。
+    /// </summary>
+    public EffectId? EffectId { get; init; }
 }

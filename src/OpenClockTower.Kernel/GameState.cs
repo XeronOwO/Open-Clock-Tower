@@ -24,6 +24,12 @@ public sealed record GameState
     /// <summary>即时型效果（已生效即不回滚），按发生顺序。</summary>
     public IReadOnlyList<InstantaneousEffect> InstantaneousEffects { get; init; } = [];
 
+    /// <summary>能力使用账本：用过没有、生效过没有，两件事分开记（架构 §2.2）。</summary>
+    public AbilityUseLedger AbilityUses { get; init; } = new();
+
+    /// <summary>失效账本：每次「能力未正常生效」及原因分类（R-0004）。</summary>
+    public MalfunctionLedger Malfunctions { get; init; } = new();
+
     /// <summary>还没有观测到任何东西的空账。</summary>
     public static GameState Empty { get; } = new();
 

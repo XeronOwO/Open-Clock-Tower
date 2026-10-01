@@ -14,4 +14,7 @@ public enum GameNotificationKind
 
     /// <summary>房间已按事件日志重建完成。</summary>
     RoomRebuilt,
+
+    /// <summary>推给某个玩家的信息类结果（只有内容，「可能为假」不下发）。</summary>
+    InformationResultIssued,
 }

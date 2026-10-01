@@ -28,4 +28,7 @@ public sealed record PlayerEventDto
 
     /// <summary>作废说明（仅 RequestVoided）。</summary>
     public string? VoidNote { get; init; }
+
+    /// <summary>信息类结果（仅 InformationResultIssued；只有内容，没有「可能为假」标记）。</summary>
+    public InformationResultDto? Information { get; init; }
 }

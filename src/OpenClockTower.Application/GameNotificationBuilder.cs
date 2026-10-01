@@ -24,6 +24,15 @@ public static class GameNotificationBuilder
                     });
                     break;
 
+                case InformationResultIssuedEvent information:
+                    notifications.Add(new GameNotification
+                    {
+                        Kind = GameNotificationKind.InformationResultIssued,
+                        Seat = information.Recipient,
+                        Information = information,
+                    });
+                    break;
+
                 case OperationRequestVoidedEvent voided:
                     var addressee = FindAddressee(events, previousMachine, voided.RequestId);
                     if (addressee is { } seat)

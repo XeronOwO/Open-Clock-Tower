@@ -35,6 +35,13 @@ public sealed record SeatChangeSnapshot
     /// <summary>导致变化的一方。</summary>
     public SeatId? CausedBy { get; init; }
 
+    /// <summary>
+    /// 本次变化由哪条持续型效果导致（票据第 6 条的「维度 → 效果链接」）；
+    /// null = 与效果无关（开局分配 / 说书人上报等）。说书人面板据此对**变化本身**追问
+    /// 「这是哪条效果造成的」，不必再去状态账里比对。
+    /// </summary>
+    public EffectId? EffectId { get; init; }
+
     /// <summary>对应事件序号。</summary>
     public required long Sequence { get; init; }
 

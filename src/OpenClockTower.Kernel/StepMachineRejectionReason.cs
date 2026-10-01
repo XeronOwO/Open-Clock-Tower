@@ -28,4 +28,10 @@ public enum StepMachineRejectionReason
 
     /// <summary>未知输入。</summary>
     UnexpectedInput,
+
+    /// <summary>
+    /// 能力是否生效判定不了：行动者的生死 / 醉酒 / 中毒还没观测齐。
+    /// 结算拒绝整条输入，等说书人把状态补上（D-0015：不猜）。
+    /// </summary>
+    LedgerIncomplete,
 }

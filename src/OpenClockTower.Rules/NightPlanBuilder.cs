@@ -178,6 +178,7 @@ public static class NightPlanBuilder
                     RequiredLife = LifeState.Alive,
                     RequiredCharacter = character,
                 },
-            ]), null);
+            ],
+            character), null);
     }
 }

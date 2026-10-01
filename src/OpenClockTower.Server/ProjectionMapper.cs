@@ -44,6 +44,21 @@ public static class ProjectionMapper
         Seat = view.Seat.Value,
         Phase = view.Phase?.ToString() ?? "NotStarted",
         PendingRequest = view.PendingRequest is { } pending ? ToDto(pending) : null,
+        InformationResults = [.. view.InformationResults.Select(ToDto)],
+    };
+
+    /// <summary>信息结果投影 → DTO（只有内容；「可能为假」不出去）。</summary>
+    public static InformationResultDto ToDto(InformationResultSnapshot result) => new()
+    {
+        Ability = result.Ability.Value,
+        Content = result.Content,
+    };
+
+    /// <summary>信息类结果事件 → DTO（只有内容；「可能为假」不出去）。</summary>
+    public static InformationResultDto ToDto(InformationResultIssuedEvent information) => new()
+    {
+        Ability = information.Ability.Value,
+        Content = information.Content,
     };
 
     /// <summary>重连包 → DTO。</summary>
@@ -65,6 +80,7 @@ public static class ProjectionMapper
         OptionValue = playerEvent.OptionValue,
         VoidReason = playerEvent.Void?.Reason.ToString(),
         VoidNote = playerEvent.Void?.Note,
+        Information = playerEvent.Information is { } information ? ToDto(information) : null,
     };
 
     /// <summary>说书人视图 → DTO。</summary>
@@ -88,6 +104,14 @@ public static class ProjectionMapper
             }
             : null,
         AwaitingDecisionId = view.AwaitingDecision?.Id.Value,
+        AwaitingDecisionContext = view.AwaitingDecision?.Prompt.Context,
+        AwaitingDecisionOptions = view.AwaitingDecision is { } decision
+            ? [.. decision.Prompt.Options.Select(option => new DecisionOptionDto
+            {
+                Value = option.Value,
+                Preview = option.Preview,
+            })]
+            : null,
         BlockedReason = view.BlockedReason,
         CurrentSlotActor = view.CurrentSlotActor?.Value,
         CurrentSlotContext = view.CurrentSlotContext,
@@ -98,6 +122,35 @@ public static class ProjectionMapper
             .. view.PersistentEffects.Select(effect => ToDto(effect)),
             .. view.InstantaneousEffects.Select(effect => ToDto(effect)),
         ],
+        AbilityUses =
+        [
+            .. view.AbilityUses.Select(use => new AbilityUseDto
+            {
+                Seat = use.Seat.Value,
+                Ability = use.Ability.Value,
+                Effective = use.Effective,
+            }),
+        ],
+        Malfunctions =
+        [
+            .. view.Malfunctions.Select(malfunction => new MalfunctionDto
+            {
+                Seat = malfunction.Seat.Value,
+                Ability = malfunction.Ability.Value,
+                Kind = malfunction.Kind.ToString(),
+            }),
+        ],
+        LastResolution = view.LastResolution is { } resolution
+            ? new AbilityResolutionDto
+            {
+                Seat = resolution.Actor.Value,
+                Ability = resolution.Ability.Value,
+                Effective = resolution.Effective,
+                Malfunction = resolution.Malfunction?.ToString(),
+                Note = resolution.Note,
+                Sequence = resolution.Sequence,
+            }
+            : null,
     };
 
     /// <summary>状态账一行 → DTO：只列已观测的维度，未观测的维度不出现。</summary>
@@ -158,6 +211,7 @@ public static class ProjectionMapper
             Value = fact.Value.ToString() ?? string.Empty,
             Reason = fact.Reason,
             CausedBy = fact.CausedBy?.Value,
+            EffectId = fact.EffectId?.Value,
         });
     }
 
@@ -172,6 +226,7 @@ public static class ProjectionMapper
         Poison = change.Poison?.ToString(),
         Reason = change.Reason,
         CausedBy = change.CausedBy?.Value,
+        EffectId = change.EffectId?.Value,
         Sequence = change.Sequence,
         RecordedAt = change.RecordedAt,
     };
