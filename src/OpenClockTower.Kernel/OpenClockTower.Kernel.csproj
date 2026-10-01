@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    TFM / Nullable / ImplicitUsings / 警告即错误 等共享设定一律在仓库根 Directory.Build.props，
+    本项目刻意不覆盖任何一条——换 SDK 时只改那一处。
+
+    内核是纯计算层：不得引用 Rules / Application / Contracts / Server，
+    也不得引用任何 IO、时间、随机 API。这两条由 tests/OpenClockTower.NormativeGates.Tests 强制。
+  -->
+</Project>

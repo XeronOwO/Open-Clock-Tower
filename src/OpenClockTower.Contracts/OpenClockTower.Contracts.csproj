@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    契约层：前后端共享的 DTO 与协议形状。
+    刻意不引用任何本项目其它项目——它要能被前端代码生成器与 Server 同时使用而不带入领域逻辑。
+  -->
+</Project>

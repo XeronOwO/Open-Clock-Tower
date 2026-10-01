@@ -1,0 +1,13 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/OpenClockTower.Application/OpenClockTower.Application.csproj" />
+    <Project Path="src/OpenClockTower.Contracts/OpenClockTower.Contracts.csproj" />
+    <Project Path="src/OpenClockTower.Kernel/OpenClockTower.Kernel.csproj" />
+    <Project Path="src/OpenClockTower.Rules/OpenClockTower.Rules.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/OpenClockTower.Integration.Tests/OpenClockTower.Integration.Tests.csproj" />
+    <Project Path="tests/OpenClockTower.Kernel.Tests/OpenClockTower.Kernel.Tests.csproj" />
+    <Project Path="tests/OpenClockTower.NormativeGates.Tests/OpenClockTower.NormativeGates.Tests.csproj" />
+  </Folder>
+</Solution>

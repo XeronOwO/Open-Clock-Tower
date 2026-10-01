@@ -249,16 +249,26 @@ StepMachine（步骤机）
 
 | 模块 | 说明 | 状态 |
 |---|---|---|
-| `OpenClockTower.Kernel` | 纯规则内核 | 未建 |
-| `OpenClockTower.Rules` | 梦殒春宵角色、剧本、相克数据 | 未建 |
-| `OpenClockTower.Application` | 命令/查询/裁定编排 | 未建 |
-| `OpenClockTower.Contracts` | 前后端共享契约（由 OpenAPI 生成前端客户端） | 未建 |
+| `OpenClockTower.Kernel` | 纯规则内核 | 已建（六状态正交已落地） |
+| `OpenClockTower.Rules` | 梦殒春宵角色、剧本、相克数据 | 项目已建，内容未写 |
+| `OpenClockTower.Application` | 命令/查询/裁定编排 | 项目已建，内容未写 |
+| `OpenClockTower.Contracts` | 前后端共享契约（由 OpenAPI 生成前端客户端） | 项目已建，内容未写 |
 | `OpenClockTower.Server` | ASP.NET Core 宿主、SignalR、EF Core | 未建 |
-| `tests/*.Kernel.Tests` | 内核行为测试 | 未建 |
-| `tests/*.NormativeGates.Tests` | 把规范写成会失败的测试 | 未建 |
-| `tests/*.Integration.Tests` | 多客户端端到端 | 未建 |
+| `tests/OpenClockTower.Kernel.Tests` | 内核行为测试 | 已建（六状态不变量 6 条） |
+| `tests/OpenClockTower.NormativeGates.Tests` | 把规范写成会失败的测试 | 已建（4 条门禁，均见过红） |
+| `tests/OpenClockTower.Integration.Tests` | 多客户端端到端 | 已建（暂仅程序集级依赖检查） |
 | `web/` | Vue 3 + TS 前端 | 未建 |
 | `tools/` | 抓取、索引、数据生成 | 未建 |
+
+门禁清单（每条都做过"见红"验证）：
+
+| 门禁 | 拦什么 |
+|---|---|
+| 内核纯净 | `Kernel` 内的时间 / 随机 / IO / 并发等待调用（D-0008） |
+| 依赖方向 | 下层引用上层（csproj 层） |
+| 一文件一顶层类型 | 文件名与类型名失配 |
+| 指令文件体量 | 仓库根之下的 `AGENTS.md` 超过 5,120 字节 |
+| 程序集级依赖方向 | 编译产物里实际存在的向上引用（补 csproj 检查的盲区） |
 
 ## 7. 相关阅读
 

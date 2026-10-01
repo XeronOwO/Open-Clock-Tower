@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 共享编译设定见仓库根 Directory.Build.props -->
+  <ItemGroup>
+    <ProjectReference Include="..\OpenClockTower.Kernel\OpenClockTower.Kernel.csproj" />
+  </ItemGroup>
+
+</Project>

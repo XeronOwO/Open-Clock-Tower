@@ -8,7 +8,8 @@
 做法：**服务端权威状态** + **确定性规则内核**自动推演状态与链式反应，
 但把说书人的自由裁量权完整保留——平台只做 **记录 + 校验 + 推演**，不替说书人拍板。
 
-> **当前状态：骨架阶段。** 仓库已建立规范体系与文档，规则内核与前后端尚未开始。
+> **当前状态：工程骨架阶段。** 规范体系、解决方案、7 个项目与 4 条规范门禁已落地并通过验证；
+> 规则内核只完成了六状态正交这一块，前端与服务端尚未开始。
 > 进度以 [docs/backlog/README.md](docs/backlog/README.md) 为准。
 
 ## 快速了解
@@ -25,16 +26,19 @@
 
 ## 构建
 
-> 尚未验证——解决方案与项目还没建。以下命令是**目标门禁**，见 [AGENTS.md](AGENTS.md)。
+三条门禁全绿才允许提交，见 [AGENTS.md](AGENTS.md)。
 
 ```bash
-dotnet build OpenClockTower.slnx
-dotnet test  OpenClockTower.slnx
-dotnet format OpenClockTower.slnx
+dotnet build OpenClockTower.slnx            # 0 警告 0 错误
+dotnet test  OpenClockTower.slnx            # 12 通过 / 0 失败
+dotnet format OpenClockTower.slnx --verify-no-changes
 ```
 
-需要 .NET SDK 与 Node.js（版本待定，建项目时锁定并写回本节）。
-前端在 `web/`，使用 Vue 3 + TypeScript。
+需要 **.NET SDK 10.0**（实测 10.0.401）与 **Node.js**（实测 v24.14.1 / pnpm 11.7.0）。
+TFM、可空性、警告即错误等共享编译设定集中在 `Directory.Build.props`，包版本集中在
+`Directory.Packages.props`——换 SDK 或升级包时只改这两处。
+
+前端在 `web/`，使用 Vue 3 + TypeScript（**尚未创建**）。
 
 ## 首版范围
 

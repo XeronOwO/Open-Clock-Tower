@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    应用层：用例编排（命令校验、裁定编排、会话协调）。
+    依赖方向：Application → Rules → Kernel，外加只读的 Contracts。
+    绝不允许 Kernel 或 Rules 反向引用本层。
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\OpenClockTower.Kernel\OpenClockTower.Kernel.csproj" />
+    <ProjectReference Include="..\OpenClockTower.Rules\OpenClockTower.Rules.csproj" />
+    <ProjectReference Include="..\OpenClockTower.Contracts\OpenClockTower.Contracts.csproj" />
+  </ItemGroup>
+
+</Project>
