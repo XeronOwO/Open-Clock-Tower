@@ -52,6 +52,35 @@
 
 装置脚本头注释、`backlog/README.md` 索引与相关票据指针已随移库同步。
 
+## 批次 E16（2026-10-06）
+
+冻结版本：`main` @ `2f8c4e6`（跑批期间工作树干净、未改产品代码；本批先给 `verify-pit-hag.mjs` 补 evil-twin 段并提交，再冻结跑批）。
+六个装置同批跑完（一次强制构建 + 真宿主会话，全部前台，取证档）：
+
+- 主装置 `tools/verify-storyteller-panel.mjs`：**162 项断言 + 35 张截图**（`--build` 强制重建）；
+- 麻脸巫婆之夜 `tools/verify-pit-hag.mjs`：**34 项 + 8 张截图**（E15 的 28 项 + 本批新增第三夜「创造镜像双子 → 配对裁定」段 6 项）；
+- 胜负链路 `tools/verify-winloss.mjs`：**20 项 + 3 张截图**；
+- 女巫 `tools/verify-witch.mjs`：**28 项 + 5 张截图**；
+- 处罚处决 `tools/verify-madness.mjs`：**28 项 + 5 张截图**；
+- 零信任 `tools/verify-zero-trust.mjs`：**44 项**（无截图档）。
+
+冻结版门禁复跑：`dotnet build` 0 警告 / 0 错误；`dotnet test` **475 通过 / 0 失败**
+（Kernel 226 · Rules 139 · Integration 87 · NormativeGates 23）；`dotnet format --verify-no-changes` 退出码 0；
+`npm run gate` 90 项 + typecheck / build 全绿。
+本批 6 行对应用例过滤复跑：Integration `~PitHag` **7/7**、Rules `~PitHag` **14/14**。
+
+批次 E16 判出：
+
+- **麻脸巫婆票（High）重判行 12 / 3 / 4 / 13 / 15 / 11 全部通过**（其余 11 行 E15 结论累计有效）→ 移入 `done/`。
+  行 12 首次拿到**界面级**证据：同夹具续走第三夜，麻脸巫婆把 3 号（第二夜创造的涡流）再变成镜像双子 →
+  说书人面板开出「选择对立双子」裁定、候选恰为 1 / 4 号邪恶玩家 → 选定 4 号后 3 号牌面显示
+  「镜像双子 爪牙 3 号 善良 存活」、4 号带「镜像双子·生效中」配对标记、裁定控件结清（`pithag-06 / 07 / 08`）。
+- 本批后 `review/` 清空；`todo/` 剩 character-change-family（High）、vortox-interference-counting（Medium）、
+  storyteller-annotation / terminal-hold-residue（Low）。
+
+`pithag-06 / 07 / 08` 三张截图逐张复核（`pithag-01`–`05` 一并复核）；装置脚本头注释、`backlog/README.md` 索引
+与相关票据指针随移库同步。
+
 ## 相关阅读
 
 - 验收规程：`docs/acceptance/AGENTS.md`

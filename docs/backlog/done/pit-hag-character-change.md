@@ -1,8 +1,10 @@
 # 麻脸巫婆：角色变更与「创造恶魔」之夜的死亡裁量
 
-- Status: Review
+- Status: Done
 - Priority: High
-- 验收：批次 E15（2026-10-05）判定不通过——行 12（创造镜像双子）未实现；行 3 / 4 / 13 / 15 缺运行证据；其余 11 行通过（详见「E15 验收判定」与 `docs/acceptance/batches.md`）。**E15 残余已于本轮全部修复（见「E15 残余修复记录」），等待批次 E16 重判行 12 / 3 / 4 / 13 / 15 / 11；其余 11 行结论累计有效。**
+- 验收：批次 E15（2026-10-05）判定不通过——行 12（创造镜像双子）未实现；行 3 / 4 / 13 / 15 缺运行证据。
+  **批次 E16（2026-10-06）重判行 12 / 3 / 4 / 13 / 15 / 11：全部通过 → 移入 `done/`**；其余 11 行结论累计有效
+  （详见下文两批判定与 `docs/acceptance/batches.md`）。
 - Depends on: 胜负判定与游戏结束（`done/win-loss-and-game-end.md`）；结算引擎（`done/settlement-engine.md`）；镜像双子配对（同胜负票）；处罚处决命令面（`done/madness-and-adjudicated-execution.md`）
 - 来源口径：`references/wiki/麻脸巫婆.wiki`、`夜晚行动顺序一览.wiki`、`重要细节.wiki`、`术语汇总.wiki`、`规则概要.wiki`、`镜像双子.wiki`、`诺-达鲺.wiki`、`贤者.wiki`、`免死.wiki`、`额外死亡.wiki`、`设计师总结的国内玩家对染的错误理解.wiki`（均为 2026-10-01 抓取）
 
@@ -179,6 +181,44 @@ dotnet test tests/OpenClockTower.Integration.Tests --filter FullyQualifiedName~T
 - **行 11**：集成 `PitHagResidueHostTests.CommitPipelineFillsPreviousCharacter_DemonBecomesNonDemon_GoodWins`——说书人上报只报新值，提交管线补全 `PreviousCharacter=no-dashii`（直接读回事件流断言），胜负求值据此判善良获胜（R-0029）。
 
 提交：`87901f4`（行 12 实现 + 规则 / 集成用例）、`e7382e7`（行 13 组合）、`c972dba`（行 3 / 4 / 11 / 15）。冻结版门禁：全解决方案 475 项 + `npm run gate`（90 项）全绿。
+
+## E16 验收判定（2026-10-06）
+
+冻结版本 `main` @ `2f8c4e6`（跑批期间工作树干净、未改产品代码）。判据同 E15：
+**通过** = 本次运行有与该行期望直接对应的断言；其余 11 行（1 / 2 / 5–10 / 14 / 16）的 E15 结论累计有效。
+
+六装置同批取证档（`--quota 2 --screenshots-all`；真宿主 + 真 Chromium + 真 SQLite）：
+
+| 装置 | 本次结果 |
+|---|---|
+| 主装置 `verify-storyteller-panel.mjs` | 162 项 · 0 失败（35 张截图） |
+| 麻脸巫婆之夜 `verify-pit-hag.mjs` | **34 项 · 0 失败**（**8 张截图**：本批为行 12 补第三夜段，28 → 34） |
+| 胜负链路 `verify-winloss.mjs` | 20 项 · 0 失败 |
+| 女巫链路 `verify-witch.mjs` | 28 项 · 0 失败 |
+| 处罚处决 `verify-madness.mjs` | 28 项 · 0 失败 |
+| 零信任 `verify-zero-trust.mjs` | 44 项 · 0 失败 |
+
+冻结版门禁：`dotnet build` 0 警告 / 0 错误；`dotnet test` **475 通过 / 0 失败**；`dotnet format --verify-no-changes` 退出码 0；
+`npm run gate` **90 项** + typecheck / build 全绿。本批 6 行对应用例过滤复跑：Integration `~PitHag` **7/7**、Rules `~PitHag` **14/14**。
+
+| # | 结论 | 本次运行的证据 |
+|---|---|---|
+| 3 | 通过 | 集成 `PitHagResidueHostTests.PitHagPicksCharacterInPlay_NoStateChange_ButAbilityUseIsEffective`——选在场角色 → 无状态变化，但 `LastResolution` 生效、使用账 `Effective=true`（不是「未生效」） |
+| 4 | 通过 | 集成 `PitHagResidueHostTests.PitHagTargetsDeadPlayer_ChangesCharacterOnly`（已死亡目标照变、生死维度不动）+ `PitHagSourceLosesAbility_WindowStaysOpen`（来源自变后窗口仍有效、追加死亡仍受理、窗口按计划收口） |
+| 11 | 通过 | 集成 `PitHagResidueHostTests.CommitPipelineFillsPreviousCharacter_DemonBecomesNonDemon_GoodWins`——说书人上报只报新值，提交管线补全 `PreviousCharacter=no-dashii`（直接读回事件流断言），胜负求值据此判善良获胜（R-0029） |
+| 12 | 通过 | **装置新段（界面级）**：第三夜麻脸巫婆把 3 号（第二夜创造的涡流）再变成镜像双子 → 真玩家页面两维选择（`pithag-06`）→ 说书人面板开出「选择对立双子」裁定、候选恰为 1 / 4 号邪恶玩家（`pithag-07`）→ 选定 4 号被受理（序号 158）→ 3 号牌面「镜像双子 爪牙 3 号 **善良** 存活」、4 号带「镜像双子·生效中」配对标记（`pithag-08`）→ 裁定控件结清。集成 `PitHagNightHostTests.PitHagCreatesEvilTwin_OpensPairingDecision_AndPersistsPairing`（候选集合、`evil-twin.pair` Source=3 / Target=4、3 与 4 号各自收到互认）+ 规则 `TransformToEvilTwin_OpensPairingDecision_AndAppliesPairing` / `TransformToEvilTwinInPlay_DoesNotOpenPairingDecision` / `TransformToEvilTwin_IllegalPairing_Throws` |
+| 13 | 通过 | 规则 `PitHagNoDashiiCombinationTests.PitHagCreatesNoDashii_PoisonsNeighbours_AndMovesOldPoisonOnCharacterChange`——创造诺-达鲺 → 邻近 2 / 4 号中毒；中毒的 2 号变成非镇民 → 旧中毒解除、6 号按新位置接上、4 号沿用原效果 |
+| 15 | 通过 | 集成 `PitHagResidueHostTests.WindowWithDeferredSurvivesRestart_AndReplayDoesNotRecompute`——真重启（同一 SQLite）：窗口与待定死亡等价恢复、事件流不追加（重放不重算）、重启后仍可继续裁定、玩家重连拿到重建后的挂起请求 |
+
+**行 12 的界面级取证**：`tools/verify-pit-hag.mjs` 新增第三夜段（同夹具续走，麻脸巫婆把已是涡流的 3 号再变成镜像双子），
+新增 6 项断言：开第三夜被受理 / 裁定开出（上下文含「对立双子」）/ 候选恰为 1 号与 4 号 / 选定 4 号被受理 /
+3 号牌面变镜像双子 / 配对后裁定控件结清；无关玩家收包白名单同步补 `awaitingDecision` 与「对立双子」。
+`pithag-06 / 07 / 08` 三张截图逐张复核，`pithag-01`–`05` 一并复核（`05` 为第二夜窗口收口）。截图在 `artifacts/web/`（gitignored，可重生成）。
+
+**残余与口径（本批未变）**：
+- **R-0029 仍为 `Open`**（平台口径已定 + 代码注释引用 + 回归齐），等官方条文确证；不阻塞本票。
+- 行 12 候选口径：与首夜同源 =「阵营相对、含已死亡玩家」；《镜像双子》提示里的「最后一夜可选恶魔」通过"不看生死"覆盖，
+  **同阵营的善良恶魔不在候选内**（首夜同样如此，未另行核对官方条文）。
 
 ## 决定与依据
 
