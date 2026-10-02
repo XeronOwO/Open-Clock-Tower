@@ -77,7 +77,10 @@ export class PlayerGateway {
     const bundle = normalizeBundle(raw)
     const applied = applyBundle(bundle, this.lastSequence)
     this.lastSequence = applied.sequence
-    this.callbacks.onDiagnostic(applied.diagnostic)
+    // 空诊断 = "补齐完整"，不是一条消息：原样转发会让界面多出一个空条目（2026-10-02 批次实机发现）。
+    if (applied.diagnostic.length > 0) {
+      this.callbacks.onDiagnostic(applied.diagnostic)
+    }
     this.callbacks.onRequest(bundle.view.pendingRequest)
 
     // 快照里的信息类结果按顺序重放；缺口事件里的新信息随后接上（按序号去重）。

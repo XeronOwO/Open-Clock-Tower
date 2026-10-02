@@ -63,6 +63,11 @@ function buildCallbacks(): PlayerCallbacks {
 }
 
 function pushDiagnostic(message: string): void {
+  // 空消息不是诊断：忽略它，别把空条目渲染进列表（网关已只转发非空，这里再兜一层）。
+  if (message.trim().length === 0) {
+    return
+  }
+
   diagnostics.value = [message, ...diagnostics.value].slice(0, 5)
 }
 
@@ -169,8 +174,10 @@ onBeforeUnmount(() => {
     <template v-else>
       <header class="panel head">
         <div>
-          <span class="tag">{{ seatLabelOf(view!.seat) }}</span>
-          <strong>{{ labelOf(view!.phase) === '—' ? '阶段未知' : labelOf(view!.phase) }}</strong>
+          <span class="tag" data-testid="player-seat">{{ seatLabelOf(view!.seat) }}</span>
+          <strong data-testid="player-phase">{{
+            labelOf(view!.phase) === '—' ? '阶段未知' : labelOf(view!.phase)
+          }}</strong>
         </div>
         <div class="row">
           <button type="button" @click="resync()">补齐</button>
@@ -179,29 +186,45 @@ onBeforeUnmount(() => {
         </div>
       </header>
 
-      <section class="panel">
+      <section
+        class="panel"
+        data-testid="player-request-panel"
+        :data-request-state="pending === null ? 'idle' : 'pending'"
+        :data-request-id="pending?.requestId ?? ''"
+      >
         <h2>当前请求</h2>
-        <div v-if="pending === null" class="placeholder">
+        <div v-if="pending === null" class="placeholder" data-testid="player-idle">
           现在没有需要你做的事。夜晚是统一界面：不会有"轮到谁 / 还有几步"的提示。
         </div>
         <template v-else>
-          <p class="context">{{ pending.context }}</p>
-          <div class="options">
-            <label v-for="option in pending.options" :key="option.value" class="option">
+          <p class="context" data-testid="player-request-context">{{ pending.context }}</p>
+          <div class="options" data-testid="player-request-options">
+            <label
+              v-for="option in pending.options"
+              :key="option.value"
+              class="option"
+              :data-option-value="option.value"
+            >
               <input v-model="selectedOption" type="radio" :value="option.value" />
               {{ option.preview }}
             </label>
           </div>
           <input v-model="note" placeholder="备注（可选）" />
-          <button type="button" class="primary" :disabled="submitting" @click="submit()">提交</button>
+          <button type="button" class="primary" :disabled="submitting" data-testid="player-submit" @click="submit()">
+            提交
+          </button>
         </template>
       </section>
 
-      <section class="panel">
+      <section class="panel" data-testid="player-information" :data-information-count="informationResults.length">
         <h2>我收到的信息</h2>
         <div v-if="informationResults.length === 0" class="placeholder">还没有收到信息。</div>
         <ul v-else class="information">
-          <li v-for="(information, index) in informationResults" :key="`${index}-${information.ability}`">
+          <li
+            v-for="(information, index) in informationResults"
+            :key="`${index}-${information.ability}`"
+            :data-information-index="index"
+          >
             <span class="mono">{{ information.ability }}</span>
             <span>{{ information.content }}</span>
           </li>
@@ -209,7 +232,7 @@ onBeforeUnmount(() => {
         <p class="hint">信息可能是错的——说书人对醉酒 / 中毒玩家的信息有裁量权（D-0002）。</p>
       </section>
 
-      <ul v-if="diagnostics.length > 0" class="diagnostics">
+      <ul v-if="diagnostics.length > 0" class="diagnostics" data-testid="player-diagnostics">
         <li v-for="message in diagnostics" :key="message">{{ message }}</li>
       </ul>
     </template>
