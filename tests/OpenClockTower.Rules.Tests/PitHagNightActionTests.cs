@@ -148,6 +148,75 @@ public sealed class PitHagNightActionTests
         Assert.Empty(events.OfType<SeatStateChangedEvent>());
     }
 
+    /// <summary>
+    /// 创造镜像双子 → 开「选择对立双子」裁定（候选 = 与新双子阵营相对、含已死亡玩家）；
+    /// 裁定落地为 <c>evil-twin.pair</c> 配对效果 + 双向互认（与首夜同源；E15 行 12）。
+    /// </summary>
+    [Fact]
+    public void TransformToEvilTwin_OpensPairingDecision_AndAppliesPairing()
+    {
+        var state = AlignedLedger(
+            (1, "pit-hag", Alignment.Evil),
+            (2, "clockmaker", Alignment.Good),
+            (3, "artist", Alignment.Good),
+            (4, "no-dashii", Alignment.Evil),
+            (5, "klutz", Alignment.Good));
+
+        // 新双子（3 号艺术家）是善良 → 候选 = 邪恶玩家（1 号爪牙、4 号恶魔）。
+        var prompt = Contract().BuildPostChoiceDecision(Context(state, "seat:3|evil-twin"));
+        Assert.NotNull(prompt);
+        Assert.Equal(["seat:1", "seat:4"], prompt!.Options.Select(option => option.Value));
+
+        var events = Contract().Resolve(Context(state, "seat:3|evil-twin", decision: "seat:4"));
+
+        var changed = Assert.Single(events.OfType<SeatStateChangedEvent>());
+        Assert.Equal(new SeatId(3), changed.Seat);
+        Assert.Equal(new CharacterId("evil-twin"), changed.Character);
+
+        var applied = Assert.Single(events.OfType<PersistentEffectAppliedEvent>());
+        Assert.Equal(new AbilityId("evil-twin.pair"), applied.Effect.Ability);
+        Assert.Equal(new SeatId(3), applied.Effect.Source);
+        Assert.Equal(new SeatId(4), applied.Effect.Target);
+        Assert.Null(applied.Effect.Dimension);
+
+        var information = events.OfType<InformationResultIssuedEvent>().ToArray();
+        Assert.Equal(2, information.Length);
+        Assert.Contains(
+            information,
+            item => item.Recipient == new SeatId(3)
+                && item.Content.Contains("诺-达鲺", StringComparison.Ordinal));
+        Assert.Contains(
+            information,
+            item => item.Recipient == new SeatId(4)
+                && item.Content.Contains("镜像双子", StringComparison.Ordinal));
+    }
+
+    /// <summary>所选角色（镜像双子）已经在场 → 无事发生，也不再开配对裁定。</summary>
+    [Fact]
+    public void TransformToEvilTwinInPlay_DoesNotOpenPairingDecision()
+    {
+        var state = AlignedLedger(
+            (1, "pit-hag", Alignment.Evil),
+            (2, "evil-twin", Alignment.Good),
+            (3, "no-dashii", Alignment.Evil));
+
+        Assert.Null(Contract().BuildPostChoiceDecision(Context(state, "seat:3|evil-twin")));
+        Assert.Empty(Contract().Resolve(Context(state, "seat:3|evil-twin")));
+    }
+
+    /// <summary>裁定不是合法候选（同阵营）→ 显式抛错，不静默落一条坏配对（D-0015）。</summary>
+    [Fact]
+    public void TransformToEvilTwin_IllegalPairing_Throws()
+    {
+        var state = AlignedLedger(
+            (1, "pit-hag", Alignment.Evil),
+            (2, "clockmaker", Alignment.Good),
+            (3, "artist", Alignment.Good));
+
+        Assert.Throws<InvalidOperationException>(() =>
+            Contract().Resolve(Context(state, "seat:3|evil-twin", decision: "seat:2")));
+    }
+
     /// <summary>从公开目录取结算契约（角色实现是 internal，测试只走注册表）。</summary>
     private static IAbilityResolution Contract() =>
         NightActions.Resolutions.Find(PitHag)
@@ -158,7 +227,8 @@ public sealed class PitHagNightActionTests
         string? choice,
         bool effective = true,
         StepPlan? plan = null,
-        int slotIndex = 0) => new()
+        int slotIndex = 0,
+        string? decision = null) => new()
         {
             SlotId = new StepSlotId("pit-hag"),
             PlanLabel = "sv:night-2",
@@ -173,6 +243,7 @@ public sealed class PitHagNightActionTests
                 Malfunction = effective ? null : MalfunctionKind.Poisoned,
             },
             Choice = choice,
+            Decision = decision,
             DaysStarted = 1,
             Plan = plan,
             SlotIndex = slotIndex,
@@ -201,6 +272,24 @@ public sealed class PitHagNightActionTests
                     Seat = new SeatId(row.Seat),
                     Character = Fact(new CharacterId(row.Character)),
                     Alignment = Fact(Alignment.Evil),
+                    Life = Fact(LifeState.Alive),
+                    Drunk = Fact(DrunkState.Sober),
+                    Poison = Fact(PoisonState.Healthy),
+                }),
+            ],
+        };
+
+    /// <summary>带真实阵营的账：镜像双子的配对候选要看阵营（NightLedger 把所有人都当邪恶，不够用）。</summary>
+    private static GameState AlignedLedger(params (int Seat, string Character, Alignment Alignment)[] rows) =>
+        new()
+        {
+            Seats =
+            [
+                .. rows.Select(row => new SeatStateEntry
+                {
+                    Seat = new SeatId(row.Seat),
+                    Character = Fact(new CharacterId(row.Character)),
+                    Alignment = Fact(row.Alignment),
                     Life = Fact(LifeState.Alive),
                     Drunk = Fact(DrunkState.Sober),
                     Poison = Fact(PoisonState.Healthy),

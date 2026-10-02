@@ -17,8 +17,8 @@ namespace OpenClockTower.Rules;
 /// 阻断与触发读它，口径见 <c>docs/standard/rulings.md</c> R-0025。
 /// </para>
 /// <para>
-/// 首版边界：麻脸巫婆造成的「重配对 / 创造新镜像双子」不在本票（该角色未实现）——配对只在首夜建立一次；
-/// 若将来出现"两个双子同阵营需重新配对"，先按 R-0025 增补条目再实现。
+/// 首版边界：麻脸巫婆造成的**新镜像双子**走共享的 <see cref="EvilTwinPairing"/> 落「配对 + 互认」
+/// （E15 行 12）；「两个双子同阵营需重新配对」暂不在首版——先按 R-0025 增补条目再实现。
 /// </para>
 /// </remarks>
 internal sealed class EvilTwinNightAction : INightAction, IAbilityResolution
@@ -34,14 +34,7 @@ internal sealed class EvilTwinNightAction : INightAction, IAbilityResolution
     {
         ArgumentNullException.ThrowIfNull(context);
 
-        var actorAlignment = context.State.Seat(context.Actor)?.Alignment?.Value
-            ?? throw new InvalidOperationException(
-                "镜像双子的阵营尚未观测：列不出合法配对候选（开局分配本应补全阵营，R-0023）");
-
-        var options = context.Seats
-            .Where(seat => seat != context.Actor)
-            .Where(seat => context.State.Seat(seat)?.Alignment?.Value == Opposite(actorAlignment))
-            .OrderBy(seat => seat.Value)
+        var options = EvilTwinPairing.OppositeCandidates(context.State, context.Seats, context.Actor)
             .Select(seat => new DecisionOption
             {
                 Value = SeatChoice.Format(seat),
@@ -80,44 +73,12 @@ internal sealed class EvilTwinNightAction : INightAction, IAbilityResolution
         var targetCharacter = context.State.Seat(target)?.CharacterValue
             ?? throw new InvalidOperationException($"席位 {target.Value} 的角色尚未观测，组不成互认信息");
 
-        return
-        [
-            new PersistentEffectAppliedEvent
-            {
-                Effect = new PersistentEffect
-                {
-                    Id = EvilTwinAbility.PairEffectId(context.PlanLabel, context.SlotId),
-                    Source = context.Actor,
-                    Ability = Ability,
-                    Target = target,
-                    SourceCharacter = actorCharacter,
-                    Dimension = null,
-                },
-            },
-
-            // 双向互认：两名双子各自得知对方的角色（信息只发给本人，D-0012 §4.3）。
-            new InformationResultIssuedEvent
-            {
-                Recipient = context.Actor,
-                Ability = Ability,
-                Content = $"你的对立双子是 {target.Value} 号玩家，其角色为「{Display(targetCharacter)}」",
-                MayBeFalse = false,
-                Note = "首夜互认（百科《镜像双子》· 2026-10-01 抓取 · 运作方式）",
-            },
-            new InformationResultIssuedEvent
-            {
-                Recipient = target,
-                Ability = Ability,
-                Content = $"{context.Actor.Value} 号玩家是你的对立双子，其角色为「{Display(actorCharacter)}」",
-                MayBeFalse = false,
-                Note = "首夜互认（百科《镜像双子》· 2026-10-01 抓取 · 运作方式）",
-            },
-        ];
+        // 配对效果 + 双向互认落在这里，与麻脸巫婆创造新双子的路径同源（EvilTwinPairing）。
+        return EvilTwinPairing.Plan(
+            context.Actor,
+            target,
+            actorCharacter,
+            targetCharacter,
+            EvilTwinAbility.PairEffectId(context.PlanLabel, context.SlotId));
     }
-
-    private static Alignment Opposite(Alignment alignment) =>
-        alignment == Alignment.Good ? Alignment.Evil : Alignment.Good;
-
-    private static string Display(CharacterId character) =>
-        SectsAndVioletsRoster.DisplayNameOf(character) ?? character.Value;
 }

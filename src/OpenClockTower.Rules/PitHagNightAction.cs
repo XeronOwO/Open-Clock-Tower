@@ -67,7 +67,44 @@ internal sealed class PitHagNightAction : INightAction, IAbilityResolution
     }
 
     /// <inheritdoc />
-    public ChoicePrompt? BuildPostChoiceDecision(AbilityResolutionContext context) => null;
+    /// <remarks>
+    /// 只有「创造镜像双子」需要再裁一次：说书人为新双子选择对立双子
+    /// （百科《镜像双子》· 2026-10-01 抓取 · 提示标记；候选口径与首夜同源，见 R-0025）。
+    /// 「所选角色已在场 → 无事发生」与能力未生效在这里先短路——它们不产生变化，也不该多问一次。
+    /// </remarks>
+    public ChoicePrompt? BuildPostChoiceDecision(AbilityResolutionContext context)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+
+        if (!context.Outcome.Effective)
+        {
+            return null;
+        }
+
+        var (target, character) = ParseChoice(context.Choice);
+
+        if (character != EvilTwinAbility.Character || IsInPlay(context.State, character))
+        {
+            return null;
+        }
+
+        var options = EvilTwinPairing.OppositeCandidates(context.State, context.Seats, target)
+            .Select(seat => new DecisionOption
+            {
+                Value = SeatChoice.Format(seat),
+                Preview = $"{seat.Value} 号玩家",
+            })
+            .ToArray();
+
+        return new ChoicePrompt
+        {
+            Context = $"镜像双子配对：为 {target.Value} 号玩家的新镜像双子选择一名对立阵营玩家作为「对立双子」"
+                + "（百科《镜像双子》· 2026-10-01 抓取 · 提示标记：选择与镜像双子对立阵营的玩家；"
+                + "已死亡的玩家同样在列）",
+            Options = options,
+            OnNoOption = NoOptionBehavior.BlockAndAlert,
+        };
+    }
 
     /// <inheritdoc />
     public IReadOnlyList<GameEvent> Resolve(AbilityResolutionContext context)
@@ -131,7 +168,47 @@ internal sealed class PitHagNightAction : INightAction, IAbilityResolution
             });
         }
 
+        // 「创造镜像双子」：配对与双向互认必须跟着角色变更一起落（与首夜同源，EvilTwinPairing）——
+        // 否则 R-0025 的阻断 / 触发读不到配对，新双子也无人互认。裁定由 BuildPostChoiceDecision 开出。
+        if (character == EvilTwinAbility.Character)
+        {
+            events.AddRange(BuildPairing(context, target));
+        }
+
         return events;
+    }
+
+    /// <summary>
+    /// 把「选择对立双子」的裁定落地成配对 + 双向互认：裁定必须是合法候选（候选与首夜同源），
+    /// 不合法就整条命令失败——引擎只记录、校验、推演，不替说书人猜（D-0015）。
+    /// </summary>
+    private static IReadOnlyList<GameEvent> BuildPairing(AbilityResolutionContext context, SeatId twin)
+    {
+        if (string.IsNullOrWhiteSpace(context.Decision))
+        {
+            throw new InvalidOperationException(
+                "麻脸巫婆创造了镜像双子，却没有「对立双子」裁定——结算与裁定点不同步（流程损坏）");
+        }
+
+        var opposite = SeatChoice.Parse(context.Decision)
+            ?? throw new InvalidOperationException($"对立双子的裁定不是合法席位编码：{context.Decision}");
+
+        if (!EvilTwinPairing.OppositeCandidates(context.State, context.Seats, twin).Contains(opposite))
+        {
+            throw new InvalidOperationException(
+                $"说书人裁定的对立双子不在合法候选里：{context.Decision}"
+                + "（必须是除新双子外、阵营与之相对的席位）");
+        }
+
+        var oppositeCharacter = context.State.Seat(opposite)?.CharacterValue
+            ?? throw new InvalidOperationException($"席位 {opposite.Value} 的角色尚未观测，组不成互认信息");
+
+        return EvilTwinPairing.Plan(
+            twin,
+            opposite,
+            EvilTwinAbility.Character,
+            oppositeCharacter,
+            EvilTwinAbility.PairEffectId(context.PlanLabel, context.SlotId));
     }
 
     /// <summary>所选角色是不是恶魔类型（角色表里的类型标签，不猜）。</summary>
