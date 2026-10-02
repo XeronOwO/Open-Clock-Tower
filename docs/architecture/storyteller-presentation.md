@@ -1,7 +1,7 @@
 # 说书人端呈现：魔典主视图 + 数据下钻
 
 > 本页回答一个问题：**说书人端的呈现层怎么组织，才能"以席位为中心"看局面，又不丢审计与兜底。**
-> 工作项：`docs/backlog/todo/grimoire-view.md`；相关决策：D-0018（单 SPA 两套视图）、
+> 工作项：`docs/backlog/done/grimoire-view.md`；相关决策：D-0018（单 SPA 两套视图）、
 > D-0012（信息只在服务端投影）、D-0015（状态账只记事实与归因）、D-0013 §5（玩家端不泄漏进度）。
 
 ## 1. 现状（审视起点）
@@ -24,6 +24,7 @@
 ```text
 StorytellerPanel                     连接 / 票据 / 命令回执 / 布局装配
 ├── StatusStrip                      顶部状态条（阶段 / 槽位 / 卡点）
+├── 降级横幅（StorytellerPanel 内联）  恢复 / 重建失败时置顶显示（原因 + 发生时间）；只说书人可见
 ├── GrimoireView                     主视图：席位圆环（窄屏退化为纵向列表）
 │   ├── GrimoireSeatCard × N         席位牌：角色 / 阵营 / 生死 / 维度标记 / 提示标记
 │   │                                 当前槽位 / 卡点 / 待裁定 的归属席位带高亮
@@ -59,6 +60,7 @@ StorytellerPanel                     连接 / 票据 / 命令回执 / 布局装�
 | 操作就近 | 席位操作台承载该席的裁定 / 卡点 / 上报；全局兜底仍独立成区 | 命令入口不复制，`sender` 仍只有一份 |
 | 数据面板 | 四张表 + 当前步骤放进可展开的"数据与审计"，默认收拢 | 票据第 6 条：审计不能被游戏化挤掉，也不该继续抢占主视图 |
 | 小屏 | 圆环退化为纵向席位列表，同一 `GrimoireSeatCard` | 票据第 8 条；CSS 断点切换，不改数据与组件契约 |
+| 降级位 | 只在说书人视图置顶显示（`health`：degraded / reason / since）；玩家投影不下发，降级房间玩家加入显式失败但文案中性 | 票据 `room-health-degradation-flag` 第 3 条（玩家侧单独决策）；D-0012 §4.3 |
 | D-0018 呈现边界 | **不修订** | 仍是单 SPA 两套视图；玩家侧"不出现说书人字段"的门禁不变 |
 | 素材 | 全部 CSS 自绘几何 + 文字（类型色环、帷幕、标记圆点） | 不引入官方美术；无第三方位图素材，无需来源登记 |
 
@@ -82,7 +84,8 @@ StorytellerPanel                     连接 / 票据 / 命令回执 / 布局装�
 
 ## 相关阅读
 
-- 工作项：`docs/backlog/todo/grimoire-view.md`
+- 工作项：`docs/backlog/done/grimoire-view.md`、`docs/backlog/done/rebuild-state-ledger-comparison.md`、
+  `docs/backlog/done/room-health-degradation-flag.md`
 - 呈现层边界：`web/AGENTS.md` §4
 - 决策：`docs/decisions/active.md`（D-0012 / D-0015 / D-0018）
 - 验收规程：`docs/acceptance/AGENTS.md`

@@ -17,6 +17,7 @@ public static class ProjectionMapper
         Failure = result.Failure,
         MachineEquivalent = result.Rebuild?.MachineEquivalent,
         SnapshotEquivalent = result.Rebuild?.SnapshotEquivalent,
+        LedgerEquivalent = result.Rebuild?.LedgerEquivalent,
     };
 
     /// <summary>操作请求 → DTO（刻意不带槽位 / 轮次 / 进度）。</summary>
@@ -104,6 +105,7 @@ public static class ProjectionMapper
         Sequence = view.Sequence,
         Phase = view.Phase?.ToString() ?? "NotStarted",
         Control = view.Control?.ToString() ?? "NotStarted",
+        Health = ToDto(view.Health),
         SlotIndex = view.SlotIndex,
         SlotCount = view.SlotCount,
         CurrentSlotId = view.CurrentSlotId?.Value,
@@ -195,6 +197,14 @@ public static class ProjectionMapper
                 Note = voided.Note,
             }
             : null,
+    };
+
+    /// <summary>房间健康位 → DTO。</summary>
+    public static RoomHealthDto ToDto(RoomHealth health) => new()
+    {
+        Degraded = health.IsDegraded,
+        Reason = health.Reason,
+        Since = health.Since,
     };
 
     /// <summary>状态账一行 → DTO：只列已观测的维度，未观测的维度不出现。</summary>

@@ -110,6 +110,13 @@ export interface PendingRequestDto {
   waitingSeconds: number | null
 }
 
+/** 房间健康位：恢复 / 重建失败后为降级态（原因 + 发生时间）；正常时 degraded=false。 */
+export interface RoomHealthDto {
+  degraded: boolean
+  reason: string | null
+  since: string | null
+}
+
 /** 每步摘要（票据「说书人上帝视角」第 3 条）：当前槽位的行动者、状态及归因、能力判定与无选项行为。 */
 export interface StepDigestDto {
   seat: number
@@ -147,6 +154,7 @@ export interface StorytellerViewDto {
   sequence: number
   phase: string
   control: string
+  health: RoomHealthDto
   slotIndex: number
   slotCount: number
   currentSlotId: string | null
@@ -177,6 +185,7 @@ export interface CommandResultDto {
   failure: string | null
   machineEquivalent: boolean | null
   snapshotEquivalent: boolean | null
+  ledgerEquivalent: boolean | null
 }
 
 /** 开局分配的一项（wire 形态）。 */

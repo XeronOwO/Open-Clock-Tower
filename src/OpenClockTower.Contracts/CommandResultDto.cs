@@ -23,4 +23,7 @@ public sealed record CommandResultDto
 
     /// <summary>重建结果与持久化快照是否一致（仅重建命令；无快照为 null）。</summary>
     public bool? SnapshotEquivalent { get; init; }
+
+    /// <summary>重建结果与内存状态账是否一致（仅重建命令；非重建命令为 null）。</summary>
+    public bool? LedgerEquivalent { get; init; }
 }

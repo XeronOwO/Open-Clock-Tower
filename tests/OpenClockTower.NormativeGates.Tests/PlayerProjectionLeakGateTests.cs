@@ -3,12 +3,12 @@ using System.Text.RegularExpressions;
 namespace OpenClockTower.NormativeGates.Tests;
 
 /// <summary>
-/// 门禁：发给玩家的投影里**不得出现轮次 / 进度 / 他人活动信息**。
+/// 门禁：发给玩家的投影里**不得出现轮次 / 进度 / 他人活动信息，也不得出现说书人专属数据**（含房间健康位）。
 /// </summary>
 /// <remarks>
-/// 依据 D-0013 §5：夜晚是统一界面，不显示"轮到谁 / 还有几步 / 进度条 / 谁在思考"。
-/// 信息隔离在服务端投影强制（D-0012 §4.3）——这里把"玩家能收到的字段名"本身锁死，
-/// 防止将来有人顺手把内部状态塞进玩家投影。
+/// 依据 D-0013 §5（夜晚只有统一界面、不显示进度）与 D-0012 §4.3（信息隔离在服务端投影强制）：
+/// 这里把"玩家能收到的字段名"本身锁死，防止将来有人顺手把内部状态塞进玩家投影。
+/// 先红验证（2026-10-02）：给 `PlayerViewDto` 临时加 `Health` → 本门禁报红并指向该字段。
 /// </remarks>
 public sealed partial class PlayerProjectionLeakGateTests
 {
@@ -43,6 +43,10 @@ public sealed partial class PlayerProjectionLeakGateTests
         "Termination",
         "Madness",
         "Seats",
+
+        // 房间健康位（票据 room-health-degradation-flag）：恢复 / 重建失败的降级状态只说书人可见
+        "Health",
+        "Degraded",
     ];
 
     /// <summary>
@@ -77,30 +81,50 @@ public sealed partial class PlayerProjectionLeakGateTests
         "storyteller",
     ];
 
-    /// <summary>玩家投影 / 玩家请求 DTO 里不得出现进度类字段。</summary>
+    /// <summary>玩家投影 / 玩家请求 DTO 里不得出现进度类字段与说书人专属字段（含房间健康位）。</summary>
     [Fact]
     public void PlayerFacingContracts_DeclareNoProgressOrOthersActivity()
     {
         var violations = new List<string>();
         foreach (var relativePath in ScannedFiles)
         {
-            var code = SourceText.StripCommentsAndLiterals(File.ReadAllText(RepositoryLayout.PathOf(relativePath)));
-            foreach (var token in ForbiddenTokens)
-            {
-                if (code.Contains(token, StringComparison.Ordinal))
-                {
-                    violations.Add($"{relativePath} → {token}");
-                }
-            }
+            violations.AddRange(ForbiddenHits(
+                relativePath,
+                SourceText.StripCommentsAndLiterals(File.ReadAllText(RepositoryLayout.PathOf(relativePath)))));
         }
 
         var report = string.Join(Environment.NewLine, violations);
         Assert.True(
             violations.Count == 0,
-            "玩家投影里出现了轮次 / 进度类字段（依据 D-0013 §5：夜晚只有统一界面）。"
+            "玩家投影里出现了不该下发的字段（进度类见 D-0013 §5；说书人专属 / 房间健康位见 D-0012 §4.3）。"
             + Environment.NewLine
             + report);
     }
+
+    /// <summary>
+    /// 名单自检：把"玩家投影里塞健康位"的样本喂给与正式门禁**同一条**判定，必须命中。
+    /// 没有这条，黑名单一旦写错字，门禁会静默变绿——"先红"不能只靠一次性人工实验。
+    /// </summary>
+    [Fact]
+    public void ForbiddenTokenScan_FlagsHealthAndDegradedSamples()
+    {
+        var hits = ForbiddenHits(
+            Path.Combine("src", "OpenClockTower.Contracts", "PlayerViewDto.cs"),
+            "public string? Health { get; init; } public bool Degraded { get; init; }");
+        Assert.Contains(hits, hit => hit.EndsWith("→ Health", StringComparison.Ordinal));
+        Assert.Contains(hits, hit => hit.EndsWith("→ Degraded", StringComparison.Ordinal));
+
+        // 干净字段不误报：名单是整词子串匹配，普通字段不该被牵连。
+        Assert.Empty(ForbiddenHits("sample.cs", "public required int Seat { get; init; }"));
+    }
+
+    /// <summary>扫描一段玩家投影源码，返回命中的禁词；正式门禁与名单自检共用这一条判定。</summary>
+    private static List<string> ForbiddenHits(string relativePath, string code) =>
+    [
+        .. ForbiddenTokens
+            .Where(token => code.Contains(token, StringComparison.Ordinal))
+            .Select(token => $"{relativePath} → {token}"),
+    ];
 
     /// <summary>玩家端 TypeScript / Vue 源码不得引用说书人专属字段或专属模块。</summary>
     [Fact]
@@ -235,6 +259,7 @@ public sealed partial class PlayerProjectionLeakGateTests
     private static readonly string[] StorytellerOnlyTypes =
     [
         "StorytellerViewDto",
+        "RoomHealthDto",
         "SeatStateDto",
         "SeatStateFactDto",
         "EffectDto",

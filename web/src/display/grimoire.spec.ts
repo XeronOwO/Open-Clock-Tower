@@ -27,6 +27,7 @@ function viewOf(overrides: Partial<StorytellerViewDto> = {}): StorytellerViewDto
     sequence: 1,
     phase: 'FirstNight',
     control: 'Automatic',
+    health: { degraded: false, reason: null, since: null },
     slotIndex: 0,
     slotCount: 13,
     currentSlotId: null,

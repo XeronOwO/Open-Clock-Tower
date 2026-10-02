@@ -10,6 +10,7 @@ import type {
   DecisionOptionDto,
   EffectDto,
   OperationRequestVoidedDto,
+  RoomHealthDto,
   SeatChangeDto,
   SeatStateDto,
   SeatStateFactDto,
@@ -267,6 +268,23 @@ export function normalizeSeatChange(raw: unknown): SeatChangeDto | null {
   }
 }
 
+/**
+ * 归一化房间健康位：契约上 `degraded` 必有（服务端每条路径都显式赋值，见 `ProjectionMapper`）；
+ * 缺失只可能来自篡改或服务端 bug，那时按"正常"渲染是**在坏载荷上保守**，不是把"未知"说成结论。
+ */
+export function normalizeRoomHealth(raw: unknown): RoomHealthDto {
+  if (raw === null || typeof raw !== 'object') {
+    return { degraded: false, reason: null, since: null }
+  }
+
+  const health = raw as Record<string, unknown>
+  return {
+    degraded: asBoolean(health['degraded']) ?? false,
+    reason: asSizedText(health['reason'], 512),
+    since: asText(health['since']),
+  }
+}
+
 /** 归一化一条合法选项。 */
 export function normalizeOption(raw: unknown): DecisionOptionDto | null {
   if (raw === null || typeof raw !== 'object') {
@@ -291,6 +309,7 @@ export function normalizeStorytellerView(raw: unknown): StorytellerViewDto {
     sequence: asCount(view['sequence']) ?? 0,
     phase: asText(view['phase']) ?? '未开始',
     control: asText(view['control']) ?? '未知',
+    health: normalizeRoomHealth(view['health']),
     slotIndex: asCount(view['slotIndex']) ?? 0,
     slotCount: asCount(view['slotCount']) ?? 0,
     currentSlotId: asText(view['currentSlotId']),

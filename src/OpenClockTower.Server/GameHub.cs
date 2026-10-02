@@ -66,25 +66,39 @@ public sealed class GameHub : Hub<IGameClient>
             Context.ConnectionId,
             ConnectionCredential.FingerprintOf(credential.Value));
 
-        var bundle = await _session.GetReconnectBundleAsync(seatTicket.Seat, lastSequence, Context.ConnectionAborted);
-
-        if (bundle.View.PendingRequest is { } pending)
+        try
         {
-            await Clients.Caller.ReceiveOperationRequest(ProjectionMapper.ToDto(pending));
+            var bundle = await _session.GetReconnectBundleAsync(seatTicket.Seat, lastSequence, Context.ConnectionAborted);
+
+            if (bundle.View.PendingRequest is { } pending)
+            {
+                await Clients.Caller.ReceiveOperationRequest(ProjectionMapper.ToDto(pending));
+            }
+
+            _logger.LogInformation(
+                "玩家已加入：seat={Seat} connection={ConnectionId} 序号={Sequence} 重投请求={Redelivered}",
+                seatTicket.Seat,
+                Context.ConnectionId,
+                bundle.Sequence,
+                bundle.View.PendingRequest is not null);
+
+            return new SeatJoinDto
+            {
+                Credential = credential.Value,
+                Bundle = ProjectionMapper.ToDto(bundle),
+            };
         }
-
-        _logger.LogInformation(
-            "玩家已加入：seat={Seat} connection={ConnectionId} 序号={Sequence} 重投请求={Redelivered}",
-            seatTicket.Seat,
-            Context.ConnectionId,
-            bundle.Sequence,
-            bundle.View.PendingRequest is not null);
-
-        return new SeatJoinDto
+        catch (InvalidOperationException exception)
         {
-            Credential = credential.Value,
-            Bundle = ProjectionMapper.ToDto(bundle),
-        };
+            // 事件流不可读（恢复失败后的降级房间）：显式失败 + 审计，不让未处理异常抛穿 Hub；
+            // 对玩家只说中性原因——"数据丢了"属于说书人视图（票据 room-health-degradation-flag 的边界）。
+            _logger.LogError(
+                exception,
+                "玩家加入失败：房间事件流不可读（等说书人显式重建）：seat={Seat} connection={ConnectionId}",
+                seatTicket.Seat,
+                Context.ConnectionId);
+            throw new HubException("加入暂时失败，请稍后重试或联系说书人");
+        }
     }
 
     /// <summary>说书人加入：票据定位身份，签发连接凭据（同局同一时刻只保留一条有效说书人连接）。</summary>

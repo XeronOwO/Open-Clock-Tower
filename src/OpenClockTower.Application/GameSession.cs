@@ -42,6 +42,9 @@ public sealed class GameSession
     /// <summary>状态账（五个可观测维度的已知态 + 效果归因）。与步骤机同源折叠，见 <see cref="GameStateMachine"/>。</summary>
     private GameState _state = GameState.Empty;
 
+    /// <summary>房间健康位：恢复 / 重建失败后为降级态，显式重建成功才清除（票据 room-health-degradation-flag）。</summary>
+    private RoomHealth _health = RoomHealth.Healthy;
+
     private long _lastSequence;
 
     /// <summary>构造一局的编排器。</summary>
@@ -97,6 +100,7 @@ public sealed class GameSession
                 _state = state;
                 _lastSequence = lastSequence;
                 _trackers.Recover(storedEvents, machine);
+                _health = RoomHealth.Healthy;
 
                 _logger.LogInformation(
                     "步骤机状态已从事件流恢复：game={GameId} 事件数={EventCount} 序号={Sequence} 槽位={SlotIndex} 挂起={Held}",
@@ -115,6 +119,13 @@ public sealed class GameSession
                 _state = GameState.Empty;
                 _lastSequence = await _store.FindLastSequenceAsync(GameId, cancellationToken);
                 _trackers.Clear();
+                _health = _health.Degrade($"恢复失败：{exception.Message}", _clock.UtcNow);
+                _logger.LogError(
+                    exception,
+                    "恢复失败，房间健康位降级（等显式重建才清除）：game={GameId} 原因={Reason} 序号={Sequence}",
+                    GameId,
+                    _health.Reason,
+                    _lastSequence);
                 throw;
             }
         }
@@ -211,6 +222,7 @@ public sealed class GameSession
             return StorytellerViewBuilder.Build(
                 _machine,
                 _state,
+                _health,
                 _lastSequence,
                 _trackers,
                 _clock.UtcNow,
@@ -452,68 +464,36 @@ public sealed class GameSession
     {
         try
         {
-            var storedEvents = await _store.ReadEventsAsync(GameId, afterSequence: 0, cancellationToken);
-            var eventStream = storedEvents.Select(item => item.Event).ToArray();
-            var rebuilt = eventStream.Length == 0 ? null : StepMachine.Fold(eventStream);
-
-            // 状态账与步骤机同源折叠：同一条事件流，两个派生视图必须一起重算，否则重建后账会陈旧。
-            var rebuiltState = GameStateMachine.Fold(eventStream);
-            var machineEquivalent = StepMachineStateComparer.AreEquivalent(_machine, rebuilt);
-            bool? snapshotEquivalent;
-            try
-            {
-                var snapshot = await _store.FindSnapshotAsync(GameId, cancellationToken);
-                snapshotEquivalent = snapshot is null
-                    ? null
-                    : StepMachineStateComparer.AreEquivalent(snapshot.Machine, rebuilt);
-            }
-            catch (InvalidOperationException exception)
-            {
-                // 旧快照读不出来 = 与事件流不一致；快照是派生数据，重建就是来修它的
-                _logger.LogWarning(exception, "读取旧快照失败，按不一致处理：game={GameId}", GameId);
-                snapshotEquivalent = false;
-            }
-            var lastSequence = storedEvents.Count == 0 ? 0 : storedEvents[^1].Sequence;
-            var recordedAt = _clock.UtcNow;
-
-            await _store.CommitAsync(
-                new GameCommit
-                {
-                    GameId = GameId,
-                    Events = [],
-                    Snapshot = new StoredSnapshot
-                    {
-                        Sequence = lastSequence,
-                        Machine = rebuilt,
-                        RecordedAt = recordedAt,
-                    },
-                    Receipt = new CommandReceipt
-                    {
-                        IdempotencyKey = envelope.IdempotencyKey,
-                        FirstSequence = lastSequence + 1,
-                        LastSequence = lastSequence,
-                    },
-                },
+            var outcome = await RoomRebuildService.RebuildAsync(
+                GameId,
+                _store,
+                _machine,
+                _state,
+                envelope.IdempotencyKey,
+                _clock.UtcNow,
+                _logger,
                 cancellationToken);
 
-            _machine = rebuilt;
-            _state = rebuiltState;
-            _lastSequence = lastSequence;
-            _trackers.Recover(storedEvents, rebuilt);
+            _machine = outcome.Machine;
+            _state = outcome.State;
+            _health = RoomHealth.Healthy;
+            _lastSequence = outcome.Sequence;
+            _trackers.Recover(outcome.Events, outcome.Machine);
 
             _logger.LogWarning(
-                "房间已按事件日志重建：game={GameId} reason={Reason} 内存一致={MachineEquivalent} 快照一致={SnapshotEquivalent} 事件数={EventCount} 序号={Sequence}",
+                "房间已按事件日志重建：game={GameId} reason={Reason} 内存一致={MachineEquivalent} 快照一致={SnapshotEquivalent} 账一致={LedgerEquivalent} 事件数={EventCount} 序号={Sequence}",
                 GameId,
                 rebuild.Reason,
-                machineEquivalent,
-                snapshotEquivalent,
-                storedEvents.Count,
-                lastSequence);
+                outcome.MachineEquivalent,
+                outcome.SnapshotEquivalent,
+                outcome.LedgerEquivalent,
+                outcome.Events.Count,
+                outcome.Sequence);
 
             return new CommandResult
             {
                 Kind = CommandResultKind.Accepted,
-                Sequence = lastSequence,
+                Sequence = outcome.Sequence,
                 Events = [],
                 Notifications =
                 [
@@ -522,26 +502,34 @@ public sealed class GameSession
                 ],
                 Rebuild = new RoomRebuildReport
                 {
-                    MachineEquivalent = machineEquivalent,
-                    SnapshotEquivalent = snapshotEquivalent,
-                    Sequence = lastSequence,
+                    MachineEquivalent = outcome.MachineEquivalent,
+                    SnapshotEquivalent = outcome.SnapshotEquivalent,
+                    LedgerEquivalent = outcome.LedgerEquivalent,
+                    Sequence = outcome.Sequence,
                 },
             };
         }
         catch (InvalidOperationException exception)
         {
+            // 重建失败 = 事件日志暂时不可用：降级位置 / 留，原因更新，等下一次显式重建；
+            // 绝不返回"等价"假结论（CommandResult.Rebuild 保持 null）。
+            _health = _health.Degrade($"重建失败：{exception.Message}", _clock.UtcNow);
             _logger.LogError(
                 exception,
-                "房间重建失败（显式报错，不静默继续）：game={GameId} reason={Reason}",
+                "房间重建失败（显式报错，不静默继续）：game={GameId} reason={Reason} 健康位降级={Degraded} 原因={HealthReason}",
                 GameId,
-                rebuild.Reason);
+                rebuild.Reason,
+                _health.IsDegraded,
+                _health.Reason);
 
             return new CommandResult
             {
                 Kind = CommandResultKind.Failed,
                 Sequence = _lastSequence,
                 Events = [],
-                Notifications = [],
+                // 失败也改了视图：健康位的原因被更新。不推的话，说书人看到的还是上一次的原因，
+                // "显式报告"就退化成"必须手点刷新"——通知面必须与派生状态同源。
+                Notifications = [new GameNotification { Kind = GameNotificationKind.StorytellerViewChanged }],
                 Failure = $"事件日志无法重建：{exception.Message}",
             };
         }

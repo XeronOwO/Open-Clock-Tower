@@ -5,6 +5,7 @@ import {
   asCredential,
   asSizedText,
   clockTimeOf,
+  normalizeRoomHealth,
   normalizeStorytellerView,
   seatLabelOf,
   waitingSecondsTextOf,
@@ -48,6 +49,27 @@ describe('说书人视图规范化', () => {
     expect(view.stepDigest).toBeNull()
     expect(view.lastVoidedRequest).toBeNull()
     expect(view.awaitingDecisionOptions).toEqual([])
+    expect(view.health).toEqual({ degraded: false, reason: null, since: null })
+  })
+
+  it('房间健康位：坏字段按正常保守渲染，降级字段原样透传', () => {
+    expect(normalizeRoomHealth(null)).toEqual({ degraded: false, reason: null, since: null })
+    expect(normalizeRoomHealth({ degraded: 'yes', reason: 42 })).toEqual({
+      degraded: false,
+      reason: null,
+      since: null,
+    })
+
+    const view = normalizeStorytellerView({
+      health: {
+        degraded: true,
+        reason: '恢复失败：事件载荷损坏：SeatStateChangedEvent',
+        since: '2026-10-02T20:15:00+08:00',
+      },
+    })
+    expect(view.health.degraded).toBe(true)
+    expect(view.health.reason).toContain('事件载荷损坏')
+    expect(view.health.since).toBe('2026-10-02T20:15:00+08:00')
   })
 
   it('坏掉的条目被丢掉，好的条目保留', () => {

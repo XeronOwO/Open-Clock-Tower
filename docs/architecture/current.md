@@ -265,6 +265,8 @@ StepMachine（步骤机）
 | 逐维度归因 | `StateFact<T>`（值 / 原因 / 导致方） |
 | 效果归因 | `PersistentEffect` / `InstantaneousEffect` 的 `Source` / `Ability` / `Target` / `Termination` |
 | 折叠 | `GameStateMachine.Apply` / `Fold`（与 `StepMachine.Apply` 同一套路数） |
+| 重建对比 | `GameStateComparer`（五账结构等价，顺序无关）+ `RoomRebuildService`（读全流 → 同源重折两个派生视图 → 三项等价结论 → 原子写快照；失败显式、不返回假"等价"） |
+| 房间健康位 | `RoomHealth`（会话态，不进事件流）：恢复 / 重建失败置位（原因 + 首次发生时间），显式重建成功清除；只说书人视图（`StorytellerView.Health`），玩家侧由门禁与投影锁死 |
 | 说书人视图 | `StorytellerView.Seats` / `PersistentEffects` / `InstantaneousEffects` / `StepDigest`（每步摘要）；玩家投影里**没有**它（D-0012） |
 
 ## 3. 数据流：命令 → 事件 → 投影

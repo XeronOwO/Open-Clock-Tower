@@ -23,7 +23,10 @@
  *   9) 魔典主视图逐行取证（说书人端主视图 = 席位圆环）：行 1 圆环牌面、行 2 牌面标记 + 操作台
  *      归因、行 4 当前槽位高亮 + 操作台内完成真实裁定、行 3 死亡帷幕与复活解除、
  *      行 6 下钻表格与牌面同源、行 8 窄视口纵向列表；行 5（视角隔离）沿用玩家端反方向断言；
- *  10) 全程截图（23 张）；断言只落在真正渲染数据的面板 / 牌面内（`data-testid` 锚点 + 单调计数）。
+ *  10) 恢复与重建：干净流重建 → 三项等价；改脏事件流里的原因文本 → 状态账报"不一致"并由重建修回；
+ *      停宿主 + 弄坏事件载荷 + 重启 → 说书人视图出现降级位与原因；重建仍失败 → 保持降级、原因更新；
+ *      修复载荷后重建成功 → 降级清除；玩家端全程没有健康位文案 / 锚点；
+ *  11) 全程截图（28 张）；断言只落在真正渲染数据的面板 / 牌面内（`data-testid` 锚点 + 单调计数）。
  *
  * 前置：Node >= 22.5（node:sqlite）、web/node_modules 已安装、本机已装 Chromium：
  *   cd web
@@ -81,6 +84,8 @@ mkdirSync(screenshotsDir, { recursive: true })
 const serverUrl = `http://localhost:${options.port}`
 const viteUrl = `http://localhost:${options.vitePort}`
 const children = []
+/** 宿主日志累加（重启后继续累加同一份）：末尾要检查"故意损坏"有 Critical 记录、没有未处理异常。 */
+const serverLog = []
 
 process.on('exit', () => killChildren())
 
@@ -98,40 +103,13 @@ try {
 }
 
 async function main() {
-  console.log('=== 1/10 构建并启动真宿主（独立临时库）===')
+  console.log('=== 1/11 构建并启动真宿主（独立临时库）===')
   // 刻意直接跑编译产物而不是 `dotnet run`：宿主是**单个**进程，
   // 收尾时一次结束即可，不留需要树杀的子进程（与"禁止递归删除"同一姿态）。
   await runProcess('dotnet', ['build', 'src/OpenClockTower.Server', '-c', 'Release'], repositoryRoot)
-  const executableSuffix = process.platform === 'win32' ? '.exe' : ''
-  const serverExecutable = path.join(
-    repositoryRoot,
-    'src',
-    'OpenClockTower.Server',
-    'bin',
-    'Release',
-    'net10.0',
-    `OpenClockTower.Server${executableSuffix}`,
-  )
-  const server = spawn(serverExecutable, [], {
-    cwd: repositoryRoot,
-    env: {
-      ...process.env,
-      ASPNETCORE_URLS: serverUrl,
-      GameServer__DatabasePath: databasePath,
-      GameServer__SeatCount: String(options.seatCount),
-      GameServer__SlotQuotaSeconds: options.quotaSeconds,
-      GameServer__PacerIntervalMilliseconds: '200',
-      DOTNET_ENVIRONMENT: 'Production',
-    },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  })
-  children.push(server)
-  const serverLog = []
-  server.stdout.on('data', (chunk) => serverLog.push(String(chunk)))
-  server.stderr.on('data', (chunk) => serverLog.push(String(chunk)))
-  await waitForHttp(`${serverUrl}/healthz`, '宿主 /healthz', 90_000)
+  let server = await startServer()
 
-  console.log('=== 2/10 取票据（说书人 + 各席位）并起 Vite ===')
+  console.log('=== 2/11 取票据（说书人 + 各席位）并起 Vite ===')
   const ticket = readStorytellerTicket(databasePath)
   console.log(`说书人票据：${ticket.slice(0, 12)}…`)
   const seatTickets = readSeatTickets(databasePath)
@@ -156,7 +134,7 @@ async function main() {
   vite.stderr.on('data', (chunk) => process.stderr.write(`[vite] ${String(chunk)}`))
   await waitForHttp(viteUrl, 'Vite 开发服务器', 60_000)
 
-  console.log('=== 3/10 说书人与各玩家加入（每席一个独立浏览器上下文）===')
+  console.log('=== 3/11 说书人与各玩家加入（每席一个独立浏览器上下文）===')
   const browser = await playwright.chromium.launch()
   const consoleErrors = []
 
@@ -211,7 +189,7 @@ async function main() {
   const dreamerSeat = options.assign.indexOf('dreamer') + 1
   const demonSeat = options.assign.indexOf('no-dashii') + 1
 
-  console.log('=== 4/10 说书人分配角色（席位全分配）===')
+  console.log('=== 4/11 说书人分配角色（席位全分配）===')
   const seatCount = await readSeatCount(storyteller.page)
   check(
     '分配表覆盖服务端全部席位，且席位数量与分配清单一致',
@@ -236,7 +214,7 @@ async function main() {
     )
   }
 
-  console.log('=== 5/10 开局状态：诺-达鲺常驻中毒 + 说书人上报醉酒 ===')
+  console.log('=== 5/11 开局状态：诺-达鲺常驻中毒 + 说书人上报醉酒 ===')
   // 视图是推送更新的：先等效果链 / 状态账把分配后的对账结果渲染出来，再断言。
   // 判据用**两条不同的效果标识**（来源：诺-达鲺所在席位；目标：最近的两名镇民），
   // 而不是"某个字符串出现两次"——后者在同一条效果被重复渲染时也会成立（独立复核 2026-10-02）。
@@ -339,7 +317,7 @@ async function main() {
   await setDataDrawer(storyteller.page, true)
   await screenshot(storyteller.page, '02-pre-night')
 
-  console.log('=== 6/10 开夜 → 钟表匠裁定点（无玩家选项）→ 1 号玩家收信息 ===')
+  console.log('=== 6/11 开夜 → 钟表匠裁定点（无玩家选项）→ 1 号玩家收信息 ===')
   const nightStarted = await runCommand(storyteller.page, '开夜', () =>
     storyteller.page.getByRole('button', { name: /开夜/ }).click(),
   )
@@ -452,7 +430,7 @@ async function main() {
   )
   await screenshot(players.get(clockmakerSeat).page, '05-player-clockmaker-info')
 
-  console.log('=== 7/10 筑梦师槽位：2 号玩家收到定向请求（无关玩家零活动）===')
+  console.log('=== 7/11 筑梦师槽位：2 号玩家收到定向请求（无关玩家零活动）===')
   const dreamerPlayer = players.get(dreamerSeat)
   const dreamerRequestPanel = dreamerPlayer.page.locator('[data-testid="player-request-panel"]')
   const requestState = await waitForAttribute(dreamerRequestPanel, 'data-request-state', 'pending', 180_000)
@@ -554,7 +532,7 @@ async function main() {
   )
   await screenshot(players.get(demonSeat).page, '08-unrelated-player-idle')
 
-  console.log('=== 8/10 2 号玩家作答 → 说书人自由裁定（能力未生效）→ 信息单播 ===')
+  console.log('=== 8/11 2 号玩家作答 → 说书人自由裁定（能力未生效）→ 信息单播 ===')
   await dreamerPlayer.page
     .locator('[data-testid="player-request-options"] label', { hasText: `${demonSeat} 号玩家` })
     .locator('input[type=radio]')
@@ -607,7 +585,7 @@ async function main() {
   )
   await screenshot(dreamerPlayer.page, '09-player-dreamer-info')
 
-  console.log('=== 9/10 说书人结算归因（第一夜）→ 等第一夜走完 ===')
+  console.log('=== 9/11 说书人结算归因（第一夜）→ 等第一夜走完 ===')
   await waitForPanelContains(storyteller.page, '账本与结算结论', 'dreamer', 15_000)
   const resolutionPanel = await panelText(storyteller.page, '账本与结算结论')
   check(
@@ -634,7 +612,7 @@ async function main() {
   const nightOneClosed = await waitForPlanCompleted(storyteller.page, 120_000)
   check('第一夜 13 个槽位自行走完（服务端推送，无刷新）', nightOneClosed)
 
-  console.log('=== 10/10 第二夜与第三夜：代填 / 强制作废 / 阶段推送（行 1–4）→ 依赖变化（行 5 / 6）===')
+  console.log('=== 10/11 第二夜与第三夜：代填 / 强制作废 / 阶段推送（行 1–4）→ 依赖变化（行 5 / 6）===')
   const nightTwo = await runCommand(storyteller.page, '开夜2', async () => {
     await storyteller.page
       .locator('section', { hasText: '兜底与推进' })
@@ -925,11 +903,191 @@ async function main() {
     guardOutcome.raw,
   )
 
+  // —— 第 11 步：恢复与重建（重建票行 1–3 / 健康票行 1–5）——
+  // 真宿主 + 真 SQLite + 真浏览器：先判干净重建，再故意制造"内存账与事件流分叉"，
+  // 最后停宿主、改库、重启，判降级位的置位 / 保持 / 清除与玩家侧不下发。
+  console.log('=== 11/11 恢复与重建：状态账对比 + 降级位 ===')
+  const healthBanner = storyteller.page.locator('[data-testid="room-health-degraded"]')
+  check('健康票行 1：正常房间不显示降级位', (await healthBanner.count()) === 0)
+
+  // 行 1（重建票）：干净流重建 → 内存 / 快照 / 状态账三项都等价。
+  const cleanRebuild = await runCommand(storyteller.page, '干净重建', () =>
+    storyteller.page.getByRole('button', { name: '重建房间' }).click(),
+  )
+  const rebuildReport = storyteller.page.locator('[data-testid="rebuild-report"]')
+  check(
+    '重建票行 1：干净流重建 → 三项等价（内存 / 快照 / 状态账）',
+    cleanRebuild.kind === 'Accepted'
+      && (await rebuildReport.getAttribute('data-machine-equivalent')) === 'true'
+      && (await rebuildReport.getAttribute('data-snapshot-equivalent')) === 'true'
+      && (await rebuildReport.getAttribute('data-ledger-equivalent')) === 'true',
+    `回执=${cleanRebuild.kind} ${cleanRebuild.raw}`.replace(/\s+/g, ' ').slice(0, 240),
+  )
+  await screenshot(storyteller.page, '24-rebuild-clean')
+
+  // 行 2（重建票）：只改事件流里的原因文本 → 步骤机不受影响，状态账必须报"不一致"，并由重建修回。
+  const ledgerMarker = `batch-ledger-dirty-${Date.now()}`
+  tamperLatestSeatChangeReason(ledgerMarker)
+  const dirtyRebuild = await runCommand(storyteller.page, '分叉重建', () =>
+    storyteller.page.getByRole('button', { name: '重建房间' }).click(),
+  )
+  check(
+    '重建票行 2：内存账与事件流分叉 → 状态账不一致（步骤机仍一致）',
+    dirtyRebuild.kind === 'Accepted'
+      && (await rebuildReport.getAttribute('data-machine-equivalent')) === 'true'
+      && (await rebuildReport.getAttribute('data-ledger-equivalent')) === 'false',
+    dirtyRebuild.raw.replace(/\s+/g, ' ').slice(0, 240),
+  )
+  check(
+    '重建票行 2：重建把状态账修回与事件流一致',
+    await waitForPanelContains(storyteller.page, '状态账', ledgerMarker, 15_000),
+  )
+  await screenshot(storyteller.page, '25-rebuild-ledger-repaired')
+
+  // 行 2（健康票）：停宿主 → 弄坏首发事件载荷 → 重启：说书人刷新后必须看见降级与原因。
+  const consoleErrorsBeforeRestart = consoleErrors.length
+  await stopServer(server)
+  const savedPayload = corruptFirstEventPayload()
+  server = await startServer()
+  // 宿主回来之前在途的重连请求会撞上 Vite 代理（宿主不可用 → 代理回 500）：这是装置的预期噪音。
+  // 取一个窄窗口基线把它圈进来，窗口外的任何错误仍然算失败。
+  await sleep(1500)
+  const consoleErrorsAfterRestartWindow = consoleErrors.length
+  await storyteller.page.reload()
+  await healthBanner.waitFor({ state: 'visible', timeout: 30_000 })
+  const degradedText = (await healthBanner.innerText()).replace(/\s+/g, ' ')
+  check(
+    '健康票行 2：恢复失败 → 视图显示降级 + 原因（"数据丢了"看得见）',
+    degradedText.includes('恢复失败') && degradedText.includes('事件载荷损坏'),
+    degradedText.slice(0, 240),
+  )
+  await screenshot(storyteller.page, '26-room-health-degraded')
+
+  // 行 5（健康票）强化：降级窗口里真机重载一个玩家页——加入必须**显式失败**且文案中性
+  // （不出现健康位 / 数据丢失 / 事件载荷字样），这才同时证明"服务端不下发"与"前端不外泄"。
+  const probeSeat = [...players.keys()][0]
+  const probePlayer = players.get(probeSeat)
+  await probePlayer.page.reload()
+  const degradedPlayerText = await waitForLocatorContains(probePlayer.page.locator('.shell'), '加入暂时失败', 20_000)
+  const degradedPlayerLeaks = ['降级', '健康位', '数据丢失', '事件载荷'].filter((word) => degradedPlayerText.includes(word))
+  check(
+    `健康票行 5：降级窗口玩家 ${probeSeat} 号加入显式失败、文案中性（无健康位泄露）`,
+    degradedPlayerText.includes('加入暂时失败') && degradedPlayerLeaks.length === 0,
+    degradedPlayerText.replace(/\s+/g, ' ').slice(0, 200),
+  )
+
+  // 行 3（重建票）：损坏流重建 → 显式失败，不返回"等价"假结论。
+  const failedRebuild = await runCommand(storyteller.page, '损坏流重建', () =>
+    storyteller.page.getByRole('button', { name: '重建房间' }).click(),
+  )
+  check(
+    '重建票行 3：损坏流重建 → 显式失败、不返回等价结论',
+    failedRebuild.kind === 'Failed' && (await rebuildReport.count()) === 0,
+    failedRebuild.raw.replace(/\s+/g, ' ').slice(0, 240),
+  )
+
+  // 行 4（健康票）：重建仍失败 → 降级保持、原因更新为"重建失败"（服务端推送更新，不靠手点刷新）。
+  // 横幅首行是中性文案（"已降级"），失败类别只由 reason 表达——不能写死"恢复失败"（对抗复核 2026-10-02）。
+  const stillDegradedText = await waitForLocatorContains(healthBanner, '重建失败', 15_000)
+  check(
+    '健康票行 4：重建仍失败 → 降级保持 + 原因更新为重建失败（推送到达）',
+    stillDegradedText.includes('已降级')
+      && stillDegradedText.includes('重建失败')
+      && !stillDegradedText.includes('恢复失败'),
+    stillDegradedText.slice(0, 240),
+  )
+  await screenshot(storyteller.page, '27-room-health-rebuild-failed')
+
+  // 行 3（健康票）：事件流修复 → 显式重建成功 → 降级清除（房间重新可恢复）。
+  restoreEventPayload(savedPayload)
+  const recovered = await runCommand(storyteller.page, '修复重建', () =>
+    storyteller.page.getByRole('button', { name: '重建房间' }).click(),
+  )
+  const healthCleared = await waitForGone(healthBanner, 15_000)
+  check(
+    '健康票行 3：显式重建成功 → 降级标记清除',
+    recovered.kind === 'Accepted' && healthCleared,
+    `回执=${recovered.kind}；降级位清除=${healthCleared}`,
+  )
+  await screenshot(storyteller.page, '28-room-health-cleared')
+
+  // 修复重建那一刻，报告照实说"与重建前不一致"（内存已被清空、账为空）——这个最有误导性的组合
+  // 必须被装置断言住，否则"成功重建"与"状态账 不一致"同屏出现会落在断言之外（对抗复核 2026-10-02）。
+  check(
+    '健康票行 3：修复重建的报告照实说"重建前内存 / 状态账不一致、快照一致"',
+    (await rebuildReport.getAttribute('data-machine-equivalent')) === 'false'
+      && (await rebuildReport.getAttribute('data-snapshot-equivalent')) === 'true'
+      && (await rebuildReport.getAttribute('data-ledger-equivalent')) === 'false',
+    recovered.raw.replace(/\s+/g, ' ').slice(0, 240),
+  )
+
+  // 行 5（健康票）另一面：房间恢复后同一玩家页重载能正常加入，且仍然看不到任何健康位。
+  await probePlayer.page.reload()
+  await probePlayer.page
+    .locator('[data-testid="player-seat"]')
+    .waitFor({ state: 'visible', timeout: 20_000 })
+    .catch(() => {})
+  const recoveredPlayerText = await probePlayer.page.locator('.shell').innerText()
+  const recoveredPlayerLeaks = ['降级', '健康位', '数据丢失', '事件载荷'].filter((word) =>
+    recoveredPlayerText.includes(word),
+  )
+  check(
+    `健康票行 5：修复后玩家 ${probeSeat} 号能正常重连、仍看不到健康位`,
+    (await probePlayer.page.locator('[data-testid="player-seat"]').count()) > 0
+      && recoveredPlayerLeaks.length === 0,
+    recoveredPlayerText.replace(/\s+/g, ' ').slice(0, 200),
+  )
+
+  // 行 5（健康票）：玩家侧没有健康位——既无锚点 / 文案，重连包契约里也没有该字段（门禁 + 集成测试）。
+  const playerLeaks = []
+  for (const [seat, client] of players) {
+    const shellText = await client.page.locator('.shell').innerText()
+    const hit = ['降级', '健康位', '数据丢失', '房间数据'].filter((word) => shellText.includes(word))
+    if (hit.length > 0) {
+      playerLeaks.push(`${seat} 号文案:${hit.join('/')}`)
+    }
+
+    if ((await client.page.locator('[data-testid="room-health-degraded"]').count()) > 0) {
+      playerLeaks.push(`${seat} 号锚点`)
+    }
+  }
+  check(
+    '健康票行 5：玩家端没有降级位文案 / 锚点（不下发，不靠前端不显示）',
+    playerLeaks.length === 0,
+    playerLeaks.join('，') || `${players.size} 席已扫描`,
+  )
+
+  // —— 日志面：故意损坏必须在日志里有可定位记录（分支 / 状态 / 原因），而非静默 ——
+  const serverLogText = serverLog.join('')
+  check(
+    '证据：故意损坏的恢复失败在宿主日志里有记录',
+    serverLogText.includes('恢复失败') && serverLogText.includes('事件载荷损坏'),
+    serverLogText.slice(-400),
+  )
+  check(
+    '证据：重建失败在宿主日志里带原因与健康位上下文',
+    serverLogText.includes('重建失败') && serverLogText.includes('健康位降级'),
+    serverLogText.slice(-400),
+  )
+
   await browser.close()
 
   const serverCrash = /Unhandled exception|Application is shutting down/i.test(serverLog.join(''))
   check('宿主日志没有未处理异常', !serverCrash, serverLog.join('').slice(-400))
-  check('所有客户端页面没有控制台错误', consoleErrors.length === 0, consoleErrors.slice(0, 3).join(' | '))
+
+  // 故意杀宿主必然产生两类**装置噪音**：SignalR 断线错误（1006）与宿主不可用时 Vite 代理对 /hub 回的 500。
+  // 判据 = 正常流程零错误 + 重启窗口内除这两类外零错误 + 窗口外零错误——不能因为预期噪音把整条检查关掉。
+  const restartNoise = /Connection disconnected with error|WebSocket closed with status code: 1006|Failed to load resource: the server responded with a status of 500|Failed to complete negotiation|Server returned an error on close/
+  const noiseInWindow = consoleErrors.slice(consoleErrorsBeforeRestart, consoleErrorsAfterRestartWindow)
+  const errorsOutsideWindow = consoleErrors.slice(consoleErrorsAfterRestartWindow)
+  const unexpectedInWindow = noiseInWindow.filter((message) => !restartNoise.test(message))
+  check(
+    '所有客户端页面没有控制台错误（正常流程零错误；重启窗口只容忍断线与代理 500）',
+    consoleErrorsBeforeRestart === 0 && unexpectedInWindow.length === 0 && errorsOutsideWindow.length === 0,
+    `正常流程=${consoleErrorsBeforeRestart}；重启窗口噪音=${noiseInWindow.length}（非预期 ${unexpectedInWindow.length}）；窗口外=${errorsOutsideWindow.length}`
+      + (unexpectedInWindow.length > 0 ? ` | ${unexpectedInWindow.slice(0, 2).join(' | ')}` : '')
+      + (errorsOutsideWindow.length > 0 ? ` | 窗口外: ${errorsOutsideWindow.slice(0, 2).join(' | ')}` : ''),
+  )
 
   const expectedShots = [
     '01-storyteller-joined',
@@ -955,9 +1113,14 @@ async function main() {
     '21-grimoire-revive',
     '22-grimoire-data-drawer',
     '23-grimoire-narrow',
+    '24-rebuild-clean',
+    '25-rebuild-ledger-repaired',
+    '26-room-health-degraded',
+    '27-room-health-rebuild-failed',
+    '28-room-health-cleared',
   ]
   const missingShots = expectedShots.filter((name) => !existsSync(path.join(screenshotsDir, `${name}.png`)))
-  check('二十三张证据截图都已落盘', missingShots.length === 0, missingShots.join(',') || screenshotsDir)
+  check(`证据截图都已落盘（${expectedShots.length} 张）`, missingShots.length === 0, missingShots.join(',') || screenshotsDir)
 }
 
 /** 起一个独立浏览器上下文（= 一台设备）：页面级 console 错误统一收集。 */
@@ -966,7 +1129,9 @@ async function newClient(browser, viewport, consoleErrors) {
   const page = await context.newPage()
   page.on('console', (message) => {
     if (message.type() === 'error') {
-      consoleErrors.push(message.text())
+      // 带上来源 URL：区分"我们的链路报错"和"宿主不可用时 Vite 代理回的 500"（诊断与窗口过滤都要用）。
+      const location = message.location()
+      consoleErrors.push(location?.url ? `${message.text()} @${location.url}` : message.text())
     }
   })
   page.on('pageerror', (error) => consoleErrors.push(error.message))
@@ -1074,6 +1239,36 @@ async function waitForText(locator, expected, timeoutMs) {
   while (Date.now() < deadline) {
     text = (await locator.innerText().catch(() => '')).trim()
     if (text === expected) {
+      return text
+    }
+
+    await sleep(100)
+  }
+
+  return text
+}
+
+/** 等一个定位器从 DOM 消失（服务端推送驱动的清除）；超时返回是否已消失。 */
+async function waitForGone(locator, timeoutMs) {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    if ((await locator.count()) === 0) {
+      return true
+    }
+
+    await sleep(100)
+  }
+
+  return (await locator.count()) === 0
+}
+
+/** 等一个定位器的可见文本包含目标子串（服务端推送驱动的文案更新）；超时返回最后一次文本。 */
+async function waitForLocatorContains(locator, needle, timeoutMs) {
+  const deadline = Date.now() + timeoutMs
+  let text = ''
+  while (Date.now() < deadline) {
+    text = (await locator.innerText().catch(() => '')).replace(/\s+/g, ' ')
+    if (text.includes(needle)) {
       return text
     }
 
@@ -1374,6 +1569,60 @@ function report() {
   console.log(failed.length === 0 ? `全部通过（${results.length} 项）` : `失败 ${failed.length} / ${results.length}`)
 }
 
+/** 打开本批次 SQLite 库（写用途）；调用方负责 close。 */
+function openBatchDatabase() {
+  return new DatabaseSync(databasePath)
+}
+
+/**
+ * 把库里最新一条 SeatStateChangedEvent 的 reason 改成给定文本：只改原因、不改值，
+ * 步骤机不受影响，但内存里的状态账与事件流就此分叉——用来判"重建报告必须报状态账不一致"。
+ */
+function tamperLatestSeatChangeReason(marker) {
+  const database = openBatchDatabase()
+  try {
+    const row = database
+      .prepare("SELECT Sequence, Payload FROM Events WHERE Type = 'SeatStateChangedEvent' ORDER BY Sequence DESC LIMIT 1")
+      .get()
+    if (row === undefined) {
+      throw new Error('库里没有 SeatStateChangedEvent，无法制造状态账分叉')
+    }
+
+    const payload = JSON.parse(String(row.Payload))
+    payload.reason = marker
+    database.prepare('UPDATE Events SET Payload = ? WHERE Sequence = ?').run(JSON.stringify(payload), row.Sequence)
+    return Number(row.Sequence)
+  } finally {
+    database.close()
+  }
+}
+
+/** 弄坏首发事件载荷（重启恢复必然失败），返回原始内容用于修复。 */
+function corruptFirstEventPayload() {
+  const database = openBatchDatabase()
+  try {
+    const row = database.prepare('SELECT Sequence, Payload FROM Events ORDER BY Sequence ASC LIMIT 1').get()
+    if (row === undefined) {
+      throw new Error('事件表为空，无法制造恢复失败')
+    }
+
+    database.prepare('UPDATE Events SET Payload = ? WHERE Sequence = ?').run('{ this is not valid json', row.Sequence)
+    return { sequence: Number(row.Sequence), payload: String(row.Payload) }
+  } finally {
+    database.close()
+  }
+}
+
+/** 修复首发事件载荷（事件流恢复完整，显式重建才有机会成功）。 */
+function restoreEventPayload(saved) {
+  const database = openBatchDatabase()
+  try {
+    database.prepare('UPDATE Events SET Payload = ? WHERE Sequence = ?').run(saved.payload, saved.sequence)
+  } finally {
+    database.close()
+  }
+}
+
 function readStorytellerTicket(databasePath) {
   const database = new DatabaseSync(databasePath, { readOnly: true })
   try {
@@ -1443,6 +1692,58 @@ async function waitForHttp(url, label, timeoutMs) {
   }
 
   throw new Error(`${label} 在 ${timeoutMs}ms 内没有就绪：${lastError}`)
+}
+
+/** 启动真宿主（沿用同一临时库与端口）；返回子进程，日志累加到模块级 serverLog。 */
+async function startServer() {
+  const executableSuffix = process.platform === 'win32' ? '.exe' : ''
+  const serverExecutable = path.join(
+    repositoryRoot,
+    'src',
+    'OpenClockTower.Server',
+    'bin',
+    'Release',
+    'net10.0',
+    `OpenClockTower.Server${executableSuffix}`,
+  )
+  const child = spawn(serverExecutable, [], {
+    cwd: repositoryRoot,
+    env: {
+      ...process.env,
+      ASPNETCORE_URLS: serverUrl,
+      GameServer__DatabasePath: databasePath,
+      GameServer__SeatCount: String(options.seatCount),
+      GameServer__SlotQuotaSeconds: options.quotaSeconds,
+      GameServer__PacerIntervalMilliseconds: '200',
+      DOTNET_ENVIRONMENT: 'Production',
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  })
+  children.push(child)
+  child.stdout.on('data', (chunk) => serverLog.push(String(chunk)))
+  child.stderr.on('data', (chunk) => serverLog.push(String(chunk)))
+  await waitForHttp(`${serverUrl}/healthz`, '宿主 /healthz', 90_000)
+  return child
+}
+
+/** 停掉一个宿主子进程并等它真的退出：Windows 上 taskkill 是异步的，不等它就改库会踩句柄冲突。 */
+async function stopServer(child) {
+  if (child.exitCode === null && child.signalCode === null) {
+    if (process.platform === 'win32') {
+      spawn('taskkill', ['/pid', String(child.pid), '/F'], { stdio: 'ignore' })
+    } else {
+      child.kill('SIGTERM')
+    }
+  }
+
+  const deadline = Date.now() + 10_000
+  while (Date.now() < deadline && child.exitCode === null && child.signalCode === null) {
+    await sleep(100)
+  }
+
+  if (child.exitCode === null && child.signalCode === null) {
+    throw new Error(`宿主进程未能在 10s 内退出：pid=${child.pid}`)
+  }
 }
 
 function characterNameOf(slug) {

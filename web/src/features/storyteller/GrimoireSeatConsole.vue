@@ -119,7 +119,7 @@ async function run(action: () => Promise<CommandOutcome>): Promise<CommandOutcom
 }
 
 function reject(message: string): void {
-  emit('outcome', { ok: false, kind: 'Rejected', sequence: null, message })
+  emit('outcome', { ok: false, kind: 'Rejected', sequence: null, message, rebuild: null })
 }
 
 /** 用户开始填写上报表单 → 锁定"目标席位"（父组件把选中态钉在该席，对抗性复核 H-2）。 */

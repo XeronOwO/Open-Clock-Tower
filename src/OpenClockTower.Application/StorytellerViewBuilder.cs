@@ -16,6 +16,7 @@ public static class StorytellerViewBuilder
     /// <summary>组装当前说书人视图。</summary>
     /// <param name="machine">步骤机状态；未开局为 null。</param>
     /// <param name="state">状态账。</param>
+    /// <param name="health">房间健康位（恢复 / 重建失败后的降级态）。</param>
     /// <param name="sequence">视图对应的最新事件序号。</param>
     /// <param name="trackers">会话级派生跟踪器。</param>
     /// <param name="now">应用层当前时刻（卡点时长用）。</param>
@@ -23,12 +24,14 @@ public static class StorytellerViewBuilder
     public static StorytellerView Build(
         StepMachineState? machine,
         GameState state,
+        RoomHealth health,
         long sequence,
         SessionTrackers trackers,
         DateTimeOffset now,
         IAbilityResolutionCatalog abilities)
     {
         ArgumentNullException.ThrowIfNull(state);
+        ArgumentNullException.ThrowIfNull(health);
         ArgumentNullException.ThrowIfNull(trackers);
         ArgumentNullException.ThrowIfNull(abilities);
 
@@ -40,6 +43,7 @@ public static class StorytellerViewBuilder
         return GameProjection.ForStoryteller(
             machine,
             state,
+            health,
             sequence,
             trackers.PendingRequestSince,
             now,

@@ -50,8 +50,8 @@ node tools/verify-storyteller-panel.mjs        # 退出码 0 = 全部断言通�
 它起真宿主 + 真 Vite + 真 Chromium，按 `--seats` 给每一席开一个**独立浏览器上下文**
 （同一 SPA 的 `#player`），走完"三客户端加入 → 分配 → 开夜（阶段推送见页头）→ 钟表匠裁定 →
 筑梦师请求与作答 → 信息单播 → 第一夜走完 → 第二夜代填与强制作废（无关玩家窗口采样）→
-第三夜击杀请求与依赖变化（中毒解除、请求自动作废）→ 魔典主视图逐行取证（席位环 / 帷幕 / 就近操作 / 窄屏）"，
-把 23 张截图写进 `artifacts/web/`（gitignored；运行日志由调用方重定向，
+第三夜击杀请求与依赖变化（中毒解除、请求自动作废）→ 魔典主视图逐行取证 → 重建报告与降级位（4 场景）"，
+把 28 张截图写进 `artifacts/web/`（gitignored；日志由调用方重定向，
 如 `2>&1 | Tee-Object artifacts/web/batch-run.log`）。
 场景固定三角色（clockmaker / dreamer / no-dashii），节拍配额默认 `--quota 2` 秒。
 

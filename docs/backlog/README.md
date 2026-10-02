@@ -61,8 +61,7 @@ todo/  →  in-progress/  →  review/  →  done/
 ### Todo
 
 - [说书人注记：魔典上的自由文本提示标记](todo/storyteller-annotation.md) — **Low** — 魔典上的自由文本 token；首版刻意不做，待定归属 / 持久化 / 审计边界
-- [重建报告对比状态账](todo/rebuild-state-ledger-comparison.md) — **Medium** — 重建报告补上状态账等价对比，半个结论变完整
-- [恢复失败后的房间健康位](todo/room-health-degradation-flag.md) — **Medium** — 区分「空账」与「数据丢了」，降级标记显式重建才清除
+- [玩家重连「补齐缺口」判据与白名单投影不一致](todo/player-reconnect-gap-semantics.md) — **Medium** — 可见事件条数不可能覆盖全局序号区间，重连会报假缺口并把 watermark 卡住
 
 ### In progress
 
@@ -72,6 +71,8 @@ todo/  →  in-progress/  →  review/  →  done/
 
 ### Done
 
+- [重建报告对比状态账](done/rebuild-state-ledger-comparison.md) — 重建报告对状态账五账做等价对比，与步骤机 / 快照并列成三项结论
+- [恢复失败后的房间健康位](done/room-health-degradation-flag.md) — 区分「空账」与「数据丢了」；降级位置位后显式重建才清除，玩家侧不下发
 - [界面游戏化：魔典式小镇视图](done/grimoire-view.md) — 说书人看板改为以席位为中心的魔典（圆环 / 帷幕 / 标记 / 就近操作 / 数据下钻）；批次 E6 行 1–8 全通过
 - [玩家端视图新鲜度：请求了结与阶段变化的推送 / 呈现](done/player-view-freshness.md) — 作废 / 代填 / 阶段变化在线到达玩家界面（含阶段中文化）；批次 E4 行 1–5 全通过
 - [说书人上帝视角：每步状态信息、归因与最终计算结论](done/storyteller-step-insights.md) — 说书人每步摘要：行动者全部已观测状态及归因、能力生效判定、无选项行为、解除与作废说明；批次 E3 行 1–6 全通过

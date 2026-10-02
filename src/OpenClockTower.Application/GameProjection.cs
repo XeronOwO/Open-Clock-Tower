@@ -38,10 +38,11 @@ public static class GameProjection
         };
     }
 
-    /// <summary>说书人视图（含卡点时长、状态账、效果归因、能力结算结论与每步摘要；时长由应用层时钟算出）。</summary>
+    /// <summary>说书人视图（含卡点时长、状态账、效果归因、能力结算结论、每步摘要与房间健康位；时长由应用层时钟算出）。</summary>
     public static StorytellerView ForStoryteller(
         StepMachineState? machine,
         GameState state,
+        RoomHealth health,
         long sequence,
         DateTimeOffset? pendingSince,
         DateTimeOffset now,
@@ -68,6 +69,7 @@ public static class GameProjection
             Sequence = sequence,
             Phase = machine?.Plan.Phase,
             Control = machine?.Control,
+            Health = health,
             SlotIndex = machine?.SlotIndex ?? 0,
             SlotCount = machine?.Plan.Slots.Count ?? 0,
             CurrentSlotId = machine?.CurrentSlot?.Id,

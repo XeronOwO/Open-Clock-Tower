@@ -19,6 +19,9 @@ public sealed record StorytellerView
     /// <summary>当前控制模式；未开局为 null。</summary>
     public ControlMode? Control { get; init; }
 
+    /// <summary>房间健康位：恢复 / 重建失败后为降级态（原因 + 发生时间）；正常为健康。</summary>
+    public required RoomHealth Health { get; init; }
+
     /// <summary>当前槽位下标。</summary>
     public required int SlotIndex { get; init; }
 

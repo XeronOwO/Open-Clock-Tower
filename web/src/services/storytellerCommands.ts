@@ -9,12 +9,19 @@
  * 不提供"只给连接"的发命令入口。
  */
 import type { HubConnection } from '@microsoft/signalr'
-import { asNumber, asText } from '@/display/format'
+import { asBoolean, asNumber, asText } from '@/display/format'
 
 /** 一条命令的两个必要条件：连接 + 该连接的凭据（D-0012）。 */
 export interface CommandSender {
   connection: HubConnection
   credential: string
+}
+
+/** 重建对比报告：内存状态 / 持久化快照 / 状态账三项等价结论（仅重建命令）。 */
+export interface RebuildReport {
+  machineEquivalent: boolean | null
+  snapshotEquivalent: boolean | null
+  ledgerEquivalent: boolean | null
 }
 
 /** 命令回执的规范化结果：服务端拒绝 / 抛错都收敛成这里的一种形态。 */
@@ -25,12 +32,14 @@ export interface CommandOutcome {
   sequence: number | null
   /** 人话说明（拒绝码 + 说明 / 异常消息）。 */
   message: string
+  /** 重建对比报告；非重建命令为 null。 */
+  rebuild: RebuildReport | null
 }
 
 /** 未知响应 → 回执；服务端字段缺失时降级，不编造"成功"。 */
 export function normalizeOutcome(raw: unknown): CommandOutcome {
   if (raw === null || typeof raw !== 'object') {
-    return { ok: false, kind: 'Failed', sequence: null, message: '回执形状不可识别' }
+    return { ok: false, kind: 'Failed', sequence: null, message: '回执形状不可识别', rebuild: null }
   }
 
   const result = raw as Record<string, unknown>
@@ -43,11 +52,21 @@ export function normalizeOutcome(raw: unknown): CommandOutcome {
     (part): part is string => part !== null,
   )
 
+  // 三项旗标在非重建命令上都是 null（服务端刻意不发）；任一为布尔才视为一份重建报告。
+  const machineEquivalent = asBoolean(result['machineEquivalent'])
+  const snapshotEquivalent = asBoolean(result['snapshotEquivalent'])
+  const ledgerEquivalent = asBoolean(result['ledgerEquivalent'])
+  const rebuild =
+    machineEquivalent === null && snapshotEquivalent === null && ledgerEquivalent === null
+      ? null
+      : { machineEquivalent, snapshotEquivalent, ledgerEquivalent }
+
   return {
     ok: kind === 'Accepted' || kind === 'Duplicate',
     kind,
     sequence,
     message: parts.length > 0 ? parts.join('：') : '',
+    rebuild,
   }
 }
 
@@ -58,7 +77,7 @@ export async function invokeCommand(
   ...args: readonly unknown[]
 ): Promise<CommandOutcome> {
   if (sender.credential.length === 0) {
-    return { ok: false, kind: 'Rejected', sequence: null, message: '尚未加入：没有连接凭据' }
+    return { ok: false, kind: 'Rejected', sequence: null, message: '尚未加入：没有连接凭据', rebuild: null }
   }
 
   try {
@@ -70,6 +89,7 @@ export async function invokeCommand(
       kind: 'Transport',
       sequence: null,
       message: error instanceof Error ? error.message : String(error),
+      rebuild: null,
     }
   }
 }

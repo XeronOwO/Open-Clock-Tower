@@ -10,6 +10,7 @@
  * 零信任姿态：命令必须带连接级凭据；凭据只在内存里，不渲染、不落盘。
  */
 import type { StorytellerViewDto } from '@/contracts/game'
+import { clockTimeOf } from '@/display/format'
 import { labelOf } from '@/display/labels'
 import { StorytellerGateway, type GatewayState } from '@/services/storytellerGateway'
 import { TicketStore } from '@/services/ticketStore'
@@ -69,6 +70,16 @@ const stateText: Record<GatewayState, string> = {
   connecting: '连接中',
   connected: '已连接',
   reconnecting: '重连中',
+}
+
+/** 重建报告旗标 → 人话（null = 该项没有结论，例如无快照）。 */
+function equivalenceText(value: boolean | null): string {
+  return value === null ? '—' : value ? '一致' : '不一致'
+}
+
+/** 重建报告旗标 → 数据属性；批次装置按属性断言，不解析文案。 */
+function equivalenceAttr(value: boolean | null): string {
+  return value === null ? '' : String(value)
 }
 
 const connected = computed(() => connectionState.value === 'connected' && view.value !== null)
@@ -173,6 +184,14 @@ onBeforeUnmount(() => {
 
     <template v-else>
       <StatusStrip :view="view!" />
+      <!-- 降级位：恢复失败 = 数据可能已丢。它只说书人可见（玩家投影里没有此字段，D-0012 §4.3），
+           且服务端在显式重建成功前不会清除——说书人必须先看见它，才谈得上兜底。 -->
+      <section v-if="view!.health.degraded" class="health panel" data-testid="room-health-degraded">
+        <strong>房间数据已降级：数据可能已丢失</strong>
+        <span v-if="view!.health.reason">{{ view!.health.reason }}</span>
+        <span v-if="view!.health.since" class="mono">发生时间：{{ clockTimeOf(view!.health.since) }}</span>
+        <span class="hint">用「重建房间」按事件日志恢复；重建成功前该标记不会清除。</span>
+      </section>
       <div class="body">
         <main class="stage">
           <GrimoireView
@@ -205,6 +224,19 @@ onBeforeUnmount(() => {
               <span v-if="outcome.sequence !== null && outcome.sequence > 0" class="mono">序号 {{ outcome.sequence }}</span>
               <span v-if="outcome.message">{{ outcome.message }}</span>
               <span class="marker" :data-outcome-marker="outcome.kind" hidden>#</span>
+              <!-- 重建对比照实回给说书人：少了它，"重建成功"就还是半个结论（D-0014 能力 3）。 -->
+              <span
+                v-if="outcome.rebuild"
+                class="rebuild"
+                data-testid="rebuild-report"
+                :data-machine-equivalent="equivalenceAttr(outcome.rebuild.machineEquivalent)"
+                :data-snapshot-equivalent="equivalenceAttr(outcome.rebuild.snapshotEquivalent)"
+                :data-ledger-equivalent="equivalenceAttr(outcome.rebuild.ledgerEquivalent)"
+              >
+                重建对比（重建前）：内存 {{ equivalenceText(outcome.rebuild.machineEquivalent) }}；快照
+                {{ equivalenceText(outcome.rebuild.snapshotEquivalent) }}；状态账
+                {{ equivalenceText(outcome.rebuild.ledgerEquivalent) }}
+              </span>
             </template>
           </div>
           <OperationsControl v-if="sender" :view="view!" :sender="sender" @outcome="showOutcome" />
@@ -326,6 +358,18 @@ h1 {
 .outcome.bad {
   background: var(--accent-soft);
   border: 1px solid #e0b8ad;
+}
+
+.health {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: var(--accent-soft);
+  border: 1px solid #e0b8ad;
+}
+
+.health strong {
+  color: var(--warn);
 }
 
 .diagnostics {

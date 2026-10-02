@@ -24,8 +24,37 @@ describe('命令回执规范化', () => {
       kind: 'Accepted',
       sequence: 12,
       message: '',
+      rebuild: null,
     })
     expect(normalizeOutcome({ kind: 'Duplicate', sequence: 12 }).ok).toBe(true)
+  })
+
+  it('重建回执带三项等价结论；非重建命令不带报告', () => {
+    const rebuilt = normalizeOutcome({
+      kind: 'Accepted',
+      sequence: 40,
+      machineEquivalent: true,
+      snapshotEquivalent: false,
+      ledgerEquivalent: false,
+    })
+    expect(rebuilt.rebuild).toEqual({
+      machineEquivalent: true,
+      snapshotEquivalent: false,
+      ledgerEquivalent: false,
+    })
+    // 无快照时该项为 null（服务端刻意不发），但报告仍存在——不能把"没快照"吞成"没有报告"。
+    const noSnapshot = normalizeOutcome({
+      kind: 'Accepted',
+      sequence: 41,
+      machineEquivalent: true,
+      ledgerEquivalent: true,
+    })
+    expect(noSnapshot.rebuild).toEqual({
+      machineEquivalent: true,
+      snapshotEquivalent: null,
+      ledgerEquivalent: true,
+    })
+    expect(normalizeOutcome({ kind: 'Accepted', sequence: 42 }).rebuild).toBeNull()
   })
 
   it('Rejected 拼出拒绝码与说明', () => {

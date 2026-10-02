@@ -12,6 +12,9 @@ public sealed record StorytellerViewDto
     /// <summary>控制模式：Automatic / StorytellerTakeover。</summary>
     public required string Control { get; init; }
 
+    /// <summary>房间健康位：恢复 / 重建失败后的降级状态（原因 + 发生时间）；正常时 Degraded=false。</summary>
+    public required RoomHealthDto Health { get; init; }
+
     /// <summary>当前槽位下标。</summary>
     public required int SlotIndex { get; init; }
 

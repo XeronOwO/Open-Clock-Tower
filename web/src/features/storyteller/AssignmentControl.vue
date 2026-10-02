@@ -41,7 +41,7 @@ async function submit(): Promise<void> {
     .map(([seat, character]) => ({ seat: Number(seat), character }))
 
   if (assignments.length === 0) {
-    emit('outcome', { ok: false, kind: 'Rejected', sequence: null, message: '还没有选择任何角色' })
+    emit('outcome', { ok: false, kind: 'Rejected', sequence: null, message: '还没有选择任何角色', rebuild: null })
     return
   }
 
