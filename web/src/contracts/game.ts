@@ -41,8 +41,9 @@ export interface EffectDto {
   ability: string
   source: number
   target: number
-  sourceCharacter: string | null
-  /** 契约上必有（服务端每条路径都显式赋值，见 ProjectionMapper）；缺失只可能来自篡改或服务端 bug。 */
+  sourceCharacter: string | null  /** 契约上必有（服务端每条路径都显式赋值，见 ProjectionMapper）；缺失只可能来自篡改或服务端 bug。 */
+  /** 「获得能力」类效果被获得的角色（哲学家）；普通效果为 null。口径见 rulings.md R-0036。 */
+  grantedCharacter: string | null
   terminated: boolean
   terminationKind: string | null
   terminationReason: string | null

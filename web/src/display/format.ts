@@ -238,6 +238,7 @@ export function normalizeEffect(raw: unknown): EffectDto | null {
     source,
     target,
     sourceCharacter: asText(effect['sourceCharacter']),
+    grantedCharacter: asText(effect['grantedCharacter']),
     // 契约上 Terminated 必有（服务端每条路径都显式赋值）；缺失只可能是篡改或服务端 bug，
     // 那时按 false 渲染是**在坏载荷上保守**，不是把"未知"说成结论（生产者不会漏）。
     terminated: asBoolean(effect['terminated']) ?? false,

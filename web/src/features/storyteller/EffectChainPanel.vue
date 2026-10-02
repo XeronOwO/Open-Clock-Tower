@@ -34,6 +34,9 @@ defineProps<{ view: StorytellerViewDto }>()
             <span v-if="effect.sourceCharacter" class="hint">
               （施加时来源角色：{{ characterLabelOf(effect.sourceCharacter) }}）
             </span>
+            <span v-if="effect.grantedCharacter" class="hint">
+              （获得能力：{{ characterLabelOf(effect.grantedCharacter) }}）
+            </span>
           </td>
           <td>{{ seatLabelOf(effect.source) }}</td>
           <td>{{ seatLabelOf(effect.target) }}</td>

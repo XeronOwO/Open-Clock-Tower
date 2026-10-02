@@ -77,6 +77,8 @@ function effectOf(target: number, overrides: Partial<EffectDto> = {}): EffectDto
     source: 3,
     target,
     sourceCharacter: 'no-dashii',
+    // 契约上必有（服务端每条路径都显式赋值）；只有「获得能力」类效果才有值。
+    grantedCharacter: null,
     terminated: false,
     terminationKind: null,
     terminationReason: null,
