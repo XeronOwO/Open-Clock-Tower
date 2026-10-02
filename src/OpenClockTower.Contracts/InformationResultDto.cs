@@ -9,6 +9,13 @@ namespace OpenClockTower.Contracts;
 /// </remarks>
 public sealed record InformationResultDto
 {
+    /// <summary>
+    /// 产生这条信息的事件流序号（推送取背书事件序号；快照取该条目自己的事件序号）。
+    /// 客户端按序号合并去重：快照与推送谁先谁后由序号判定，不再"追加后被整体覆盖"
+    /// （票据 player-information-resync-race）。
+    /// </summary>
+    public required long Sequence { get; init; }
+
     /// <summary>产生这条信息的能力 slug。</summary>
     public required string Ability { get; init; }
 

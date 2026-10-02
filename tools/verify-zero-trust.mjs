@@ -384,6 +384,29 @@ async function main() {
       + `3号新增=${newTargetedMethods(playerOf(players, 3), infoMarks.get(3)).join('|') || '无'}`,
   )
 
+  // 票据 player-information-resync-race：推送必须带事件序号，客户端才可能按序号合并。
+  // 这里从**真实收包**取证（含阶段与白天广播），缺一即视为合并判据不成立。
+  const sequencedPushes = [...players.values()]
+    .flatMap((player) => player.inbox)
+    .filter((message) => PUSH_METHODS.includes(message.method))
+  const badSequences = sequencedPushes.filter(
+    (message) => !Number.isInteger(message.payload?.sequence) || message.payload.sequence <= 0,
+  )
+  // 信息推送的序号就是它的事件序号：同一次运行内必须互不相同
+  // （恒定 0 / 重复都说明"按序号合并"的口径没真的落实，光判"字段存在"挡不住）。
+  const infoSequences = sequencedPushes
+    .filter((message) => message.method === 'ReceiveInformationResult')
+    .map((message) => message.payload.sequence)
+  check(
+    '行 8：玩家推送携带正的事件序号，且信息推送序号互不相同（客户端按序号合并的判据）',
+    sequencedPushes.length > 0
+      && badSequences.length === 0
+      && infoSequences.length > 0
+      && new Set(infoSequences).size === infoSequences.length,
+    `收到推送 ${sequencedPushes.length} 条；坏序号 ${badSequences.length} 条；信息推送 ${infoSequences.length} 条`
+      + (badSequences.length > 0 ? `：${badSequences.map((message) => message.method).join('|')}` : ''),
+  )
+
   console.log('=== 5.5/6 行 5 原场景：完成首夜 → 开白天 → 白天提交夜间行动被阶段闸拒绝 ===')
   // 本装置只关心"游戏进入白天"；白天玩法面由主批次（真浏览器）覆盖。
   for (let attempt = 0; attempt < 20; attempt += 1) {

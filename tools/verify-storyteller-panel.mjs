@@ -11,6 +11,8 @@
  *   4) 说书人上报 1 号醉酒 → 与中毒并存、互不抵消；
  *   5) 开夜 → 阶段推送让三席玩家页头变「首夜」（行 3）→ 钟表匠槽位没有玩家选项，直接进说书人
  *      裁定点 → 每步摘要断言行 2（中毒 + 醉酒 + 未生效 R-0004 + 无选项行为）→ 信息只到 1 号玩家；
+ *   5b) 补齐并发窗口（票据 player-information-resync-race 行 1）：扣住 1 号的补齐响应 → 钟表匠信息
+ *      推送先到 → 放行响应；断言推送不丢、不重复、无坏包诊断（截图 05b）；
  *   6) 筑梦师槽位：2 号玩家收到定向请求（摘要断言行 1：中毒 + 归因 + 未生效）→ 作答 →
  *      说书人自由裁定（能力未生效）→ 信息只到 2 号玩家；期间其余玩家必须零请求、零进度；
  *   7) 第一夜 13 个槽位自行走完（服务端推送，无刷新）；
@@ -30,7 +32,7 @@
  *      修复载荷后重建成功 → 降级清除；玩家端全程没有健康位文案 / 锚点；
  *  13) 重连补齐（快照权威）：隐藏事件不报假缺口、watermark 随快照序号前进；非零 watermark 跨掉线窗口
  *      重连（窗口内有其他席位的隐藏状态变化）仍无假告警；
- *  14) 全程截图（33 张）；断言只落在真正渲染数据的面板 / 牌面内（`data-testid` 锚点 + 单调计数）。
+ *  14) 全程截图（34 张）；断言只落在真正渲染数据的面板 / 牌面内（`data-testid` 锚点 + 单调计数）。
  *
  * 前置：Node >= 22.5（node:sqlite）、web/node_modules 已安装、本机已装 Chromium：
  *   cd web
@@ -157,8 +159,16 @@ async function main() {
   )
 
   const players = new Map()
+  // 并发窗口取证（票据 player-information-resync-race 行 1）：拦截必须装在连接建立之前——
+  // Playwright 只拦截安装之后新建的 WebSocket。
+  const raceSeat = options.assign.indexOf('clockmaker') + 1
+  const raceHolds = new Map()
   for (const seatTicket of seatTickets) {
     const client = await newClient(browser, { width: 900, height: 900 }, consoleErrors)
+    if (seatTicket.seat === raceSeat) {
+      raceHolds.set(seatTicket.seat, await installJoinResponseHold(client.page))
+    }
+
     await client.page.goto(`${viteUrl}/#player`)
     await client.page.getByPlaceholder('席位票据').fill(seatTicket.ticket)
     await client.page.getByRole('button', { name: '加入' }).click()
@@ -422,12 +432,50 @@ async function main() {
   await setDataDrawer(storyteller.page, true)
   await screenshot(storyteller.page, '04-clockmaker-decision')
 
+  // —— 并发窗口取证（票据 player-information-resync-race 行 1）——
+  // ① 扣住这次「补齐」的 JoinSeat 响应：快照（序号 N）已生成，客户端还没应用；
+  // ② 说书人完成钟表匠裁定 → 信息推送（N+1）先到玩家页，补齐仍在等响应；
+  // ③ 放行响应 → 修复前信息会被 N 快照整体覆盖丢弃，修复后按序号合并保留且不重复。
+  const raceHold = raceHolds.get(clockmakerSeat)
+  raceHold.arm()
+  await players.get(clockmakerSeat).page.getByRole('button', { name: '补齐' }).click()
+  const responseHeld = await raceHold.waitForHeld(30_000)
+  check('并发票行 1：补齐响应已被扣住（快照已生成、客户端尚未应用）', responseHeld)
+
   const clockmakerOutcome = await settleFreeDecision(storyteller.page, CLOCKMAKER_INFO)
   check('钟表匠信息裁定被受理', clockmakerOutcome.kind === 'Accepted', clockmakerOutcome.raw)
-  check(
-    '1 号玩家收到钟表匠信息（内容 = 说书人裁定原文）',
-    await waitForPanelContains(players.get(clockmakerSeat).page, '我收到的信息', CLOCKMAKER_INFO, 30_000),
+  const pushedWhileHeld = await waitForPanelContains(
+    players.get(clockmakerSeat).page,
+    '我收到的信息',
+    CLOCKMAKER_INFO,
+    30_000,
   )
+  const countWhileHeld = await informationCount(players.get(clockmakerSeat).page)
+  check(
+    '并发票行 1：补齐返回前，窗口内到达的信息推送已按推送呈现',
+    pushedWhileHeld && countWhileHeld === 1,
+    `推送可见=${pushedWhileHeld}；信息计数=${countWhileHeld}`,
+  )
+
+  raceHold.release()
+  const resyncDiagnostics = await waitForLocatorContains(
+    players.get(clockmakerSeat).page.locator('[data-testid="player-diagnostics"]'),
+    '已按自身序号重新补齐',
+    30_000,
+  )
+  const keptRaceText = await infoText(players.get(clockmakerSeat).page)
+  const keptRaceCount = await informationCount(players.get(clockmakerSeat).page)
+  check(
+    '并发票行 1：放行补齐响应后推送不丢、不重复（信息计数=1 且内容在列）',
+    keptRaceCount === 1 && keptRaceText.includes(CLOCKMAKER_INFO),
+    `信息计数=${keptRaceCount}；文本=${keptRaceText.replace(/\s+/g, ' ').slice(0, 160)}`,
+  )
+  check(
+    '并发票行 1：补齐成功且没有"重连补齐"坏包诊断',
+    resyncDiagnostics.includes('已按自身序号重新补齐') && reconnectDiagnosticIn(resyncDiagnostics).length === 0,
+    resyncDiagnostics || '（无诊断）',
+  )
+  await screenshot(players.get(clockmakerSeat).page, '05b-resync-window-info-kept')
   check(
     '1 号玩家信息面板带"信息可能错误"提示',
     (await players.get(clockmakerSeat).page.getByText('信息可能是错的').count()) > 0,
@@ -493,6 +541,11 @@ async function main() {
     }
   }
 
+  // 诊断按**完整期望值**判，而不是"相对基线不变"：基线口径会连同窗口之前的遗留噪声一起放过，
+  // 反方向取证就变成空话。本轮只有 1 号自己点过「补齐」（并发票行 1 的装置动作），
+  // 它的成功提示是正当的；其余无关席位必须一条诊断都没有。
+  const expectedDiagnosticsOf = (seat) => (seat === raceSeat ? '已按自身序号重新补齐' : '')
+
   for (let sample = 0; sample < 8; sample += 1) {
     for (const [seat] of players) {
       if (seat === dreamerSeat) {
@@ -525,9 +578,11 @@ async function main() {
       `无关玩家 ${seat} 号没有收到 2 号的信息`,
       !(await infoText(players.get(seat).page)).includes(DREAMER_INFO),
     )
+    const seatDiagnostics = await readPlayerDiagnostics(players.get(seat).page)
     check(
-      `无关玩家 ${seat} 号零诊断（不吞异常，也不刷无意义噪声）`,
-      (await players.get(seat).page.locator('[data-testid="player-diagnostics"]').count()) === 0,
+      `无关玩家 ${seat} 号诊断符合期望（无异常噪声；${raceSeat} 号只有自己点补齐的成功提示）`,
+      seatDiagnostics === expectedDiagnosticsOf(seat),
+      `期望=${expectedDiagnosticsOf(seat) || '（无）'}；实际=${seatDiagnostics || '（无）'}`,
     )
   }
   check(
@@ -1253,6 +1308,7 @@ async function main() {
     '03-night-started',
     '04-clockmaker-decision',
     '05-player-clockmaker-info',
+    '05b-resync-window-info-kept',
     '06-storyteller-dreamer-digest',
     '07-player-dreamer-request',
     '08-unrelated-player-idle',
@@ -1301,7 +1357,7 @@ async function newClient(browser, viewport, consoleErrors) {
   return { context, page }
 }
 
-/** 轮询玩家信息面板的可见文本。 */
+/** 玩家信息面板的可见文本。 */
 async function infoText(page) {
   const info = page.locator('[data-testid="player-information"]')
   if ((await info.count()) === 0) {
@@ -1309,6 +1365,67 @@ async function infoText(page) {
   }
 
   return await info.innerText()
+}
+
+/** 玩家信息面板的信息计数（data-information-count）；面板不在时返回 -1。 */
+async function informationCount(page) {
+  const panel = page.locator('[data-testid="player-information"]')
+  if ((await panel.count()) === 0) {
+    return -1
+  }
+
+  const raw = await panel.getAttribute('data-information-count')
+  return raw === null ? -1 : Number(raw)
+}
+
+/**
+ * 扣住下一条 JoinSeat 响应帧（票据 player-information-resync-race 行 1 的并发窗口取证）。
+ *
+ * 平时全透传；`arm()` 后下一条含 credential / bundle 的服务端帧被扣住，`waitForHeld()` 等它到达，
+ * `release()` 放行——窗口内到达的定向推送正好落在"快照已生成、客户端尚未应用"之间。
+ * 必须在页面建立连接**之前**安装：Playwright 只拦截安装之后新建的 WebSocket。
+ */
+async function installJoinResponseHold(page) {
+  const state = { armed: false, held: null }
+  let held = new Promise((resolve) => {
+    state.notifyHeld = resolve
+  })
+
+  await page.routeWebSocket(/\/hub/, (ws) => {
+    const server = ws.connectToServer()
+    ws.onMessage((message) => server.send(message))
+    server.onMessage((message) => {
+      const text = typeof message === 'string' ? message : message.toString('utf8')
+      if (state.armed && text.includes('"credential"') && text.includes('"bundle"')) {
+        state.armed = false
+        state.held = { route: ws, message }
+        state.notifyHeld()
+        return
+      }
+
+      ws.send(message)
+    })
+  })
+
+  return {
+    arm: () => {
+      state.armed = true
+      held = new Promise((resolve) => {
+        state.notifyHeld = resolve
+      })
+    },
+    waitForHeld: async (timeoutMs) => {
+      const timeout = new Promise((resolve) => setTimeout(resolve, timeoutMs))
+      await Promise.race([held, timeout])
+      return state.held !== null
+    },
+    release: () => {
+      if (state.held !== null) {
+        state.held.route.send(state.held.message)
+        state.held = null
+      }
+    },
+  }
 }
 
 /**

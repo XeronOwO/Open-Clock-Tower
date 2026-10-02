@@ -7,6 +7,9 @@ namespace OpenClockTower.Contracts;
 /// </remarks>
 public sealed record PhaseStartedDto
 {
+    /// <summary>产生这次阶段开始的事件流序号（客户端据此与快照序号比较先后）。</summary>
+    public required long Sequence { get; init; }
+
     /// <summary>GamePhase 名。</summary>
     public required string Phase { get; init; }
 }

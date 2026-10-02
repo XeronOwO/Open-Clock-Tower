@@ -395,7 +395,7 @@ public sealed class GameSession
             _lastSequence = sequence;
             _trackers.Update(drafts, recordedAt);
 
-            var notifications = GameNotificationBuilder.Build(dispatch.Events, previousMachine);
+            var notifications = GameNotificationBuilder.Build(drafts, previousMachine);
             _logger.LogInformation(
                 "命令已接受：game={GameId} actor={ActorKind} command={Command} 事件数={EventCount} 派生事件数={DerivedCount} 序号={Sequence} 挂起={Held} clientSequence={ClientSequence}",
                 GameId,
@@ -507,8 +507,8 @@ public sealed class GameSession
                 Events = [],
                 Notifications =
                 [
-                    new GameNotification { Kind = GameNotificationKind.RoomRebuilt },
-                    new GameNotification { Kind = GameNotificationKind.StorytellerViewChanged },
+                    new GameNotification { Kind = GameNotificationKind.RoomRebuilt, Sequence = outcome.Sequence },
+                    new GameNotification { Kind = GameNotificationKind.StorytellerViewChanged, Sequence = outcome.Sequence },
                 ],
                 Rebuild = new RoomRebuildReport
                 {
@@ -539,7 +539,7 @@ public sealed class GameSession
                 Events = [],
                 // 失败也改了视图：健康位的原因被更新。不推的话，说书人看到的还是上一次的原因，
                 // "显式报告"就退化成"必须手点刷新"——通知面必须与派生状态同源。
-                Notifications = [new GameNotification { Kind = GameNotificationKind.StorytellerViewChanged }],
+                Notifications = [new GameNotification { Kind = GameNotificationKind.StorytellerViewChanged, Sequence = _lastSequence }],
                 Failure = $"事件日志无法重建：{exception.Message}",
             };
         }

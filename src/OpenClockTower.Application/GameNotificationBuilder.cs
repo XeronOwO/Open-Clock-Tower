@@ -5,20 +5,45 @@ namespace OpenClockTower.Application;
 /// <summary>把产出的事件翻译成需要推送的通知（推送在事件提交**之后**发出）。</summary>
 public static class GameNotificationBuilder
 {
-    /// <summary>翻译一次提交产出的事件；总是附带一条说书人视图变更通知。</summary>
+    /// <summary>
+    /// 翻译一次提交产出的事件；总是附带一条说书人视图变更通知。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 每条通知携带**背书事件的事件流序号**：客户端用它和快照序号比较先后并合并
+    /// （票据 player-information-resync-race；此前推送无序号，补齐响应会覆盖窗口内到达的推送）。
+    /// </para>
+    /// <para>
+    /// 只翻译业务事件：派生事件（对账补账）在下面的分支里没有匹配项，因此不产生推送；
+    /// 但它们参与**末条序号**的判定——只有派生事件的提交不会让通知退回序号 0
+    /// （0 是最小值，将来拿它做闸门会静默丢推送）。
+    /// </para>
+    /// </remarks>
     public static IReadOnlyList<GameNotification> Build(
-        IReadOnlyList<GameEvent> events,
+        IReadOnlyList<StoredEventDraft> drafts,
         StepMachineState? previousMachine)
     {
         var notifications = new List<GameNotification>();
-        foreach (var gameEvent in events)
+        long? lastDayEventSequence = null;
+        foreach (var draft in drafts)
         {
-            switch (gameEvent)
+            if (draft.Event is DayStartedEvent
+                or NominationMadeEvent
+                or VoteCastEvent
+                or VoteCountedEvent
+                or ExecutedEvent
+                or DayClosedEvent)
+            {
+                lastDayEventSequence = draft.Sequence;
+            }
+
+            switch (draft.Event)
             {
                 case OperationRequestIssuedEvent issued:
                     notifications.Add(new GameNotification
                     {
                         Kind = GameNotificationKind.OperationRequestIssued,
+                        Sequence = draft.Sequence,
                         Seat = issued.Request.Addressee,
                         Request = issued.Request,
                     });
@@ -28,18 +53,20 @@ public static class GameNotificationBuilder
                     notifications.Add(new GameNotification
                     {
                         Kind = GameNotificationKind.InformationResultIssued,
+                        Sequence = draft.Sequence,
                         Seat = information.Recipient,
                         Information = information,
                     });
                     break;
 
                 case OperationRequestVoidedEvent voided:
-                    var addressee = FindAddressee(events, previousMachine, voided.RequestId);
+                    var addressee = FindAddressee(drafts, previousMachine, voided.RequestId);
                     if (addressee is { } seat)
                     {
                         notifications.Add(new GameNotification
                         {
                             Kind = GameNotificationKind.OperationRequestVoided,
+                            Sequence = draft.Sequence,
                             Seat = seat,
                             RequestId = voided.RequestId,
                             Void = voided.Void,
@@ -51,12 +78,13 @@ public static class GameNotificationBuilder
                 // 玩家本人作答与说书人代填走同一条通知：收件人始终是请求的行动者，
                 // 「谁做出的决定」留在 Answer.Source 里（票据行 6 的可审计口径）。
                 case OperationRequestAnsweredEvent answered:
-                    var answeredAddressee = FindAddressee(events, previousMachine, answered.RequestId);
+                    var answeredAddressee = FindAddressee(drafts, previousMachine, answered.RequestId);
                     if (answeredAddressee is { } answeredSeat)
                     {
                         notifications.Add(new GameNotification
                         {
                             Kind = GameNotificationKind.OperationRequestAnswered,
+                            Sequence = draft.Sequence,
                             Seat = answeredSeat,
                             RequestId = answered.RequestId,
                             Answer = answered.Answer,
@@ -70,36 +98,40 @@ public static class GameNotificationBuilder
                     notifications.Add(new GameNotification
                     {
                         Kind = GameNotificationKind.PhaseStarted,
+                        Sequence = draft.Sequence,
                         Phase = started.Plan.Phase,
                     });
                     break;
             }
         }
 
-        // 白天是公开信息：任一条白天事件都折算成一条"白天状态已变化"（同批去重），
-        // 由分发器按席位投影后各发一份（提名 / 票面 / 处决按玩家视角可能不同：他自己能不能动）。
-        if (events.Any(gameEvent => gameEvent is DayStartedEvent
-            or NominationMadeEvent
-            or VoteCastEvent
-            or VoteCountedEvent
-            or ExecutedEvent
-            or DayClosedEvent))
+        // 白天是公开信息：任何一条白天事件都折算成一条"白天状态已变化"（同批去重），
+        // 序号取本批最后一条白天事件——那之后的白天状态才以它为界。
+        if (lastDayEventSequence is { } daySequence)
         {
-            notifications.Add(new GameNotification { Kind = GameNotificationKind.DayChanged });
+            notifications.Add(new GameNotification
+            {
+                Kind = GameNotificationKind.DayChanged,
+                Sequence = daySequence,
+            });
         }
 
-        notifications.Add(new GameNotification { Kind = GameNotificationKind.StorytellerViewChanged });
+        notifications.Add(new GameNotification
+        {
+            Kind = GameNotificationKind.StorytellerViewChanged,
+            Sequence = drafts.Count > 0 ? drafts[^1].Sequence : 0,
+        });
         return notifications;
     }
 
     private static SeatId? FindAddressee(
-        IReadOnlyList<GameEvent> events,
+        IReadOnlyList<StoredEventDraft> drafts,
         StepMachineState? previousMachine,
         OperationRequestId requestId)
     {
-        foreach (var gameEvent in events)
+        foreach (var draft in drafts)
         {
-            if (gameEvent is OperationRequestIssuedEvent issued && issued.Request.Id == requestId)
+            if (draft.Event is OperationRequestIssuedEvent issued && issued.Request.Id == requestId)
             {
                 return issued.Request.Addressee;
             }

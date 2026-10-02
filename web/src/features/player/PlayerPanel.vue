@@ -51,12 +51,8 @@ function ensureGateway(): PlayerGateway {
 
 function buildCallbacks(): PlayerCallbacks {
   return {
-    onRequest: (request) => {
-      pending.value = request
-      selectedOption.value = request?.options[0]?.value ?? ''
-      // 重投同一请求也清空：这条说明只描述"上一次请求是怎么结束的"。
-      settledNote.value = ''
-    },
+    // 视图的唯一写入点：快照与推送已在网关按序号合并，这里只做呈现态同步。
+    onView: (next) => applyView(next),
     onRequestVoided: (voided) => {
       // 只处理正挂在面板上的那一条：其他请求的作废与这名玩家无关（D-0013 §5）。
       if (pending.value === null || pending.value.requestId !== voided.requestId) {
@@ -79,26 +75,32 @@ function buildCallbacks(): PlayerCallbacks {
       settledNote.value =
         answered.source === 'StorytellerProxy' ? '请求已了结：由说书人代填' : ''
     },
-    onPhaseStarted: (phase) => {
-      // 阶段是公开信息：服务端推什么就显示什么，前端不做任何推断 / 本地补齐（D-0010）。
-      if (view.value !== null) {
-        view.value = { ...view.value, phase }
-      }
-    },
-    onDayChanged: (next) => {
-      // 白天状态由服务端整份投影（含"我现在能不能动"）；坏载荷网关已挡掉，这里直接采纳。
-      day.value = next
-    },
-    onInformation: (information) => {
-      if (information !== null) {
-        informationResults.value = [...informationResults.value, information]
-      }
-    },
     onState: (state) => {
       connectionState.value = state
     },
     onDiagnostic: (message) => pushDiagnostic(message),
   }
+}
+
+/** 应用合并后的视图：面板的呈现态只在这里从服务端数据同步（唯一写入者）。 */
+function applyView(next: PlayerViewDto): void {
+  const previous = pending.value
+  view.value = next
+  pending.value = next.pendingRequest
+  day.value = next.day
+  informationResults.value = [...next.informationResults]
+
+  if (next.pendingRequest === null) {
+    selectedOption.value = ''
+    return
+  }
+
+  if (previous === null || previous.requestId !== next.pendingRequest.requestId) {
+    selectedOption.value = next.pendingRequest.options[0]?.value ?? ''
+  }
+
+  // 新请求（含重投）到达即清空说明：这条说明只描述"上一次请求是怎么结束的"。
+  settledNote.value = ''
 }
 
 function pushDiagnostic(message: string): void {
@@ -114,11 +116,9 @@ async function join(): Promise<void> {
   joining.value = true
   try {
     store.write(ticket.value.trim())
-    const joined = await ensureGateway().joinSeat(ticket.value.trim())
-    view.value = joined
-    day.value = joined.day
+    // 视图由网关合并后经 onView 下发；这里只负责发起与报错。
+    await ensureGateway().joinSeat(ticket.value.trim())
     clientSequence = 0
-    informationResults.value = [...joined.informationResults]
   } catch (error) {
     pushDiagnostic(`加入失败：${error instanceof Error ? error.message : String(error)}`)
   } finally {
@@ -177,10 +177,8 @@ async function submit(): Promise<void> {
 
 async function resync(): Promise<void> {
   try {
-    const joined = await ensureGateway().resync()
-    view.value = joined
-    day.value = joined.day
-    informationResults.value = [...joined.informationResults]
+    // 视图由网关合并后经 onView 下发（迟到的快照不会覆盖窗口内到达的推送）。
+    await ensureGateway().resync()
     pushDiagnostic('已按自身序号重新补齐')
   } catch (error) {
     pushDiagnostic(`补齐失败：${error instanceof Error ? error.message : String(error)}`)

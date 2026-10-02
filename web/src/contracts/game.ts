@@ -129,6 +129,8 @@ export interface StepDigestDto {
 
 /** 推给玩家的「请求已作废」及其原因（后端同名契约）。 */
 export interface OperationRequestVoidedDto {
+  /** 产生这次作废的事件流序号（与快照序号比较先后，见 playerViewMerge）。 */
+  sequence: number
   requestId: string
   reason: string
   note: string | null
@@ -136,6 +138,8 @@ export interface OperationRequestVoidedDto {
 
 /** 推给玩家的「请求已被响应」（玩家本人作答或说书人代填；后端同名契约）。 */
 export interface OperationRequestAnsweredDto {
+  /** 产生这次响应的事件流序号（与快照序号比较先后）。 */
+  sequence: number
   requestId: string
   /** 被选中的选项值（与重连事件里的同一事实保持一致）。 */
   optionValue: string
@@ -146,6 +150,8 @@ export interface OperationRequestAnsweredDto {
 
 /** 推给玩家的阶段开始（公开信息：昼夜；后端同名契约）。 */
 export interface PhaseStartedDto {
+  /** 产生这次阶段开始的事件流序号。 */
+  sequence: number
   phase: string
 }
 
@@ -175,6 +181,8 @@ export interface DayViewDto {
 
 /** 某个玩家的白天投影：公开事实 + 他现在能做什么（服务端算好，呈现层不判规则）。 */
 export interface PlayerDayDto {
+  /** 这份投影对应的事件流序号（推送取读取时序号；快照取快照序号）。 */
+  sequence: number
   /** 公开的当天事实（字段名避开说书人专属禁词，见 PlayerProjectionLeakGateTests）。 */
   publicFacts: DayViewDto
   canNominate: boolean
@@ -243,6 +251,8 @@ export interface PlayerViewDto {
 
 /** 推给玩家的操作请求（刻意不含槽位 / 轮次 / 进度）。 */
 export interface OperationRequestDto {
+  /** 这条请求状态对应的事件流序号（推送 = 背书事件；快照 = 快照序号）。 */
+  sequence: number
   requestId: string
   seat: number
   context: string
@@ -251,6 +261,8 @@ export interface OperationRequestDto {
 
 /** 玩家自己能力得到的信息类结果：**只有内容**，没有"可能为假"标记（服务端刻意不下发）。 */
 export interface InformationResultDto {
+  /** 产生这条信息的事件流序号：客户端按它合并去重（快照与推送谁先谁后）。 */
+  sequence: number
   ability: string
   content: string
 }

@@ -20,9 +20,10 @@ public static class ProjectionMapper
         LedgerEquivalent = result.Rebuild?.LedgerEquivalent,
     };
 
-    /// <summary>操作请求 → DTO（刻意不带槽位 / 轮次 / 进度）。</summary>
-    public static OperationRequestDto ToDto(OperationRequest request) => new()
+    /// <summary>操作请求 → DTO（刻意不带槽位 / 轮次 / 进度；序号 = 这条状态对应的事件流序号）。</summary>
+    public static OperationRequestDto ToDto(OperationRequest request, long sequence) => new()
     {
+        Sequence = sequence,
         RequestId = request.Id.Value,
         Seat = request.Addressee.Value,
         Context = request.Prompt.Context,
@@ -32,16 +33,18 @@ public static class ProjectionMapper
     };
 
     /// <summary>作废内容 → DTO。</summary>
-    public static OperationRequestVoidedDto ToDto(OperationRequestId requestId, OperationRequestVoid voided) => new()
+    public static OperationRequestVoidedDto ToDto(OperationRequestId requestId, OperationRequestVoid voided, long sequence) => new()
     {
+        Sequence = sequence,
         RequestId = requestId.Value,
         Reason = voided.Reason.ToString(),
         Note = voided.Note,
     };
 
     /// <summary>响应内容 → DTO（请求标识 + 选项 + 来源 + 说明）。</summary>
-    public static OperationRequestAnsweredDto ToDto(OperationRequestId requestId, OperationRequestAnswer answer) => new()
+    public static OperationRequestAnsweredDto ToDto(OperationRequestId requestId, OperationRequestAnswer answer, long sequence) => new()
     {
+        Sequence = sequence,
         RequestId = requestId.Value,
         OptionValue = answer.OptionValue,
         Source = answer.Source.ToString(),
@@ -49,8 +52,9 @@ public static class ProjectionMapper
     };
 
     /// <summary>阶段 → DTO（公开信息）。</summary>
-    public static PhaseStartedDto ToDto(GamePhase phase) => new()
+    public static PhaseStartedDto ToDto(GamePhase phase, long sequence) => new()
     {
+        Sequence = sequence,
         Phase = phase.ToString(),
     };
 
@@ -59,14 +63,15 @@ public static class ProjectionMapper
     {
         Seat = view.Seat.Value,
         Phase = view.Phase?.ToString() ?? "NotStarted",
-        PendingRequest = view.PendingRequest is { } pending ? ToDto(pending) : null,
+        PendingRequest = view.PendingRequest is { } pending ? ToDto(pending, view.Sequence) : null,
         InformationResults = [.. view.InformationResults.Select(ToDto)],
-        Day = view.Day is { } day ? ToDto(day) : null,
+        Day = view.Day is { } day ? ToDto(day, view.Sequence) : null,
     };
 
     /// <summary>玩家白天投影 → DTO（公开事实 + 权限位 + 可提名目标）。</summary>
-    public static PlayerDayDto ToDto(PlayerDay day) => new()
+    public static PlayerDayDto ToDto(PlayerDay day, long sequence) => new()
     {
+        Sequence = sequence,
         PublicFacts = ToDto(day.PublicFacts),
         CanNominate = day.CanNominate,
         CanVote = day.CanVote,
@@ -103,16 +108,18 @@ public static class ProjectionMapper
         Voters = [.. nomination.Ballot.Select(seat => seat.Value)],
     };
 
-    /// <summary>信息结果投影 → DTO（只有内容；「可能为假」不出去）。</summary>
+    /// <summary>信息结果投影 → DTO（只有内容；「可能为假」不出去；序号取快照条目自己的事件序号）。</summary>
     public static InformationResultDto ToDto(InformationResultSnapshot result) => new()
     {
+        Sequence = result.Sequence,
         Ability = result.Ability.Value,
         Content = result.Content,
     };
 
-    /// <summary>信息类结果事件 → DTO（只有内容；「可能为假」不出去）。</summary>
-    public static InformationResultDto ToDto(InformationResultIssuedEvent information) => new()
+    /// <summary>信息类结果事件 → DTO（只有内容；「可能为假」不出去；序号 = 背书事件序号）。</summary>
+    public static InformationResultDto ToDto(InformationResultIssuedEvent information, long sequence) => new()
     {
+        Sequence = sequence,
         Ability = information.Ability.Value,
         Content = information.Content,
     };
@@ -131,12 +138,12 @@ public static class ProjectionMapper
         Sequence = playerEvent.Sequence,
         Kind = playerEvent.Kind.ToString(),
         Phase = playerEvent.Phase?.ToString(),
-        Request = playerEvent.Request is { } request ? ToDto(request) : null,
+        Request = playerEvent.Request is { } request ? ToDto(request, playerEvent.Sequence) : null,
         RequestId = playerEvent.RequestId?.Value,
         OptionValue = playerEvent.OptionValue,
         VoidReason = playerEvent.Void?.Reason.ToString(),
         VoidNote = playerEvent.Void?.Note,
-        Information = playerEvent.Information is { } information ? ToDto(information) : null,
+        Information = playerEvent.Information is { } information ? ToDto(information, playerEvent.Sequence) : null,
     };
 
     /// <summary>说书人视图 → DTO。</summary>
@@ -232,6 +239,7 @@ public static class ProjectionMapper
         LastVoidedRequest = view.LastVoidedRequest is { } voided
             ? new OperationRequestVoidedDto
             {
+                Sequence = voided.Sequence,
                 RequestId = voided.Id.Value,
                 Reason = voided.Reason.ToString(),
                 Note = voided.Note,

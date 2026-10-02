@@ -7,6 +7,9 @@ namespace OpenClockTower.Contracts;
 /// </remarks>
 public sealed record OperationRequestAnsweredDto
 {
+    /// <summary>产生这次响应的事件流序号（客户端据此与快照序号比较先后）。</summary>
+    public required long Sequence { get; init; }
+
     /// <summary>被响应的请求标识。</summary>
     public required string RequestId { get; init; }
 

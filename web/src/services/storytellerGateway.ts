@@ -4,7 +4,9 @@
  * 同步口径（架构 §5、D-0010）：重连 = 票据校验 → 重新取整份快照；
  * **不允许**用本地缓存"接着跑"。因此这里的姿态是：
  * - 断电 / 掉线后重连成功 → 重新 Join 并重新拉一次完整视图，不做本地增量猜测；
- * - 任何推送到达 → 整份替换视图，不让前端自己合并出服务端没有的状态。
+ * - 任何推送到达 → 整份替换视图，不让前端自己合并出服务端没有的状态；
+ * - 视图带序号：Join / 刷新响应与推送同属一条序号流，**只接受序号不更旧的视图**
+ *   （票据 player-information-resync-race：此前推送先到、join 响应后到会把视图拉回旧状态）。
  * 命令的幂等键由调用方持有，重试复用同一个键。
  *
  * 零信任口径（D-0012）：JoinStoryteller 下发的**连接级凭据**只存在内存里，
@@ -35,6 +37,18 @@ export interface GatewayCallbacks {
   onDiagnostic: (message: string) => void
 }
 
+/** 连接工厂：默认连真宿主；测试注入假连接以验证"序号闸"真的接在 Join / 刷新响应上。 */
+export type StorytellerConnectionFactory = () => HubConnection
+
+/** 默认连接：真 SignalR（与玩家侧同口径的自动重连与日志级别）。 */
+function createStorytellerConnection(): HubConnection {
+  return new HubConnectionBuilder()
+    .withUrl(HUB_PATH)
+    .withAutomaticReconnect([0, 1000, 3000, 5000])
+    .configureLogging(LogLevel.Warning)
+    .build()
+}
+
 /**
  * 说书人连接网关：只负责"连上、收视图、发命令"三件事，不持有任何领域判断。
  */
@@ -43,16 +57,17 @@ export class StorytellerGateway {
   private ticket = ''
   /** 连接级凭据：只在内存中；票据才进 TicketStore，凭据绝不落盘。 */
   private credentialValue = ''
+  /** 最近一次采纳的视图（含序号）：所有写入都经过它，旧序号只丢不覆盖。 */
+  private current: StorytellerViewDto | null = null
 
-  constructor(private readonly callbacks: GatewayCallbacks) {
-    this.connection = new HubConnectionBuilder()
-      .withUrl(HUB_PATH)
-      .withAutomaticReconnect([0, 1000, 3000, 5000])
-      .configureLogging(LogLevel.Warning)
-      .build()
+  constructor(
+    private readonly callbacks: GatewayCallbacks,
+    createConnection: StorytellerConnectionFactory = createStorytellerConnection,
+  ) {
+    this.connection = createConnection()
 
     this.connection.on('ReceiveStorytellerViewChanged', (payload: unknown) => {
-      callbacks.onView(normalizeStorytellerView(payload))
+      this.applyView(normalizeStorytellerView(payload))
     })
 
     // 重连成功 = 换了一条连接：身份绑定与视图都要重新建立，绝不沿用旧连接的状态。
@@ -95,8 +110,8 @@ export class StorytellerGateway {
     }
 
     this.credentialValue = joined.credential
-    this.callbacks.onView(joined.view)
-    return joined.view
+    this.applyView(joined.view)
+    return this.current ?? joined.view
   }
 
   /** 主动拉取整份视图（刷新按钮 / 重连补齐）；没有凭据就不发。 */
@@ -108,14 +123,25 @@ export class StorytellerGateway {
     const view = normalizeStorytellerView(
       await this.connection.invoke<unknown>('GetStorytellerView', this.credentialValue),
     )
-    this.callbacks.onView(view)
-    return view
+    this.applyView(view)
+    return this.current ?? view
   }
 
   /** 断开（保留票据，便于重连）。 */
   async stop(): Promise<void> {
     await this.connection.stop()
     this.callbacks.onState('disconnected')
+  }
+
+  /** 视图唯一写入点：序号不更旧的才采纳（相等幂等，更旧丢弃——迟到响应不许把面板拉回去）。 */
+  private applyView(view: StorytellerViewDto): void {
+    const next = newerView(this.current, view)
+    if (next === this.current) {
+      return
+    }
+
+    this.current = next
+    this.callbacks.onView(next)
   }
 
   private async rejoin(): Promise<void> {
@@ -141,6 +167,17 @@ export function normalizeStorytellerJoin(raw: unknown): StorytellerJoinDto | nul
   }
 
   return { credential, view: normalizeStorytellerView(view) }
+}
+
+/**
+ * 说书人视图的序号闸：推送与 Join / 刷新响应同属一条序号流，只接受序号不更旧的视图。
+ * 此前 Join 响应会无条件整份替换，把窗口内到达的较新推送拉回旧状态（票据 player-information-resync-race）。
+ */
+export function newerView(
+  current: StorytellerViewDto | null,
+  incoming: StorytellerViewDto,
+): StorytellerViewDto {
+  return current !== null && incoming.sequence < current.sequence ? current : incoming
 }
 
 function mapState(state: HubConnectionState): GatewayState {

@@ -43,7 +43,7 @@ public sealed class NotificationDispatcher
                     if (_registry.TryGetSeatConnection(issuedSeat, out var requestConnectionId))
                     {
                         await _hub.Clients.Client(requestConnectionId)
-                            .ReceiveOperationRequest(ProjectionMapper.ToDto(request));
+                            .ReceiveOperationRequest(ProjectionMapper.ToDto(request, notification.Sequence));
                         _logger.LogInformation(
                             "已推送操作请求：seat={Seat} request={RequestId} connection={ConnectionId}",
                             issuedSeat,
@@ -65,7 +65,7 @@ public sealed class NotificationDispatcher
                     if (_registry.TryGetSeatConnection(voidedSeat, out var voidedConnectionId))
                     {
                         await _hub.Clients.Client(voidedConnectionId)
-                            .ReceiveOperationRequestVoided(ProjectionMapper.ToDto(requestId, voided));
+                            .ReceiveOperationRequestVoided(ProjectionMapper.ToDto(requestId, voided, notification.Sequence));
                         _logger.LogInformation(
                             "已推送请求作废：seat={Seat} request={RequestId} reason={Reason}",
                             voidedSeat,
@@ -89,7 +89,7 @@ public sealed class NotificationDispatcher
                     if (_registry.TryGetSeatConnection(answeredSeat, out var answeredConnectionId))
                     {
                         await _hub.Clients.Client(answeredConnectionId)
-                            .ReceiveOperationRequestAnswered(ProjectionMapper.ToDto(answeredRequestId, answer));
+                            .ReceiveOperationRequestAnswered(ProjectionMapper.ToDto(answeredRequestId, answer, notification.Sequence));
                         _logger.LogInformation(
                             "已推送请求响应：seat={Seat} request={RequestId} source={Source}",
                             answeredSeat,
@@ -112,7 +112,7 @@ public sealed class NotificationDispatcher
                     if (_registry.TryGetSeatConnection(informationSeat, out var informationConnectionId))
                     {
                         await _hub.Clients.Client(informationConnectionId)
-                            .ReceiveInformationResult(ProjectionMapper.ToDto(information));
+                            .ReceiveInformationResult(ProjectionMapper.ToDto(information, notification.Sequence));
                         _logger.LogInformation(
                             "已推送信息结果：seat={Seat} ability={Ability}",
                             informationSeat,
@@ -129,7 +129,7 @@ public sealed class NotificationDispatcher
                     break;
 
                 case GameNotificationKind.PhaseStarted when notification.Phase is { } startedPhase:
-                    await PushPhaseStartedAsync(startedPhase, cancellationToken);
+                    await PushPhaseStartedAsync(startedPhase, notification.Sequence, cancellationToken);
                     break;
 
                 // 白天是公开信息：按席位投影后各推一份（含"我现在能不能动"）。
@@ -146,9 +146,9 @@ public sealed class NotificationDispatcher
     }
 
     /// <summary>把阶段开始广播给全部已绑定席位的连接；未连接玩家重连时从快照取（公开信息）。</summary>
-    private async Task PushPhaseStartedAsync(GamePhase phase, CancellationToken cancellationToken)
+    private async Task PushPhaseStartedAsync(GamePhase phase, long sequence, CancellationToken cancellationToken)
     {
-        var dto = ProjectionMapper.ToDto(phase);
+        var dto = ProjectionMapper.ToDto(phase, sequence);
         var seats = _registry.Seats;
         var pushed = 0;
         foreach (var seat in seats)
@@ -181,13 +181,15 @@ public sealed class NotificationDispatcher
                 continue;
             }
 
-            var day = _session.GetPlayerView(seat).Day;
-            if (day is null)
+            // 白天是"读时状态"：序号取读取到的那份视图的序号（可能比背书事件更新），
+            // 客户端只接受序号更大的投影，旧的白天推送不会倒灌。
+            var view = _session.GetPlayerView(seat);
+            if (view.Day is null)
             {
                 continue;
             }
 
-            await _hub.Clients.Client(connectionId).ReceiveDayChanged(ProjectionMapper.ToDto(day));
+            await _hub.Clients.Client(connectionId).ReceiveDayChanged(ProjectionMapper.ToDto(view.Day, view.Sequence));
             pushed++;
         }
 

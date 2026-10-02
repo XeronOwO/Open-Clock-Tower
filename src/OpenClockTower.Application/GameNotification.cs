@@ -13,6 +13,16 @@ public sealed record GameNotification
     /// <summary>通知类别。</summary>
     public required GameNotificationKind Kind { get; init; }
 
+    /// <summary>
+    /// 背书事件的事件流序号：客户端据此与快照序号比较先后、按序号合并
+    /// （票据 player-information-resync-race；此前推送无序号，补齐响应会覆盖窗口内到达的推送）。
+    /// </summary>
+    /// <remarks>
+    /// DayChanged 取本批最后一条白天事件的序号；分发器对"读时状态"型推送（白天投影、说书人视图）
+    /// 以读取到的视图序号为准，那才是该状态被表达时的序号。
+    /// </remarks>
+    public required long Sequence { get; init; }
+
     /// <summary>目标玩家席位；面向说书人或全体玩家（阶段开始）的通知为 null。</summary>
     public SeatId? Seat { get; init; }
 

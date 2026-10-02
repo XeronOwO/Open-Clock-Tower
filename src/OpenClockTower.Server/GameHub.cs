@@ -72,7 +72,8 @@ public sealed class GameHub : Hub<IGameClient>
 
             if (bundle.View.PendingRequest is { } pending)
             {
-                await Clients.Caller.ReceiveOperationRequest(ProjectionMapper.ToDto(pending));
+                // 重投的请求状态属于这份快照：序号取快照序号，客户端合并时与快照同源。
+                await Clients.Caller.ReceiveOperationRequest(ProjectionMapper.ToDto(pending, bundle.View.Sequence));
             }
 
             _logger.LogInformation(

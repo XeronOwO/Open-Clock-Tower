@@ -194,7 +194,7 @@ export function normalizeStepDigest(raw: unknown): StepDigestDto | null {
   }
 }
 
-/** 归一化最近一次请求作废；缺请求标识或原因视为坏载荷。 */
+/** 归一化最近一次请求作废；缺请求标识 / 序号 / 原因视为坏载荷。 */
 export function normalizeVoidedRequest(raw: unknown): OperationRequestVoidedDto | null {
   if (raw === null || typeof raw !== 'object') {
     return null
@@ -203,11 +203,12 @@ export function normalizeVoidedRequest(raw: unknown): OperationRequestVoidedDto 
   const voided = raw as Record<string, unknown>
   const requestId = asText(voided['requestId'])
   const reason = asText(voided['reason'])
-  if (requestId === null || reason === null) {
+  const sequence = asCount(voided['sequence'])
+  if (requestId === null || reason === null || sequence === null) {
     return null
   }
 
-  return { requestId, reason, note: asSizedText(voided['note'], 512) }
+  return { sequence, requestId, reason, note: asSizedText(voided['note'], 512) }
 }
 
 /** 归一化一条效果归因。 */

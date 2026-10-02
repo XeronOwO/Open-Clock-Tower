@@ -252,6 +252,7 @@ public sealed partial class PlayerProjectionLeakGateTests
         "@/services/connectionState",
         "@/services/idempotency",
         "@/services/playerGateway",
+        "@/services/playerViewMerge",
         "@/services/ticketStore",
         // 玩家侧自己的子组件（白天操作区）；新增依赖必须显式登记并复核（见上方注释）。
         "@/features/player/PlayerDayPanel.vue",

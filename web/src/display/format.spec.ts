@@ -124,6 +124,7 @@ describe('说书人视图规范化', () => {
         onNoOption: 'StorytellerDecides',
       },
       lastVoidedRequest: {
+        sequence: 8,
         requestId: 'r1',
         reason: 'DependencyViolated',
         note: '座位 2 的状态变化使请求失去意义',
@@ -138,9 +139,10 @@ describe('说书人视图规范化', () => {
     expect(view.stepDigest?.optionCount).toBe(0)
     expect(view.stepDigest?.onNoOption).toBe('StorytellerDecides')
     expect(view.lastVoidedRequest?.reason).toBe('DependencyViolated')
+    expect(view.lastVoidedRequest?.sequence).toBe(8)
   })
 
-  it('坏掉的新字段不编结论（缺席位号 / 缺作废原因都退化为 null）', () => {
+  it('坏掉的新字段不编结论（缺席位号 / 缺作废原因 / 缺序号都退化为 null）', () => {
     const view = normalizeStorytellerView({
       stepDigest: { seat: '五号' },
       lastVoidedRequest: { reason: 'DependencyViolated' },
@@ -148,6 +150,12 @@ describe('说书人视图规范化', () => {
 
     expect(view.stepDigest).toBeNull()
     expect(view.lastVoidedRequest).toBeNull()
+
+    // 缺序号 = 没法与快照比较先后，按坏载荷丢弃，不猜一个序号。
+    const missingSequence = normalizeStorytellerView({
+      lastVoidedRequest: { requestId: 'r1', reason: 'DependencyViolated' },
+    })
+    expect(missingSequence.lastVoidedRequest).toBeNull()
   })
 })
 

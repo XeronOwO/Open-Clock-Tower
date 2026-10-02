@@ -8,6 +8,12 @@ namespace OpenClockTower.Contracts;
 /// </remarks>
 public sealed record OperationRequestDto
 {
+    /// <summary>
+    /// 这条请求状态对应的事件流序号（推送 = 背书事件序号；快照 = 快照序号）。
+    /// 客户端只接受序号更大的请求状态，杜绝补齐响应让已了结的请求"复活"。
+    /// </summary>
+    public required long Sequence { get; init; }
+
     /// <summary>请求稳定标识。</summary>
     public required string RequestId { get; init; }
 

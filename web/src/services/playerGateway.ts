@@ -4,6 +4,11 @@
  * 与说书人网关刻意分开：玩家连接**没有**、也不该有获取整份说书人视图的能力。
  * 零信任（D-0012）：JoinSeat 下发的**连接级凭据**只存在内存里，每条命令随参数出示；
  * 掉线重连必须重新用票据加入并换新凭据——旧连接的凭据在新连接上无效。
+ *
+ * 同步（D-0010 / 架构 §5，票据 player-information-resync-race）：推送与快照都是**同一份
+ * 带序号的事实**，由 `PlayerViewMerge` 按序号合并后整份交给界面——网关是玩家视图的**唯一写入者**。
+ * 快照序号低于本地已知不是坏包，而是"推送先到、响应后到"的正常竞态；只有事件数据本身坏
+ * （越界 / 倒退 / 重复 / 不可识别）才显式失败并停在当前视图。
  */
 import {
   HubConnectionBuilder,
@@ -34,68 +39,82 @@ import {
   normalizeOption,
 } from '@/display/format'
 import { HUB_PATH, type GatewayState } from '@/services/connectionState'
+import { PlayerViewMerge, type PlayerPush } from '@/services/playerViewMerge'
 
 /** 玩家侧回调。 */
 export interface PlayerCallbacks {
-  onRequest: (request: OperationRequestDto | null) => void
-  /** 请求被作废（强制作废 / 依赖失效 / 阶段推进…）：界面据此清掉当前请求并说明原因。 */
+  /** 合并后的最新视图（快照 + 推送按序号合并）；这是玩家视图的唯一写入点。 */
+  onView: (view: PlayerViewDto) => void
+  /** 请求被作废（强制作废 / 依赖失效 / 阶段推进…）：界面据此清掉当前请求并说明原因；先于 onView 发出。 */
   onRequestVoided: (voided: OperationRequestVoidedDto) => void
-  /** 请求已被响应（玩家本人或说书人代填）：界面据此清掉当前请求。 */
+  /** 请求已被响应（玩家本人或说书人代填）：界面据此清掉当前请求；先于 onView 发出。 */
   onRequestAnswered: (answered: OperationRequestAnsweredDto) => void
-  /** 阶段开始（公开信息）：页头阶段随服务端更新，不需要手动补齐。 */
-  onPhaseStarted: (phase: string) => void
-  /** 白天状态变化（公开信息）：提名 / 票面 / 即将被处决 / 处决；null = 服务端还没开过白天。 */
-  onDayChanged: (day: PlayerDayDto | null) => void
-  onInformation: (information: InformationResultDto | null) => void
   onState: (state: GatewayState) => void
   onDiagnostic: (message: string) => void
+}
+
+/** 连接工厂：默认连真宿主；测试注入假连接以验证网关的接线与顺序（不改变任何线上行为）。 */
+export type GameConnectionFactory = () => HubConnection
+
+/** 默认连接：真 SignalR，自动重连与日志级别与说书人侧同口径。 */
+function createPlayerConnection(): HubConnection {
+  return new HubConnectionBuilder()
+    .withUrl(HUB_PATH)
+    .withAutomaticReconnect([0, 1000, 3000, 5000])
+    .configureLogging(LogLevel.Warning)
+    .build()
 }
 
 /** 玩家连接网关。 */
 export class PlayerGateway {
   private readonly connection: HubConnection
+  private readonly merge = new PlayerViewMerge()
   private ticket = ''
-  private lastSequence = 0
   /** 连接级凭据：只在内存中；票据才进 TicketStore，凭据绝不落盘。 */
   private credentialValue = ''
 
-  constructor(private readonly callbacks: PlayerCallbacks) {
-    this.connection = new HubConnectionBuilder()
-      .withUrl(HUB_PATH)
-      .withAutomaticReconnect([0, 1000, 3000, 5000])
-      .configureLogging(LogLevel.Warning)
-      .build()
+  constructor(
+    private readonly callbacks: PlayerCallbacks,
+    createConnection: GameConnectionFactory = createPlayerConnection,
+  ) {
+    this.connection = createConnection()
 
     this.connection.on('ReceiveOperationRequest', (payload: unknown) => {
-      callbacks.onRequest(normalizeRequest(payload))
+      const request = normalizeRequest(payload)
+      if (request !== null) {
+        this.dispatchPush({ kind: 'Request', sequence: request.sequence, request })
+      }
     })
     this.connection.on('ReceiveOperationRequestVoided', (payload: unknown) => {
       const voided = normalizeVoided(payload)
       if (voided !== null) {
-        callbacks.onRequestVoided(voided)
+        this.dispatchPush({ kind: 'Voided', sequence: voided.sequence, voided })
       }
     })
     this.connection.on('ReceiveOperationRequestAnswered', (payload: unknown) => {
       const answered = normalizeAnswered(payload)
       if (answered !== null) {
-        callbacks.onRequestAnswered(answered)
+        this.dispatchPush({ kind: 'Answered', sequence: answered.sequence, answered })
       }
     })
     this.connection.on('ReceivePhaseStarted', (payload: unknown) => {
       const started = normalizePhaseStarted(payload)
       if (started !== null) {
-        callbacks.onPhaseStarted(started.phase)
+        this.dispatchPush({ kind: 'Phase', sequence: started.sequence, phase: started.phase })
       }
     })
     this.connection.on('ReceiveDayChanged', (payload: unknown) => {
       // 坏载荷不覆盖当前白天状态：宁可少更新一次，也不把界面清成空。
       const day = normalizePlayerDay(payload)
       if (day !== null) {
-        callbacks.onDayChanged(day)
+        this.dispatchPush({ kind: 'Day', sequence: day.sequence, day })
       }
     })
     this.connection.on('ReceiveInformationResult', (payload: unknown) => {
-      callbacks.onInformation(normalizeInformation(payload))
+      const information = normalizeInformation(payload)
+      if (information !== null) {
+        this.dispatchPush({ kind: 'Information', sequence: information.sequence, information })
+      }
     })
     this.connection.onreconnecting(() => callbacks.onState('reconnecting'))
     this.connection.onreconnected(() => {
@@ -120,8 +139,12 @@ export class PlayerGateway {
    * 同步口径（架构 §5、D-0010）：**快照序号就是权威 watermark**——服务端在锁内读全量事件后
    * 按接收者投影，快照与序号同源，连续性由服务端保证。可见事件只用于带出窗口内的定向变化
    * （白名单投影，D-0012 §4.3），**不能**也用不着用条数证明序号区间完整（D-0013 §5）。
-   * 但事件必须是好数据：条目不可识别或序号越界 / 倒退 / 重复就**不装作没事**——显式失败并停在
+   * 事件必须是好数据：条目不可识别或序号越界 / 倒退 / 重复就**不装作没事**——显式失败并停在
    * 当前视图，绝不采纳这份包（禁止本地先跑再说）。
+   * 快照比本地已知旧（推送先到、响应后到）不是坏包：交给 `PlayerViewMerge` 按序号合并，
+   * 迟到的快照只补不覆盖（票据 player-information-resync-race）。
+   * 送去服务端的"本地已知"是**事件窗口水位**（只由快照推进）：读时推送的序号可能领先于本席
+   * 真实的事件位置，拿它当已知序号会把缺口事件窗口截断（架构 §5）。
    * 零信任口径（D-0012）：加入结果里的连接级凭据是后续发命令的唯一凭据；拿不到就显式失败。
    */
   async joinSeat(ticket: string): Promise<PlayerViewDto> {
@@ -131,36 +154,42 @@ export class PlayerGateway {
     }
 
     this.callbacks.onState('connected')
+    const known = this.merge.eventAt
     const joined = normalizeSeatJoin(
-      await this.connection.invoke<unknown>('JoinSeat', ticket, this.lastSequence),
+      await this.connection.invoke<unknown>('JoinSeat', ticket, known),
     )
     if (joined === null) {
       throw new Error('服务端没有下发连接凭据：加入结果不可识别（D-0012）')
     }
+
+    // 凭据先采纳：服务端在构造重连包**之前**就已轮换这条连接的凭据，
+    // 后面即使判定"这份包不可信"，也不能把客户端留在已被服务端吊销的旧凭据上。
+    this.credentialValue = joined.credential
 
     if (joined.bundle.droppedEvents > 0) {
       // 归一化就丢过条目 = 这份包不可信：显式失败、停在当前视图，绝不静默前进（宁可报错）。
       throw new Error(`重连包有 ${joined.bundle.droppedEvents} 条事件条目不可识别，已停在当前视图`)
     }
 
-    const bundle = joined.bundle
-    const applied = applyBundle(bundle, this.lastSequence)
+    const applied = applyBundle(joined.bundle, known)
     if (applied.diagnostic.length > 0) {
-      // 坏数据不采纳：显式失败并停在当前视图（watermark 不前进），由人决定重连还是重建。
+      // 坏数据不采纳：显式失败并停在当前视图（事件水位不前进），由人决定重连还是重建。
       throw new Error(applied.diagnostic)
     }
 
-    this.credentialValue = joined.credential
-    this.lastSequence = applied.sequence
-    this.callbacks.onRequest(bundle.view.pendingRequest)
-    this.callbacks.onDayChanged(bundle.view.day)
-
-    // 快照视图由调用方按 `bundle.view` 呈现；窗口内可见事件里的新信息随后接上。
-    for (const information of applied.informationResults) {
-      this.callbacks.onInformation(information)
+    if (joined.bundle.sequence < known) {
+      // 快照比**事件窗口水位**还旧 = 服务端事件流回退（数据丢失 / 从旧备份恢复）：序号会被复用，
+      // 必须清空合并态并以快照为新基线，否则字段闸会永久拒绝更新、信息集合还会把新事实当重复丢掉。
+      this.merge.reset()
+      this.callbacks.onDiagnostic(
+        `服务端序号回退：快照 ${joined.bundle.sequence} < 本地已知 ${known}，已按快照重建视图`,
+      )
     }
 
-    return bundle.view
+    this.merge.applySnapshot(joined.bundle.view, joined.bundle.sequence)
+    const view = this.merge.snapshot()
+    this.callbacks.onView(view)
+    return view
   }
 
   /** 提交响应（幂等键由调用方持有）；没有连接凭据就不发命令。 */
@@ -204,6 +233,25 @@ export class PlayerGateway {
   async stop(): Promise<void> {
     await this.connection.stop()
     this.callbacks.onState('disconnected')
+  }
+
+  /** 推送统一入口：合并态是唯一写入者，说明性回调先于整份视图发出。 */
+  private dispatchPush(push: PlayerPush): void {
+    const pendingBefore = this.merge.pendingRequest
+    if (!this.merge.applyPush(push)) {
+      return
+    }
+
+    // 界面的"请求已作废 / 已了结"说明以"请求还挂在面板上"为前提，所以先发说明、再发视图。
+    if (push.kind === 'Voided' && pendingBefore?.requestId === push.voided.requestId) {
+      this.callbacks.onRequestVoided(push.voided)
+    }
+
+    if (push.kind === 'Answered' && pendingBefore?.requestId === push.answered.requestId) {
+      this.callbacks.onRequestAnswered(push.answered)
+    }
+
+    this.callbacks.onView(this.merge.snapshot())
   }
 
   private async rejoin(): Promise<void> {
@@ -251,7 +299,7 @@ export function normalizeSeatJoin(raw: unknown): NormalizedSeatJoin | null {
   return { credential, bundle: normalizeBundle(bundle) }
 }
 
-/** 未知载荷 → 操作请求；缺关键字段时返回 null（宁可少显示，不编造请求）。 */
+/** 未知载荷 → 操作请求；缺请求标识或序号时返回 null（表达不了先后就不合并）。 */
 export function normalizeRequest(raw: unknown): OperationRequestDto | null {
   if (raw === null || typeof raw !== 'object') {
     return null
@@ -259,11 +307,13 @@ export function normalizeRequest(raw: unknown): OperationRequestDto | null {
 
   const request = raw as Record<string, unknown>
   const requestId = asText(request['requestId'])
-  if (requestId === null) {
+  const sequence = asCount(request['sequence'])
+  if (requestId === null || sequence === null) {
     return null
   }
 
   return {
+    sequence,
     requestId,
     seat: asCount(request['seat']) ?? 0,
     context: asSizedText(request['context'], 512) ?? '',
@@ -273,7 +323,7 @@ export function normalizeRequest(raw: unknown): OperationRequestDto | null {
   }
 }
 
-/** 未知载荷 → 信息类结果；**只有内容**，没有"可能为假"标记（服务端刻意不下发）。 */
+/** 未知载荷 → 信息类结果；**只有内容**（「可能为假」服务端刻意不下发），序号缺一不可。 */
 export function normalizeInformation(raw: unknown): InformationResultDto | null {
   if (raw === null || typeof raw !== 'object') {
     return null
@@ -281,14 +331,15 @@ export function normalizeInformation(raw: unknown): InformationResultDto | null 
 
   const information = raw as Record<string, unknown>
   const ability = asText(information['ability'])
-  if (ability === null) {
+  const sequence = asCount(information['sequence'])
+  if (ability === null || sequence === null) {
     return null
   }
 
-  return { ability, content: asSizedText(information['content'], 4096) ?? '' }
+  return { sequence, ability, content: asSizedText(information['content'], 4096) ?? '' }
 }
 
-/** 未知载荷 → 请求作废；缺请求标识或原因时返回 null（宁可少显示，不编造原因）。 */
+/** 未知载荷 → 请求作废；缺请求标识 / 序号 / 原因时返回 null（宁可少显示，不编造原因）。 */
 export function normalizeVoided(raw: unknown): OperationRequestVoidedDto | null {
   if (raw === null || typeof raw !== 'object') {
     return null
@@ -297,14 +348,15 @@ export function normalizeVoided(raw: unknown): OperationRequestVoidedDto | null 
   const voided = raw as Record<string, unknown>
   const requestId = asText(voided['requestId'])
   const reason = asText(voided['reason'])
-  if (requestId === null || reason === null) {
+  const sequence = asCount(voided['sequence'])
+  if (requestId === null || reason === null || sequence === null) {
     return null
   }
 
-  return { requestId, reason, note: asSizedText(voided['note'], 512) }
+  return { sequence, requestId, reason, note: asSizedText(voided['note'], 512) }
 }
 
-/** 未知载荷 → 请求响应；缺请求标识 / 选项 / 来源时返回 null（表达不了来源就不编）。 */
+/** 未知载荷 → 请求响应；缺请求标识 / 序号 / 选项 / 来源时返回 null（表达不了来源就不编）。 */
 export function normalizeAnswered(raw: unknown): OperationRequestAnsweredDto | null {
   if (raw === null || typeof raw !== 'object') {
     return null
@@ -314,24 +366,27 @@ export function normalizeAnswered(raw: unknown): OperationRequestAnsweredDto | n
   const requestId = asText(answered['requestId'])
   const optionValue = asText(answered['optionValue'])
   const source = asText(answered['source'])
-  if (requestId === null || optionValue === null || source === null) {
+  const sequence = asCount(answered['sequence'])
+  if (requestId === null || optionValue === null || source === null || sequence === null) {
     return null
   }
 
-  return { requestId, optionValue, source, note: asSizedText(answered['note'], 512) }
+  return { sequence, requestId, optionValue, source, note: asSizedText(answered['note'], 512) }
 }
 
-/** 未知载荷 → 阶段开始；缺阶段名时返回 null（不知道阶段就不动页头）。 */
+/** 未知载荷 → 阶段开始；缺阶段名或序号时返回 null（不知道先后就不动页头）。 */
 export function normalizePhaseStarted(raw: unknown): PhaseStartedDto | null {
   if (raw === null || typeof raw !== 'object') {
     return null
   }
 
-  const phase = asText((raw as Record<string, unknown>)['phase'])
-  return phase === null ? null : { phase }
+  const started = raw as Record<string, unknown>
+  const phase = asText(started['phase'])
+  const sequence = asCount(started['sequence'])
+  return phase === null || sequence === null ? null : { sequence, phase }
 }
 
-/** 未知载荷 → 玩家白天投影；公开事实不完整时返回 null（不编权限位）。 */
+/** 未知载荷 → 玩家白天投影；公开事实或序号不完整时返回 null（不编权限位、不猜先后）。 */
 export function normalizePlayerDay(raw: unknown): PlayerDayDto | null {
   if (raw === null || typeof raw !== 'object') {
     return null
@@ -339,11 +394,13 @@ export function normalizePlayerDay(raw: unknown): PlayerDayDto | null {
 
   const day = raw as Record<string, unknown>
   const publicFacts = normalizeDayView(day['publicFacts'])
-  if (publicFacts === null) {
+  const sequence = asCount(day['sequence'])
+  if (publicFacts === null || sequence === null) {
     return null
   }
 
   return {
+    sequence,
     publicFacts,
     canNominate: asBoolean(day['canNominate']) ?? false,
     canVote: asBoolean(day['canVote']) ?? false,
@@ -406,40 +463,31 @@ export function normalizePlayerEvent(raw: unknown): PlayerEventDto | null {
   }
 }
 
-/** 应用重连包的结果：新的客户端序号、要交给界面的信息类结果、以及缺口诊断。 */
+/** 应用重连包的结果：快照序号（合并态的水位）与事件数据诊断。 */
 export interface AppliedBundle {
+  /** 快照序号：合并态用它决定各字段 / 信息条目的取舍。 */
   sequence: number
-  informationResults: InformationResultDto[]
-  /** 非空 = 补齐不完整，界面必须让人看见（不许静默继续）。 */
+  /** 非空 = 补齐包的事件数据不可信，界面必须让人看见（不许静默继续）。 */
   diagnostic: string
 }
 
 /**
- * 把重连包折叠成"客户端现在认哪个序号、新收到了什么"。
+ * 校验重连包里的可见事件，并给出快照序号。
  *
  * 规则（架构 §5、D-0010；白名单投影见 D-0012 §4.3 / D-0013 §5）：
- * - **快照序号是新的 watermark**：服务端已读全量事件后按接收者投影，连续性由它保证；
- *   可见事件条数天然小于序号区间长度（他人事件根本不下发），所以**不校验条数**；
- * - 可见事件只要**严格递增**且落在 `(本地已知, 快照序号]` 就合法；越界 / 倒退 / 重复是坏数据
- *   → 不更新序号、报诊断（宁可报错，也不许"本地先按旧状态继续跑"）；
- * - 事件里的信息类结果按序号顺序接在快照之后。
+ * - 可见事件只要**严格递增**且落在 `(本地已知, 快照序号]` 就合法；条数天然小于序号区间长度，
+ *   所以**不校验条数**；
+ * - 越界 / 倒退 / 重复是坏数据 → 不采纳、报诊断（宁可报错，也不许"本地先按旧状态继续跑"）；
+ * - **快照序号低于本地已知不是坏数据**：那是"推送先到、响应后到"的正常竞态
+ *   （票据 player-information-resync-race）；合并态按序号逐字段取舍，迟到的快照只补不覆盖。
  */
 export function applyBundle(bundle: ReconnectBundleDto, knownSequence: number): AppliedBundle {
-  if (bundle.sequence < knownSequence) {
-    return {
-      sequence: knownSequence,
-      informationResults: [],
-      diagnostic: `重连补齐序号倒退：本地已知 ${knownSequence}，服务端快照 ${bundle.sequence}`,
-    }
-  }
-
   const ordered = [...bundle.events].sort((left, right) => left.sequence - right.sequence)
   let previous = knownSequence
   for (const [index, event] of ordered.entries()) {
     if (event.sequence > bundle.sequence) {
       return {
-        sequence: knownSequence,
-        informationResults: [],
+        sequence: bundle.sequence,
         diagnostic: `重连补齐序号越界：第 ${index + 1} 条是 ${event.sequence}，超出快照 ${bundle.sequence}`,
       }
     }
@@ -447,8 +495,7 @@ export function applyBundle(bundle: ReconnectBundleDto, knownSequence: number): 
     if (event.sequence <= previous) {
       const kind = event.sequence === previous ? '重复' : '倒退'
       return {
-        sequence: knownSequence,
-        informationResults: [],
+        sequence: bundle.sequence,
         diagnostic: `重连补齐序号${kind}：第 ${index + 1} 条是 ${event.sequence}，应严格大于 ${previous}`,
       }
     }
@@ -456,11 +503,5 @@ export function applyBundle(bundle: ReconnectBundleDto, knownSequence: number): 
     previous = event.sequence
   }
 
-  return {
-    sequence: bundle.sequence,
-    informationResults: ordered
-      .map((event) => event.information)
-      .filter((information): information is InformationResultDto => information !== null),
-    diagnostic: '',
-  }
+  return { sequence: bundle.sequence, diagnostic: '' }
 }

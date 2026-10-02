@@ -3,6 +3,9 @@ namespace OpenClockTower.Contracts;
 /// <summary>推给玩家的"请求已作废"及其原因。</summary>
 public sealed record OperationRequestVoidedDto
 {
+    /// <summary>产生这次作废的事件流序号（客户端据此与快照序号比较先后）。</summary>
+    public required long Sequence { get; init; }
+
     /// <summary>被作废的请求标识。</summary>
     public required string RequestId { get; init; }
 
