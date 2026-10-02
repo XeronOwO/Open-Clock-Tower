@@ -172,7 +172,7 @@
 |---|---|---|---|
 | F-1 | 高 | **强推越过白天会静默丢弃挂起的呆瓜请求**：`DayStepMachine.ForceAdvance` 只产 `DayClosedEvent` + 推进事件（夜间路径 `StepMachine.HandleForceAdvance` 有补作废，白天漏了），而槽位推进会清空 `PendingRequest` → 触发器既看不到请求、也看不到记录 → **下一个黎明重复开选择，终局后果可被反复重掷** | `DayStepMachine` 强推前显式产 `OperationRequestVoidedEvent`（D-0014 / R-0027 第 4 条）；`KlutzChoiceTrigger` 的请求认领改为"先认挂起请求，认不到就按**自己派生的请求标识** `klutz:{seat}` + 该席位此刻确为已死呆瓜"回收（否则推进清空后仍认不到）；回归：`DayForceAdvanceTests`（内核）+ `KlutzChoiceTriggerTests.VoidedRequest_AfterSlotAdvance_StillRecordsTheSkip` |
 | F-2 | 中 | **跳过记录的原因（醉酒 / 中毒 / 被谁作废）全量下发给每一名玩家**：说书人专属维度经 `PlayerView.KlutzChoices.Detail` 泄漏 | `GameProjection.ForSeat` 对跳过记录改用公开文案（"呆瓜本次没有做出选择"），说书人视图保留完整原因；回归：`GameProjectionOutcomeTests.SkippedKlutzChoice_PlayerView_HidesTheReason`（含 wire 形状与"说书人面不裁剪"对照） |
-| F-3 | 中 | **游戏结束时挂起的请求不被作废**：终局快照永久携带答不了的死信（重连会重投给玩家，而一切提交都被 `phase.game_ended` 拒） | 玩家投影在结束态不再下发任何请求（`GameProjection.ForSeat` 的 `ended` 闸）；回归：`GameProjectionOutcomeTests.EndedGame_PlayerView_DoesNotPushAPendingRequest`（含"结束前会下发"的对照）。**残余**：事件流里那条请求仍未落作废事件（要把它并进结束批次需重排"结束 → 触发管线"的顺序），已立票 `todo/ended-game-pending-request-void.md` |
+| F-3 | 中 | **游戏结束时挂起的请求不被作废**：终局快照永久携带答不了的死信（重连会重投给玩家，而一切提交都被 `phase.game_ended` 拒） | 玩家投影在结束态不再下发任何请求（`GameProjection.ForSeat` 的 `ended` 闸）；回归：`GameProjectionOutcomeTests.EndedGame_PlayerView_DoesNotPushAPendingRequest`（含"结束前会下发"的对照）。**残余**：事件流里那条请求仍未落作废事件（要把它并进结束批次需重排"结束 → 触发管线"的顺序），已立票 `review/ended-game-pending-request-void.md` |
 | F-4 | 低 / 存疑 | `HandleVoid` 没有 `HandleResponse` 那样的"非槽位来源旁路" | 复核者自判**当前不可达**（触发请求只在白天未走完时开出，而完成白天计划的两条路都会先清空请求）；已由麻脸巫婆票复核：判定**可达**并修复（`edd0273`），见 `review/pit-hag-character-change.md` |
 
 复核同时验证了这些**未发现问题**的面：结束后无绕过路径（闸 + 内核双层，Hub 全部写路径只有一个入口）、一局只结束一次、求值"观测不齐不判"与优先级、涡流黄昏取值（不读夜间处罚处决）、重放只折事件不重算、客户端不含自算游戏状态。

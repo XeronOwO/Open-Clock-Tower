@@ -61,4 +61,36 @@ internal static class TestNightPlan
             Slots = slots,
         };
     }
+
+    /// <summary>构造测试首夜计划：1 号「由说书人决定」的裁定槽位（无选项）+ 其余空槽位 + 黎明等待。</summary>
+    internal static StepPlan CreateDecisionFirstNight(int seatCount)
+    {
+        var actor = new SeatId(1);
+        var slots = new List<StepSlot>
+        {
+            StepSlot.Action(
+                new StepSlotId("test-seat-1"),
+                actor,
+                new ChoicePrompt
+                {
+                    Context = "测试夹具：1 号的能力结果由说书人决定",
+                    Options = [],
+                    OnNoOption = NoOptionBehavior.StorytellerDecides,
+                },
+                [new SeatDependency { Seat = actor, RequiredLife = LifeState.Alive }]),
+        };
+
+        for (var seat = 2; seat <= seatCount; seat++)
+        {
+            slots.Add(StepSlot.Empty(new StepSlotId($"test-seat-{seat}")));
+        }
+
+        slots.Add(StepSlot.DawnWait(new StepSlotId("test-dawn")));
+        return new StepPlan
+        {
+            Label = "test:night-1",
+            Phase = GamePhase.FirstNight,
+            Slots = slots,
+        };
+    }
 }

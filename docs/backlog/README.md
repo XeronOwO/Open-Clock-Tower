@@ -62,14 +62,15 @@ todo/  →  in-progress/  →  review/  →  done/
 
 - [角色变更族其余角色：舞蛇人 / 理发师 / 方古 / 哲学家（含上报路径槽位激活）](todo/character-change-family.md) — **High** — 麻脸巫婆票之后的同族四角色实现 + 说书人手工上报换角不触发槽位激活的残余收口
 - [涡流干扰计数：R-0004 的引擎级口径（数学家）](todo/vortox-interference-counting.md) — **Medium** — 涡流在场的「能力未正常生效」落失效账本（`MalfunctionKind.Vortox`），先闭合 R-0004 的逐条口径
-- [结束批次作废挂起请求：终局事件流不留死信](todo/ended-game-pending-request-void.md) — **Medium** — 结束批次里把挂起请求显式作废（投影已挡住，事件流与快照未收口）
 - [说书人注记：魔典上的自由文本提示标记](todo/storyteller-annotation.md) — **Low** — 魔典上的自由文本 token；首版刻意不做，待定归属 / 持久化 / 审计边界
+- [终局残留挂起：阻塞报警的收口](todo/terminal-hold-residue.md) — **Low** — 阻塞报警（`Block`）随终局快照残留（仅说书人视图可见）：先定「只清阻塞」的内核原语，再谈结束批次收口
 
 ### In progress
 
 ### Review
 
 - [麻脸巫婆：角色变更与「创造恶魔」之夜的死亡裁量](review/pit-hag-character-change.md) — **High** — S&V 唯一能把任意玩家变成任意角色的角色：角色变更（阵营不变、角色唯一）+ 新角色当夜可行动 + 创造恶魔之夜的死亡裁量 + 运行期「恶魔角色清零」口径
+- [结束批次作废挂起请求：终局事件流不留死信](review/ended-game-pending-request-void.md) — **Medium** — 结束批次把挂起请求作废（原因 `GameEnded`）、把挂起裁定点以「本局已结束」收口；收口事件排在 `GameEndedEvent` 之前
 
 ### Done
 

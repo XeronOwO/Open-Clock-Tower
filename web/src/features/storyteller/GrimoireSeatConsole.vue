@@ -46,7 +46,10 @@ const proxyNote = ref('')
 const voidReason = ref('StorytellerForce')
 const voidNote = ref('')
 
-/** 取值与 Kernel 的 OperationRequestVoidReason 逐项一致；服务端只认枚举名。 */
+/**
+ * 说书人**可手动选择**的作废原因（服务端只认枚举名），与 Kernel 枚举逐项核对过；
+ * GameEnded 是系统专属原因（结束批次派发），不进这个下拉。
+ */
 const voidReasons = [
   { value: 'StorytellerForce', label: '说书人强制作废' },
   { value: 'StorytellerTakeover', label: '强推 / 接管切步了结' },

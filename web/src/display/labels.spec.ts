@@ -58,6 +58,7 @@ describe('文案映射', () => {
   it('作废原因与同名控制模式分开映射，未知原因原样回显', () => {
     expect(voidReasonLabelOf('DependencyViolated')).toBe('座位依赖不再满足')
     expect(voidReasonLabelOf('StorytellerTakeover')).toBe('强推 / 接管切步了结')
+    expect(voidReasonLabelOf('GameEnded')).toBe('本局已结束')
     expect(labelOf('StorytellerTakeover')).toBe('说书人接管')
     expect(voidReasonLabelOf('SomethingNew')).toBe('SomethingNew')
     expect(voidReasonLabelOf(null)).toBe('—')

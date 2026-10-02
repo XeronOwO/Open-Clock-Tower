@@ -136,6 +136,7 @@ const VOID_REASON_LABELS: Readonly<Record<string, string>> = {
   DependencyViolated: '座位依赖不再满足',
   PhaseAdvanced: '阶段已推进',
   Superseded: '被上游新请求取代',
+  GameEnded: '本局已结束',
 }
 
 /** 作废原因 → 中文；未知原因原样回显。 */

@@ -379,19 +379,16 @@ public sealed class GameSession
 
             if (outcome is not null)
             {
-                (sequence, nextState, nextMachine) = SessionCommit.AppendGameEnded(
+                // 结束批次收口：先作废仍挂起的请求（若有），再追加唯一的结束事件（R-0024）。
+                (sequence, nextState, nextMachine) = SessionCommit.AppendGameEnding(
                     outcome,
                     drafts,
                     sequence,
                     recordedAt,
                     nextState,
-                    nextMachine);
-                _logger.LogInformation(
-                    "本局结束：game={GameId} winner={Winner} condition={Condition} detail={Detail}",
+                    nextMachine,
                     GameId,
-                    outcome.Winner,
-                    outcome.Condition,
-                    outcome.Detail);
+                    _logger);
             }
 
             await _store.CommitAsync(

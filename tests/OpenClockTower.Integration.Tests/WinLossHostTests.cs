@@ -167,6 +167,15 @@ public sealed class WinLossHostTests
         Assert.NotNull(bystander.Outcome);
         Assert.Equal(Alignment.Evil, bystander.Outcome!.Winner);
 
+        // 请求在结束前已正常了结（Answered）→ 结束批次不产生多余作废事件（票据矩阵行 3）。
+        // 只比较**答题之后**的区段：答完即结束的那一批不许再补作废；
+        // 此前的夜晚槽位由强推越过，强推自身的作废（StorytellerTakeover）不在此列。
+        var stored = await host.Store.ReadEventsAsync(TestServerHost.GameId, 0, CancellationToken.None);
+        var answeredSequence = Assert.Single(stored, item => item.Event is OperationRequestAnsweredEvent).Sequence;
+        Assert.DoesNotContain(
+            stored,
+            item => item.Event is OperationRequestVoidedEvent && item.Sequence > answeredSequence);
+
         // 结束后开夜被拒。
         var rejected = await storyteller.InvokeAsync<CommandResultDto>(
             "StartNight",

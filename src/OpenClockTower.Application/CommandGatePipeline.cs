@@ -333,9 +333,9 @@ public static class CommandGatePipeline
             ResolveDeferredDeathCommand deferred => CheckSeatExists(deferred.Seat, setup),
             SubmitResponseCommand submit => CheckOption(machine, submit.RequestId, submit.OptionValue),
             ProxyFillCommand proxy => CheckOption(machine, proxy.RequestId, proxy.OptionValue),
-            VoidRequestCommand voidRequest => Enum.IsDefined(voidRequest.Reason)
+            VoidRequestCommand voidRequest => IsManuallySelectableVoidReason(voidRequest.Reason)
                 ? null
-                : Reject("legality.reason_invalid", $"未知作废原因：{voidRequest.Reason}", "legality"),
+                : Reject("legality.reason_invalid", $"不能手动使用的作废原因：{voidRequest.Reason}", "legality"),
             _ => null,
         };
 
@@ -465,6 +465,14 @@ public static class CommandGatePipeline
         index < 1
             ? Reject("legality.nomination_index_invalid", $"提名序号必须从 1 开始：{index}", "legality")
             : null;
+
+    /// <summary>
+    /// 说书人可手动选择的作废原因：已登记、且不是系统专属原因。
+    /// <see cref="OperationRequestVoidReason.GameEnded"/> 只由结束批次派发（<c>SessionCommit.AppendGameEnding</c>）；
+    /// 客户端即使传了也不受理——否则审计里会出现"手动以『本局已结束』为由作废"的假事实。
+    /// </summary>
+    private static bool IsManuallySelectableVoidReason(OperationRequestVoidReason reason) =>
+        Enum.IsDefined(reason) && reason != OperationRequestVoidReason.GameEnded;
 
     private static CommandRejection Reject(string code, string message, string gate) =>
         new() { Code = code, Message = message, Gate = gate };

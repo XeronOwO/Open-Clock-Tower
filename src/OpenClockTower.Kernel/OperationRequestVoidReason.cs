@@ -22,4 +22,10 @@ public enum OperationRequestVoidReason
 
     /// <summary>被上游新请求取代。</summary>
     Superseded,
+
+    /// <summary>
+    /// 本局已结束：请求再也答不了、也撤不掉，由**结束批次**统一作废（D-0010 / D-0014；
+    /// 作废事件排在 <see cref="GameEndedEvent"/> 之前同批落库）。系统专属原因，不供手动选择。
+    /// </summary>
+    GameEnded,
 }

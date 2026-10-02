@@ -9,8 +9,9 @@ namespace OpenClockTower.Application;
 /// </summary>
 /// <remarks>
 /// 从 <see cref="GameSession"/> 拆出（单文件 600 行门禁）：会话管"状态与提交"，
-/// 这里只回答两件纯函数的活——装草案、判胜负。胜负判定的口径见
-/// <c>docs/standard/rulings.md</c> R-0024（业务事件先判一次、触发之后统一再判）。
+/// 这里只做纯函数的活——装草案、判胜负、收口结束批次。胜负判定的口径见
+/// <c>docs/standard/rulings.md</c> R-0024（业务事件先判一次、触发之后统一再判）；
+/// 结束批次的挂起请求作废见 <see cref="AppendGameEnding"/>。
 /// </remarks>
 internal static class SessionCommit
 {
@@ -142,15 +143,89 @@ internal static class SessionCommit
         return (sequence, machine);
     }
 
-    /// <summary>追加唯一的结束事件，并把结论折进两个派生视图（R-0024）。</summary>
-    internal static (long Sequence, GameState State, StepMachineState? Machine) AppendGameEnded(
+    /// <summary>
+    /// 结束批次的收口：先把仍挂起的操作请求作废、把等待说书人的裁定点收口（若有），
+    /// 再追加唯一的结束事件并把它们折进派生视图（R-0024；票据 ended-game-pending-request-void）。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// **顺序不能反**：作废事件排在 <see cref="GameEndedEvent"/> 之前同批落库，重放才读得出
+    /// "请求已作废 + 本局已结束"。否则终局快照会永久携带一条答不了、也撤不掉的死信——
+    /// 重连把它重投给玩家，而一切提交都被 <c>phase.game_ended</c> 拒（D-0010 / D-0011 / D-0014）。
+    /// </para>
+    /// <para>
+    /// 两类挂起——操作请求（槽位来源与触发来源一视同仁）与等待说书人的裁定点——在结束之后
+    /// 都没有任何出口能再了结它们，因此一并收口；没有挂起时不产生多余事件（幂等）。
+    /// 收口不重跑触发管线（《处决》第 3 步先于第 4 步）。
+    /// </para>
+    /// </remarks>
+    internal static (long Sequence, GameState State, StepMachineState? Machine) AppendGameEnding(
         GameOutcome outcome,
         List<StoredEventDraft> drafts,
         long sequence,
         DateTimeOffset recordedAt,
         GameState state,
-        StepMachineState? machine)
+        StepMachineState? machine,
+        GameId gameId,
+        ILogger logger)
     {
+        if (machine?.PendingRequest is { Status: OperationRequestStatus.Pending } pending)
+        {
+            var voided = new OperationRequestVoidedEvent
+            {
+                RequestId = pending.Id,
+                Void = new OperationRequestVoid
+                {
+                    Reason = OperationRequestVoidReason.GameEnded,
+                    Note = $"本局已结束（{(outcome.Winner == Alignment.Good ? "善良" : "邪恶")}阵营获胜）："
+                        + "请求不再有意义",
+                },
+            };
+            sequence++;
+            drafts.Add(new StoredEventDraft
+            {
+                Sequence = sequence,
+                Event = voided,
+                RecordedAt = recordedAt,
+            });
+            machine = StepMachine.Apply(machine, voided) ?? machine;
+
+            logger.LogInformation(
+                "结束批次作废挂起请求：game={GameId} request={RequestId} addressee={Seat} reason={Reason} 说明={Note}",
+                gameId,
+                pending.Id.Value,
+                pending.Addressee.Value,
+                OperationRequestVoidReason.GameEnded,
+                voided.Void.Note);
+        }
+
+        // 与挂起请求同族的第二个挂起：等待说书人的裁定点。结束之后它同样再也不会被回答
+        // （一切输入被 phase.game_ended 拒），以"本局已结束"收口，终局快照不留悬挂
+        // （收口姿态同强推：Decision = null + 说明）。
+        if (machine?.AwaitingDecision is { } decision)
+        {
+            var resolved = new DecisionPointResolvedEvent
+            {
+                DecisionPointId = decision.Id,
+                Decision = null,
+                Note = "本局已结束：裁定点不再有意义",
+            };
+            sequence++;
+            drafts.Add(new StoredEventDraft
+            {
+                Sequence = sequence,
+                Event = resolved,
+                RecordedAt = recordedAt,
+            });
+            machine = StepMachine.Apply(machine, resolved) ?? machine;
+
+            logger.LogInformation(
+                "结束批次收口挂起裁定点：game={GameId} decisionPoint={DecisionPointId} 说明={Note}",
+                gameId,
+                decision.Id.Value,
+                resolved.Note);
+        }
+
         var ended = new GameEndedEvent
         {
             Winner = outcome.Winner,
@@ -164,6 +239,13 @@ internal static class SessionCommit
             Event = ended,
             RecordedAt = recordedAt,
         });
+
+        logger.LogInformation(
+            "本局结束：game={GameId} winner={Winner} condition={Condition} detail={Detail}",
+            gameId,
+            outcome.Winner,
+            outcome.Condition,
+            outcome.Detail);
 
         return (sequence, GameStateMachine.Apply(state, ended), StepMachine.Apply(machine, ended) ?? machine);
     }
