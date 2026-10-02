@@ -206,6 +206,10 @@ export function characterLabelOf(slug: string | null | undefined): string {
 const EFFECT_MARK_LABELS: Readonly<Record<string, string>> = {
   // 百科《女巫》· 2026-10-01 抓取 · 提示标记：「被诅咒」（放置在女巫要诅咒的玩家角色标记旁）
   'witch.curse': '被诅咒',
+  // 百科《哲学家》· 2026-10-01 抓取 · 提示标记「醉酒」：被选角色在场时放在它的持有者角色标记旁（R-0036）
+  'philosopher.grant.drunk': '醉酒',
+  // 「获得能力」是哲学家那次授予本身（R-0036：账上一条常驻事实）；放在他自己的牌面上
+  'philosopher.grant': '获得能力',
 }
 
 /** 能力 slug → 提示标记名；未登记或空值返回 null。 */

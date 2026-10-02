@@ -74,6 +74,8 @@ describe('文案映射', () => {
 
   it('提示标记名按能力登记：女巫的诅咒是「被诅咒」，未登记的能力不编名字', () => {
     expect(effectMarkNameOf('witch.curse')).toBe('被诅咒')
+    expect(effectMarkNameOf('philosopher.grant.drunk')).toBe('醉酒')
+    expect(effectMarkNameOf('philosopher.grant')).toBe('获得能力')
     expect(effectMarkNameOf('no-dashii.poison')).toBeNull()
     expect(effectMarkNameOf(null)).toBeNull()
   })
