@@ -207,7 +207,7 @@ StepMachine（步骤机）
 | 事件与重放 | 19 种 `GameEvent`（含 4 种状态账事件）；`StepMachine.Handle` 产事件、`StepMachineFolder` 折叠重建；**账事件可先于任何阶段**（开局分配），此时步骤机保持"尚未开始"；重启 = 重放，恢复 = 重放后替换快照 |
 | 开局分配 | `AssignCharactersCommand`：每席一条 `SeatStateChangedEvent`（角色 + 初始生死 = 存活），只允许在首个阶段开始前使用（D-0017 / R-0015） |
 | 建表 | `NightPlanBuilder` + `StartNightCommand`：口径进 `StepPlan.Variant`；缺事实显式拒绝，不猜（R-0014 / D-0013） |
-| 状态变化归因 | `SeatStateChangedEvent`（座位 + 实际观测维度 + 原因 + 导致方）；说书人视图给 `RecentSeatChanges` / `CurrentSlotActor` / `CurrentSlotContext` |
+| 状态变化归因 | `SeatStateChangedEvent`（座位 + 实际观测维度 + 原因 + 导致方）；说书人视图给 `RecentSeatChanges` / `CurrentSlotActor` / `CurrentSlotContext` / `StepDigest`（每步摘要：状态 + 能力判定 + 作废说明） |
 | 玩家可见事件 | 重连补齐只下发 `PlayerEvent` **白名单投影**（公开阶段 + 发给自己的请求 / 响应 / 作废），**绝不下发原始事件流** |
 | 控制模式 | `ControlMode.Automatic` / `StorytellerTakeover`；接管时节拍器不自动推进，交还后恢复 |
 | 作废 | 座位依赖（`SeatDependency`）失效 → 自动作废并写明原因；说书人可强制作废 |
@@ -265,7 +265,7 @@ StepMachine（步骤机）
 | 逐维度归因 | `StateFact<T>`（值 / 原因 / 导致方） |
 | 效果归因 | `PersistentEffect` / `InstantaneousEffect` 的 `Source` / `Ability` / `Target` / `Termination` |
 | 折叠 | `GameStateMachine.Apply` / `Fold`（与 `StepMachine.Apply` 同一套路数） |
-| 说书人视图 | `StorytellerView.Seats` / `PersistentEffects` / `InstantaneousEffects`；玩家投影里**没有**它（D-0012） |
+| 说书人视图 | `StorytellerView.Seats` / `PersistentEffects` / `InstantaneousEffects` / `StepDigest`（每步摘要）；玩家投影里**没有**它（D-0012） |
 
 ## 3. 数据流：命令 → 事件 → 投影
 
