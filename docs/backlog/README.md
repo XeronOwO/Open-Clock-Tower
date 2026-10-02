@@ -60,12 +60,13 @@ todo/  →  in-progress/  →  review/  →  done/
 
 ### Todo
 
-- [角色变更族其余角色：舞蛇人 / 理发师 / 方古 / 哲学家（含上报路径槽位激活）](todo/character-change-family.md) — **High** — 麻脸巫婆票之后的同族四角色实现 + 说书人手工上报换角不触发槽位激活的残余收口
 - [涡流干扰计数：R-0004 的引擎级口径（数学家）](todo/vortox-interference-counting.md) — **Medium** — 涡流在场的「能力未正常生效」落失效账本（`MalfunctionKind.Vortox`），先闭合 R-0004 的逐条口径
 - [说书人注记：魔典上的自由文本提示标记](todo/storyteller-annotation.md) — **Low** — 魔典上的自由文本 token；首版刻意不做，待定归属 / 持久化 / 审计边界
 - [终局残留挂起：阻塞报警的收口](todo/terminal-hold-residue.md) — **Low** — 阻塞报警（`Block`）随终局快照残留（仅说书人视图可见）：先定「只清阻塞」的内核原语，再谈结束批次收口
 
 ### In progress
+
+- [角色变更族其余角色：舞蛇人 / 理发师 / 方古 / 哲学家（含上报路径槽位激活）](in-progress/character-change-family.md) — **High** — 麻脸巫婆票之后的同族四角色实现 + 说书人手工上报换角不触发槽位激活的残余收口
 
 ### Review
 

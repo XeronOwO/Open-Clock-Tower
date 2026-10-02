@@ -135,7 +135,7 @@
 
 1. **装置清单登记**：已外移到 `docs/acceptance/devices.md`（登记六个装置：主装置 / 胜负 / 麻脸巫婆 / 女巫 /
    处罚处决 / 零信任；`web/AGENTS.md` §3.1 只留运行入口与外部耦合，体积不再随装置增长）；
-2. **登记残余（上报换角槽位激活）**：已移交 `todo/character-change-family.md`，与该族其余角色一起收口。
+2. **登记残余（上报换角槽位激活）**：已移交 `in-progress/character-change-family.md`，与该族其余角色一起收口。
 
 ## E15 验收判定（2026-10-05）
 

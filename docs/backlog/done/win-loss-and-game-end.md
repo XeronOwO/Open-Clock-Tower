@@ -161,7 +161,7 @@
 - 涡流的信息必假**只做到"打标 + 归因"**：内容仍由说书人裁定（R-0028）；引擎级的"涡流干扰计数"（R-0004 的 `MalfunctionKind.Vortox`）不在本票范围——已立票 `todo/vortox-interference-counting.md`。
 - 呆瓜候选 = 开出时刻的存活席位；平台首版没有旅行者，故不做"旅行者能否被选"的分支。
 - 「没有任何恶魔角色 → 不判」是平台口径（防配置错误被静默判成一局结束，R-0024）；`麻脸巫婆`把恶魔变成非恶魔之后的口径已由 R-0029 落定，见 `done/pit-hag-character-change.md`。
-- 恶魔 → 恶魔 / 恶魔 → 非恶魔的角色变更路径已在装置里被真实走过（换角后常驻效果按来源失去能力终止），`麻脸巫婆`已有票据（`done/pit-hag-character-change.md`），S&V 其余角色变更族见 `todo/character-change-family.md`，跨剧本部分见 `future/cross-script-extension.md`。
+- 恶魔 → 恶魔 / 恶魔 → 非恶魔的角色变更路径已在装置里被真实走过（换角后常驻效果按来源失去能力终止），`麻脸巫婆`已有票据（`done/pit-hag-character-change.md`），S&V 其余角色变更族见 `in-progress/character-change-family.md`，跨剧本部分见 `future/cross-script-extension.md`。
 - 呆瓜「公开选择」列表在真机装置里只覆盖了"选中邪恶"这一支；"选善良 → 无事发生"由集成与规则测试覆盖。
 
 ### 独立对抗性复核（前台子代理，只读，硬时间盒 10 分钟）

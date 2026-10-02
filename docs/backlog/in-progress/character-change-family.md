@@ -1,6 +1,6 @@
 # 角色变更族其余角色：舞蛇人 / 理发师 / 方古 / 哲学家（含上报路径槽位激活）
 
-- Status: Todo（实施中；代码完成后移入 review/ 等批次）
+- Status: In progress（第一批：舞蛇人 + 上报换角残余已落地并留真机证据；理发师 / 方古 / 哲学家待做，代码完成后整体移入 review/ 等 E17 批次）
 - Priority: High
 - Depends on: 麻脸巫婆票的机制地基（`done/pit-hag-character-change.md`：槽位进入时按当前账求值 / `SeatStateChangedEvent.PreviousCharacter` / R-0029）
 - 来源：麻脸巫婆票「本票不做」与「尚未落地（本票剩余）」；`docs/standard/rulings.md` R-0029 / R-0031 / R-0032
@@ -18,7 +18,7 @@
 | 方古 | `fang-gu` | 不在 `NightActions`（恶魔） | 角色变更后当夜行动 / 恶魔清零口径（接 R-0029） |
 | 哲学家 | `philosopher` | 不在 `NightActions` | 「获得能力」与既有 `AbilityId` / 效果模型的接法 |
 
-另一条残余（本票一并收口）：**说书人手工上报换角（`ApplySeatStateCommand`）路径不触发槽位激活**——
+另一条残余（本票一并收口，**已落地**——见「已落地」）：**说书人手工上报换角（`ApplySeatStateCommand`）路径不触发槽位激活**——
 目前只有角色契约在结算时激活。接到上报路径时要保证「已进入 / 已走过」的槽位不被误激活，
 并补运行时证据（角色变更族同批走）。
 
@@ -84,9 +84,11 @@
 
 | 提交 | 内容 | 证据 |
 |---|---|---|
-| （待提交） | 内核：`PersistentEffect.SourceStateIndependent` + `GameState.IsOperative` 分支；槽位换手重绑（`SlotActivatedEvent` 泛化 + `StepMachineFolder` + `NightSlotActivation`） | 内核回归：效果生命周期 4 例 + 维度对账 4 例 + 槽位入口 2 例 |
-| （待提交） | 规则：`SnakeCharmerNightAction`（提示 / 结算 / 交换 / 中毒 / 重绑）注册进 `NightActions` | 规则回归 `SnakeCharmerNightActionTests` 9 例 + `NightSlotActivationTests` 2 例 |
-| （待提交） | 裁定：R-0031 / R-0032 登记 | `docs/standard/rulings.md` |
+| `bffd6f7` | 内核：`PersistentEffect.SourceStateIndependent` + `GameState.IsOperative` 分支；槽位换手重绑（`SlotActivatedEvent` 泛化 + `StepMachineFolder` + `NightSlotActivation`） | 内核回归：效果生命周期 + 维度对账（自指不震荡）+ 槽位入口重绑 |
+| `ccfac2c` | 规则：`SnakeCharmerNightAction`（提示 / 结算 / 交换 / 中毒 / 重绑）注册进 `NightActions`；R-0031 / R-0032 登记 | 规则回归 `SnakeCharmerNightActionTests` 9 例 + `NightSlotActivationTests` 2 例 |
+| `1cafb3a` | 应用：说书人上报换角也走同一套槽位绑定（空槽位激活 / 行动槽位换手重绑；已进入的不处理）；真机用例 `SnakeCharmerHostTests` | 真宿主 2 例：交换 + 当夜恶魔槽位重绑 + 永久中毒；上报创造涡流当夜被唤醒 + 错过时机不绑定 |
+| `629968c` | 顺带修复：集成用例在 0.05s 配额档下的三处既有竞态（重启重放计数先接管冻结；`CompleteNightAsync` 容忍 `kernel.PlanAlreadyCompleted`） | HEAD 基线复现同败，非本票回归；全量 498 通过 |
 
-**待办（本票剩余）**：真宿主集成证据（首夜 / 其他夜交换、新恶魔当夜行动、中毒存续、重启重放）；
-上报换角槽位激活残余 + 运行时证据；理发师 / 方古 / 哲学家；装置段与批次 E17。
+**待办（本票剩余）**：理发师 / 方古 / 哲学家（各自机制清点 + 实现 + 测试与真机证据）；
+装置段（复用 / 扩展 E16 的 `verify-pit-hag.mjs`，覆盖交换与当夜行动）与批次 E17 判定；
+重启重放面由既有宿主用例与装置回归覆盖。
