@@ -56,6 +56,13 @@ export function asSizedText(value: unknown, maxLength: number): string | null {
   return text.length <= maxLength ? text : text.slice(0, maxLength)
 }
 
+/** 安全取字符串数组：非字符串项丢掉；不是数组就退化成空集合（R-0004 的失效分类可并列多条）。 */
+export function asTextArray(value: unknown): string[] {
+  return asArray<unknown>(value)
+    .map((item) => asText(item))
+    .filter((item): item is string => item !== null)
+}
+
 /**
  * 安全取连接级凭据：服务端数据是**不可信输入**，凭据必须是有界、无空白 / 控制字符的串。
  * 凭据只用于发命令，绝不渲染、绝不写日志、绝不落盘（D-0012）。
@@ -168,7 +175,7 @@ export function normalizeSlotAbility(raw: unknown): SlotAbilityDto | null {
     basis,
     ability: asText(ability['ability']),
     effective: asBoolean(ability['effective']),
-    malfunction: asText(ability['malfunction']),
+    malfunctions: asTextArray(ability['malfunctions']),
     note: asText(ability['note']),
     sequence: asNumber(ability['sequence']),
   }
@@ -468,7 +475,9 @@ export function normalizeStorytellerView(raw: unknown): StorytellerViewDto {
             ability: asText((view['lastResolution'] as Record<string, unknown>)['ability']) ?? '',
             effective:
               asBoolean((view['lastResolution'] as Record<string, unknown>)['effective']) ?? false,
-            malfunction: asText((view['lastResolution'] as Record<string, unknown>)['malfunction']),
+            malfunctions: asTextArray(
+              (view['lastResolution'] as Record<string, unknown>)['malfunctions'],
+            ),
             note: asText((view['lastResolution'] as Record<string, unknown>)['note']),
             sequence: asCount((view['lastResolution'] as Record<string, unknown>)['sequence']) ?? 0,
           },

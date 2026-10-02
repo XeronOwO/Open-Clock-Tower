@@ -10,7 +10,7 @@
  *   3) 说书人分配三角色 → 诺-达鲺常驻中毒落在最近的两名镇民（带归因与效果链接）；
  *   4) 说书人上报 1 号醉酒 → 与中毒并存、互不抵消；
  *   5) 开夜 → 阶段推送让各席玩家页头变「首夜」（行 3）→ 钟表匠槽位没有玩家选项，直接进说书人
- *      裁定点 → 每步摘要断言行 2（中毒 + 醉酒 + 未生效 R-0004 + 无选项行为）→ 信息只到 1 号玩家；
+ *      裁定点 → 每步摘要断言行 2（中毒 + 醉酒两条原因并列 + 未生效 + 无选项行为）→ 信息只到 1 号玩家；
  *   5b) 补齐并发窗口（票据 player-information-resync-race 行 1）：扣住 1 号的补齐响应 → 钟表匠信息
  *      推送先到 → 放行响应；断言推送不丢、不重复、无坏包诊断（截图 05b）；
  *   6) 筑梦师槽位：2 号玩家收到定向请求（摘要断言行 1：中毒 + 归因 + 未生效）→ 作答 →
@@ -474,11 +474,12 @@ async function main() {
     clockmakerDigest.includes(`${demonSeat} 号`) && clockmakerDigest.includes(poisonLinkFor(clockmakerSeat)),
     clockmakerDigest.replace(/\s+/g, ' ').slice(0, 240),
   )
+  const clockmakerDigestCompact = clockmakerDigest.replace(/\s+/g, '')
   check(
-    '行 2：钟表匠摘要显示能力未生效（按当前账预览，R-0004 未定）',
-    clockmakerDigest.includes('未正常生效')
-      && clockmakerDigest.includes('按当前账预览')
-      && clockmakerDigest.includes('未定（R-0004）'),
+    '行 2：钟表匠摘要显示能力未生效（按当前账预览，原因并列"中毒、醉酒"）',
+    clockmakerDigestCompact.includes('未正常生效')
+      && clockmakerDigestCompact.includes('按当前账预览')
+      && clockmakerDigestCompact.includes('原因：中毒、醉酒'),
     clockmakerDigest.replace(/\s+/g, ' ').slice(0, 240),
   )
   check(
@@ -722,12 +723,13 @@ async function main() {
     resolutionPanel.includes('未正常生效') && resolutionPanel.includes('dreamer') && resolutionPanel.includes('中毒'),
     resolutionPanel.replace(/\s+/g, ' ').slice(0, 240),
   )
+  const clockmakerMalfunctionLines = linesOf(resolutionPanel, 'clockmaker')
   check(
-    '失效账本同时记录钟表匠（中毒 + 醉酒 = 未定 R-0004）与筑梦师（中毒）',
-    resolutionPanel.includes('clockmaker')
-      && resolutionPanel.includes('未定（R-0004）')
+    '失效账本同时记录钟表匠（中毒 + 醉酒，两条原因并列）与筑梦师（中毒）',
+    clockmakerMalfunctionLines.includes('中毒')
+      && clockmakerMalfunctionLines.includes('醉酒')
       && resolutionPanel.includes('dreamer'),
-    resolutionPanel.replace(/\s+/g, ' ').slice(0, 300),
+    clockmakerMalfunctionLines.replace(/\s+/g, ' ').slice(0, 300),
   )
   const seatLedgerAfter = await panelText(storyteller.page, '状态账')
   check(

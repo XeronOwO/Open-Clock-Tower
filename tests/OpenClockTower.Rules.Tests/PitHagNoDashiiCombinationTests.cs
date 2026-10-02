@@ -123,6 +123,7 @@ public sealed class PitHagNoDashiiCombinationTests
         Phase = GamePhase.OtherNight,
         Actor = new SeatId(1),
         ActorCharacter = new CharacterId("pit-hag"),
+        ActorOwnCharacter = new CharacterId("pit-hag"),
         Seats = AllSeats,
         State = state,
         Outcome = new AbilityOutcome { Effective = true },

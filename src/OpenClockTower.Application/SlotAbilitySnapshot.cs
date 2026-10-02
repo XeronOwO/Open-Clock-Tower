@@ -14,8 +14,8 @@ public sealed record SlotAbilitySnapshot
     /// <summary>是否正常生效；无法判定时为 null。</summary>
     public bool? Effective { get; init; }
 
-    /// <summary>未正常生效时的原因分类（R-0004）；生效或无法判定时为 null。</summary>
-    public MalfunctionKind? Malfunction { get; init; }
+    /// <summary>未正常生效 / 受干扰的原因分类（R-0004）；可并列多条，生效或无法判定时为空。</summary>
+    public IReadOnlyList<MalfunctionKind> Malfunctions { get; init; } = [];
 
     /// <summary>说明（分类表达不了的组合写在这里）。</summary>
     public string? Note { get; init; }

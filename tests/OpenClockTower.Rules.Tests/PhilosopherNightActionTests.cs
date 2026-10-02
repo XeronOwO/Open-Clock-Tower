@@ -162,12 +162,13 @@ public sealed class PhilosopherNightActionTests
             Phase = GamePhase.FirstNight,
             Actor = new SeatId(1),
             ActorCharacter = Philosopher,
+            ActorOwnCharacter = Philosopher,
             Seats = [.. state.Seats.Select(entry => entry.Seat)],
             State = state,
             Outcome = new AbilityOutcome
             {
                 Effective = effective,
-                Malfunction = effective ? null : MalfunctionKind.Poisoned,
+                Malfunctions = effective ? [] : [MalfunctionKind.Poisoned],
             },
             Choice = choice,
             DaysStarted = 0,

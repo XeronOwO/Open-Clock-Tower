@@ -12,7 +12,7 @@ public sealed class AbilityLedgerTests
     {
         var state = GameStateMachine.Fold(
         [
-            Resolved(effective: true, malfunction: null),
+            Resolved(effective: true),
         ]);
 
         var use = Assert.Single(state.AbilityUses.Entries);
@@ -29,7 +29,7 @@ public sealed class AbilityLedgerTests
     {
         var state = GameStateMachine.Fold(
         [
-            Resolved(effective: false, malfunction: MalfunctionKind.Poisoned),
+            Resolved(effective: false, MalfunctionKind.Poisoned),
         ]);
 
         var use = Assert.Single(state.AbilityUses.Entries);
@@ -42,11 +42,11 @@ public sealed class AbilityLedgerTests
     }
 
     [Fact]
-    public void PoisonedAndDrunk_LeavesOpenEntryOnTheChecklist()
+    public void UnclassifiedKind_LeavesOpenEntryOnTheChecklist()
     {
         var state = GameStateMachine.Fold(
         [
-            Resolved(effective: false, malfunction: MalfunctionKind.Open),
+            Resolved(effective: false, MalfunctionKind.Open),
         ]);
 
         var unclassified = Assert.Single(state.Malfunctions.Unclassified);
@@ -83,7 +83,7 @@ public sealed class AbilityLedgerTests
     {
         GameEvent[] events =
         [
-            Resolved(effective: true, malfunction: null),
+            Resolved(effective: true),
             new SeatStateChangedEvent
             {
                 Seat = new SeatId(2),
@@ -91,7 +91,7 @@ public sealed class AbilityLedgerTests
                 Reason = "测试上报",
                 CausedBy = new SeatId(3),
             },
-            Resolved(effective: false, malfunction: MalfunctionKind.Drunk),
+            Resolved(effective: false, MalfunctionKind.Drunk),
         ];
 
         var folded = GameStateMachine.Fold(events);
@@ -106,12 +106,28 @@ public sealed class AbilityLedgerTests
         Assert.Equal(folded.Malfunctions.Unclassified.Count, incremental.Malfunctions.Unclassified.Count);
     }
 
-    private static AbilityResolvedEvent Resolved(bool effective, MalfunctionKind? malfunction) => new()
+    /// <summary>R-0004：一次结算命中多条原因 → 账本逐条记录、互不顶替；数字按玩家去重。</summary>
+    [Fact]
+    public void MultipleCauses_LeaveOneEntryEach()
+    {
+        var state = GameStateMachine.Fold(
+        [
+            Resolved(effective: false, MalfunctionKind.Poisoned, MalfunctionKind.Drunk),
+        ]);
+
+        Assert.Equal(2, state.Malfunctions.Count);
+        Assert.Equal(
+            new[] { MalfunctionKind.Poisoned, MalfunctionKind.Drunk },
+            state.Malfunctions.Entries.Select(entry => entry.Kind));
+        Assert.Equal(new[] { new SeatId(2) }, state.Malfunctions.CountedSeats);
+    }
+
+    private static AbilityResolvedEvent Resolved(bool effective, params MalfunctionKind[] malfunctions) => new()
     {
         SlotId = new StepSlotId("dreamer"),
         Actor = new SeatId(2),
         Ability = new AbilityId("dreamer"),
         Effective = effective,
-        Malfunction = malfunction,
+        Malfunctions = malfunctions,
     };
 }

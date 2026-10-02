@@ -4,7 +4,7 @@ namespace OpenClockTower.Kernel.Tests;
 
 /// <summary>
 /// 能力生效判定（R-0004 的记录面）：存活 + 清醒 + 健康 = 生效；中毒 / 醉酒 / 死亡 = 不生效；
-/// 同时中毒且醉酒 = 不生效且分类未定（Open）；维度没观测齐 = 判不了（null，不猜）。
+/// 同时中毒且醉酒 = 不生效且两条原因并列（R-0004 已闭合）；维度没观测齐 = 判不了（null，不猜）。
 /// </summary>
 public sealed class AbilityEffectivenessEvaluatorTests
 {
@@ -15,7 +15,7 @@ public sealed class AbilityEffectivenessEvaluatorTests
 
         Assert.NotNull(outcome);
         Assert.True(outcome!.Effective);
-        Assert.Null(outcome.Malfunction);
+        Assert.Empty(outcome.Malfunctions);
     }
 
     [Fact]
@@ -25,7 +25,7 @@ public sealed class AbilityEffectivenessEvaluatorTests
 
         Assert.NotNull(outcome);
         Assert.False(outcome!.Effective);
-        Assert.Equal(MalfunctionKind.Poisoned, outcome.Malfunction);
+        Assert.Equal(new[] { MalfunctionKind.Poisoned }, outcome.Malfunctions);
     }
 
     [Fact]
@@ -35,18 +35,20 @@ public sealed class AbilityEffectivenessEvaluatorTests
 
         Assert.NotNull(outcome);
         Assert.False(outcome!.Effective);
-        Assert.Equal(MalfunctionKind.Drunk, outcome.Malfunction);
+        Assert.Equal(new[] { MalfunctionKind.Drunk }, outcome.Malfunctions);
     }
 
     [Fact]
-    public void PoisonedAndDrunk_IsIneffectiveAndUnclassified()
+    public void PoisonedAndDrunk_IsIneffectiveWithBothCauses()
     {
         var outcome = AbilityEffectivenessEvaluator.Evaluate(
             Entry(drunk: DrunkState.Drunk, poison: PoisonState.Poisoned));
 
         Assert.NotNull(outcome);
         Assert.False(outcome!.Effective);
-        Assert.Equal(MalfunctionKind.Open, outcome.Malfunction);
+        Assert.Equal(
+            new[] { MalfunctionKind.Poisoned, MalfunctionKind.Drunk },
+            outcome.Malfunctions);
         Assert.Contains("同时中毒且醉酒", outcome.Note, StringComparison.Ordinal);
     }
 
@@ -57,7 +59,7 @@ public sealed class AbilityEffectivenessEvaluatorTests
 
         Assert.NotNull(outcome);
         Assert.False(outcome!.Effective);
-        Assert.Null(outcome.Malfunction);
+        Assert.Empty(outcome.Malfunctions);
         Assert.Contains("死亡", outcome.Note, StringComparison.Ordinal);
     }
 

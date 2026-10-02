@@ -33,8 +33,8 @@ function resolutionClass(effective: boolean): string {
           {{ effectiveText(view.lastResolution.effective) }}
         </span>
         <span>{{ seatLabelOf(view.lastResolution.seat) }} 的 {{ view.lastResolution.ability }}</span>
-        <span v-if="view.lastResolution.effective === false" class="warn-text">
-          原因：{{ labelOf(view.lastResolution.malfunction) }}
+        <span v-if="view.lastResolution.malfunctions.length > 0" class="warn-text">
+          原因：{{ view.lastResolution.malfunctions.map(labelOf).join('、') }}
         </span>
         <span v-if="view.lastResolution.note" class="hint">{{ view.lastResolution.note }}</span>
         <span class="mono">序号 {{ view.lastResolution.sequence }}</span>
@@ -66,7 +66,7 @@ function resolutionClass(effective: boolean): string {
 
     <div class="block">
       <h3>失效账本</h3>
-      <div v-if="view.malfunctions.length === 0" class="placeholder">没有未正常生效的记录。</div>
+      <div v-if="view.malfunctions.length === 0" class="placeholder">没有未正常生效或受干扰的记录。</div>
       <table v-else>
         <thead>
           <tr>
@@ -76,7 +76,7 @@ function resolutionClass(effective: boolean): string {
           </tr>
         </thead>
         <tbody>
-          <tr v-for="malfunction in view.malfunctions" :key="`${malfunction.seat}-${malfunction.ability}-${malfunction.kind}`">
+          <tr v-for="(malfunction, index) in view.malfunctions" :key="`${index}-${malfunction.seat}-${malfunction.ability}-${malfunction.kind}`">
             <td>{{ seatLabelOf(malfunction.seat) }}</td>
             <td>{{ malfunction.ability }}</td>
             <td>{{ labelOf(malfunction.kind) }}</td>

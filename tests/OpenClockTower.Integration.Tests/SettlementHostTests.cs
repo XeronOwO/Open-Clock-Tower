@@ -136,7 +136,7 @@ public sealed class SettlementHostTests
         Assert.Equal(2, afterNight.LastResolution!.Seat);
         Assert.Equal("dreamer", afterNight.LastResolution.Ability);
         Assert.False(afterNight.LastResolution.Effective);
-        Assert.Equal("Poisoned", afterNight.LastResolution.Malfunction);
+        Assert.Equal(new[] { "Poisoned" }, afterNight.LastResolution.Malfunctions);
         Assert.Contains(
             afterNight.AbilityUses,
             use => use.Seat == 2 && use.Ability == "dreamer" && !use.Effective);
@@ -193,7 +193,7 @@ public sealed class SettlementHostTests
         Assert.Equal(releasedFact.EffectId, releaseChange.EffectId);
     }
 
-    /// <summary>矩阵 2 / 8：同时中毒且醉酒 = 不相互抵消、能力不生效（分类进待核对清单）；重启后账本仍在。</summary>
+    /// <summary>矩阵 2 / 8：同时中毒且醉酒 = 不相互抵消、能力不生效（两条原因都进账本）；重启后账本仍在。</summary>
     [Fact]
     public async Task PoisonedAndDrunk_DoNotCancel_AndLedgersSurviveRestart()
     {
@@ -235,7 +235,7 @@ public sealed class SettlementHostTests
 
             var afterFirstNight = await TestServerHost.WaitForViewAsync(storyteller, view => view.PlanCompleted, Wait);
             Assert.NotNull(afterFirstNight);
-            Assert.Equal("Poisoned", afterFirstNight!.LastResolution!.Malfunction);
+            Assert.Equal(new[] { "Poisoned" }, afterFirstNight!.LastResolution!.Malfunctions);
 
             // 上报醉酒：中毒 + 醉酒并存（《重要细节》三-3 不相互抵消）。
             var drunk = await storyteller.InvokeAsync<CommandResultDto>(
@@ -265,7 +265,7 @@ public sealed class SettlementHostTests
             var afterSecondNight = await TestServerHost.WaitForViewAsync(storyteller, view => view.PlanCompleted, Wait);
             Assert.NotNull(afterSecondNight);
             Assert.False(afterSecondNight!.LastResolution!.Effective);
-            Assert.Equal("Open", afterSecondNight.LastResolution.Malfunction);
+            Assert.Equal(new[] { "Poisoned", "Drunk" }, afterSecondNight.LastResolution.Malfunctions);
             Assert.Contains("同时中毒且醉酒", afterSecondNight.LastResolution.Note, StringComparison.Ordinal);
 
             var seatTwo = afterSecondNight.Seats.Single(seat => seat.Seat == 2);
@@ -291,7 +291,10 @@ public sealed class SettlementHostTests
             use => use.Seat == 2 && use.Ability == "dreamer" && !use.Effective);
         Assert.Contains(
             restored.Malfunctions,
-            malfunction => malfunction.Seat == 2 && malfunction.Kind == "Open");
+            malfunction => malfunction.Seat == 2 && malfunction.Kind == "Poisoned");
+        Assert.Contains(
+            restored.Malfunctions,
+            malfunction => malfunction.Seat == 2 && malfunction.Kind == "Drunk");
         var restoredSeatTwo = restored.Seats.Single(seat => seat.Seat == 2);
         Assert.Equal("Poisoned", Fact(restoredSeatTwo, "Poison").Value);
         Assert.Equal("Drunk", Fact(restoredSeatTwo, "Drunk").Value);

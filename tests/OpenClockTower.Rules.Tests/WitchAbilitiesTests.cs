@@ -467,12 +467,13 @@ public sealed class WitchAbilitiesTests
         Phase = GamePhase.OtherNight,
         Actor = new SeatId(1),
         ActorCharacter = Witch,
+        ActorOwnCharacter = Witch,
         Seats = [new SeatId(1), new SeatId(2), new SeatId(3), new SeatId(4)],
         State = FourSeats(),
         Outcome = new AbilityOutcome
         {
             Effective = effective,
-            Malfunction = effective ? null : MalfunctionKind.Poisoned,
+            Malfunctions = effective ? [] : [MalfunctionKind.Poisoned],
         },
         Choice = choice,
         DaysStarted = 0,

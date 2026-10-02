@@ -199,12 +199,13 @@ public sealed class SnakeCharmerNightActionTests
             Phase = phase,
             Actor = CharmerSeat,
             ActorCharacter = new CharacterId("snake-charmer"),
+            ActorOwnCharacter = new CharacterId("snake-charmer"),
             Seats = [.. state.Seats.Select(entry => entry.Seat)],
             State = state,
             Outcome = new AbilityOutcome
             {
                 Effective = effective,
-                Malfunction = effective ? null : MalfunctionKind.Poisoned,
+                Malfunctions = effective ? [] : [MalfunctionKind.Poisoned],
             },
             Choice = choice,
             DaysStarted = 1,

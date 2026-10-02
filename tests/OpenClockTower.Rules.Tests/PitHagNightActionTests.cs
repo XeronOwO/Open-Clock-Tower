@@ -134,6 +134,7 @@ public sealed class PitHagNightActionTests
             Phase = GamePhase.OtherNight,
             Actor = new SeatId(3),
             ActorCharacter = new CharacterId("vortox"),
+            ActorOwnCharacter = new CharacterId("vortox"),
             Seats = [.. state.Seats.Select(entry => entry.Seat)],
             State = state,
             Outcome = new AbilityOutcome { Effective = true },
@@ -235,12 +236,13 @@ public sealed class PitHagNightActionTests
             Phase = GamePhase.OtherNight,
             Actor = new SeatId(1),
             ActorCharacter = PitHag,
+            ActorOwnCharacter = PitHag,
             Seats = [.. state.Seats.Select(entry => entry.Seat)],
             State = state,
             Outcome = new AbilityOutcome
             {
                 Effective = effective,
-                Malfunction = effective ? null : MalfunctionKind.Poisoned,
+                Malfunctions = effective ? [] : [MalfunctionKind.Poisoned],
             },
             Choice = choice,
             Decision = decision,

@@ -350,7 +350,7 @@ public static class GameStateMachine
 
     /// <summary>
     /// 能力结算 → 两本账：一次使用无论是否生效都记「用过」（三-3：醉酒 / 中毒期间使用即被浪费）；
-    /// 只有未正常生效才进失效账本，分类原样保留（R-0004；Open 的留在待核对清单里）。
+    /// 未正常生效 / 受干扰的分类**逐条**进失效账本（R-0004：一次结算可并列多条，不硬塞、不抵消）。
     /// </summary>
     private static GameState ApplyAbilityResolved(GameState state, AbilityResolvedEvent resolved) =>
         state with
@@ -359,10 +359,21 @@ public static class GameStateMachine
                 resolved.Actor,
                 resolved.Ability,
                 resolved.Effective),
-            Malfunctions = resolved.Malfunction is { } kind
-                ? state.Malfunctions.Record(resolved.Actor, resolved.Ability, kind)
-                : state.Malfunctions,
+            Malfunctions = RecordMalfunctions(state.Malfunctions, resolved),
         };
+
+    /// <summary>按事件里记录的分类逐条追加，顺序与事件一致（R-0004）。</summary>
+    private static MalfunctionLedger RecordMalfunctions(
+        MalfunctionLedger ledger,
+        AbilityResolvedEvent resolved)
+    {
+        foreach (var kind in resolved.Malfunctions)
+        {
+            ledger = ledger.Record(resolved.Actor, resolved.Ability, kind);
+        }
+
+        return ledger;
+    }
 
     /// <summary>写入一行并保持座位按席位号升序——顺序确定是重放可对齐的前提（D-0008）。</summary>
     private static GameState ReplaceSeat(GameState state, SeatStateEntry entry)

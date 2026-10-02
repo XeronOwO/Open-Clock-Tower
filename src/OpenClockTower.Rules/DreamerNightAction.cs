@@ -34,6 +34,10 @@ internal sealed class DreamerNightAction : INightAction, IAbilityResolution
     public AbilityId Ability => InfoAbility;
 
     /// <inheritdoc />
+    public IReadOnlyList<MalfunctionKind> InterferenceMalfunctions(AbilityResolutionContext context) =>
+        VortoxInterference.MalfunctionsFor(context);
+
+    /// <inheritdoc />
     public ChoicePrompt BuildPrompt(NightActionContext context)
     {
         ArgumentNullException.ThrowIfNull(context);

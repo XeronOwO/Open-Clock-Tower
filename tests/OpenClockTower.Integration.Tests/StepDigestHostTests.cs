@@ -96,7 +96,7 @@ public sealed class StepDigestHostTests
                 Assert.Equal("Preview", clockmakerAbility.Basis);
                 Assert.Equal("clockmaker", clockmakerAbility.Ability);
                 Assert.False(clockmakerAbility.Effective);
-                Assert.Equal("Open", clockmakerAbility.Malfunction);
+                Assert.Equal(new[] { "Poisoned", "Drunk" }, clockmakerAbility.Malfunctions);
                 Assert.Contains("同时中毒且醉酒", clockmakerAbility.Note!, StringComparison.Ordinal);
 
                 // 结清钟表匠裁定点：配额 3600s，槽位仍停在原处——摘要要切换成「已结算」。
@@ -106,7 +106,7 @@ public sealed class StepDigestHostTests
                     view => view.CurrentSlotId == "clockmaker" && view.StepDigest?.Ability?.Basis == "Settled",
                     Wait);
                 Assert.NotNull(settledClockmaker);
-                Assert.Equal("Open", settledClockmaker!.StepDigest!.Ability!.Malfunction);
+                Assert.Equal(new[] { "Poisoned", "Drunk" }, settledClockmaker!.StepDigest!.Ability!.Malfunctions);
                 Assert.NotNull(settledClockmaker.StepDigest.Ability.Sequence);
 
                 var advancedToDreamer = await storyteller.InvokeAsync<CommandResultDto>(
@@ -133,7 +133,7 @@ public sealed class StepDigestHostTests
                 Assert.Equal("Preview", dreamerAbility.Basis);
                 Assert.Equal("dreamer", dreamerAbility.Ability);
                 Assert.False(dreamerAbility.Effective);
-                Assert.Equal("Poisoned", dreamerAbility.Malfunction);
+                Assert.Equal(new[] { "Poisoned" }, dreamerAbility.Malfunctions);
 
                 // 作答 → 未生效 → 说书人自由裁定 → 结算；摘要再次转为「已结算」。
                 var submitted = await dreamer.InvokeAsync<CommandResultDto>(
@@ -155,7 +155,7 @@ public sealed class StepDigestHostTests
                     Wait);
                 Assert.NotNull(settledDreamer);
                 Assert.False(settledDreamer!.StepDigest!.Ability!.Effective);
-                Assert.Equal("Poisoned", settledDreamer.StepDigest.Ability.Malfunction);
+                Assert.Equal(new[] { "Poisoned" }, settledDreamer.StepDigest.Ability.Malfunctions);
             }
 
             // 重启恢复：逐槽位结算跟踪必须从事件流重建（槽位仍停在已结算的筑梦师）。
@@ -171,7 +171,7 @@ public sealed class StepDigestHostTests
                 Wait);
             Assert.NotNull(restored);
             Assert.Equal(2, restored!.StepDigest!.Seat);
-            Assert.Equal("Poisoned", restored.StepDigest.Ability!.Malfunction);
+            Assert.Equal(new[] { "Poisoned" }, restored.StepDigest.Ability!.Malfunctions);
         }
         finally
         {

@@ -77,8 +77,8 @@ function effectivenessOf(effective: boolean | null): string {
             <span class="tag">{{ labelOf(view.stepDigest.ability.basis) }}</span>
             <strong>{{ effectivenessOf(view.stepDigest.ability.effective) }}</strong>
             <span class="mono">{{ view.stepDigest.ability.ability ?? '（能力未知）' }}</span>
-            <span v-if="view.stepDigest.ability.malfunction">
-              · 原因：{{ labelOf(view.stepDigest.ability.malfunction) }}
+            <span v-if="view.stepDigest.ability.malfunctions.length > 0">
+              · 原因：{{ view.stepDigest.ability.malfunctions.map(labelOf).join('、') }}
             </span>
             <span v-if="view.stepDigest.ability.note" class="hint">
               （{{ view.stepDigest.ability.note }}）

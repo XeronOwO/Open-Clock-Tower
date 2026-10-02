@@ -61,7 +61,7 @@ public sealed class PitHagResidueHostTests
                 && resolution.Ability == "pit-hag.transform",
             "麻脸巫婆的结算结论没有出现");
         Assert.True(resolved.LastResolution!.Effective, "选在场角色应当照常「生效」，不是「未生效」");
-        Assert.Null(resolved.LastResolution.Malfunction);
+        Assert.Empty(resolved.LastResolution.Malfunctions);
 
         // 使用账本独立于最新结论：能力已使用且生效。
         Assert.Contains(

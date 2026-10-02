@@ -30,6 +30,13 @@ public sealed record AbilityResolutionContext
     /// <summary>实施能力时的角色——建表时写进槽位的角色，不是"现在查账"（过时不候）。</summary>
     public required CharacterId ActorCharacter { get; init; }
 
+    /// <summary>
+    /// 行动者**本人**的角色：普通槽位与 <see cref="ActorCharacter"/> 相同；代行槽位（R-0036，哲学家获得能力）
+    /// 上是获得者本人的角色。判定「玩家的角色是镇民 / 外来者……」这类**按人**的规则用它
+    /// （如涡流的必假约束，R-0028 / R-0004）——<see cref="ActorCharacter"/> 是结算契约的检索键，不是本人角色。
+    /// </summary>
+    public required CharacterId ActorOwnCharacter { get; init; }
+
     /// <summary>本局完整座次（按座位号升序 = 圆桌顺序）。</summary>
     public required IReadOnlyList<SeatId> Seats { get; init; }
 

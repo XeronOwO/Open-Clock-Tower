@@ -55,7 +55,7 @@ public static class StepDigestProjection
                 Basis = SlotAbilityBasis.Settled,
                 Ability = settled.Ability,
                 Effective = settled.Effective,
-                Malfunction = settled.Malfunction,
+                Malfunctions = settled.Malfunctions,
                 Note = settled.Note,
                 Sequence = settled.Sequence,
             };
@@ -77,7 +77,7 @@ public static class StepDigestProjection
             Basis = SlotAbilityBasis.Preview,
             Ability = slotAbility,
             Effective = outcome.Effective,
-            Malfunction = outcome.Malfunction,
+            Malfunctions = outcome.Malfunctions,
             Note = outcome.Note,
         };
     }

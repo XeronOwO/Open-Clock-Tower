@@ -3,7 +3,7 @@ using OpenClockTower.Kernel;
 namespace OpenClockTower.Kernel.Tests;
 
 /// <summary>
-/// 失效账本：每次「能力未正常生效」都留一条带原因分类的记录（数学家口径，R-0004）。
+/// 失效账本：每次「能力未正常生效」按原因逐条记录（数学家口径 R-0004：按玩家去重、相克与能力自身设定不计入）。
 /// </summary>
 public sealed class MalfunctionLedgerTests
 {
@@ -44,4 +44,33 @@ public sealed class MalfunctionLedgerTests
         Assert.Equal(2, ledger.Count);
         Assert.Empty(ledger.Unclassified);
     }
+
+    /// <summary>R-0004：数学家的数字按玩家去重——同一玩家的多条记录只算一次，不计入的分类不进数字。</summary>
+    [Fact]
+    public void CountedSeats_DeduplicatesPlayers_AndExcludesNonCountedKinds()
+    {
+        var ledger = new MalfunctionLedger()
+            .Record(new SeatId(2), new AbilityId("clockmaker"), MalfunctionKind.Vortox)
+            .Record(new SeatId(2), new AbilityId("clockmaker"), MalfunctionKind.Poisoned)
+            .Record(new SeatId(3), new AbilityId("oracle"), MalfunctionKind.Jinx)
+            .Record(new SeatId(4), new AbilityId("savant"), MalfunctionKind.AbilityDesign)
+            .Record(new SeatId(5), new AbilityId("artist"), MalfunctionKind.Barista)
+            .Record(new SeatId(6), new AbilityId("juggler"), MalfunctionKind.StorytellerRuling);
+
+        Assert.Equal(6, ledger.Count);
+        Assert.Equal(new[] { new SeatId(2) }, ledger.CountedSeats);
+    }
+
+    /// <summary>R-0004 逐条对表：未核对的一律不计入（含"未定"仍计入——它只表示原因待核对）。</summary>
+    [Theory]
+    [InlineData(MalfunctionKind.Poisoned, true)]
+    [InlineData(MalfunctionKind.Drunk, true)]
+    [InlineData(MalfunctionKind.Vortox, true)]
+    [InlineData(MalfunctionKind.Open, true)]
+    [InlineData(MalfunctionKind.Jinx, false)]
+    [InlineData(MalfunctionKind.AbilityDesign, false)]
+    [InlineData(MalfunctionKind.Barista, false)]
+    [InlineData(MalfunctionKind.StorytellerRuling, false)]
+    public void CountsForMathematician_MatchesRuling(MalfunctionKind kind, bool counts) =>
+        Assert.Equal(counts, kind.CountsForMathematician());
 }

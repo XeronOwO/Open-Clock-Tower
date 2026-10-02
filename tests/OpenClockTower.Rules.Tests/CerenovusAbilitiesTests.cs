@@ -280,12 +280,13 @@ public sealed class CerenovusAbilitiesTests
         Phase = GamePhase.OtherNight,
         Actor = SourceSeat,
         ActorCharacter = Cerenovus,
+        ActorOwnCharacter = Cerenovus,
         Seats = [new SeatId(1), new SeatId(2), new SeatId(3), new SeatId(4)],
         State = GameStateMachine.Fold([Seat(1, "cerenovus", LifeState.Alive)]),
         Outcome = new AbilityOutcome
         {
             Effective = effective,
-            Malfunction = effective ? null : MalfunctionKind.Poisoned,
+            Malfunctions = effective ? [] : [MalfunctionKind.Poisoned],
         },
         Choice = choice,
         DaysStarted = daysStarted,

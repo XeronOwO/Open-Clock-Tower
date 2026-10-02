@@ -178,7 +178,7 @@ public sealed class SessionTrackers
             Actor = resolved.Actor,
             Ability = resolved.Ability,
             Effective = resolved.Effective,
-            Malfunction = resolved.Malfunction,
+            Malfunctions = resolved.Malfunctions,
             Note = resolved.Note,
             Sequence = sequence,
         };

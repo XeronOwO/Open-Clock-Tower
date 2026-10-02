@@ -9,9 +9,8 @@ namespace OpenClockTower.Kernel;
 /// 「无法判定」由调用方显式拒绝整条命令，绝不映射成默认值（D-0015 的同一原则）。
 /// </para>
 /// <para>
-/// 同时中毒且醉酒：行为是「不生效」，但**分类**记 <see cref="MalfunctionKind.Open"/>——
-/// R-0004 的计数口径只逐条核对过「中毒 / 醉酒」单项，组合情形尚无依据；
-/// 这条记录会留在 <see cref="MalfunctionLedger.Unclassified"/> 清单里，不许静默消失。
+/// 同时中毒且醉酒：两种状态并存、不相互抵消（《重要细节》三-3），能力不生效，
+/// 且**两条原因并列**进账（R-0004 已闭合：不硬塞成单分类）。
 /// </para>
 /// </remarks>
 public static class AbilityEffectivenessEvaluator
@@ -42,19 +41,19 @@ public static class AbilityEffectivenessEvaluator
             (true, true) => new AbilityOutcome
             {
                 Effective = false,
-                Malfunction = MalfunctionKind.Open,
-                Note = "同时中毒且醉酒：两种状态并存、不相互抵消，能力不生效；分类待 R-0004 核对",
+                Malfunctions = [MalfunctionKind.Poisoned, MalfunctionKind.Drunk],
+                Note = "同时中毒且醉酒：两种状态并存、不相互抵消，能力不生效（R-0004）",
             },
             (true, false) => new AbilityOutcome
             {
                 Effective = false,
-                Malfunction = MalfunctionKind.Poisoned,
+                Malfunctions = [MalfunctionKind.Poisoned],
                 Note = "来源中毒：能力未生效",
             },
             (false, true) => new AbilityOutcome
             {
                 Effective = false,
-                Malfunction = MalfunctionKind.Drunk,
+                Malfunctions = [MalfunctionKind.Drunk],
                 Note = "来源醉酒：能力未生效",
             },
             _ => new AbilityOutcome { Effective = true },

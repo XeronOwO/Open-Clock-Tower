@@ -98,10 +98,26 @@ public sealed class SlotSettlementTests
 
         var resolved = Assert.Single(answered.Events.OfType<AbilityResolvedEvent>());
         Assert.False(resolved.Effective);
-        Assert.Equal(MalfunctionKind.Poisoned, resolved.Malfunction);
+        Assert.Equal(new[] { MalfunctionKind.Poisoned }, resolved.Malfunctions);
         Assert.DoesNotContain(answered.Events, gameEvent => gameEvent is InstantaneousEffectAppliedEvent);
         Assert.False(ability.LastEffective);
         Assert.True(answered.State.IsPlanCompleted);
+    }
+
+    /// <summary>R-0004：契约声明的外部干扰与生效判定的分类并列进事件（不硬塞、不抵消）。</summary>
+    [Fact]
+    public void InterferenceMalfunctions_AreMergedWithEffectivenessCauses()
+    {
+        var ability = new TestAbility(interference: [MalfunctionKind.Vortox]);
+        var context = Context(ability, seat: 1, DrunkState.Drunk, PoisonState.Healthy);
+
+        var (answered, _) = Answer(context, ability);
+
+        var resolved = Assert.Single(answered.Events.OfType<AbilityResolvedEvent>());
+        Assert.False(resolved.Effective);
+        Assert.Equal(
+            new[] { MalfunctionKind.Drunk, MalfunctionKind.Vortox },
+            resolved.Malfunctions);
     }
 
     /// <summary>账没观测齐：整条输入被拒绝，不猜、不落事件。</summary>
@@ -177,6 +193,54 @@ public sealed class SlotSettlementTests
         Assert.DoesNotContain(outcome.Events, gameEvent => gameEvent is AbilityResolvedEvent);
         Assert.Equal(0, ability.ResolveCalls);
         Assert.True(outcome.State.IsPlanCompleted);
+    }
+
+    /// <summary>代行槽位（R-0036）：上下文里的「行动者本人角色」取槽位 Character，而不是契约检索键 Owner。</summary>
+    [Fact]
+    public void GrantedActionSlot_CarriesActorsOwnCharacter_NotContractKey()
+    {
+        var ability = new TestAbility();
+        var actorCharacter = new CharacterId("philosopher");
+        var context = new SettlementContext
+        {
+            State = GameStateMachine.Fold(
+            [
+                new SeatStateChangedEvent
+                {
+                    Seat = new SeatId(1),
+                    Character = actorCharacter,
+                    Life = LifeState.Alive,
+                    Drunk = DrunkState.Sober,
+                    Poison = PoisonState.Healthy,
+                    Reason = "test.setup",
+                },
+            ]),
+            Seats = [new SeatId(1)],
+            Abilities = new TestCatalog(ability),
+        };
+        var plan = StepFixture.Plan(
+            "test:night-1",
+            StepSlot.GrantedAction(
+                new StepSlotId("granted-test-hero"),
+                new SeatId(1),
+                actorCharacter,
+                StepFixture.EmptyPrompt(NoOptionBehavior.StorytellerDecides),
+                [],
+                owner: ability.Character));
+
+        var started = StepMachine.StartPhase(plan);
+        Assert.NotNull(started.State.AwaitingDecision);
+        _ = StepMachine.Handle(
+            started.State,
+            context,
+            new ResolveDecisionPointInput
+            {
+                DecisionPointId = started.State.AwaitingDecision!.Id,
+                Decision = "说书人给出结果",
+            });
+
+        Assert.Equal(1, ability.ResolveCalls);
+        Assert.Equal(actorCharacter, ability.LastActorOwnCharacter);
     }
 
     /// <summary>开夜 → 配额走完 → 玩家提交；同时返回从头到尾的事件流（重放断言用）。</summary>
@@ -256,10 +320,14 @@ public sealed class SlotSettlementTests
     {
         private readonly GameEvent? _produced;
 
-        internal TestAbility(ChoicePrompt? postChoice = null, GameEvent? produced = null)
+        internal TestAbility(
+            ChoicePrompt? postChoice = null,
+            GameEvent? produced = null,
+            IReadOnlyList<MalfunctionKind>? interference = null)
         {
             PostChoice = postChoice;
             _produced = produced;
+            Interference = interference ?? [];
         }
 
         public CharacterId Character { get; } = new("test-hero");
@@ -268,13 +336,20 @@ public sealed class SlotSettlementTests
 
         internal ChoicePrompt? PostChoice { get; }
 
+        internal IReadOnlyList<MalfunctionKind> Interference { get; }
+
         internal int ResolveCalls { get; private set; }
 
         internal bool? LastEffective { get; private set; }
 
+        internal CharacterId? LastActorOwnCharacter { get; private set; }
+
         internal string? LastChoice { get; private set; }
 
         internal string? LastDecision { get; private set; }
+
+        public IReadOnlyList<MalfunctionKind> InterferenceMalfunctions(AbilityResolutionContext context) =>
+            Interference;
 
         public ChoicePrompt? BuildPostChoiceDecision(AbilityResolutionContext context) => PostChoice;
 
@@ -282,6 +357,7 @@ public sealed class SlotSettlementTests
         {
             ResolveCalls++;
             LastEffective = context.Outcome.Effective;
+            LastActorOwnCharacter = context.ActorOwnCharacter;
             LastChoice = context.Choice;
             LastDecision = context.Decision;
 

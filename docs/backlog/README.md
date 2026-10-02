@@ -60,13 +60,14 @@ todo/  →  in-progress/  →  review/  →  done/
 
 ### Todo
 
-- [涡流干扰计数：R-0004 的引擎级口径（数学家）](todo/vortox-interference-counting.md) — **Medium** — 涡流在场的「能力未正常生效」落失效账本（`MalfunctionKind.Vortox`），先闭合 R-0004 的逐条口径
 - [说书人注记：魔典上的自由文本提示标记](todo/storyteller-annotation.md) — **Low** — 魔典上的自由文本 token；首版刻意不做，待定归属 / 持久化 / 审计边界
 - [终局残留挂起：阻塞报警的收口](todo/terminal-hold-residue.md) — **Low** — 阻塞报警（`Block`）随终局快照残留（仅说书人视图可见）：先定「只清阻塞」的内核原语，再谈结束批次收口
 
 ### In progress
 
 ### Review
+
+- [涡流干扰计数：R-0004 的引擎级口径（数学家）](review/vortox-interference-counting.md) — **Medium** — 涡流在场的「能力未正常生效」落失效账本（`MalfunctionKind.Vortox`）+ R-0004 逐条口径闭合（按玩家去重、组合原因逐条并列）；待验收批次判真会话与面板行
 
 ### Done
 

@@ -132,6 +132,7 @@ public sealed class InfoResolutionTests
         Phase = GamePhase.FirstNight,
         Actor = new SeatId(2),
         ActorCharacter = new CharacterId("dreamer"),
+        ActorOwnCharacter = new CharacterId("dreamer"),
         Seats = [new SeatId(1), new SeatId(2), new SeatId(3)],
         State = GameStateMachine.Fold(
         [
@@ -148,7 +149,7 @@ public sealed class InfoResolutionTests
         Outcome = new AbilityOutcome
         {
             Effective = effective,
-            Malfunction = effective ? null : MalfunctionKind.Poisoned,
+            Malfunctions = effective ? [] : [MalfunctionKind.Poisoned],
             Note = effective ? null : "来源中毒：能力未生效",
         },
         Choice = choice,

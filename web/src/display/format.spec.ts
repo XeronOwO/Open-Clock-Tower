@@ -85,7 +85,7 @@ describe('说书人视图规范化', () => {
       recentSeatChanges: [{ seat: 3, reason: '投毒', sequence: 9, recordedAt: '2026-10-02T20:15:00+08:00' }],
       abilityUses: [{ seat: 3, ability: 'dreamer', effective: false }],
       malfunctions: [{ seat: 3, ability: 'dreamer', kind: 'Poisoned' }],
-      lastResolution: { seat: 3, ability: 'dreamer', effective: false, malfunction: 'Poisoned', sequence: 12 },
+      lastResolution: { seat: 3, ability: 'dreamer', effective: false, malfunctions: ['Poisoned'], sequence: 12 },
       awaitingDecisionId: 'dp-1',
       awaitingDecisionOptions: [{ value: 'a', preview: '选它' }, { preview: '缺值' }],
     })
@@ -99,6 +99,7 @@ describe('说书人视图规范化', () => {
     expect(view.abilityUses[0]?.effective).toBe(false)
     expect(view.malfunctions[0]?.kind).toBe('Poisoned')
     expect(view.lastResolution?.effective).toBe(false)
+    expect(view.lastResolution?.malfunctions).toEqual(['Poisoned'])
     expect(view.awaitingDecisionOptions).toEqual([{ value: 'a', preview: '选它' }])
   })
 
@@ -116,7 +117,7 @@ describe('说书人视图规范化', () => {
           basis: 'Preview',
           ability: 'clockmaker',
           effective: false,
-          malfunction: 'Poisoned',
+          malfunctions: ['Poisoned'],
           note: '来源中毒：能力未生效',
           sequence: null,
         },
@@ -136,6 +137,7 @@ describe('说书人视图规范化', () => {
     expect(view.stepDigest?.state?.facts[0]?.causedBy).toBe(1)
     expect(view.stepDigest?.ability?.basis).toBe('Preview')
     expect(view.stepDigest?.ability?.effective).toBe(false)
+    expect(view.stepDigest?.ability?.malfunctions).toEqual(['Poisoned'])
     expect(view.stepDigest?.optionCount).toBe(0)
     expect(view.stepDigest?.onNoOption).toBe('StorytellerDecides')
     expect(view.lastVoidedRequest?.reason).toBe('DependencyViolated')
@@ -156,6 +158,25 @@ describe('说书人视图规范化', () => {
       lastVoidedRequest: { requestId: 'r1', reason: 'DependencyViolated' },
     })
     expect(missingSequence.lastVoidedRequest).toBeNull()
+  })
+
+  it('失效原因只收字符串数组：标量 / 混入非字符串都退化，不编原因', () => {
+    const view = normalizeStorytellerView({
+      lastResolution: {
+        seat: 1,
+        ability: 'clockmaker',
+        effective: true,
+        malfunctions: ['Vortox', 42, null],
+        sequence: 3,
+      },
+      stepDigest: {
+        seat: 1,
+        ability: { basis: 'Settled', ability: 'clockmaker', effective: true, malfunctions: 'Vortox' },
+      },
+    })
+
+    expect(view.lastResolution?.malfunctions).toEqual(['Vortox'])
+    expect(view.stepDigest?.ability?.malfunctions).toEqual([])
   })
 })
 

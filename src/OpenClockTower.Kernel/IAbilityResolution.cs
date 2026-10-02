@@ -29,6 +29,15 @@ public interface IAbilityResolution
     AbilityId Ability { get; }
 
     /// <summary>
+    /// 本契约结算时，除「来源自身状态」之外的失效分类（如涡流对镇民信息能力的必假约束，R-0004 / R-0028）。
+    /// </summary>
+    /// <remarks>
+    /// 只有**会产生信息结果**的能力才实现它：返回的分类与生效判定的分类一起**并列**进失效账本（不硬塞、不抵消）；
+    /// 默认空表示本条能力不受这类外部干扰。
+    /// </remarks>
+    IReadOnlyList<MalfunctionKind> InterferenceMalfunctions(AbilityResolutionContext context) => [];
+
+    /// <summary>
     /// 玩家已经作出选择之后，是否还需要说书人再裁定一次（信息类能力需要）。
     /// 返回 null = 直接按 <see cref="Resolve"/> 结算。
     /// </summary>

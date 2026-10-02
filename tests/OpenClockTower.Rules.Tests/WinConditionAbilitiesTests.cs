@@ -114,6 +114,48 @@ public sealed class WinConditionAbilitiesTests
         Assert.Contains("涡流", information.Note!, StringComparison.Ordinal);
     }
 
+    /// <summary>R-0004：涡流存活时，镇民信息能力声明 `Vortox` 失效分类；涡流不在场 / 实施者不是镇民时没有。</summary>
+    [Fact]
+    public void VortoxInPlay_InformationAbilitiesDeclareVortoxMalfunction()
+    {
+        var withVortox = State(
+            (1, "vortox", Alignment.Evil, LifeState.Alive),
+            (2, "clockmaker", Alignment.Good, LifeState.Alive),
+            (3, "dreamer", Alignment.Good, LifeState.Alive));
+
+        var clockmaker = NightActions.Resolutions.Find(new CharacterId("clockmaker"))!;
+        Assert.Equal(
+            new[] { MalfunctionKind.Vortox },
+            clockmaker.InterferenceMalfunctions(Resolution(withVortox, actor: 2, slot: "clockmaker")));
+
+        var dreamer = NightActions.Resolutions.Find(new CharacterId("dreamer"))!;
+        Assert.Equal(
+            new[] { MalfunctionKind.Vortox },
+            dreamer.InterferenceMalfunctions(Resolution(withVortox, actor: 3, slot: "dreamer")));
+
+        // 代行 / 换角语义：判定看行动者**本人**的角色，不是能力契约的检索键（R-0036）。
+        var disguised = Resolution(
+            withVortox,
+            actor: 2,
+            slot: "clockmaker",
+            ownCharacter: new CharacterId("witch"));
+        Assert.Empty(clockmaker.InterferenceMalfunctions(disguised));
+
+        // 涡流不在场（这里已死亡）→ 没有这条分类。
+        var deadVortox = State(
+            (1, "vortox", Alignment.Evil, LifeState.Dead),
+            (2, "clockmaker", Alignment.Good, LifeState.Alive));
+        Assert.Empty(
+            clockmaker.InterferenceMalfunctions(Resolution(deadVortox, actor: 2, slot: "clockmaker")));
+
+        // 实施者不是镇民（角色被换过）→ 涡流不背这条账（《获取信息》第 3 条只看角色是镇民）。
+        var minionActor = State(
+            (1, "vortox", Alignment.Evil, LifeState.Alive),
+            (2, "witch", Alignment.Evil, LifeState.Alive));
+        Assert.Empty(
+            clockmaker.InterferenceMalfunctions(Resolution(minionActor, actor: 2, slot: "clockmaker")));
+    }
+
     /// <summary>涡流在场：筑梦师的信息不能继续按"一真一假"拼（那会拼出一条真信息）→ 退回自由填写。</summary>
     [Fact]
     public void VortoxInPlay_DreamerPostChoiceBecomesFreeText()
@@ -144,7 +186,8 @@ public sealed class WinConditionAbilitiesTests
         string? decision = null,
         bool effective = true,
         GamePhase phase = GamePhase.FirstNight,
-        string slot = "test-slot") =>
+        string slot = "test-slot",
+        CharacterId? ownCharacter = null) =>
         new()
         {
             SlotId = new StepSlotId(slot),
@@ -152,6 +195,7 @@ public sealed class WinConditionAbilitiesTests
             Phase = phase,
             Actor = new SeatId(actor),
             ActorCharacter = state.Seat(new SeatId(actor))!.CharacterValue!.Value,
+            ActorOwnCharacter = ownCharacter ?? state.Seat(new SeatId(actor))!.CharacterValue!.Value,
             Seats = [.. state.Seats.Select(entry => entry.Seat)],
             State = state,
             Outcome = new AbilityOutcome { Effective = effective },

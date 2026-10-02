@@ -254,7 +254,7 @@ public static class ProjectionMapper
                 Seat = resolution.Actor.Value,
                 Ability = resolution.Ability.Value,
                 Effective = resolution.Effective,
-                Malfunction = resolution.Malfunction?.ToString(),
+                Malfunctions = [.. resolution.Malfunctions.Select(kind => kind.ToString())],
                 Note = resolution.Note,
                 Sequence = resolution.Sequence,
             }
@@ -271,7 +271,7 @@ public static class ProjectionMapper
                         Basis = ability.Basis.ToString(),
                         Ability = ability.Ability?.Value,
                         Effective = ability.Effective,
-                        Malfunction = ability.Malfunction?.ToString(),
+                        Malfunctions = [.. ability.Malfunctions.Select(kind => kind.ToString())],
                         Note = ability.Note,
                         Sequence = ability.Sequence,
                     }

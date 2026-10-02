@@ -71,7 +71,7 @@ export interface AbilityResolutionDto {
   ability: string
   /** 契约上必有（同上）。 */
   effective: boolean
-  malfunction: string | null
+  malfunctions: string[]
   note: string | null
   sequence: number
 }
@@ -82,7 +82,7 @@ export interface SlotAbilityDto {
   basis: string
   ability: string | null
   effective: boolean | null
-  malfunction: string | null
+  malfunctions: string[]
   note: string | null
   sequence: number | null
 }

@@ -23,8 +23,11 @@ public sealed record AbilityResolvedEvent : GameEvent
     /// <summary>这次使用是否正常生效。</summary>
     public required bool Effective { get; init; }
 
-    /// <summary>未正常生效时的原因分类（R-0004）；生效时为 null。</summary>
-    public MalfunctionKind? Malfunction { get; init; }
+    /// <summary>
+    /// 未正常生效 / 受干扰的原因分类（R-0004）；可并列多条（如同时中毒且醉酒、涡流叠加中毒），
+    /// 正常生效且无外部干扰时为空。
+    /// </summary>
+    public IReadOnlyList<MalfunctionKind> Malfunctions { get; init; } = [];
 
     /// <summary>说明：分类无法表达的组合（如「同时中毒且醉酒」）写在这里，不许丢。</summary>
     public string? Note { get; init; }

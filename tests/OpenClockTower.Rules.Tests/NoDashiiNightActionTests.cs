@@ -92,6 +92,7 @@ public sealed class NoDashiiNightActionTests
         Phase = GamePhase.OtherNight,
         Actor = new SeatId(1),
         ActorCharacter = new CharacterId("no-dashii"),
+        ActorOwnCharacter = new CharacterId("no-dashii"),
         Seats = [new SeatId(1), new SeatId(2)],
         State = GameStateMachine.Fold(
         [
@@ -108,7 +109,7 @@ public sealed class NoDashiiNightActionTests
         Outcome = new AbilityOutcome
         {
             Effective = effective,
-            Malfunction = effective ? null : MalfunctionKind.Poisoned,
+            Malfunctions = effective ? [] : [MalfunctionKind.Poisoned],
         },
         Choice = choice,
         DaysStarted = 0,

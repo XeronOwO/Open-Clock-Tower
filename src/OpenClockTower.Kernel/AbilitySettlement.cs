@@ -60,6 +60,7 @@ internal static class AbilitySettlement
             Phase = state.Plan.Phase,
             Actor = actor,
             ActorCharacter = owner,
+            ActorOwnCharacter = slot.Character ?? owner,
             Seats = context.Seats,
             State = context.State,
             Outcome = outcome,
@@ -90,7 +91,7 @@ internal static class AbilitySettlement
                 Actor = actor,
                 Ability = ability.Ability,
                 Effective = outcome.Effective,
-                Malfunction = outcome.Malfunction,
+                Malfunctions = [.. outcome.Malfunctions, .. ability.InterferenceMalfunctions(resolutionContext)],
                 Note = outcome.Note,
             },
         };

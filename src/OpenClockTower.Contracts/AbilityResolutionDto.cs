@@ -12,8 +12,8 @@ public sealed record AbilityResolutionDto
     /// <summary>是否正常生效。</summary>
     public required bool Effective { get; init; }
 
-    /// <summary>未正常生效时的原因分类（R-0004）。</summary>
-    public string? Malfunction { get; init; }
+    /// <summary>未正常生效 / 受干扰的原因分类（R-0004）；可并列多条，正常时为空。</summary>
+    public required string[] Malfunctions { get; init; } = [];
 
     /// <summary>说明。</summary>
     public string? Note { get; init; }

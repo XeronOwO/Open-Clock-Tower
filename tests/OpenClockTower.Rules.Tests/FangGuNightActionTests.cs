@@ -219,12 +219,13 @@ public sealed class FangGuNightActionTests
             Phase = GamePhase.OtherNight,
             Actor = new SeatId(1),
             ActorCharacter = FangGu,
+            ActorOwnCharacter = FangGu,
             Seats = [.. state.Seats.Select(entry => entry.Seat)],
             State = state,
             Outcome = new AbilityOutcome
             {
                 Effective = effective,
-                Malfunction = effective ? null : MalfunctionKind.Poisoned,
+                Malfunctions = effective ? [] : [MalfunctionKind.Poisoned],
             },
             Choice = choice,
             DaysStarted = 1,
