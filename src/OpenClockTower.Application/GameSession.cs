@@ -320,8 +320,13 @@ public sealed class GameSession
             }
 
             var recordedAt = _clock.UtcNow;
-            var drafts = new List<StoredEventDraft>(dispatch.Events.Count);
-            var sequence = SessionCommit.AppendDrafts(drafts, dispatch.Events, _lastSequence, recordedAt);
+
+            // 补全「变化前角色」（R-0029）：产出方只报新值，由提交管线用**提交前**的账补齐——
+            // 否则「恶魔 → 非恶魔」在账被覆盖后无从读出，胜负求值只能看见"现在没有恶魔"，
+            // 与"从未配置恶魔"混为一谈（R-0024 第 4 条）。
+            var businessEvents = SessionCommit.FillPreviousCharacters(dispatch.Events, _state);
+            var drafts = new List<StoredEventDraft>(businessEvents.Count);
+            var sequence = SessionCommit.AppendDrafts(drafts, businessEvents, _lastSequence, recordedAt);
 
             // 先把这一步的账在内存里折出来：折不动就整条命令失败，绝不落库。
             // 否则会留下"事件已落库、账没折"的中间态，而重投会被当成 Duplicate —— 分叉永远暴露不出来。
@@ -331,7 +336,7 @@ public sealed class GameSession
 
             // ① 先判一次（《处决》一些相关效果的触发时机第 3 步先于第 4 步）：
             //    处决这一批如果本身已经满足胜负条件，就不再结算死亡触发能力（呆瓜不需要再选择）。
-            var outcome = SessionCommit.EvaluateOutcome(setup, nextState, nextMachine, dispatch.Events);
+            var outcome = SessionCommit.EvaluateOutcome(setup, nextState, nextMachine, businessEvents);
 
             if (outcome is null)
             {
@@ -340,7 +345,7 @@ public sealed class GameSession
                 var reconciliation = SessionSettlement.Reconcile(
                     nextState,
                     settlement with { Machine = nextMachine },
-                    dispatch.Events);
+                    businessEvents);
                 LogDiagnostics(reconciliation.Diagnostics);
                 (sequence, nextMachine) = SessionCommit.AppendDerived(
                     drafts,
@@ -420,7 +425,7 @@ public sealed class GameSession
                 GameId,
                 envelope.Actor.Kind,
                 envelope.Command.GetType().Name,
-                dispatch.Events.Count,
+                businessEvents.Count,
                 derivedEvents.Count,
                 _lastSequence,
                 _machine?.IsHeld,
@@ -430,7 +435,7 @@ public sealed class GameSession
             {
                 Kind = CommandResultKind.Accepted,
                 Sequence = _lastSequence,
-                Events = dispatch.Events,
+                Events = businessEvents,
                 Notifications = notifications,
             };
         }

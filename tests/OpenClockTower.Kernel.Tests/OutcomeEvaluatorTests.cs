@@ -312,6 +312,100 @@ public sealed class OutcomeEvaluatorTests
         Assert.Equal(Alignment.Good, outcome!.Winner);
     }
 
+    /// <summary>
+    /// R-0029：运行期「恶魔清零」——麻脸巫婆把最后一名恶魔变成非恶魔角色（人还活着）→ 善良获胜。
+    /// 判据是本批事件里「恶魔 → 非恶魔」的角色变化（<see cref="SeatStateChangedEvent.PreviousCharacter"/>）。
+    /// </summary>
+    [Fact]
+    public void DemonChangedIntoNonDemon_GoodWins()
+    {
+        var state = State(
+            (1, "clockmaker", Alignment.Good, LifeState.Alive),
+            (2, "sweetheart", Alignment.Evil, LifeState.Alive),
+            (3, "dreamer", Alignment.Good, LifeState.Alive),
+            (4, "sage", Alignment.Good, LifeState.Alive));
+
+        var outcome = OutcomeEvaluator.Evaluate(Context(
+            state,
+            new SeatStateChangedEvent
+            {
+                Seat = new SeatId(2),
+                Character = new CharacterId("sweetheart"),
+                PreviousCharacter = new CharacterId("no-dashii"),
+                Reason = "麻脸巫婆角色变更",
+                CausedBy = new SeatId(1),
+            }));
+
+        Assert.NotNull(outcome);
+        Assert.Equal(Alignment.Good, outcome!.Winner);
+        Assert.Equal(OutcomeCondition.DemonsAllDead, outcome.Condition);
+    }
+
+    /// <summary>R-0029：恶魔 → 另一种恶魔不算清零（场上仍有活着的恶魔）。</summary>
+    [Fact]
+    public void DemonChangedIntoAnotherDemon_DoesNotEnd()
+    {
+        var state = State(
+            (1, "clockmaker", Alignment.Good, LifeState.Alive),
+            (2, "vortox", Alignment.Evil, LifeState.Alive),
+            (3, "dreamer", Alignment.Good, LifeState.Alive),
+            (4, "sage", Alignment.Good, LifeState.Alive));
+
+        Assert.Null(OutcomeEvaluator.Evaluate(Context(
+            state,
+            new SeatStateChangedEvent
+            {
+                Seat = new SeatId(2),
+                Character = new CharacterId("vortox"),
+                PreviousCharacter = new CharacterId("no-dashii"),
+                Reason = "麻脸巫婆角色变更",
+            })));
+    }
+
+    /// <summary>R-0029：一名恶魔被变成非恶魔，但场上还有另一名活着的恶魔 → 不结束。</summary>
+    [Fact]
+    public void DemonChangedIntoNonDemon_WhileAnotherDemonAlive_DoesNotEnd()
+    {
+        var state = State(
+            (1, "vortox", Alignment.Evil, LifeState.Alive),
+            (2, "sweetheart", Alignment.Evil, LifeState.Alive),
+            (3, "dreamer", Alignment.Good, LifeState.Alive),
+            (4, "sage", Alignment.Good, LifeState.Alive));
+
+        Assert.Null(OutcomeEvaluator.Evaluate(Context(
+            state,
+            new SeatStateChangedEvent
+            {
+                Seat = new SeatId(2),
+                Character = new CharacterId("sweetheart"),
+                PreviousCharacter = new CharacterId("no-dashii"),
+                Reason = "麻脸巫婆角色变更",
+            })));
+    }
+
+    /// <summary>
+    /// R-0029 第 2 条：本局从未配置恶魔（配置异常 / 非剧本夹具）时，即使有角色变更也不判结束——
+    /// 与「运行期清零」区分开的正是「变化前是恶魔」这一事实。
+    /// </summary>
+    [Fact]
+    public void NoDemonConfigured_WithUnrelatedCharacterChange_DoesNotEnd()
+    {
+        var state = State(
+            (1, "clockmaker", Alignment.Good, LifeState.Alive),
+            (2, "dreamer", Alignment.Good, LifeState.Alive),
+            (3, "sage", Alignment.Good, LifeState.Alive));
+
+        Assert.Null(OutcomeEvaluator.Evaluate(Context(
+            state,
+            new SeatStateChangedEvent
+            {
+                Seat = new SeatId(3),
+                Character = new CharacterId("sage"),
+                PreviousCharacter = new CharacterId("artist"),
+                Reason = "说书人上报",
+            })));
+    }
+
     private static OutcomeContext Context(GameState state, params GameEvent[] events) =>
         Context(state, day: null, events);
 

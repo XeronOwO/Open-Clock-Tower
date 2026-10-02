@@ -76,11 +76,19 @@ public static class OutcomeEvaluator
     }
 
     /// <summary>
-    /// 常规 · 善良：所有恶魔均死亡；观测不齐或善良获胜被阻断时返回 null。
+    /// 常规 · 善良：所有恶魔均死亡（含「运行期恶魔角色清零」）；观测不齐或善良获胜被阻断时返回 null。
     /// </summary>
     /// <remarks>
-    /// 「没有任何恶魔角色」**不算善良获胜**：没有可言的"所有恶魔"，条件不成立。
-    /// 这既是语义上的要求，也防止"配置错误 / 非剧本夹具"被静默判成一局结束（R-0024 的登记口径）。
+    /// <para>
+    /// 口径见 <c>docs/standard/rulings.md</c> R-0029：
+    /// </para>
+    /// <list type="bullet">
+    /// <item><description>场上还有存活的恶魔角色 → 条件不成立；</description></item>
+    /// <item><description>恶魔角色都在、且都已死亡 → 善良获胜（R-0024）；</description></item>
+    /// <item><description>**当前没有任何恶魔角色**：本批事件里存在「恶魔 → 非恶魔」的角色变化（麻脸巫婆等）
+    /// → 判善良获胜（运行期清零）；否则**不判**——「没有任何恶魔」的配置错误 / 非剧本夹具
+    /// 不该被静默判成一局结束（R-0024 第 4 条的原始目的，R-0029 第 2 条）。</description></item>
+    /// </list>
     /// </remarks>
     private static GameOutcome? DemonsAllDead(OutcomeContext context, bool goodWinBlocked)
     {
@@ -110,15 +118,51 @@ public static class OutcomeEvaluator
             }
         }
 
-        return demons == 0 || goodWinBlocked
-            ? null
-            : new GameOutcome
-            {
-                Winner = Alignment.Good,
-                Condition = OutcomeCondition.DemonsAllDead,
-                Detail = "所有恶魔均已死亡：善良阵营获胜"
+        if (goodWinBlocked)
+        {
+            return null;
+        }
+
+        if (demons == 0 && !DemonClearedInThisBatch(context))
+        {
+            return null;
+        }
+
+        return new GameOutcome
+        {
+            Winner = Alignment.Good,
+            Condition = OutcomeCondition.DemonsAllDead,
+            Detail = demons == 0
+                ? "恶魔角色已不在场（角色变更清空）：善良阵营获胜"
+                    + "（百科《规则概要》四 · 2026-10-01 抓取；平台口径见 rulings.md R-0029）。"
+                : "所有恶魔均已死亡：善良阵营获胜"
                     + "（百科《规则概要》四 · 2026-10-01 抓取）。",
-            };
+        };
+    }
+
+    /// <summary>
+    /// 本批事件里是否存在「恶魔 → 非恶魔」的角色变化（R-0029 第 3–4 条的判据）。
+    /// </summary>
+    /// <remarks>
+    /// 只看**本批**：求值器不持有局级历史（D-0015），而角色清空是当批发生的事实；
+    /// 变化前的角色由提交管线写进 <see cref="SeatStateChangedEvent.PreviousCharacter"/>。
+    /// </remarks>
+    private static bool DemonClearedInThisBatch(OutcomeContext context)
+    {
+        foreach (var gameEvent in context.Events)
+        {
+            if (gameEvent is not SeatStateChangedEvent { Character: { } current, PreviousCharacter: { } previous })
+            {
+                continue;
+            }
+
+            if (context.Characters.IsDemon(previous) && !context.Characters.IsDemon(current))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>常规 · 邪恶：场上仅剩两名玩家存活（旅行者不计入，首版无旅行者）。</summary>

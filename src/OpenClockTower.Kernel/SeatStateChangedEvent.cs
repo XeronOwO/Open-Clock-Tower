@@ -18,6 +18,17 @@ public sealed record SeatStateChangedEvent : GameEvent
     /// <summary>变化后的角色；null = 本次未观测。</summary>
     public CharacterId? Character { get; init; }
 
+    /// <summary>
+    /// 本次变化**之前**该席位已知的角色；null = 之前未观测到角色，或本次没有观测角色。
+    /// </summary>
+    /// <remarks>
+    /// 由提交管线在落库前统一补全（用提交前的账），**产出方不必自己填**——与「维度 → 效果链接」
+    /// 的补全同族。两个用途：① 说书人上帝视角的「从什么变成什么」；
+    /// ② 胜负求值：角色维度被覆盖后，「恶魔 → 非恶魔」这一事实只能靠它读出来
+    /// （<c>docs/standard/rulings.md</c> R-0029：运行期恶魔角色清零判善良获胜）。
+    /// </remarks>
+    public CharacterId? PreviousCharacter { get; init; }
+
     /// <summary>变化后的阵营；null = 本次未观测。</summary>
     public Alignment? Alignment { get; init; }
 

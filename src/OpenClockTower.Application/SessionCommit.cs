@@ -37,6 +37,38 @@ internal static class SessionCommit
     }
 
     /// <summary>
+    /// 补全角色变化的「变化前角色」（<c>docs/standard/rulings.md</c> R-0029）：用**提交前**的账，
+    /// 给每条观测到角色的 <see cref="SeatStateChangedEvent"/> 填上该席位此前的角色。
+    /// </summary>
+    /// <remarks>
+    /// 与「维度 → 效果链接」的补全同族：产出方（角色契约 / 说书人上报 / 开局分配）只报**新值**，
+    /// 「从什么变成什么」由提交管线统一补齐——否则「恶魔 → 非恶魔」这个事实在账被覆盖后就丢了，
+    /// 胜负求值只能看见"现在没有恶魔"，无法与"配置错误"区分（R-0024 第 4 条）。
+    /// 产出方自己填过的值一律尊重（未来某条路径若自带历史，不被覆盖）。
+    /// </remarks>
+    internal static IReadOnlyList<GameEvent> FillPreviousCharacters(
+        IReadOnlyList<GameEvent> events,
+        GameState before)
+    {
+        ArgumentNullException.ThrowIfNull(events);
+        ArgumentNullException.ThrowIfNull(before);
+
+        var filled = new List<GameEvent>(events.Count);
+        foreach (var gameEvent in events)
+        {
+            if (gameEvent is SeatStateChangedEvent { Character: not null, PreviousCharacter: null } changed)
+            {
+                filled.Add(changed with { PreviousCharacter = before.Seat(changed.Seat)?.CharacterValue });
+                continue;
+            }
+
+            filled.Add(gameEvent);
+        }
+
+        return filled;
+    }
+
+    /// <summary>
     /// 一次胜负求值（R-0024）：**对局开始前不判**（还没开过任何阶段时没有"胜负"这回事，
     /// 开局配置也不构成条件）；已经结束时不再判（避免重复结束事件）；
     /// 席位观测不齐的情形由求值器按"不猜"处理，这里不做任何默认补齐。
