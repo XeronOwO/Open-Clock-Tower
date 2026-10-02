@@ -88,10 +88,13 @@ Seat (玩家席位)
 | `GainAbility` 获得能力 | 改变某玩家的能力来源 | 哲学家 |
 | `Interference` 干扰 | 改变其他能力的**生效与否** | 中毒、醉酒、涡流、咖啡师 |
 
-**已落地（2026-10-03）**：`NightAction`（钟表匠 / 筑梦师 / 诺-达鲺 / 女巫 / 洗脑师）、
+**已落地（2026-10-05）**：`NightAction`（钟表匠 / 筑梦师 / 诺-达鲺 / 女巫 / 洗脑师 / 涡流 / 镜像双子 / 麻脸巫婆）、
 `ContinuousDetection` 的一角（女巫的诅咒存续条件走 `IAbilityPresence`）、
-事件触发族 `IEventTrigger`（女巫的「被诅咒者提名即死」、洗脑师要求的黎明到期），
-以及处罚处决依据契约 `IAdjudicatedExecutionSource`（说书人主动处决：洗脑师 / 畸形秀演员）；
+事件触发族 `IEventTrigger`（女巫的「被诅咒者提名即死」、洗脑师要求的黎明到期）、
+处罚处决依据契约 `IAdjudicatedExecutionSource`（说书人主动处决：洗脑师 / 畸形秀演员），
+以及**角色变更族的第一条**（麻脸巫婆）：席位 × 角色的原子选择、只写角色维度（阵营不变）、
+「创造恶魔 → 当晚死亡由说书人决定」的跨恶魔段裁量窗口（`PitHagNight` / `DeferredDeath`：
+说书人可阻止恶魔击杀、可追加死亡且归因麻脸巫婆，窗口在最后一个能造成死亡的恶魔行动后收口）；
 `OnDeath` / `Entry` / `PublicTrigger` / `Retroactive` 仍随各自角色分批实现。
 
 ### 2.4 裁定点（DecisionPoint）

@@ -1506,14 +1506,16 @@ async function main() {
   const serverCrash = /Unhandled exception|Application is shutting down/i.test(serverLog.join(''))
   check('宿主日志没有未处理异常', !serverCrash, serverLog.join('').slice(-400))
 
-  // 故意杀宿主必然产生两类**装置噪音**：SignalR 断线错误（1006）与宿主不可用时 Vite 代理对 /hub 回的 500。
+  // 故意杀宿主必然产生两类**装置噪音**：SignalR 断线错误（1006）与宿主不可用时 Vite 代理对 /hub 回的 5xx。
   // 判据 = 正常流程零错误 + 重启窗口内除这两类外零错误 + 窗口外零错误——不能因为预期噪音把整条检查关掉。
-  const restartNoise = /Connection disconnected with error|WebSocket closed with status code: 1006|Failed to load resource: the server responded with a status of 500|Failed to complete negotiation|Server returned an error on close/
+  // 代理错误码只认 500 / 502 这一对：vite 8 在新宿主不可达时回 502（vite 6 时代是 500），
+  // 两者是同一件事（代理转不出去），所以并列容忍；其余 4xx / 5xx 仍然算非预期。
+  const restartNoise = /Connection disconnected with error|WebSocket closed with status code: 1006|Failed to load resource: the server responded with a status of 50[02]|Failed to complete negotiation|Server returned an error on close/
   const noiseInWindow = consoleErrors.slice(consoleErrorsBeforeRestart, consoleErrorsAfterRestartWindow)
   const errorsOutsideWindow = consoleErrors.slice(consoleErrorsAfterRestartWindow)
   const unexpectedInWindow = noiseInWindow.filter((message) => !restartNoise.test(message))
   check(
-    '所有客户端页面没有控制台错误（正常流程零错误；重启窗口只容忍断线与代理 500）',
+    '所有客户端页面没有控制台错误（正常流程零错误；重启窗口只容忍断线与代理 500/502）',
     consoleErrorsBeforeRestart === 0 && unexpectedInWindow.length === 0 && errorsOutsideWindow.length === 0,
     `正常流程=${consoleErrorsBeforeRestart}；重启窗口噪音=${noiseInWindow.length}（非预期 ${unexpectedInWindow.length}）；窗口外=${errorsOutsideWindow.length}`
       + (unexpectedInWindow.length > 0 ? ` | ${unexpectedInWindow.slice(0, 2).join(' | ')}` : '')
