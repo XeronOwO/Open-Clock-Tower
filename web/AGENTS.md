@@ -41,20 +41,24 @@ npm run dev          # http://localhost:5273
 `web/` 不进 `OpenClockTower.slnx`（不引入 Node 到 .NET 构建链）。改动前端后，
 除 `dotnet build/test/format` 外必须补跑 `npm run gate`。
 
-## 3.1 真机会话取证（说书人面板）
+## 3.1 验收批次取证（说书人 + 玩家多客户端）
 
 ```bash
-node tools/verify-storyteller-panel.mjs        # 退出码 0 = 21 项断言全过
+node tools/verify-storyteller-panel.mjs        # 退出码 0 = 57 项断言全过
 ```
 
-它起真宿主 + 真 Vite + 真 Chromium，走完"加入 → 分配 → 开夜 → 推送推进 → 状态上报与归因"，
-把 5 张截图写进 `artifacts/web/`（gitignored）。**外部耦合（换机器前先核对）**：
+它起真宿主 + 真 Vite + 真 Chromium，按 `--seats` 给每一席开一个**独立浏览器上下文**
+（同一 SPA 的 `#player`），走完"三客户端加入 → 分配 → 开夜 → 钟表匠裁定 → 筑梦师请求与作答 →
+信息单播 → 来源死亡解除"，把 10 张截图与运行日志写进 `artifacts/web/`（gitignored）。
+场景固定三角色（clockmaker / dreamer / no-dashii），节拍配额默认 `--quota 2` 秒。
+**外部耦合（换机器前先核对）**：
 
 | 耦合 | 位置 | 失败时的表现 |
 |---|---|---|
 | 宿主编译产物路径 `src/OpenClockTower.Server/bin/Release/net10.0/OpenClockTower.Server[.exe]` | `tools/verify-storyteller-panel.mjs` | 进程启动失败，退出码 1（脚本自己也打印路径） |
-| SQLite 表与列名 `Games.StorytellerTicket` | 同上 | 读票据抛错并退出（票据取不到就不测） |
+| SQLite 表 `Games`、列 `StorytellerTicket` / `SeatsJson`（`SeatId` 序列化为 `{ "value": N }`） | 同上 | 读票据抛错并退出（票据取不到就不测） |
 | 席位数量 | `--seats` 与 `--assign` 必须同数（建表要求每席都有角色） | 开夜被拒 `plan.seat_unassigned`，断言失败 |
+| 场景角色 | `--assign` 必须同时含 clockmaker / dreamer / no-dashii | 参数校验直接报错退出 |
 | Node ≥ 22.5（`node:sqlite`）+ `npx playwright install chromium` | 本机环境 | 脚本以退出码 2 明确报"缺少 Playwright" |
 
 ## 4. 边界
