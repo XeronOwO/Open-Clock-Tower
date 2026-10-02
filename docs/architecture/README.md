@@ -3,6 +3,7 @@
 | 页面 | 回答什么问题 |
 |---|---|
 | [current.md](current.md) | 系统由哪些部分组成、依赖朝哪、游戏逻辑为什么能算对 |
+| [storyteller-presentation.md](storyteller-presentation.md) | 说书人端呈现层怎么组织：魔典主视图 + 数据下钻 |
 
 ## 待建页面
 

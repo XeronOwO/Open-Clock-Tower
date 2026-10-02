@@ -372,7 +372,7 @@ StepMachine（步骤机）
 | `tests/OpenClockTower.Rules.Tests` | 规则数据测试 | 已建（57 条：夜晚顺序表 / 结构不变量 / 变体差异 / 建表 / 花名册档案 / 诺-达鲺常驻中毒与角色契约） |
 | `tests/OpenClockTower.NormativeGates.Tests` | 把规范写成会失败的测试 | 已建（17 条门禁，逐条先红后绿） |
 | `tests/OpenClockTower.Integration.Tests` | 多客户端端到端 | 已建（43 条：真实宿主 + 真实 SignalR 客户端；含真实进程重启、损坏载荷恢复、预阶段状态观测、分配→开夜→请求/裁定点，结算引擎验收矩阵 1–8 的 3 条真宿主链路，以及玩家推送的覆盖面与投递方向） |
-| `web/` | Vue 3 + TS 前端（单 SPA 两套视图） | 已建（说书人上帝视角面板 + 玩家端骨架；连接 / 命令 / 防御性呈现分层，见 `web/AGENTS.md`、D-0018） |
+| `web/` | Vue 3 + TS 前端（单 SPA 两套视图） | 已建（说书人魔典主视图：席位圆环 + 席位操作台 + 数据下钻；玩家端骨架；连接 / 命令 / 防御性呈现分层，见 `web/AGENTS.md`、D-0018 与 `architecture/storyteller-presentation.md`） |
 | `tools/` | 抓取、索引、数据生成、来源核对 | 已建（`fetch-wiki.ps1`：79 页快照 + SHA256 索引；`check-night-order.ps1`：顺序表与快照逐条核对） |
 
 门禁清单（每条都做过"见红"验证）：
@@ -400,6 +400,7 @@ StepMachine（步骤机）
 ## 7. 相关阅读
 
 - 决策与代价：`docs/decisions/active.md`
+- 说书人端呈现结构：`docs/architecture/storyteller-presentation.md`
 - 未确证的规则：`docs/standard/rulings.md`
 - 引用口径：`docs/standard/sources.md`
 - 术语：`docs/standard/terminology.md`
