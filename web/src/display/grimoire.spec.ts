@@ -50,6 +50,7 @@ function viewOf(overrides: Partial<StorytellerViewDto> = {}): StorytellerViewDto
     day: null,
     outcome: null,
     klutzChoices: [],
+    pitHagNight: null,
     ...overrides,
   }
 }

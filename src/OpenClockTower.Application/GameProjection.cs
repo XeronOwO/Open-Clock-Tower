@@ -116,6 +116,10 @@ public static class GameProjection
             Day = machine?.Day?.Days.LastOrDefault(),
             Outcome = machine?.Outcome,
             KlutzChoices = machine?.KlutzChoices ?? [],
+
+            // 麻脸巫婆之夜的死亡裁量窗口（R-0030）：说书人要据此裁定待定死亡、
+            // 并在窗口内追加死亡——玩家投影里没有它（D-0012 §4.3）。
+            PitHagNight = machine?.PitHagNight,
         };
     }
 }

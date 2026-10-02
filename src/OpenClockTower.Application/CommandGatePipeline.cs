@@ -147,6 +147,19 @@ public static class CommandGatePipeline
                 "只有说书人或宿主可以处罚处决",
                 "identity"),
 
+            // 麻脸巫婆之夜的两条说书人命令（R-0030）：追加死亡与裁定待定死亡。
+            PitHagCasualtyCommand when actor.Kind is ActorKind.Host or ActorKind.Storyteller => null,
+            PitHagCasualtyCommand => Reject(
+                "identity.storyteller_only",
+                "只有说书人或宿主可以裁定麻脸巫婆之夜的死亡",
+                "identity"),
+
+            ResolveDeferredDeathCommand when actor.Kind is ActorKind.Host or ActorKind.Storyteller => null,
+            ResolveDeferredDeathCommand => Reject(
+                "identity.storyteller_only",
+                "只有说书人或宿主可以裁定待定的死亡",
+                "identity"),
+
             _ when actor.Kind == ActorKind.Storyteller => null,
             _ => Reject("identity.storyteller_only", "这条命令只有说书人可以发出", "identity"),
         };
@@ -316,6 +329,8 @@ public static class CommandGatePipeline
             CastVoteCommand castVote => CheckNominationIndex(castVote.NominationIndex),
             CountVotesCommand countVotes => CheckNominationIndex(countVotes.NominationIndex),
             PunishExecutionCommand punish => CheckSeatExists(punish.Seat, setup),
+            PitHagCasualtyCommand casualty => CheckSeatExists(casualty.Seat, setup),
+            ResolveDeferredDeathCommand deferred => CheckSeatExists(deferred.Seat, setup),
             SubmitResponseCommand submit => CheckOption(machine, submit.RequestId, submit.OptionValue),
             ProxyFillCommand proxy => CheckOption(machine, proxy.RequestId, proxy.OptionValue),
             VoidRequestCommand voidRequest => Enum.IsDefined(voidRequest.Reason)

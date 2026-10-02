@@ -80,4 +80,7 @@ public sealed record StorytellerViewDto
 
     /// <summary>呆瓜的公开选择（含跳过），按发生顺序（R-0027）。</summary>
     public required KlutzChoiceDto[] KlutzChoices { get; init; }
+
+    /// <summary>麻脸巫婆之夜的死亡裁量窗口；null = 今晚没有（R-0030）。只说书人可见。</summary>
+    public PitHagNightDto? PitHagNight { get; init; }
 }

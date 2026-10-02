@@ -87,4 +87,10 @@ public sealed record StorytellerView
 
     /// <summary>呆瓜的公开选择（含"没选"的跳过），按发生顺序（R-0027）。</summary>
     public IReadOnlyList<KlutzChoiceRecord> KlutzChoices { get; init; } = [];
+
+    /// <summary>
+    /// 麻脸巫婆之夜的死亡裁量窗口；null = 今晚没有（R-0030）。
+    /// 说书人据此看到待定死亡与关闭点，并用「追加死亡 / 裁定待定死亡」两条命令收口。
+    /// </summary>
+    public PitHagNight? PitHagNight { get; init; }
 }

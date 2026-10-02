@@ -292,6 +292,23 @@ public static class ProjectionMapper
         Day = view.Day is { } day ? ToDto(day) : null,
         Outcome = view.Outcome is { } outcome ? ToDto(outcome, view.Sequence) : null,
         KlutzChoices = [.. view.KlutzChoices.Select(record => ToDto(record, view.Sequence))],
+        PitHagNight = view.PitHagNight is { } night
+            ? new PitHagNightDto
+            {
+                Source = night.Source.Value,
+                ClosesAfterSlotIndex = night.ClosesAfterSlotIndex,
+                Deferred =
+                [
+                    .. night.Deferred.Select(deferred => new DeferredDeathDto
+                    {
+                        Target = deferred.Target.Value,
+                        Source = deferred.Source.Value,
+                        Ability = deferred.Ability.Value,
+                        Note = deferred.Note,
+                    }),
+                ],
+            }
+            : null,
     };
 
     /// <summary>房间健康位 → DTO。</summary>

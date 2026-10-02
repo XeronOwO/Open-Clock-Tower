@@ -138,6 +138,28 @@ export interface KlutzChoiceDto {
   detail: string
 }
 
+/** 一条待定的死亡：麻脸巫婆之夜由说书人裁定确认或阻止（R-0030）。 */
+export interface DeferredDeathDto {
+  /** 被攻击的席位。 */
+  target: number
+  /** 发起击杀的恶魔席位。 */
+  source: number
+  /** 发起击杀的能力标识。 */
+  ability: string
+  /** 发生位置与依据说明。 */
+  note: string
+}
+
+/** 麻脸巫婆之夜的死亡裁量窗口（R-0030）：只说书人视图可见。 */
+export interface PitHagNightDto {
+  /** 麻脸巫婆的席位（追加死亡的归因来源）。 */
+  source: number
+  /** 窗口关闭点：最后一个能造成死亡的恶魔行动槽位下标。 */
+  closesAfterSlotIndex: number
+  /** 尚未裁定的待定死亡。 */
+  deferred: DeferredDeathDto[]
+}
+
 /** 房间健康位：恢复 / 重建失败后为降级态（原因 + 发生时间）；正常时 degraded=false。 */
 export interface RoomHealthDto {
   degraded: boolean
@@ -262,6 +284,8 @@ export interface StorytellerViewDto {
   outcome: GameOutcomeDto | null
   /** 呆瓜的公开选择（含跳过），按发生顺序（R-0027）。 */
   klutzChoices: KlutzChoiceDto[]
+  /** 麻脸巫婆之夜的死亡裁量窗口；null = 今晚没有（R-0030）。 */
+  pitHagNight: PitHagNightDto | null
 }
 
 /** 命令回执。 */

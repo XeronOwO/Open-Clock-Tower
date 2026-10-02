@@ -381,6 +381,43 @@ public sealed class GameHub : Hub<IGameClient>
             idempotencyKey);
     }
 
+    /// <summary>
+    /// 说书人 / 宿主在麻脸巫婆之夜**追加死亡**：让某名玩家死亡，归因为麻脸巫婆（R-0030 第 4 条）。
+    /// 窗口不存在或目标已死时内核显式拒绝。
+    /// </summary>
+    public Task<CommandResultDto> PitHagCasualty(
+        string credential,
+        int seat,
+        string? note,
+        string idempotencyKey) =>
+        ExecuteAsync(
+            ResolveActor(credential),
+            new PitHagCasualtyCommand
+            {
+                Seat = new SeatId(seat),
+                Note = note,
+            },
+            idempotencyKey);
+
+    /// <summary>
+    /// 说书人 / 宿主**裁定一条待定死亡**：确认（该玩家死亡）或阻止（免死）——麻脸巫婆之夜（R-0030 第 2 条）。
+    /// </summary>
+    public Task<CommandResultDto> ResolveDeferredDeath(
+        string credential,
+        int seat,
+        bool killed,
+        string? note,
+        string idempotencyKey) =>
+        ExecuteAsync(
+            ResolveActor(credential),
+            new ResolveDeferredDeathCommand
+            {
+                Seat = new SeatId(seat),
+                Killed = killed,
+                Note = note,
+            },
+            idempotencyKey);
+
     /// <summary>说书人 / 宿主按事件日志重建房间（D-0014 恢复）。</summary>
     public Task<CommandResultDto> RebuildRoom(string credential, string reason, string idempotencyKey) =>
         ExecuteAsync(ResolveActor(credential), new RebuildRoomCommand { Reason = reason }, idempotencyKey);

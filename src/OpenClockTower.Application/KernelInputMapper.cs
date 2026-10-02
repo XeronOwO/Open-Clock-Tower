@@ -70,6 +70,17 @@ public static class KernelInputMapper
                 Source = punish.Source,
                 Note = punish.Note,
             },
+            PitHagCasualtyCommand casualty => new PitHagCasualtyInput
+            {
+                Target = casualty.Seat,
+                Note = casualty.Note,
+            },
+            ResolveDeferredDeathCommand deferred => new ResolveDeferredDeathInput
+            {
+                Target = deferred.Seat,
+                Killed = deferred.Killed,
+                Note = deferred.Note,
+            },
             _ => null,
         };
     }

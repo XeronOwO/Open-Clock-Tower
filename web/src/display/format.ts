@@ -10,10 +10,12 @@ import type {
   DayNominationDto,
   DayViewDto,
   DecisionOptionDto,
+  DeferredDeathDto,
   EffectDto,
   GameOutcomeDto,
   KlutzChoiceDto,
   OperationRequestVoidedDto,
+  PitHagNightDto,
   PlayerLifeDto,
   RoomHealthDto,
   SeatChangeDto,
@@ -476,6 +478,60 @@ export function normalizeStorytellerView(raw: unknown): StorytellerViewDto {
     klutzChoices: asArray<unknown>(view['klutzChoices'])
       .map(normalizeKlutzChoice)
       .filter((choice): choice is KlutzChoiceDto => choice !== null),
+    pitHagNight: normalizePitHagNight(view['pitHagNight']),
+  }
+}
+
+/** 待定死亡的条数上限：一桌人就这么多，超出的一律丢弃（坏数据不撑爆面板）。 */
+export const MAX_DEFERRED_DEATHS = 32
+
+/**
+ * 归一化一条待定死亡（R-0030）；缺席位或来源时返回 null
+ * （宁可少一条，不编一个状态——服务端数据是输入，不是保证）。
+ */
+export function normalizeDeferredDeath(raw: unknown): DeferredDeathDto | null {
+  if (raw === null || typeof raw !== 'object') {
+    return null
+  }
+
+  const entry = raw as Record<string, unknown>
+  const target = asCount(entry['target'], 1_000)
+  const source = asCount(entry['source'], 1_000)
+  if (target === null || source === null || target < 1 || source < 1) {
+    return null
+  }
+
+  return {
+    target,
+    source,
+    ability: asText(entry['ability']) ?? '未知能力',
+    note: asSizedText(entry['note'], 512) ?? '',
+  }
+}
+
+/**
+ * 归一化麻脸巫婆之夜的死亡裁量窗口（R-0030）：形状不对就当成"今晚没有窗口"——
+ * 宁可不给裁定面，也不让说书人对着一份坏数据做裁定。
+ */
+export function normalizePitHagNight(raw: unknown): PitHagNightDto | null {
+  if (raw === null || typeof raw !== 'object') {
+    return null
+  }
+
+  const night = raw as Record<string, unknown>
+  const source = asCount(night['source'], 1_000)
+  const closesAfterSlotIndex = asCount(night['closesAfterSlotIndex'], 10_000)
+  if (source === null || closesAfterSlotIndex === null) {
+    return null
+  }
+
+  return {
+    source,
+    closesAfterSlotIndex,
+    deferred: asArray<unknown>(night['deferred'])
+      .slice(0, MAX_DEFERRED_DEATHS)
+      .map(normalizeDeferredDeath)
+      .filter((deferred): deferred is DeferredDeathDto => deferred !== null),
   }
 }
 
