@@ -26,10 +26,11 @@ internal static class StepSlotEntry
     /// <summary>产出一条自动推进事件；推进后进入新槽位（计划走完则补阶段完成事件）。</summary>
     internal static void AppendAdvance(StepMachineState state, GameState ledger, List<GameEvent> events)
     {
-        AppendPitHagNightClose(state, ledger, events);
-
         var from = state.SlotIndex;
         var to = from + 1;
+        AppendPitHagNightClose(state, ledger, events);
+        AppendBarberNightClose(state, events, to);
+
         events.Add(new SlotAdvancedEvent { FromIndex = from, ToIndex = to });
         if (to >= state.Plan.Slots.Count)
         {
@@ -51,10 +52,11 @@ internal static class StepSlotEntry
         List<GameEvent> events,
         string reason)
     {
-        AppendPitHagNightClose(state, ledger, events);
-
         var from = state.SlotIndex;
         var to = from + 1;
+        AppendPitHagNightClose(state, ledger, events);
+        AppendBarberNightClose(state, events, to);
+
         events.Add(new SlotForceAdvancedEvent { FromIndex = from, ToIndex = to, Reason = reason });
         if (to >= state.Plan.Slots.Count)
         {
@@ -103,6 +105,33 @@ internal static class StepSlotEntry
         });
     }
 
+    /// <summary>
+    /// 「今晚理发」事实的收口（过时不候）：夜晚计划走完时仍未消费的事实显式清空。
+    /// </summary>
+    /// <remarks>
+    /// 依据 <c>docs/standard/rulings.md</c> R-0033：事实跨白天 → 夜晚保留（白天死亡当夜交互），
+    /// 到夜晚 → 白天边界仍未消费时**显式**记「过时不候」再清空——不顺延到下一夜，也不是静默丢弃。
+    /// 只对夜晚计划收口：白天计划走完不碰这个事实（它本来就属于当夜）。
+    /// </remarks>
+    private static void AppendBarberNightClose(StepMachineState state, List<GameEvent> events, int toIndex)
+    {
+        if (state.BarberNight is not { } night || toIndex < state.Plan.Slots.Count)
+        {
+            return;
+        }
+
+        if (state.Plan.Phase is not (GamePhase.FirstNight or GamePhase.OtherNight))
+        {
+            return;
+        }
+
+        events.Add(new BarberNightClosedEvent
+        {
+            Note = $"过时不候：理发师（{night.Source.Value} 号）死亡触发的恶魔交互没有被消费，"
+                + "夜晚结束时清空（事实不顺延到下一夜；平台口径见 rulings.md R-0033）",
+        });
+    }
+
     /// <summary>进入当前槽位：产出槽位进入事件，并按槽位种类与选择契约派生后续事件。</summary>
     /// <param name="state">步骤机状态（提供当前槽位）。</param>
     /// <param name="ledger">状态账：进入时按**当前**账确认行动者还站得住（见 <see cref="UnavailableReason"/>）。</param>
@@ -115,6 +144,14 @@ internal static class StepSlotEntry
             ?? throw new InvalidOperationException("进入槽位失败：计划已走完");
 
         events.Add(new SlotEnteredEvent { SlotIndex = state.SlotIndex, SlotId = slot.Id });
+
+        if (slot.Kind == StepSlotKind.Trigger)
+        {
+            // 触发格：只标记「这一格的时间到了」；是否开交互请求由触发管线按步骤机事实决定
+            //（理发师格，R-0033）。不做「空槽位有人却没有契约」的阻塞——这一格的能力属于死亡触发，
+            // 不属于格子的持有者本人（本人在场也不行动）。
+            return;
+        }
 
         if (slot.Kind != StepSlotKind.Action)
         {

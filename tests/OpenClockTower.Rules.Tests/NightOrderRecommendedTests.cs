@@ -53,7 +53,7 @@ public sealed class NightOrderRecommendedTests
             "CharacterAction:no-dashii",
             "CharacterAction:vortox",
             "CharacterAction:vigormortis",
-            "CharacterAction:barber",
+            "CharacterTrigger:barber",
             "CharacterAction:sweetheart",
             "CharacterAction:sage",
             "InformationActionsBegin",

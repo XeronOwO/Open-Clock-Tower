@@ -73,7 +73,7 @@ public static class NightOrderTable
                 Action("vigormortis"),
                 Action("no-dashii"),
                 Action("vortox"),
-                Action("barber"),
+                Trigger("barber"),
                 Action("sweetheart"),
                 Action("sage"),
                 Action("dreamer"),
@@ -117,7 +117,7 @@ public static class NightOrderTable
                 Action("no-dashii"),
                 Action("vortox"),
                 Action("vigormortis"),
-                Action("barber"),
+                Trigger("barber"),
                 Action("sweetheart"),
                 Action("sage"),
                 Step(NightOrderEntryKind.InformationActionsBegin),
@@ -134,4 +134,6 @@ public static class NightOrderTable
     private static NightOrderEntry Step(NightOrderEntryKind kind) => NightOrderEntry.Step(kind);
 
     private static NightOrderEntry Action(string character) => NightOrderEntry.Action(new CharacterId(character));
+
+    private static NightOrderEntry Trigger(string character) => NightOrderEntry.Trigger(new CharacterId(character));
 }

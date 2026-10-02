@@ -128,6 +128,36 @@ public sealed class NightPlanBuilderTests
         Assert.Equal(new SeatId(1), dreamer.Actor);
     }
 
+    /// <summary>
+    /// 理发师格是**触发格**：在场且存活也不要求行动契约（本人在场也不行动），
+    /// 产出的槽位是触发槽位而不是空槽位（空槽位会在进入时被判成"有人却没有契约"而阻塞）。
+    /// </summary>
+    [Theory]
+    [InlineData(LifeState.Alive)]
+    [InlineData(LifeState.Dead)]
+    public void BarberSlot_IsTriggerSlot_WithOrWithoutLivingHolder(LifeState life)
+    {
+        var state = State((1, "barber", life));
+
+        var plan = Build(Request(state, nightNumber: 2, seatCount: 1));
+
+        var barber = plan.Slots.Single(slot => slot.Id.Value == "barber");
+        Assert.Equal(StepSlotKind.Trigger, barber.Kind);
+        Assert.Equal(new CharacterId("barber"), barber.Character);
+        Assert.Null(barber.Actor);
+        Assert.Null(barber.Prompt);
+        Assert.Null(barber.Owner);
+    }
+
+    /// <summary>触发格同样不替未观测的生死猜：理发师的生死未知 → 拒绝建表（D-0015）。</summary>
+    [Fact]
+    public void BarberSlot_WithUnobservedLife_IsRejected()
+    {
+        var state = State((1, "barber", null));
+
+        Assert.Equal("plan.life_unobserved", BuildFailure(Request(state, nightNumber: 2, seatCount: 1)));
+    }
+
     /// <summary>已死亡的行动者：空槽位，照样走配额（D-0013 §1）。</summary>
     [Fact]
     public void DeadActor_BecomesEmptySlot()

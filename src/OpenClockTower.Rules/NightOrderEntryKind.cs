@@ -28,6 +28,13 @@ public enum NightOrderEntryKind
     /// <summary>某个角色的夜晚行动；角色不在场 / 已死亡时对应空槽位（D-0013 §1）。</summary>
     CharacterAction,
 
+    /// <summary>
+    /// 角色触发格（如理发师）：顺序表上为「事件触发的能力在当夜与某人交互」留出的时机。
+    /// 进入时只记时间到、不产生请求；是否开请求由触发管线按步骤机事实（BarberNight）决定。
+    /// 角色不在场 / 已死亡也保留这一格——能力属于死亡触发，不属于格子的持有者本人。
+    /// </summary>
+    CharacterTrigger,
+
     /// <summary>黎明：夜晚终点，宣布生死变化。</summary>
     Dawn,
 }

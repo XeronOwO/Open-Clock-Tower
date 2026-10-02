@@ -50,7 +50,7 @@ public sealed class NightOrderOriginalTests
             "CharacterAction:vigormortis",
             "CharacterAction:no-dashii",
             "CharacterAction:vortox",
-            "CharacterAction:barber",
+            "CharacterTrigger:barber",
             "CharacterAction:sweetheart",
             "CharacterAction:sage",
             "CharacterAction:dreamer",

@@ -32,6 +32,10 @@ internal static class StepMachineFolder
                 // 呆瓜选择的幂等依据也不能随阶段遗忘（R-0027）。
                 Outcome = state?.Outcome,
                 KlutzChoices = state?.KlutzChoices ?? [],
+
+                // 「今晚理发」事实跨阶段保留：白天死亡 → 当夜交互（R-0033）。
+                // 从**夜晚**带进新阶段说明夜末的「过时不候」收口缺失——CarryBarberNight 显式失败。
+                BarberNight = CarryBarberNight(state),
             },
             SlotEnteredEvent entered => Require(state, entered) with
             {
@@ -77,6 +81,11 @@ internal static class StepMachineFolder
             DeferredDeathRecordedEvent recorded => ApplyDeferredDeathRecorded(state, recorded),
             DeferredDeathResolvedEvent deferredResolved => ApplyDeferredDeathResolved(state, deferredResolved),
             PitHagNightClosedEvent closed => ApplyPitHagNightClosed(state, closed),
+
+            // 「今晚理发」事实（R-0033）：开启 / 关闭改步骤机状态；跳过事件只在事件流里留痕。
+            BarberNightOpenedEvent barberOpened => ApplyBarberNightOpened(state, barberOpened),
+            BarberNightClosedEvent barberClosed => ApplyBarberNightClosed(state, barberClosed),
+            BarberNightSkippedEvent => state,
             SeatStateChangedEvent => state,
             DecisionPointRaisedEvent raised => Require(state, raised) with
             {
@@ -308,6 +317,55 @@ internal static class StepMachineFolder
         }
 
         return current with { PitHagNight = null };
+    }
+
+    /// <summary>
+    /// 「今晚理发」事实跨阶段保留的守卫：只允许白天 → 夜晚（白天死亡的事件在**当夜**交互，
+    /// 百科《死亡触发能力》· 2026-10-01 抓取 · 能力简介）；从夜晚带进新阶段说明夜末的
+    /// 「过时不候」收口缺失，显式失败而不是静默顺延（D-0014 能力 3）。
+    /// </summary>
+    private static BarberNight? CarryBarberNight(StepMachineState? state)
+    {
+        if (state?.BarberNight is not { } night)
+        {
+            return null;
+        }
+
+        if (state.Plan.Phase is GamePhase.FirstNight or GamePhase.OtherNight)
+        {
+            throw new InvalidOperationException(
+                $"事件流顺序损坏：夜晚（{state.Plan.Label}）已经结束，理发师之夜事实还没有收口"
+                + "（过时不候的关闭事件缺失），不能把它顺延到新阶段");
+        }
+
+        return night;
+    }
+
+    /// <summary>开启「今晚理发」事实；同一夜不能开两次（重复即事件流损坏）。</summary>
+    private static StepMachineState ApplyBarberNightOpened(StepMachineState? state, BarberNightOpenedEvent opened)
+    {
+        var current = Require(state, opened);
+        if (current.BarberNight is not null)
+        {
+            throw new InvalidOperationException("事件流顺序损坏：理发师之夜事实已经开启过，不能重复开启");
+        }
+
+        return current with
+        {
+            BarberNight = new BarberNight { Source = opened.Source, Note = opened.Note },
+        };
+    }
+
+    /// <summary>关闭「今晚理发」事实：没有开启却要关闭一律抛错（恢复必须失败，不静默继续）。</summary>
+    private static StepMachineState ApplyBarberNightClosed(StepMachineState? state, BarberNightClosedEvent closed)
+    {
+        var current = Require(state, closed);
+        if (current.BarberNight is null)
+        {
+            throw new InvalidOperationException("事件流顺序损坏：理发师之夜事实没有开启，却要关闭");
+        }
+
+        return current with { BarberNight = null };
     }
 
     private static StepMachineState ApplyAdvance(StepMachineState? state, int fromIndex, int toIndex)

@@ -26,12 +26,19 @@ public sealed record NightOrderEntry
     public static NightOrderEntry Action(CharacterId character) =>
         new() { Kind = NightOrderEntryKind.CharacterAction, Character = character };
 
+    /// <summary>
+    /// 构造一个角色触发格条目（如理发师）：进入时只标记时机，
+    /// 是否开操作请求由触发管线按步骤机事实决定（不进建表的行动契约闸）。
+    /// </summary>
+    public static NightOrderEntry Trigger(CharacterId character) =>
+        new() { Kind = NightOrderEntryKind.CharacterTrigger, Character = character };
+
     /// <summary>构造一个非角色条目（黄昏 / 信息环节 / 黎明）。</summary>
     public static NightOrderEntry Step(NightOrderEntryKind kind) =>
-        kind is NightOrderEntryKind.CharacterAction
+        kind is NightOrderEntryKind.CharacterAction or NightOrderEntryKind.CharacterTrigger
             ? throw new ArgumentOutOfRangeException(
                 nameof(kind),
                 kind,
-                "角色行动条目必须用 Action(character) 构造：没有角色信息的 CharacterAction 是坏数据")
+                "角色条目必须用 Action(character) / Trigger(character) 构造：没有角色信息的角色条目是坏数据")
             : new NightOrderEntry { Kind = kind };
 }

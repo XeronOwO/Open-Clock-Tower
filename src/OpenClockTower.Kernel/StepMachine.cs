@@ -286,6 +286,17 @@ public static class StepMachine
                 default:
                     break;
             }
+
+            // 触发格（理发师格等）：结算不在槽位契约里，而由触发管线在同一批的**批末**产出。
+            // 若在这里照常自动推进，触发管线读到的"当前槽位"已经越过这一格——换角重绑会漏掉紧邻的
+            // 下一格；而且答在配额前 / 后会得到不同的重绑结果（R-0032 的「尚未进入」判据被计时左右）。
+            // 因此答完后**重进本格**：节拍重新起算、由下一次配额输入推进；触发管线在同一批里先完成
+            // 重绑与收口，下一格在之后的批里以当时的账进入（入口检查也读到重绑后的行动者）。
+            if (slot.Kind == StepSlotKind.Trigger)
+            {
+                events.Add(new SlotEnteredEvent { SlotIndex = state.SlotIndex, SlotId = slot.Id });
+                return Applied(state, events);
+            }
         }
 
         return Applied(state, WithAutoAdvance(state, context, events));
@@ -481,37 +492,44 @@ public static class StepMachine
             },
         };
 
-        // 裁定点属于行动槽位时，裁定本身可能就是这一步的结算输入：
-        // 入口裁定（该步没有玩家选择）与选择后裁定都在这里收口。
-        if (state.CurrentSlot is { } slot)
+        // 裁定点按**归属**收口，不按"当前有没有槽位"猜：
+        // ① 属于当前行动槽位的裁定点（入口裁定 / 选择后裁定）：裁定本身是这一步的结算输入，
+        //    在这里结算，随后照常自动推进；
+        // ② 触发器开出的裁定点（如理发师死亡触发的「哪名恶魔执行交换」）：这里只落裁定本身——
+        //    它的续推动作（开请求 / 收口事实）由同一批的触发管线产出；在这里替它推进计划，
+        //    会让尚未开出的后续请求错过自己的槽位（触发来源请求的旁路口径见 HandleResponse）。
+        var slot = state.CurrentSlot;
+        if (slot is null || AbilitySettlement.DecisionPointIdOf(state, slot) != input.DecisionPointId)
         {
-            var choice = state.PendingRequest is
-            {
-                Status: OperationRequestStatus.Answered,
-                Answer: { } answer,
-            } pending && pending.Origin.SlotId is { } originSlotId && originSlotId == slot.Id
-                ? answer.OptionValue
-                : null;
+            return Applied(state, events);
+        }
 
-            var settlement = AbilitySettlement.Plan(slot, state, context, choice, input.Decision);
-            switch (settlement.Kind)
-            {
-                case AbilitySettlementPlan.PlanKind.Indeterminate:
-                    return Reject(
-                        state,
-                        StepMachineRejectionReason.LedgerIncomplete,
-                        settlement.FailureNote!);
-                case AbilitySettlementPlan.PlanKind.RequiresDecision:
-                    return Reject(
-                        state,
-                        StepMachineRejectionReason.UnexpectedInput,
-                        "结算契约在已有裁定之后仍要求再说书人裁定一次（契约缺陷）");
-                case AbilitySettlementPlan.PlanKind.Resolved:
-                    events.AddRange(settlement.Events);
-                    break;
-                default:
-                    break;
-            }
+        var choice = state.PendingRequest is
+        {
+            Status: OperationRequestStatus.Answered,
+            Answer: { } answer,
+        } pending && pending.Origin.SlotId is { } originSlotId && originSlotId == slot.Id
+            ? answer.OptionValue
+            : null;
+
+        var settlement = AbilitySettlement.Plan(slot, state, context, choice, input.Decision);
+        switch (settlement.Kind)
+        {
+            case AbilitySettlementPlan.PlanKind.Indeterminate:
+                return Reject(
+                    state,
+                    StepMachineRejectionReason.LedgerIncomplete,
+                    settlement.FailureNote!);
+            case AbilitySettlementPlan.PlanKind.RequiresDecision:
+                return Reject(
+                    state,
+                    StepMachineRejectionReason.UnexpectedInput,
+                    "结算契约在已有裁定之后仍要求再说书人裁定一次（契约缺陷）");
+            case AbilitySettlementPlan.PlanKind.Resolved:
+                events.AddRange(settlement.Events);
+                break;
+            default:
+                break;
         }
 
         return Applied(state, WithAutoAdvance(state, context, events));

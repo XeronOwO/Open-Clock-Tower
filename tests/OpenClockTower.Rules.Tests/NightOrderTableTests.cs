@@ -114,11 +114,13 @@ public sealed class NightOrderTableTests
             () => NightOrderTable.For(GamePhase.Resolving, NightOrderVariant.Recommended));
     }
 
-    /// <summary>没有角色信息的 CharacterAction 是坏数据：构造入口必须拒绝。</summary>
+    /// <summary>没有角色信息的角色条目是坏数据：构造入口必须拒绝（行动条目与触发格条目都一样）。</summary>
     [Fact]
-    public void Step_RejectsCharacterActionKind()
+    public void Step_RejectsCharacterKinds()
     {
         Assert.Throws<ArgumentOutOfRangeException>(
             () => NightOrderEntry.Step(NightOrderEntryKind.CharacterAction));
+        Assert.Throws<ArgumentOutOfRangeException>(
+            () => NightOrderEntry.Step(NightOrderEntryKind.CharacterTrigger));
     }
 }

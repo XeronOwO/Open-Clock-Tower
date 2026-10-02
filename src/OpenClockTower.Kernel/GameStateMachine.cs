@@ -88,6 +88,12 @@ public static class GameStateMachine
             DeferredDeathResolvedEvent => current,
             PitHagNightClosedEvent => current,
 
+            // 「今晚理发」事实（R-0033）：改的同样是步骤机状态，不改六维度与效果；
+            // 交换产生的两条角色变化另有配套的 SeatStateChangedEvent 折进账里。
+            BarberNightOpenedEvent => current,
+            BarberNightClosedEvent => current,
+            BarberNightSkippedEvent => current,
+
             // 白天流程事件：它们改变的是步骤机状态里的白天账（StepMachineFolder），不改六维度与效果；
             // 处决产生的死亡由配套的 SeatStateChangedEvent 折进账里（处决 ≠ 死亡，百科《处决》）。
             DayStartedEvent => current,

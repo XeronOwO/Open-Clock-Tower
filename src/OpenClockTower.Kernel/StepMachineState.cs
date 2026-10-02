@@ -58,6 +58,17 @@ public sealed record StepMachineState
     /// </remarks>
     public PitHagNight? PitHagNight { get; init; }
 
+    /// <summary>
+    /// 「今晚理发」事实：理发师死亡后待恶魔在当夜交互；null = 没有待处理的理发师之夜。
+    /// </summary>
+    /// <remarks>
+    /// 与 <see cref="PitHagNight"/> 不同，它**跨阶段保留**：白天死亡要在当夜交互
+    /// （百科《死亡触发能力》），因此 <see cref="PhaseStartedEvent"/> 折叠时从上一状态继承；
+    /// 夜晚计划走完仍未消费时由推进路径显式清空（过时不候）。口径见
+    /// <c>docs/standard/rulings.md</c> R-0033。
+    /// </remarks>
+    public BarberNight? BarberNight { get; init; }
+
     /// <summary>当前槽位；计划已走完时为 null。</summary>
     public StepSlot? CurrentSlot =>
         SlotIndex >= 0 && SlotIndex < Plan.Slots.Count ? Plan.Slots[SlotIndex] : null;

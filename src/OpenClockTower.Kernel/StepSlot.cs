@@ -81,6 +81,15 @@ public sealed record StepSlot
     public static StepSlot Empty(StepSlotId id, CharacterId? character = null) =>
         new() { Id = id, Kind = StepSlotKind.Empty, Character = character };
 
+    /// <summary>
+    /// 构造一个触发槽位（如理发师格）：进入时只标记「时机到了」，
+    /// 是否开操作请求由触发管线按步骤机事实决定（<see cref="BarberNight"/>）。
+    /// </summary>
+    /// <param name="id">槽位标识。</param>
+    /// <param name="character">这个槽位对应的角色（触发格必须有角色归属）。</param>
+    public static StepSlot Trigger(StepSlotId id, CharacterId character) =>
+        new() { Id = id, Kind = StepSlotKind.Trigger, Character = character };
+
     /// <summary>构造一个黎明等待槽位。</summary>
     public static StepSlot DawnWait(StepSlotId id) => new() { Id = id, Kind = StepSlotKind.DawnWait };
 

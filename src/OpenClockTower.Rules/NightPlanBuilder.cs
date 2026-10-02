@@ -9,6 +9,8 @@ namespace OpenClockTower.Rules;
 /// <para>
 /// 依据 D-0013 §1：步骤表按**剧本的完整夜晚顺序表**展开，不按在场角色展开——
 /// 角色不在场 / 已死亡 → 生成空槽位（<see cref="StepSlotKind.Empty"/>），照样走完配额。
+/// 顺序表上的触发格（理发师）→ 触发槽位（<see cref="StepSlotKind.Trigger"/>）：进入时只标记时机，
+/// 是否开请求由触发管线按步骤机事实决定，因此**不要求行动契约**。
 /// 非角色条目（黄昏 / 爪牙信息 / 恶魔信息 / 信息环节开始 / 黎明）→ 节拍或黎明等待槽位。
 /// </para>
 /// <para>
@@ -63,6 +65,23 @@ public static class NightPlanBuilder
                 throw new InvalidOperationException($"夜晚顺序表数据缺陷：槽位标识 {tag} 重复");
             }
 
+            if (entry.Kind == NightOrderEntryKind.CharacterTrigger)
+            {
+                if (entry.Character is not { } triggerCharacter)
+                {
+                    throw new InvalidOperationException("夜晚顺序表数据缺陷：角色条目没有角色");
+                }
+
+                var (triggerSlot, triggerFailure) = BuildTriggerSlot(request, triggerCharacter, tag);
+                if (triggerFailure is not null)
+                {
+                    return triggerFailure;
+                }
+
+                slots.Add(triggerSlot!);
+                continue;
+            }
+
             if (entry.Kind != NightOrderEntryKind.CharacterAction)
             {
                 slots.Add(BuildStepSlot(entry.Kind, tag));
@@ -99,7 +118,7 @@ public static class NightPlanBuilder
         NightOrderEntryKind.MinionInfo => "minion-info",
         NightOrderEntryKind.DemonInfo => "demon-info",
         NightOrderEntryKind.InformationActionsBegin => "information-actions-begin",
-        NightOrderEntryKind.CharacterAction => entry.Character is { } character
+        NightOrderEntryKind.CharacterAction or NightOrderEntryKind.CharacterTrigger => entry.Character is { } character
             ? character.Value
             : throw new InvalidOperationException("夜晚顺序表数据缺陷：角色条目没有角色"),
         NightOrderEntryKind.Dawn => "dawn",
@@ -181,5 +200,33 @@ public static class NightPlanBuilder
                 },
             ],
             character), null);
+    }
+
+    /// <summary>
+    /// 角色触发格 → 触发槽位：与行动槽位同款完整性校验（席位缺角色 / 生死未观测 / 角色重复一律拒绝，
+    /// 不猜），但**不要求夜间行动契约**——这一格承载的是死亡触发的能力（理发师），
+    /// 不是持有者本人的行动；本人在场也不行动。
+    /// </summary>
+    private static (StepSlot? Slot, NightPlanOutcome? Failure) BuildTriggerSlot(
+        NightPlanRequest request,
+        CharacterId character,
+        string tag)
+    {
+        var owners = request.State.Seats.Where(entry => entry.CharacterValue == character).ToArray();
+        if (owners.Length > 1)
+        {
+            return (null, NightPlanOutcome.Failure(
+                "plan.character_duplicated",
+                $"角色 {character.Value} 同时出现在多个席位：{string.Join(", ", owners.Select(owner => owner.Seat.Value))}"));
+        }
+
+        if (owners.Length == 1 && owners[0].LifeValue is null)
+        {
+            return (null, NightPlanOutcome.Failure(
+                "plan.life_unobserved",
+                $"席位 {owners[0].Seat.Value}（{character.Value}）的生死还没有观测，建表不替它猜"));
+        }
+
+        return (StepSlot.Trigger(new StepSlotId(tag), character), null);
     }
 }

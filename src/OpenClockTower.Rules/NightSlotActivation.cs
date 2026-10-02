@@ -61,6 +61,13 @@ public static class NightSlotActivation
                 continue;
             }
 
+            if (slot.Kind == StepSlotKind.Trigger)
+            {
+                // 触发格不是行动格：它是否开交互请求由触发管线按步骤机事实决定（理发师格），
+                // 不因「有人获得了这个角色」而激活 / 重绑——他在场（或刚被换入）也不行动。
+                continue;
+            }
+
             if (catalog.Find(character) is not { } action)
             {
                 // 在表上却没有契约：不在这里造提示，进入那一格时由步骤机显式阻塞。

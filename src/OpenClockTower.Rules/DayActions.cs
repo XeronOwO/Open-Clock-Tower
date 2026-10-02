@@ -51,7 +51,8 @@ public static class DayActions
     /// 洗脑师（夜晚签发疯狂要求 → 处罚处决，R-0020 / R-0021）；
     /// 畸形秀演员（说书人主动处罚处决，R-0020）；
     /// 呆瓜（死亡公告后公开选择，R-0027）、镜像双子（首夜配对 + 善良方被处决即邪恶获胜，R-0025）、
-    /// 涡流（黄昏无人被处决即邪恶获胜，R-0026）。
+    /// 涡流（黄昏无人被处决即邪恶获胜，R-0026）；
+    /// 理发师（死亡触发立即记账、与恶魔的交互等到当夜理发师格，R-0033）。
     /// </summary>
     private static readonly CharacterId[] CoveredCharacters =
     [
@@ -73,6 +74,11 @@ public static class DayActions
 
         // 涡流：其他夜击杀（NightActions）+ 黄昏无人被处决即邪恶获胜（R-0026）。
         new("vortox"),
+
+        // 理发师：白天处决 / 夜晚被杀都在死亡那一批立即记「今晚理发」，与恶魔的交互等到当夜
+        // 理发师格（触发格 + BarberNightTrigger，R-0033）——白天本身不发生交互，但必须登记覆盖，
+        // 否则开白天会被 legality.day_contract_missing 拒绝。
+        new("barber"),
     ];
 
     /// <summary>该角色是否与白天阶段相关（无论实现与否）。</summary>
