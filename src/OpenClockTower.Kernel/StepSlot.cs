@@ -75,6 +75,40 @@ public sealed record StepSlot
             Character = owner,
         };
 
+    /// <summary>
+    /// 构造一个「代行能力」槽位：能力属于 <paramref name="owner"/>（结算契约的检索键），
+    /// 但行动者是 <paramref name="actor"/>——<see cref="Character"/> 记**行动者本人**的角色。
+    /// </summary>
+    /// <remarks>
+    /// 与 <see cref="Action"/> 的差别只在 <see cref="Owner"/> 与 <see cref="Character"/> 的分工：
+    /// 前者是"用哪个角色的契约结算"，后者是"这一格由谁行动、进入时按什么确认他还站得住"。
+    /// 哲学家获得他人能力后由他代行时，二者不再重合（口径见 <c>docs/standard/rulings.md</c> R-0036）：
+    /// 槽位仍是被获得角色的位置，行动者却是哲学家。
+    /// </remarks>
+    /// <param name="id">槽位标识（被获得角色的位置）。</param>
+    /// <param name="actor">行动者席位（能力的获得者）。</param>
+    /// <param name="actorCharacter">行动者本人的角色（进入这一格时的确认依据）。</param>
+    /// <param name="prompt">选择契约（被获得角色的提示）。</param>
+    /// <param name="dependencies">座位依赖。</param>
+    /// <param name="owner">能力所属的角色（结算契约的检索键）。</param>
+    public static StepSlot GrantedAction(
+        StepSlotId id,
+        SeatId actor,
+        CharacterId actorCharacter,
+        ChoicePrompt prompt,
+        IReadOnlyList<SeatDependency> dependencies,
+        CharacterId owner) =>
+        new()
+        {
+            Id = id,
+            Kind = StepSlotKind.Action,
+            Actor = actor,
+            Prompt = prompt,
+            Dependencies = dependencies,
+            Owner = owner,
+            Character = actorCharacter,
+        };
+
     /// <summary>构造一个空槽位（角色不在场 / 已死亡 / 被跳过）。</summary>
     /// <param name="id">槽位标识。</param>
     /// <param name="character">这个槽位对应的角色；null = 非角色条目。</param>

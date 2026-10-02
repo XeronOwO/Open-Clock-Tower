@@ -41,4 +41,15 @@ public sealed record SlotActivatedEvent : GameEvent
 
     /// <summary>座位依赖：任一不满足即自动作废该请求。</summary>
     public IReadOnlyList<SeatDependency> Dependencies { get; init; } = [];
+
+    /// <summary>
+    /// 行动者**本人**的角色；null = 与槽位角色相同（普通激活 / 换手重绑）。
+    /// </summary>
+    /// <remarks>
+    /// 哲学家代行"被获得角色"的能力时，行动者（哲学家）与槽位角色（被获得角色）不再是同一个：
+    /// 折叠时据它构造代行槽位（<see cref="StepSlot.GrantedAction"/>），
+    /// 这样进入那一格时按行动者本人的角色确认他还站得住。口径见
+    /// <c>docs/standard/rulings.md</c> R-0036。
+    /// </remarks>
+    public CharacterId? ActorCharacter { get; init; }
 }

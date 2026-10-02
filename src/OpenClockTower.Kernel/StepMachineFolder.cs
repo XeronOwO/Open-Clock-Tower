@@ -217,21 +217,9 @@ internal static class StepMachineFolder
             StepSlotKind.Action when slot.Actor == activated.Actor => throw new InvalidOperationException(
                 $"事件流顺序损坏：槽位 {activated.SlotId.Value} 的行动者没有变化，不能重复绑定"),
 
-            // 换手重绑：角色在夜里换了持有者（舞蛇人交换等），这一格跟随新持有者（R-0032）：
-            // 行动者与提示按新持有者重建，角色归属不变。
-            StepSlotKind.Action => StepSlot.Action(
-                slot.Id,
-                activated.Actor,
-                activated.Prompt,
-                activated.Dependencies,
-                slot.Character),
-
-            StepSlotKind.Empty => StepSlot.Action(
-                slot.Id,
-                activated.Actor,
-                activated.Prompt,
-                activated.Dependencies,
-                slot.Character),
+            // 换手重绑 / 激活：行动者与提示按新行动者重建，角色归属不变（R-0032）。
+            // 行动者本人角色与槽位角色不同时（哲学家代行被获得角色的能力）构造代行槽位（R-0036）。
+            StepSlotKind.Action or StepSlotKind.Empty => Rebind(slot, activated),
 
             _ => throw new InvalidOperationException(
                 $"事件流顺序损坏：槽位 {activated.SlotId.Value} 不是角色槽位，不能被激活"),
@@ -239,6 +227,28 @@ internal static class StepMachineFolder
 
         return current with { Plan = current.Plan with { Slots = slots } };
     }
+
+    /// <summary>
+    /// 把一个角色槽位重新绑定给新行动者：行动者本人角色与槽位角色不同（哲学家代行被获得角色的能力，
+    /// R-0036）时构造**代行槽位**，否则是普通的行动槽位（R-0032 的换手重绑 / 空槽位激活）。
+    /// </summary>
+    private static StepSlot Rebind(StepSlot slot, SlotActivatedEvent activated) =>
+        activated.ActorCharacter is { } actorCharacter
+        && slot.Character is { } slotCharacter
+        && actorCharacter != slotCharacter
+            ? StepSlot.GrantedAction(
+                slot.Id,
+                activated.Actor,
+                actorCharacter,
+                activated.Prompt,
+                activated.Dependencies,
+                slotCharacter)
+            : StepSlot.Action(
+                slot.Id,
+                activated.Actor,
+                activated.Prompt,
+                activated.Dependencies,
+                slot.Character);
 
     /// <summary>开启麻脸巫婆之夜的死亡裁量窗口；同一夜不能开两次。</summary>
     private static StepMachineState ApplyPitHagNightOpened(StepMachineState? state, PitHagNightOpenedEvent opened)

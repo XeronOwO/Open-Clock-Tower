@@ -26,9 +26,9 @@ public static class NightActions
     /// <summary>结算契约目录（结算用）。</summary>
     public static IAbilityResolutionCatalog Resolutions => Registry;
 
-    /// <summary>常驻效果来源（提交前对账用）：目前是诺-达鲺的中毒。</summary>
+    /// <summary>常驻效果来源（提交前对账用）：诺-达鲺的中毒与哲学家的醉酒。</summary>
     public static IReadOnlyList<IStandingEffectSource> StandingEffects { get; } =
-        [new NoDashiiPoisonSource()];
+        [new NoDashiiPoisonSource(), new PhilosopherDrunkSource()];
 
     private sealed class Catalog : INightActionCatalog, IAbilityResolutionCatalog
     {
@@ -44,6 +44,7 @@ public static class NightActions
             [new CharacterId("pit-hag")] = new PitHagNightAction(),
             [new CharacterId("snake-charmer")] = new SnakeCharmerNightAction(),
             [new CharacterId("fang-gu")] = new FangGuNightAction(),
+            [new CharacterId("philosopher")] = new PhilosopherNightAction(),
         };
 
         public INightAction? Find(CharacterId character) =>

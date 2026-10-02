@@ -95,7 +95,7 @@ public static class NightPlanBuilder
                 throw new InvalidOperationException("夜晚顺序表数据缺陷：角色条目没有角色");
             }
 
-            var (slot, failure) = BuildCharacterSlot(request, character, tag);
+            var (slot, failure) = BuildCharacterSlot(request, character, tag, phase);
             if (failure is not null)
             {
                 return failure;
@@ -144,8 +144,21 @@ public static class NightPlanBuilder
     private static (StepSlot? Slot, NightPlanOutcome? Failure) BuildCharacterSlot(
         NightPlanRequest request,
         CharacterId character,
-        string tag)
+        string tag,
+        GamePhase phase)
     {
+        var binding = PhilosopherBinding.Of(request.State);
+
+        // 哲学家的「获得能力」（R-0036 第 1 条）：被获得角色的格**没有行动者**时，这一格交给获得者代行
+        // ——当夜就能用上，首夜能力因此也照此落地。判定与结算期同源（PhilosopherBinding）。
+        if (binding is { } grant
+            && character == grant.Granted
+            && PhilosopherBinding.GrantedSlotIsFree(request.State, grant.Granted, phase, request.Variant)
+            && BuildGrantedSlot(request, grant, tag) is { } takeover)
+        {
+            return (takeover, null);
+        }
+
         var owners = request.State.Seats.Where(entry => entry.CharacterValue == character).ToArray();
         if (owners.Length == 0)
         {
@@ -184,6 +197,13 @@ public static class NightPlanBuilder
         }
 
         var actor = aliveOwners[0];
+        if (character == PhilosopherAbility.Character
+            && BuildPhilosopherSlot(request, binding, actor.Seat, tag, phase) is { } philosopherSlot)
+        {
+            // 已经获得能力（或那次获得被浪费掉）：他自己的格不再开出"选择"。
+            return (philosopherSlot, null);
+        }
+
         if (request.Actions.Find(character) is not { } action)
         {
             return (null, NightPlanOutcome.Failure(
@@ -212,6 +232,110 @@ public static class NightPlanBuilder
             ],
             character), null);
     }
+
+    /// <summary>
+    /// 哲学家自己的格（R-0036 第 2、3 条）：已经获得能力时，这一格要么**代行**获得的能力
+    /// （被获得角色的格归它的持有者），要么本夜无行动；还没获得过（也没被浪费掉）时返回 null——
+    /// 走常规的「选择要获得谁的能力」路径。
+    /// </summary>
+    private static StepSlot? BuildPhilosopherSlot(
+        NightPlanRequest request,
+        (SeatId Philosopher, CharacterId Granted)? binding,
+        SeatId actor,
+        string tag,
+        GamePhase phase)
+    {
+        if (binding is not { } grant)
+        {
+            if (request.State.AbilityUses.WasUsed(actor, PhilosopherAbility.GrantAbility))
+            {
+                // 「限次能力在醉酒 / 中毒期间被使用 = 已浪费」：不能再获得能力（百科《重要细节》三-3）。
+                return NoActionSlot(
+                    tag,
+                    actor,
+                    "哲学家的「每局限一次」已经用掉（当时能力未生效，机会被浪费）：本局不能再获得能力");
+            }
+
+            return null;
+        }
+
+        var free = PhilosopherBinding.GrantedSlotIsFree(request.State, grant.Granted, phase, request.Variant);
+        if (!free && PhilosopherBinding.HasActionOnPhase(grant.Granted, phase, request.Variant)
+            && BuildGrantedSlot(request, grant, tag) is { } delegated)
+        {
+            // 被获得角色的格归它的持有者（醉酒 → 能力不生效）：获得者改在自己的格上代行。
+            return delegated;
+        }
+
+        return NoActionSlot(
+            tag,
+            actor,
+            free
+                ? $"本夜「{grant.Granted.Value}」的格由哲学家代行（那一格没有行动者）：他自己的格不产生行动"
+                : $"获得的能力（{grant.Granted.Value}）本夜没有可执行的行动"
+                    + "（触发型能力 / 不在本阶段顺序表上 / 夜间契约未实现）：本格不产生行动");
+    }
+
+    /// <summary>
+    /// 构造「代行」槽位：能力属于被获得的角色（结算契约的检索键），行动者是获得者（R-0036）。
+    /// 契约没实现时返回 null——由调用方决定退回空槽位还是"本夜无行动"。
+    /// </summary>
+    private static StepSlot? BuildGrantedSlot(
+        NightPlanRequest request,
+        (SeatId Philosopher, CharacterId Granted) grant,
+        string tag)
+    {
+        if (request.Actions.Find(grant.Granted) is not { } action)
+        {
+            return null;
+        }
+
+        var prompt = action.BuildPrompt(new NightActionContext
+        {
+            Actor = grant.Philosopher,
+            Seats = request.Seats,
+            State = request.State,
+        });
+
+        return StepSlot.GrantedAction(
+            new StepSlotId(tag),
+            grant.Philosopher,
+            PhilosopherAbility.Character,
+            prompt,
+            [
+                new SeatDependency
+                {
+                    Seat = grant.Philosopher,
+                    RequiredLife = LifeState.Alive,
+                    RequiredCharacter = PhilosopherAbility.Character,
+                },
+            ],
+            grant.Granted);
+    }
+
+    /// <summary>
+    /// 「本夜无行动」槽位：仍有行动者与依赖（进入时按账确认他还站得住），但没有合法选项——
+    /// 按声明的 Skip 走，配额照走，并在事件流里留一条可归因的跳过记录（R-0009）。
+    /// </summary>
+    private static StepSlot NoActionSlot(string tag, SeatId actor, string reason) =>
+        StepSlot.Action(
+            new StepSlotId(tag),
+            actor,
+            new ChoicePrompt
+            {
+                Context = reason,
+                Options = [],
+                OnNoOption = NoOptionBehavior.Skip,
+            },
+            [
+                new SeatDependency
+                {
+                    Seat = actor,
+                    RequiredLife = LifeState.Alive,
+                    RequiredCharacter = PhilosopherAbility.Character,
+                },
+            ],
+            PhilosopherAbility.Character);
 
     /// <summary>
     /// 角色触发格 → 触发槽位：与行动槽位同款完整性校验（席位缺角色 / 生死未观测 / 角色重复一律拒绝，

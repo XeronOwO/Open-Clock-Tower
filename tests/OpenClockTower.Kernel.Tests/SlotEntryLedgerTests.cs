@@ -182,6 +182,52 @@ public sealed class SlotEntryLedgerTests
             }));
     }
 
+    /// <summary>
+    /// 哲学家代行被获得角色的能力（R-0036）：激活带上行动者**本人**的角色时，那一格重建为代行槽位——
+    /// 能力契约仍取槽位角色（`Owner`），进入时按行动者本人的角色确认（`Character`），因此不会被跳过。
+    /// </summary>
+    [Fact]
+    public void SlotActivated_WithActorCharacter_RebuildsGrantedSlot()
+    {
+        var plan = StepFixture.Plan(
+            "sv:night-2",
+            StepFixture.Beat("dusk"),
+            StepSlot.Empty(new StepSlotId("dreamer"), new CharacterId("dreamer")));
+        var ledger = Ledger((1, "philosopher", LifeState.Alive), (2, "klutz", LifeState.Alive));
+
+        var started = StepMachine.StartPhase(plan, previous: null, ledger);
+        var activated = StepMachine.Apply(
+            started.State,
+            new SlotActivatedEvent
+            {
+                SlotIndex = 1,
+                SlotId = new StepSlotId("dreamer"),
+                Actor = new SeatId(1),
+                ActorCharacter = new CharacterId("philosopher"),
+                Prompt = StepFixture.Prompt("seat:2"),
+                Dependencies =
+                [
+                    new SeatDependency
+                    {
+                        Seat = new SeatId(1),
+                        RequiredLife = LifeState.Alive,
+                        RequiredCharacter = new CharacterId("philosopher"),
+                    },
+                ],
+            })!;
+
+        var slot = activated.Plan.Slots[1];
+        Assert.Equal(StepSlotKind.Action, slot.Kind);
+        Assert.Equal(new SeatId(1), slot.Actor);
+        Assert.Equal(new CharacterId("dreamer"), slot.Owner);
+        Assert.Equal(new CharacterId("philosopher"), slot.Character);
+
+        // 进入那一格：行动者（哲学家）存活且角色相符 → 请求发给他；被获得角色的"位置"不影响唤醒判定。
+        var advanced = StepMachine.Handle(activated, new SlotQuotaElapsedInput());
+        var issued = Assert.Single(advanced.Events.OfType<OperationRequestIssuedEvent>());
+        Assert.Equal(new SeatId(1), issued.Request.Addressee);
+    }
+
     private static GameState Ledger(params (int Seat, string Character, LifeState Life)[] rows) =>
         new()
         {

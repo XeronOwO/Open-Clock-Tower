@@ -23,6 +23,12 @@ public sealed record EffectDto
     /// <summary>施加时来源的角色——来源换角色即失去原能力，该效果随之终止；即时型效果没有这一项。</summary>
     public string? SourceCharacter { get; init; }
 
+    /// <summary>
+    /// 「获得能力」类效果（哲学家）被获得的角色；null = 普通效果。
+    /// 口径见 <c>docs/standard/rulings.md</c> R-0036。
+    /// </summary>
+    public string? GrantedCharacter { get; init; }
+
     /// <summary>是否已终止（终止不可逆）。</summary>
     public required bool Terminated { get; init; }
 

@@ -246,6 +246,134 @@ public sealed class NightPlanBuilderTests
         Assert.Equal("plan.contract_missing", BuildFailure(Request(state, seatCount: 1)));
     }
 
+    /// <summary>
+    /// 哲学家获得能力后（R-0036）：被获得角色的格**没有行动者**时由获得者代行——那一格是行动槽位、
+    /// 行动者是哲学家、能力契约取被获得角色；他自己的格变成「本夜无行动」（Skip，配额照走）。
+    /// </summary>
+    [Fact]
+    public void PhilosopherGrant_GrantedSlotFree_IsTakenOverByPhilosopher()
+    {
+        var state = GrantState(
+            [(1, "philosopher", LifeState.Alive), (2, "klutz", LifeState.Alive)],
+            granted: "dreamer");
+
+        var plan = Build(Request(state, nightNumber: 2, seatCount: 2));
+
+        var dreamer = plan.Slots.Single(slot => slot.Id.Value == "dreamer");
+        Assert.Equal(StepSlotKind.Action, dreamer.Kind);
+        Assert.Equal(new SeatId(1), dreamer.Actor);
+        Assert.Equal(new CharacterId("dreamer"), dreamer.Owner);
+        Assert.Equal(new CharacterId("philosopher"), dreamer.Character);
+        Assert.Equal(new CharacterId("philosopher"), dreamer.Dependencies[0].RequiredCharacter);
+        var grantedOptions = dreamer.Prompt!.Options.Select(option => option.Value).ToArray();
+        Assert.DoesNotContain("seat:1", grantedOptions);
+        Assert.DoesNotContain("decline", grantedOptions);
+
+        var philosopher = plan.Slots.Single(slot => slot.Id.Value == "philosopher");
+        Assert.Equal(StepSlotKind.Action, philosopher.Kind);
+        Assert.Equal(new SeatId(1), philosopher.Actor);
+        Assert.Empty(philosopher.Prompt!.Options);
+        Assert.Equal(NoOptionBehavior.Skip, philosopher.Prompt.OnNoOption);
+    }
+
+    /// <summary>
+    /// 被获得角色在场（存活持有者）→ 那一格仍归它（醉酒 → 能力不生效）；哲学家改在**自己的格**上代行
+    /// 同一个能力（提示按代行者重算：筑梦师不能选自己）。
+    /// </summary>
+    [Fact]
+    public void PhilosopherGrant_GrantedCharacterInPlay_DelegatesAtOwnSlot()
+    {
+        var state = GrantState(
+            [(1, "philosopher", LifeState.Alive), (2, "dreamer", LifeState.Alive), (3, "klutz", LifeState.Alive)],
+            granted: "dreamer");
+
+        var plan = Build(Request(state, nightNumber: 2, seatCount: 3));
+
+        var dreamer = plan.Slots.Single(slot => slot.Id.Value == "dreamer");
+        Assert.Equal(new SeatId(2), dreamer.Actor);
+        Assert.Equal(new CharacterId("dreamer"), dreamer.Owner);
+        Assert.Equal(new CharacterId("dreamer"), dreamer.Character);
+
+        var philosopher = plan.Slots.Single(slot => slot.Id.Value == "philosopher");
+        Assert.Equal(new SeatId(1), philosopher.Actor);
+        Assert.Equal(new CharacterId("dreamer"), philosopher.Owner);
+        Assert.Equal(new CharacterId("philosopher"), philosopher.Character);
+        Assert.Equal(
+            ["seat:2", "seat:3"],
+            philosopher.Prompt!.Options.Select(option => option.Value).ToArray());
+    }
+
+    /// <summary>被获得的能力是死亡触发型（理发师：触发格，不是行动格）→ 本夜无行动，也不动触发格。</summary>
+    [Fact]
+    public void PhilosopherGrant_TriggerOnlyAbility_NoAction()
+    {
+        var state = GrantState(
+            [(1, "philosopher", LifeState.Alive), (2, "klutz", LifeState.Alive)],
+            granted: "barber");
+
+        var plan = Build(Request(state, nightNumber: 2, seatCount: 2));
+
+        Assert.Equal(
+            StepSlotKind.Trigger,
+            plan.Slots.Single(slot => slot.Id.Value == "barber").Kind);
+
+        var philosopher = plan.Slots.Single(slot => slot.Id.Value == "philosopher");
+        Assert.Empty(philosopher.Prompt!.Options);
+        Assert.Equal(NoOptionBehavior.Skip, philosopher.Prompt.OnNoOption);
+    }
+
+    /// <summary>还没获得能力 → 他自己的格是常规的「选择」契约（含摇头）。</summary>
+    [Fact]
+    public void PhilosopherWithoutGrant_HasChoicePrompt()
+    {
+        var state = State((1, "philosopher", LifeState.Alive), (2, "klutz", LifeState.Alive));
+
+        var plan = Build(Request(state, nightNumber: 2, seatCount: 2));
+
+        var philosopher = plan.Slots.Single(slot => slot.Id.Value == "philosopher");
+        Assert.Contains(philosopher.Prompt!.Options, option => option.Value == "decline");
+    }
+
+    /// <summary>
+    /// 「每局限一次」在醉酒 / 中毒期间被用掉（机会被浪费，百科《重要细节》三-3）→
+    /// 他自己的格不再开选择，只剩一条可归因的无行动。
+    /// </summary>
+    [Fact]
+    public void PhilosopherGrantWasted_NoSecondChoice()
+    {
+        var state = State((1, "philosopher", LifeState.Alive), (2, "klutz", LifeState.Alive)) with
+        {
+            AbilityUses = new AbilityUseLedger().RecordUse(
+                new SeatId(1),
+                new AbilityId("philosopher.grant"),
+                effective: false),
+        };
+
+        var plan = Build(Request(state, nightNumber: 2, seatCount: 2));
+
+        var philosopher = plan.Slots.Single(slot => slot.Id.Value == "philosopher");
+        Assert.Empty(philosopher.Prompt!.Options);
+        Assert.Equal(NoOptionBehavior.Skip, philosopher.Prompt.OnNoOption);
+    }
+
+    /// <summary>带「获得能力」事实的账（哲学家在第一个席位）。</summary>
+    private static GameState GrantState((int Seat, string Character, LifeState Life)[] rows, string granted) =>
+        State([.. rows.Select(row => (row.Seat, row.Character, (LifeState?)row.Life))]) with
+        {
+            PersistentEffects =
+            [
+                new PersistentEffect
+                {
+                    Id = new EffectId($"philosopher.grant:{rows[0].Seat}"),
+                    Source = new SeatId(rows[0].Seat),
+                    Ability = new AbilityId("philosopher.grant"),
+                    Target = new SeatId(rows[0].Seat),
+                    SourceCharacter = new CharacterId("philosopher"),
+                    GrantedCharacter = new CharacterId(granted),
+                },
+            ],
+        };
+
     /// <summary>同一角色出现在两个席位（状态账数据缺陷）：拒绝，不产出歧义计划。</summary>
     [Fact]
     public void CharacterOnTwoSeats_IsRejected()

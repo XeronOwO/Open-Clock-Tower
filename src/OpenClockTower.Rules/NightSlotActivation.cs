@@ -111,4 +111,94 @@ public static class NightSlotActivation
 
         return null;
     }
+
+    /// <summary>
+    /// 哲学家「获得能力」的**当夜**落格：被获得角色的格还没进入、且那一格没有行动者时，
+    /// 把那一格交给获得者代行。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 与 <see cref="Plan"/> 的两点差别都来自「行动者不是那一格角色的持有者」：
+    /// ① **只碰空槽位**——那一格已经有行动者（被获得角色在场）时不动它：持有者照常被唤醒
+    /// （醉酒 → 能力不生效），不产生"醉酒者没被唤醒"这种可观测信息；
+    /// ② 依赖写获得者**本人**的角色（他的这份能力来自他自己的角色，换了角色即失去）。
+    /// </para>
+    /// <para>
+    /// 口径见 <c>docs/standard/rulings.md</c> R-0036。返回 null 的三种情形都不是静默：
+    /// 那一格已经进入过（过时不候）、那一格有行动者（归它自己）、那一格没有契约（进入时按空槽位处理）。
+    /// </para>
+    /// </remarks>
+    public static SlotActivatedEvent? PlanGranted(
+        StepPlan? plan,
+        int slotIndex,
+        SeatId actor,
+        CharacterId grantedCharacter,
+        GameState state,
+        IReadOnlyList<SeatId> seats,
+        INightActionCatalog catalog)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        ArgumentNullException.ThrowIfNull(seats);
+        ArgumentNullException.ThrowIfNull(catalog);
+
+        if (plan is null)
+        {
+            return null;
+        }
+
+        for (var index = slotIndex + 1; index < plan.Slots.Count; index++)
+        {
+            var slot = plan.Slots[index];
+            if (slot.Character != grantedCharacter)
+            {
+                continue;
+            }
+
+            if (slot.Kind != StepSlotKind.Empty)
+            {
+                // 那一格已经有人（被获得角色在场，或已被别的能力激活）：归它自己，不动。
+                return null;
+            }
+
+            if (catalog.Find(grantedCharacter) is not { } action)
+            {
+                // 契约未实现：不在这里造提示，这一格照旧空转（进入时按空槽位处理）。
+                return null;
+            }
+
+            var actorCharacter = state.Seat(actor)?.CharacterValue
+                ?? throw new InvalidOperationException(
+                    $"席位 {actor.Value} 的角色尚未观测：算不出代行槽位的依赖（不猜，D-0015）");
+            if (actorCharacter == grantedCharacter)
+            {
+                // 自己获得自己的角色：不是代行，交给常规激活口径。
+                return null;
+            }
+
+            return new SlotActivatedEvent
+            {
+                SlotIndex = index,
+                SlotId = slot.Id,
+                Actor = actor,
+                ActorCharacter = actorCharacter,
+                Prompt = action.BuildPrompt(new NightActionContext
+                {
+                    Actor = actor,
+                    Seats = seats,
+                    State = state,
+                }),
+                Dependencies =
+                [
+                    new SeatDependency
+                    {
+                        Seat = actor,
+                        RequiredLife = LifeState.Alive,
+                        RequiredCharacter = actorCharacter,
+                    },
+                ],
+            };
+        }
+
+        return null;
+    }
 }

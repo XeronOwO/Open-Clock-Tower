@@ -352,6 +352,7 @@ public static class ProjectionMapper
         Source = effect.Source.Value,
         Target = effect.Target.Value,
         SourceCharacter = effect.SourceCharacter.Value,
+        GrantedCharacter = effect.GrantedCharacter?.Value,
         Terminated = effect.IsTerminated,
         TerminationKind = effect.Termination?.Kind.ToString(),
         TerminationReason = effect.Termination?.Reason,

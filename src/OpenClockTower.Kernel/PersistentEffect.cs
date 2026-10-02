@@ -43,6 +43,17 @@ public sealed record PersistentEffect
     public required CharacterId SourceCharacter { get; init; }
 
     /// <summary>
+    /// 「获得能力」类效果（哲学家）：被获得的角色——这个席位因此多了它的能力；null = 普通效果。
+    /// </summary>
+    /// <remarks>
+    /// 效果模型原本只记「谁、用哪个能力、作用在谁身上」，不足以表达"某席位**多了一个**角色的能力"。
+    /// 两条规则计算要读它：① 获得的能力在谁的格上执行（建表期绑定）；
+    /// ② 常驻醉酒的目标（被获得角色的当前持有者，动态检测）。
+    /// 口径见 <c>docs/standard/rulings.md</c> R-0036。
+    /// </remarks>
+    public CharacterId? GrantedCharacter { get; init; }
+
+    /// <summary>
     /// 这条效果压制哪个玩家维度（中毒 / 醉酒）；null = 不压制维度（保护、诅咒等）。
     /// </summary>
     /// <remarks>
