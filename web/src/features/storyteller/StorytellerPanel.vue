@@ -22,6 +22,7 @@ import SeatLedgerPanel from '@/features/storyteller/SeatLedgerPanel.vue'
 import EffectChainPanel from '@/features/storyteller/EffectChainPanel.vue'
 import LedgerPanel from '@/features/storyteller/LedgerPanel.vue'
 import AssignmentControl from '@/features/storyteller/AssignmentControl.vue'
+import DayControl from '@/features/storyteller/DayControl.vue'
 import OperationsControl from '@/features/storyteller/OperationsControl.vue'
 import GrimoireView from '@/features/storyteller/GrimoireView.vue'
 import GrimoireDataDrawer from '@/features/storyteller/GrimoireDataDrawer.vue'
@@ -240,6 +241,7 @@ onBeforeUnmount(() => {
             </template>
           </div>
           <OperationsControl v-if="sender" :view="view!" :sender="sender" @outcome="showOutcome" />
+          <DayControl v-if="sender" :view="view!" :sender="sender" @outcome="showOutcome" />
           <AssignmentControl
             v-if="sender"
             :view="view!"

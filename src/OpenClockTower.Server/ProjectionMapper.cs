@@ -61,6 +61,46 @@ public static class ProjectionMapper
         Phase = view.Phase?.ToString() ?? "NotStarted",
         PendingRequest = view.PendingRequest is { } pending ? ToDto(pending) : null,
         InformationResults = [.. view.InformationResults.Select(ToDto)],
+        Day = view.Day is { } day ? ToDto(day) : null,
+    };
+
+    /// <summary>玩家白天投影 → DTO（公开事实 + 权限位 + 可提名目标）。</summary>
+    public static PlayerDayDto ToDto(PlayerDay day) => new()
+    {
+        PublicFacts = ToDto(day.PublicFacts),
+        CanNominate = day.CanNominate,
+        CanVote = day.CanVote,
+        Voted = day.Voted,
+        Candidates = [.. day.NominationCandidates.Select(seat => seat.Value)],
+    };
+
+    /// <summary>白天公开事实 → DTO（最新一天）。</summary>
+    public static DayViewDto ToDto(DayRecord day) => new()
+    {
+        DayNumber = day.DayNumber,
+        Status = day.Status.ToString(),
+        Nominations = [.. day.Nominations.Select(ToDto)],
+        AboutToBeExecuted = day.AboutToBeExecuted?.Value,
+        Executed = day.Executed?.Value,
+        OpenNominationIndex = day.OpenNomination?.Index,
+    };
+
+    /// <summary>
+    /// 一次提名 → DTO（票数 = 票面长度；投票中为当前票数，计票后为最终票数）。
+    /// </summary>
+    /// <remarks>
+    /// 投票窗口期内就把票面下发给全体玩家，是 R-0017 第 5 条登记的公开面：
+    /// 线下绕圈点数时"谁举了手"所有人都看得见，在线只是把它渲染出来。
+    /// 若要改成"计票后才公开票面"，先改裁决条目，再改这里与投影用例。
+    /// </remarks>
+    public static DayNominationDto ToDto(NominationRecord nomination) => new()
+    {
+        Index = nomination.Index,
+        Nominator = nomination.Nominator.Value,
+        Nominee = nomination.Nominee.Value,
+        Status = nomination.Status.ToString(),
+        Votes = nomination.Ballot.Count,
+        Voters = [.. nomination.Ballot.Select(seat => seat.Value)],
     };
 
     /// <summary>信息结果投影 → DTO（只有内容；「可能为假」不出去）。</summary>
@@ -197,6 +237,7 @@ public static class ProjectionMapper
                 Note = voided.Note,
             }
             : null,
+        Day = view.Day is { } day ? ToDto(day) : null,
     };
 
     /// <summary>房间健康位 → DTO。</summary>

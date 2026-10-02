@@ -7,7 +7,7 @@ using OpenClockTower.Kernel;
 namespace OpenClockTower.Integration.Tests;
 
 /// <summary>
-/// 零信任负向套件（票据 <c>todo/zero-trust-security-model.md</c> 的验收矩阵）：
+/// 零信任负向套件（票据 <c>done/zero-trust-security-model.md</c> 的验收矩阵）：
 /// 这些用例问的不是"正常能进"，而是**越权进不来**；每一条都走真宿主 + 真 SignalR 客户端。
 /// </summary>
 /// <remarks>

@@ -76,6 +76,18 @@ public static class GameNotificationBuilder
             }
         }
 
+        // 白天是公开信息：任一条白天事件都折算成一条"白天状态已变化"（同批去重），
+        // 由分发器按席位投影后各发一份（提名 / 票面 / 处决按玩家视角可能不同：他自己能不能动）。
+        if (events.Any(gameEvent => gameEvent is DayStartedEvent
+            or NominationMadeEvent
+            or VoteCastEvent
+            or VoteCountedEvent
+            or ExecutedEvent
+            or DayClosedEvent))
+        {
+            notifications.Add(new GameNotification { Kind = GameNotificationKind.DayChanged });
+        }
+
         notifications.Add(new GameNotification { Kind = GameNotificationKind.StorytellerViewChanged });
         return notifications;
     }

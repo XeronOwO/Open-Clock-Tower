@@ -113,6 +113,25 @@ export function startNight(
   return invokeCommand(sender, 'StartNight', nightNumber, variant, idempotencyKey)
 }
 
+/** 开白天（天数由服务端推导，客户端不提供计划）。 */
+export function startDay(sender: CommandSender, idempotencyKey: string): Promise<CommandOutcome> {
+  return invokeCommand(sender, 'StartDay', idempotencyKey)
+}
+
+/** 对当前开放的提名计票（票面快照冻结，R-0017）。 */
+export function countVotes(
+  sender: CommandSender,
+  nominationIndex: number,
+  idempotencyKey: string,
+): Promise<CommandOutcome> {
+  return invokeCommand(sender, 'CountVotes', nominationIndex, idempotencyKey)
+}
+
+/** 结束白天：处决当前「即将被处决」者（如果有），然后关闭白天。 */
+export function closeDay(sender: CommandSender, idempotencyKey: string): Promise<CommandOutcome> {
+  return invokeCommand(sender, 'CloseDay', idempotencyKey)
+}
+
 /** 代填挂起请求。 */
 export function proxyFill(
   sender: CommandSender,

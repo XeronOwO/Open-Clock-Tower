@@ -26,6 +26,12 @@ public sealed record PlayerView
     /// </summary>
     public required IReadOnlyList<InformationResultSnapshot> InformationResults { get; init; }
 
+    /// <summary>
+    /// 白天投影（公开事实 + 我能做什么）；还没有开过白天时为 null。
+    /// 只含公开事实与"自己的"权限位——没有任何说书人专属字段。
+    /// </summary>
+    public PlayerDay? Day { get; init; }
+
     /// <summary>投影对应的事件流序号（重连补齐用）。</summary>
     public required long Sequence { get; init; }
 }

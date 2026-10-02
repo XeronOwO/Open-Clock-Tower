@@ -47,6 +47,7 @@ function viewOf(overrides: Partial<StorytellerViewDto> = {}): StorytellerViewDto
     lastResolution: null,
     stepDigest: null,
     lastVoidedRequest: null,
+    day: null,
     ...overrides,
   }
 }

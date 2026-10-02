@@ -23,6 +23,10 @@ internal static class StepMachineFolder
                 SlotIndex = 0,
                 Quota = SlotQuotaState.Running,
                 Control = started.Control,
+
+                // 白天账跨阶段保留：死亡玩家的「死后仅一次投票」与逐日事实（卖花女孩 / 城镇公告员要读）
+                // 不随夜晚开始清零。
+                Day = state?.Day,
             },
             SlotEnteredEvent entered => Require(state, entered) with
             {
@@ -71,6 +75,14 @@ internal static class StepMachineFolder
             {
                 Block = new StepBlock { Reason = blocked.Reason },
             },
+
+            // 白天事件：折叠白天账（提名 / 投票 / 计票 / 处决 / 结束）；槽位推进由 CloseDay / 强推产出的事件驱动。
+            DayStartedEvent => ApplyDay(state, gameEvent),
+            NominationMadeEvent => ApplyDay(state, gameEvent),
+            VoteCastEvent => ApplyDay(state, gameEvent),
+            VoteCountedEvent => ApplyDay(state, gameEvent),
+            ExecutedEvent => ApplyDay(state, gameEvent),
+            DayClosedEvent => ApplyDay(state, gameEvent),
 
             // 状态账的事件：进同一条事件流，但步骤机状态不由它们改变
             // （座位状态变化对步骤机的影响是"作废依赖失效的挂起请求"，在 Handle 阶段已经处理完）。
@@ -147,7 +159,7 @@ internal static class StepMachineFolder
             throw new InvalidOperationException($"事件流顺序损坏：推进目标 {toIndex} 越界");
         }
 
-        return current with
+        var next = current with
         {
             SlotIndex = toIndex,
             Quota = SlotQuotaState.Running,
@@ -155,5 +167,24 @@ internal static class StepMachineFolder
             AwaitingDecision = null,
             Block = null,
         };
+
+        // 白天计划走完 = 白天结束：必须先有 DayClosedEvent（CloseDay 或强推兜底产出），
+        // 否则事件流顺序损坏——恢复必须显式失败，不允许"阶段结束了、白天账还开着"。
+        if (toIndex >= current.Plan.Slots.Count
+            && current.Plan.Phase == GamePhase.Day
+            && next.Day?.OpenDay is { } openDay)
+        {
+            throw new InvalidOperationException(
+                $"事件流顺序损坏：白天 {openDay.DayNumber} 的计划走完，却没有结束白天的事件");
+        }
+
+        return next;
+    }
+
+    /// <summary>把一条白天事件折进白天账（状态本身由 Require 保证已开始）。</summary>
+    private static StepMachineState ApplyDay(StepMachineState? state, GameEvent gameEvent)
+    {
+        var current = Require(state, gameEvent);
+        return current with { Day = DayLedgerFolder.Apply(current.Day, gameEvent) };
     }
 }

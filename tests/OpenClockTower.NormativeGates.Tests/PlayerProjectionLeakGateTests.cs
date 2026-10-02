@@ -253,6 +253,8 @@ public sealed partial class PlayerProjectionLeakGateTests
         "@/services/idempotency",
         "@/services/playerGateway",
         "@/services/ticketStore",
+        // 玩家侧自己的子组件（白天操作区）；新增依赖必须显式登记并复核（见上方注释）。
+        "@/features/player/PlayerDayPanel.vue",
     };
 
     /// <summary>说书人专属的 DTO 类型名；玩家侧出现任何一个都说明越界。</summary>

@@ -5,19 +5,22 @@
  * 玩家只能看到服务端下发给他的东西：自己的席位、当前大阶段、发给自己的请求与信息类结果。
  * 看板 / 状态账 / 计划进度一概不下发——所以这里也不会有对应的代码路径（D-0013 §5）。
  */
-import type { InformationResultDto, OperationRequestDto, PlayerViewDto } from '@/contracts/game'
+import type { InformationResultDto, OperationRequestDto, PlayerDayDto, PlayerViewDto } from '@/contracts/game'
 import { labelOf, voidReasonLabelOf } from '@/display/labels'
 import { seatLabelOf } from '@/display/format'
 import { PlayerGateway, type PlayerCallbacks } from '@/services/playerGateway'
 import { TicketStore } from '@/services/ticketStore'
 import { newIdempotencyKey } from '@/services/idempotency'
 import type { GatewayState } from '@/services/connectionState'
+import PlayerDayPanel from '@/features/player/PlayerDayPanel.vue'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 
 const ticket = ref('')
 const store = new TicketStore()
 const view = ref<PlayerViewDto | null>(null)
 const pending = ref<OperationRequestDto | null>(null)
+/** 白天投影（公开事实 + 自己的权限位）；服务端还没开过白天时为 null。 */
+const day = ref<PlayerDayDto | null>(null)
 const informationResults = ref<InformationResultDto[]>([])
 const connectionState = ref<GatewayState>('disconnected')
 const diagnostics = ref<string[]>([])
@@ -82,6 +85,10 @@ function buildCallbacks(): PlayerCallbacks {
         view.value = { ...view.value, phase }
       }
     },
+    onDayChanged: (next) => {
+      // 白天状态由服务端整份投影（含"我现在能不能动"）；坏载荷网关已挡掉，这里直接采纳。
+      day.value = next
+    },
     onInformation: (information) => {
       if (information !== null) {
         informationResults.value = [...informationResults.value, information]
@@ -109,6 +116,7 @@ async function join(): Promise<void> {
     store.write(ticket.value.trim())
     const joined = await ensureGateway().joinSeat(ticket.value.trim())
     view.value = joined
+    day.value = joined.day
     clientSequence = 0
     informationResults.value = [...joined.informationResults]
   } catch (error) {
@@ -116,6 +124,15 @@ async function join(): Promise<void> {
   } finally {
     joining.value = false
   }
+}
+
+/** 提名 / 投票包装：把网关实例收敛成两个纯函数，交给白天面板（面板不持有连接）。 */
+function nominateSeat(seat: number, idempotencyKey: string): Promise<unknown> {
+  return ensureGateway().nominate(seat, idempotencyKey)
+}
+
+function voteOnNomination(nominationIndex: number, voted: boolean, idempotencyKey: string): Promise<unknown> {
+  return ensureGateway().castVote(nominationIndex, voted, idempotencyKey)
 }
 
 async function submit(): Promise<void> {
@@ -162,6 +179,7 @@ async function resync(): Promise<void> {
   try {
     const joined = await ensureGateway().resync()
     view.value = joined
+    day.value = joined.day
     informationResults.value = [...joined.informationResults]
     pushDiagnostic('已按自身序号重新补齐')
   } catch (error) {
@@ -173,6 +191,7 @@ async function disconnect(): Promise<void> {
   await gateway?.stop()
   view.value = null
   pending.value = null
+  day.value = null
 }
 
 onMounted(() => {
@@ -254,6 +273,14 @@ onBeforeUnmount(() => {
           {{ settledNote }}
         </p>
       </section>
+
+      <PlayerDayPanel
+        v-if="day"
+        :day="day"
+        :nominate="nominateSeat"
+        :vote="voteOnNomination"
+        @diagnostic="pushDiagnostic"
+      />
 
       <section class="panel" data-testid="player-information" :data-information-count="informationResults.length">
         <h2>我收到的信息</h2>

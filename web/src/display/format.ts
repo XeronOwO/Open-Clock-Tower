@@ -7,6 +7,8 @@
  */
 
 import type {
+  DayNominationDto,
+  DayViewDto,
   DecisionOptionDto,
   EffectDto,
   OperationRequestVoidedDto,
@@ -300,6 +302,58 @@ export function normalizeOption(raw: unknown): DecisionOptionDto | null {
   return { value, preview: asSizedText(option['preview'], 512) ?? value }
 }
 
+/** 归一化一次白天提名；缺关键字段时返回 null（宁可少显示，不编造票数）。 */
+export function normalizeDayNomination(raw: unknown): DayNominationDto | null {
+  if (raw === null || typeof raw !== 'object') {
+    return null
+  }
+
+  const nomination = raw as Record<string, unknown>
+  const index = asCount(nomination['index'])
+  const nominator = asCount(nomination['nominator'])
+  const nominee = asCount(nomination['nominee'])
+  const status = asText(nomination['status'])
+  if (index === null || nominator === null || nominee === null || status === null) {
+    return null
+  }
+
+  return {
+    index,
+    nominator,
+    nominee,
+    status,
+    votes: asCount(nomination['votes']) ?? 0,
+    voters: asArray<unknown>(nomination['voters'])
+      .map((voter) => asCount(voter))
+      .filter((voter): voter is number => voter !== null),
+  }
+}
+
+/** 归一化白天公开事实；缺天数 / 状态时返回 null（不编造"某一天"）。 */
+export function normalizeDayView(raw: unknown): DayViewDto | null {
+  if (raw === null || typeof raw !== 'object') {
+    return null
+  }
+
+  const day = raw as Record<string, unknown>
+  const dayNumber = asCount(day['dayNumber'])
+  const status = asText(day['status'])
+  if (dayNumber === null || status === null) {
+    return null
+  }
+
+  return {
+    dayNumber,
+    status,
+    nominations: asArray<unknown>(day['nominations'])
+      .map(normalizeDayNomination)
+      .filter((nomination): nomination is DayNominationDto => nomination !== null),
+    aboutToBeExecuted: asCount(day['aboutToBeExecuted']),
+    executed: asCount(day['executed']),
+    openNominationIndex: asCount(day['openNominationIndex']),
+  }
+}
+
 /** 归一化整个说书人视图。任何缺失都退化成空集合 / null，不编造状态。 */
 export function normalizeStorytellerView(raw: unknown): StorytellerViewDto {
   const view = (raw ?? {}) as Record<string, unknown>
@@ -391,5 +445,6 @@ export function normalizeStorytellerView(raw: unknown): StorytellerViewDto {
           },
     stepDigest: normalizeStepDigest(view['stepDigest']),
     lastVoidedRequest: normalizeVoidedRequest(view['lastVoidedRequest']),
+    day: normalizeDayView(view['day']),
   }
 }

@@ -31,7 +31,18 @@ namespace OpenClockTower.Kernel;
 public static class StepMachine
 {
     /// <summary>开启一个新阶段：按计划进入第一个槽位，必要时发出操作请求或裁定点。</summary>
-    public static StepMachineOutcome StartPhase(StepPlan plan, ControlMode control = ControlMode.Automatic)
+    /// <remarks>
+    /// 真实对局必须用带 <paramref name="previous"/> 的重载：新阶段要**接在现有状态上**开始，
+    /// 否则白天账（死亡玩家票权 / 逐日事实）会被丢掉。不带前一状态的版本供全新对局与测试夹具使用。
+    /// </remarks>
+    public static StepMachineOutcome StartPhase(StepPlan plan, ControlMode control = ControlMode.Automatic) =>
+        StartPhase(plan, previous: null, control);
+
+    /// <summary>开启一个新阶段，并保留现有状态里的非计划账（尤其白天账与已消耗票权）。</summary>
+    public static StepMachineOutcome StartPhase(
+        StepPlan plan,
+        StepMachineState? previous,
+        ControlMode control = ControlMode.Automatic)
     {
         ArgumentNullException.ThrowIfNull(plan);
 
@@ -39,7 +50,7 @@ public static class StepMachine
         {
             new PhaseStartedEvent { Plan = plan, Control = control },
         };
-        var state = Apply(null, events[0])
+        var state = Apply(previous, events[0])
             ?? throw new InvalidOperationException("事件流损坏：开启阶段没有产出步骤机状态");
         if (!state.IsPlanCompleted)
         {
@@ -50,8 +61,36 @@ public static class StepMachine
             events.Add(new PhaseCompletedEvent { PlanLabel = plan.Label });
         }
 
-        return AppliedFromNothing(events);
+        return new StepMachineOutcome
+        {
+            Kind = StepMachineOutcomeKind.Applied,
+            State = StepMachineFolder.ApplyAll(previous, events)
+                ?? throw new InvalidOperationException("事件流损坏：开启阶段没有产出步骤机状态"),
+            Events = events,
+        };
     }
+
+    /// <summary>
+    /// 开启一个白天阶段：进入唯一的白天窗口槽位（不消耗配额、不自动推进），并让白天账新开一天。
+    /// </summary>
+    /// <remarks>
+    /// 计划由应用层构造（标签 <c>sv:day-N</c>）；形状与天数的校验、事件产出在
+    /// <see cref="DayStepMachine"/>（拆出以守单文件 600 行门禁：一个类不该同时装昼夜两套推进）。
+    /// 真实对局走带 <paramref name="previous"/> 的重载，保证跨天票权与逐日事实保留。
+    /// </remarks>
+    public static StepMachineOutcome StartDay(
+        StepPlan plan,
+        int dayNumber,
+        ControlMode control = ControlMode.Automatic) =>
+        StartDay(plan, dayNumber, previous: null, control);
+
+    /// <summary>开启白天，并保留现有状态里的白天账（跨天票权 / 逐日事实）。</summary>
+    public static StepMachineOutcome StartDay(
+        StepPlan plan,
+        int dayNumber,
+        StepMachineState? previous,
+        ControlMode control = ControlMode.Automatic) =>
+        DayStepMachine.StartDay(plan, dayNumber, previous, control);
 
     /// <summary>
     /// 处理一条输入（无结算上下文）：等价于传 <see cref="SettlementContext.Empty"/>——
@@ -75,11 +114,15 @@ public static class StepMachine
             SlotQuotaElapsedInput => HandleQuotaElapsed(state),
             SubmitResponseInput response => HandleResponse(state, context, response),
             VoidRequestInput voidRequest => HandleVoid(state, voidRequest),
+            ForceAdvanceInput forceAdvance when state.Plan.Phase == GamePhase.Day
+                => DayStepMachine.ForceAdvance(state, forceAdvance),
             ForceAdvanceInput forceAdvance => HandleForceAdvance(state, forceAdvance),
             TakeOverInput takeOver => HandleControlChange(state, ControlMode.StorytellerTakeover, takeOver.Reason),
             ReleaseControlInput release => HandleControlChange(state, ControlMode.Automatic, release.Reason),
             SeatStateChangedInput seatChanged => HandleSeatStateChanged(state, seatChanged),
             ResolveDecisionPointInput resolve => HandleDecisionResolved(state, context, resolve),
+            NominateInput or CastVoteInput or CountVotesInput or CloseDayInput
+                => DayStepMachine.Handle(state, context, input),
             _ => Reject(state, StepMachineRejectionReason.UnexpectedInput, $"未知输入：{input.GetType().Name}"),
         };
     }
@@ -114,6 +157,12 @@ public static class StepMachine
         if (state.Quota == SlotQuotaState.Elapsed)
         {
             return Applied(state, []);
+        }
+
+        if (state.CurrentSlot is { Kind: StepSlotKind.DayWindow })
+        {
+            // 白天窗口不消耗配额：宿主节拍器不应为它送配额输入；这里再兜一层，不产出事件、不推进。
+            return DayStepMachine.QuotaElapsed(state);
         }
 
         var events = new List<GameEvent>
@@ -248,6 +297,7 @@ public static class StepMachine
         }
 
         var events = new List<GameEvent>();
+
         if (state.PendingRequest is { Status: OperationRequestStatus.Pending } pending)
         {
             events.Add(new OperationRequestVoidedEvent
@@ -422,6 +472,7 @@ public static class StepMachine
 
     private static bool CanAutoAdvance(StepMachineState state) =>
         !state.IsPlanCompleted
+        && state.CurrentSlot?.Kind != StepSlotKind.DayWindow
         && state.Control == ControlMode.Automatic
         && state.Quota == SlotQuotaState.Elapsed
         && !state.IsHeld;
@@ -529,15 +580,6 @@ public static class StepMachine
             Kind = StepMachineOutcomeKind.Applied,
             State = StepMachineFolder.ApplyAll(state, events)
                 ?? throw new InvalidOperationException("事件流损坏：处理输入后丢失步骤机状态"),
-            Events = events,
-        };
-
-    private static StepMachineOutcome AppliedFromNothing(List<GameEvent> events) =>
-        new()
-        {
-            Kind = StepMachineOutcomeKind.Applied,
-            State = StepMachineFolder.ApplyAll(null, events)
-                ?? throw new InvalidOperationException("事件流为空：无法从空事件重建状态"),
             Events = events,
         };
 

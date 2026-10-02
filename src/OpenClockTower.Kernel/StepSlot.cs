@@ -70,4 +70,7 @@ public sealed record StepSlot
 
     /// <summary>构造一个节拍槽位（黄昏 / 信息环节等非角色行动条目）。</summary>
     public static StepSlot Beat(StepSlotId id) => new() { Id = id, Kind = StepSlotKind.Beat };
+
+    /// <summary>构造白天窗口槽位：白天阶段的唯一槽位，不消耗配额、不自动推进。</summary>
+    public static StepSlot DayWindow(StepSlotId id) => new() { Id = id, Kind = StepSlotKind.DayWindow };
 }

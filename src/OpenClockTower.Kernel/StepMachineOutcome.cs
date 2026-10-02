@@ -17,6 +17,12 @@ public sealed record StepMachineOutcome
     /// <summary>被拒绝的原因；接受时为 null。</summary>
     public StepMachineRejectionReason? RejectionReason { get; init; }
 
+    /// <summary>
+    /// 机器可读的拒绝码（如 <c>day.nominator_dead</c>）：白天规则拒绝时给出；
+    /// 其余拒绝为 null，由调用方按 <see cref="RejectionReason"/> 生成 <c>kernel.*</c> 码。
+    /// </summary>
+    public string? RejectionCode { get; init; }
+
     /// <summary>拒绝说明（给日志与说书人定位用）。</summary>
     public string? RejectionNote { get; init; }
 }

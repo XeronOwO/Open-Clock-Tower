@@ -18,16 +18,19 @@ import type {
   OperationRequestDto,
   OperationRequestVoidedDto,
   PhaseStartedDto,
+  PlayerDayDto,
   PlayerEventDto,
   ReconnectBundleDto,
   PlayerViewDto,
 } from '@/contracts/game'
 import {
   asArray,
+  asBoolean,
   asCount,
   asCredential,
   asSizedText,
   asText,
+  normalizeDayView,
   normalizeOption,
 } from '@/display/format'
 import { HUB_PATH, type GatewayState } from '@/services/connectionState'
@@ -41,6 +44,8 @@ export interface PlayerCallbacks {
   onRequestAnswered: (answered: OperationRequestAnsweredDto) => void
   /** 阶段开始（公开信息）：页头阶段随服务端更新，不需要手动补齐。 */
   onPhaseStarted: (phase: string) => void
+  /** 白天状态变化（公开信息）：提名 / 票面 / 即将被处决 / 处决；null = 服务端还没开过白天。 */
+  onDayChanged: (day: PlayerDayDto | null) => void
   onInformation: (information: InformationResultDto | null) => void
   onState: (state: GatewayState) => void
   onDiagnostic: (message: string) => void
@@ -80,6 +85,13 @@ export class PlayerGateway {
       const started = normalizePhaseStarted(payload)
       if (started !== null) {
         callbacks.onPhaseStarted(started.phase)
+      }
+    })
+    this.connection.on('ReceiveDayChanged', (payload: unknown) => {
+      // 坏载荷不覆盖当前白天状态：宁可少更新一次，也不把界面清成空。
+      const day = normalizePlayerDay(payload)
+      if (day !== null) {
+        callbacks.onDayChanged(day)
       }
     })
     this.connection.on('ReceiveInformationResult', (payload: unknown) => {
@@ -141,6 +153,7 @@ export class PlayerGateway {
     this.credentialValue = joined.credential
     this.lastSequence = applied.sequence
     this.callbacks.onRequest(bundle.view.pendingRequest)
+    this.callbacks.onDayChanged(bundle.view.day)
 
     // 快照视图由调用方按 `bundle.view` 呈现；窗口内可见事件里的新信息随后接上。
     for (const information of applied.informationResults) {
@@ -164,6 +177,22 @@ export class PlayerGateway {
       optionValue,
       idempotencyKey,
       clientSequence,
+    )
+  }
+
+  /** 发起提名（提名者由服务端从凭据推导；客户端只给目标席位）。 */
+  async nominate(nomineeSeat: number, idempotencyKey: string): Promise<unknown> {
+    return this.connection.invoke<unknown>('Nominate', this.requireCredential(), nomineeSeat, idempotencyKey)
+  }
+
+  /** 在当前开放的提名上投票 / 撤回（在线口径见 R-0017）。 */
+  async castVote(nominationIndex: number, voted: boolean, idempotencyKey: string): Promise<unknown> {
+    return this.connection.invoke<unknown>(
+      'CastVote',
+      this.requireCredential(),
+      nominationIndex,
+      voted,
+      idempotencyKey,
     )
   }
 
@@ -302,6 +331,29 @@ export function normalizePhaseStarted(raw: unknown): PhaseStartedDto | null {
   return phase === null ? null : { phase }
 }
 
+/** 未知载荷 → 玩家白天投影；公开事实不完整时返回 null（不编权限位）。 */
+export function normalizePlayerDay(raw: unknown): PlayerDayDto | null {
+  if (raw === null || typeof raw !== 'object') {
+    return null
+  }
+
+  const day = raw as Record<string, unknown>
+  const publicFacts = normalizeDayView(day['publicFacts'])
+  if (publicFacts === null) {
+    return null
+  }
+
+  return {
+    publicFacts,
+    canNominate: asBoolean(day['canNominate']) ?? false,
+    canVote: asBoolean(day['canVote']) ?? false,
+    voted: asBoolean(day['voted']) ?? false,
+    candidates: asArray<unknown>(day['candidates'])
+      .map((candidate) => asCount(candidate))
+      .filter((candidate): candidate is number => candidate !== null),
+  }
+}
+
 /** 未知载荷 → 重连包；缺序号按 0 处理（与本地序号 / 事件序号对不上时会在 applyBundle 显式诊断，而不是静默通过）。 */
 export function normalizeBundle(raw: unknown): NormalizedReconnectBundle {
   const bundle = (raw ?? {}) as Record<string, unknown>
@@ -320,6 +372,7 @@ export function normalizeBundle(raw: unknown): NormalizedReconnectBundle {
       informationResults: asArray<unknown>(view['informationResults'])
         .map(normalizeInformation)
         .filter((information): information is InformationResultDto => information !== null),
+      day: normalizePlayerDay(view['day']),
     },
     events,
     // 被丢掉的条目不静默：加入路径据此显式失败（无序号 / 无类型的条目无法参与序号校验）。

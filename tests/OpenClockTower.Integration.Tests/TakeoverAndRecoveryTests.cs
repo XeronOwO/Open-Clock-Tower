@@ -449,6 +449,9 @@ public sealed class TakeoverAndRecoveryTests
         Assert.NotNull(health.Since);
 
         // 失败也改了视图（原因更新）→ 必须推送给说书人，否则界面停在旧原因上（对抗复核 2026-10-02）。
+        // 推送与命令回执是两条独立消息：这里等它到达，而不是假定回执一定后到——
+        // 真机满负载下曾出现"回执先到、推送到得稍晚"的假红（2026-10-02 复现记录，单跑与连跑均绿）。
+        await TestServerHost.WaitUntilAsync(() => pushed is not null, TimeSpan.FromSeconds(5));
         Assert.NotNull(pushed);
         Assert.True(pushed!.Health.Degraded);
         Assert.Contains("重建失败", pushed.Health.Reason ?? string.Empty);

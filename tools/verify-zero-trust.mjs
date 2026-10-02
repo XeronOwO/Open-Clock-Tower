@@ -1,5 +1,5 @@
 /**
- * 零信任负向取证装置（票据 docs/backlog/todo/zero-trust-security-model.md 矩阵）。
+ * 零信任负向取证装置（票据 docs/backlog/done/zero-trust-security-model.md 矩阵）。
  *
  * 它回答：**客户端被完全攻陷之后，能不能作弊或窃取他人信息？**
  * 与传统批次（verify-storyteller-panel.mjs）的分工：
@@ -8,8 +8,9 @@
  *     记录每个玩家客户端收到的**全部消息**并扫描越权字段。
  *
  * 覆盖行：2（未加入的连接）、3（旧连接凭据）、1（他人请求归属）、4（玩家调说书人命令）、
- *         6（非法选项）、8（收包不含越权信息）、9 的在线面（无关玩家零活动）、11（拒绝审计）。
- * 行 5 的"白天"与行 6 的"僧侣"依赖尚未落地的能力，已在集成测试里用等价反例覆盖。
+ *         5（白天提交夜间行动：完成首夜 → 开白天 → 提交被阶段闸拒绝）、6（非法选项）、
+ *         8（收包不含越权信息）、9 的在线面（无关玩家零活动）、11（拒绝审计）。
+ * 行 6 的"僧侣"依赖尚未落地的角色，已在集成测试里用等价反例覆盖。
  *
  * 前置：Node >= 22.5（node:sqlite）、本机已构建；脚本自己会跑一次 Release 构建。
  * 用法（在仓库根运行）：
@@ -80,6 +81,7 @@ const PUSH_METHODS = [
   'ReceiveOperationRequestAnswered',
   'ReceivePhaseStarted',
   'ReceiveInformationResult',
+  'ReceiveDayChanged',
 ]
 
 /** 定向推送（只该到当事玩家）：行 9 的"无关玩家零活动"只针对这些；阶段是公开信息，不算活动。 */
@@ -380,6 +382,63 @@ async function main() {
     gotInformation && !othersGotInformation,
     `2号收到=${gotInformation}；1号新增=${newTargetedMethods(playerOf(players, 1), infoMarks.get(1)).join('|') || '无'}；`
       + `3号新增=${newTargetedMethods(playerOf(players, 3), infoMarks.get(3)).join('|') || '无'}`,
+  )
+
+  console.log('=== 5.5/6 行 5 原场景：完成首夜 → 开白天 → 白天提交夜间行动被阶段闸拒绝 ===')
+  // 本装置只关心"游戏进入白天"；白天玩法面由主批次（真浏览器）覆盖。
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const view = await storyteller.connection.invoke('GetStorytellerView', storyteller.credential)
+    if (view.planCompleted) {
+      break
+    }
+
+    const forced = await storyteller.connection.invoke(
+      'ForceAdvance',
+      storyteller.credential,
+      '零信任取证：走完首夜',
+      `zt-night-force-${attempt}`,
+    )
+    check(`行 5：首夜强推（第 ${attempt + 1} 次）被受理`, forced.kind === 'Accepted', describeOutcome(forced))
+  }
+
+  const beforeDay = await storyteller.connection.invoke('GetStorytellerView', storyteller.credential)
+  check('行 5：首夜已走完（可以开白天）', beforeDay.planCompleted === true, `planCompleted=${beforeDay.planCompleted}`)
+
+  const startedDay = await storyteller.connection.invoke('StartDay', storyteller.credential, 'zt-day-1')
+  check('行 5：开白天被受理', startedDay.kind === 'Accepted', describeOutcome(startedDay))
+
+  const dayView = await storyteller.connection.invoke('GetStorytellerView', storyteller.credential)
+  check(
+    '行 5：阶段为白天、白天账开着',
+    dayView.phase === 'Day' && dayView.day?.status === 'Open',
+    `phase=${dayView.phase} day=${dayView.day?.status}`,
+  )
+
+  // 玩家在白天伪造一个"夜间行动"（当下没有挂起请求）→ 期望阶段闸拒绝、状态不变。
+  // 用 1 号连接（3 号连接已在行 3 的重连用例里被新连接顶替，旧凭据已失效）。
+  const dayNightAction = await player1.connection.invoke(
+    'SubmitResponse',
+    player1.credential,
+    'forged-night-request',
+    'seat:2',
+    'zt-day-submit-1',
+    0,
+  )
+  check(
+    '行 5：白天提交夜间行动被阶段闸拒绝',
+    dayNightAction.kind === 'Rejected' && dayNightAction.rejectionCode === 'phase.no_request_for_you',
+    describeOutcome(dayNightAction),
+  )
+  check(
+    '行 5：白天拒绝回执不带全局事件序号（状态不变）',
+    dayNightAction.sequence === 0,
+    `sequence=${dayNightAction.sequence}`,
+  )
+  const afterDayAction = await storyteller.connection.invoke('GetStorytellerView', storyteller.credential)
+  check(
+    '行 5：拒绝后白天仍开着、没有被推进',
+    afterDayAction.phase === 'Day' && afterDayAction.day?.status === 'Open',
+    `phase=${afterDayAction.phase} day=${afterDayAction.day?.status}`,
   )
 
   console.log('=== 6/6 审计：拒绝有记录，凭据明文不在日志里（行 11）===')

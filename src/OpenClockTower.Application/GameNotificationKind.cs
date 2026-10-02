@@ -23,4 +23,10 @@ public enum GameNotificationKind
 
     /// <summary>向全部已绑定席位的玩家广播阶段开始（公开信息：昼夜）。</summary>
     PhaseStarted,
+
+    /// <summary>
+    /// 白天状态有变化（提名 / 投票 / 计票 / 处决 / 结束）：白天是公开信息，按席位投影后各推一份。
+    /// 推送的是**状态投影**而不是事件载荷——重连时 <c>PlayerView.Day</c> 快照覆盖同一份事实。
+    /// </summary>
+    DayChanged,
 }

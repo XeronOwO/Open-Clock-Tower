@@ -17,7 +17,7 @@ internal static class GameCommandDispatcher
     private const string SetupAssignmentReason = "setup.assignment";
 
     /// <summary>
-    /// 分派一条命令；步骤机尚未开启时，只有开始阶段 / 开局分配 / <b>状态观测</b> / 开夜四类命令会走到这里。
+    /// 分派一条命令；步骤机尚未开启时，只有开始阶段 / 开局分配 / <b>状态观测</b> / 开夜这些命令会走到这里。
     /// <paramref name="settlement"/> 携带当前账、座次与结算契约目录——行动槽位结算要靠它。
     /// </summary>
     internal static CommandDispatchResult Dispatch(
@@ -30,7 +30,7 @@ internal static class GameCommandDispatcher
     {
         if (envelope.Command is StartPhaseCommand start)
         {
-            var outcome = StepMachine.StartPhase(start.Plan, start.Control);
+            var outcome = StepMachine.StartPhase(start.Plan, machine, start.Control);
             return new CommandDispatchResult(outcome.State, outcome.Events, null);
         }
 
@@ -48,7 +48,22 @@ internal static class GameCommandDispatcher
 
         if (envelope.Command is StartNightCommand startNight)
         {
-            return DispatchStartNight(startNight, setup, settlement.State, gameId, logger);
+            return DispatchStartNight(startNight, machine, setup, settlement.State, gameId, logger);
+        }
+
+        if (envelope.Command is StartDayCommand)
+        {
+            if (machine is null)
+            {
+                return CommandDispatchResult.Rejected(new CommandRejection
+                {
+                    Code = "phase.day_requires_night",
+                    Message = "白天只能跟在夜晚之后：本局还没有开始过任何阶段",
+                    Gate = "phase",
+                });
+            }
+
+            return DispatchStartDay(machine, setup, settlement.State, gameId, logger);
         }
 
         if (machine is null)
@@ -59,6 +74,28 @@ internal static class GameCommandDispatcher
                 Message = "步骤机尚未开启任何阶段",
                 Gate = "kernel",
             });
+        }
+
+        // 白天四类输入要走带行动者席位的形状转换（提名者 / 投票者来自凭据推导，命令面无自称身份）。
+        if (envelope.Command is NominateCommand or CastVoteCommand)
+        {
+            // 结构上不依赖闸门顺序：拿不到席位就在这里显式拒绝，而不是靠 `Seat!` 之后的空引用崩溃。
+            if (envelope.Actor.Seat is not { } actor)
+            {
+                return CommandDispatchResult.Rejected(new CommandRejection
+                {
+                    Code = "identity.player_only",
+                    Message = "提名与投票必须由持席位的玩家发出",
+                    Gate = "identity",
+                });
+            }
+
+            return Translate(StepMachine.Handle(machine, settlement, BuildPlayerDayInput(envelope.Command, actor)));
+        }
+
+        if (envelope.Command is CountVotesCommand or CloseDayCommand)
+        {
+            return Translate(StepMachine.Handle(machine, settlement, BuildStorytellerDayInput(envelope.Command)));
         }
 
         var input = KernelInputMapper.ToInput(envelope.Command);
@@ -72,18 +109,114 @@ internal static class GameCommandDispatcher
             });
         }
 
-        var outcome2 = StepMachine.Handle(machine, settlement, input);
-        if (outcome2.Kind == StepMachineOutcomeKind.Rejected)
+        return Translate(StepMachine.Handle(machine, settlement, input));
+    }
+
+    /// <summary>把内核结果翻译成命令结果：拒绝码优先用内核给出的（白天规则的机器可读码），否则按枚举生成。</summary>
+    private static CommandDispatchResult Translate(StepMachineOutcome outcome)
+    {
+        if (outcome.Kind == StepMachineOutcomeKind.Rejected)
         {
             return CommandDispatchResult.Rejected(new CommandRejection
             {
-                Code = $"kernel.{outcome2.RejectionReason}",
-                Message = outcome2.RejectionNote ?? "内核拒绝了这条输入",
+                Code = outcome.RejectionCode ?? $"kernel.{outcome.RejectionReason}",
+                Message = outcome.RejectionNote ?? "内核拒绝了这条输入",
                 Gate = "kernel",
             });
         }
 
-        return new CommandDispatchResult(outcome2.State, outcome2.Events, null);
+        return new CommandDispatchResult(outcome.State, outcome.Events, null);
+    }
+
+    /// <summary>玩家白天命令 → 内核输入（行动者席位由调用方从凭据推导后传入，非空）。</summary>
+    private static StepMachineInput BuildPlayerDayInput(GameCommand command, SeatId actor) =>
+        command switch
+        {
+            NominateCommand nominate => new NominateInput
+            {
+                Nominator = actor,
+                Nominee = nominate.Nominee,
+            },
+            CastVoteCommand castVote => new CastVoteInput
+            {
+                Voter = actor,
+                NominationIndex = castVote.NominationIndex,
+                Voted = castVote.Voted,
+            },
+            _ => throw new InvalidOperationException($"不是玩家白天命令：{command.GetType().Name}"),
+        };
+
+    /// <summary>说书人白天命令 → 内核输入（计票与结束白天不携带行动者席位）。</summary>
+    private static StepMachineInput BuildStorytellerDayInput(GameCommand command) =>
+        command switch
+        {
+            CountVotesCommand countVotes => new CountVotesInput
+            {
+                NominationIndex = countVotes.NominationIndex,
+            },
+            CloseDayCommand => new CloseDayInput(),
+            _ => throw new InvalidOperationException($"不是说书人白天命令：{command.GetType().Name}"),
+        };
+
+    /// <summary>
+    /// 开白天：校验座位角色齐全，并对"与白天相关但契约未实现"的角色显式拒绝（不静默跳过）；
+    /// 通过后按天数构造唯一的 DayWindow 计划，交给步骤机。
+    /// </summary>
+    private static CommandDispatchResult DispatchStartDay(
+        StepMachineState machine,
+        GameSetup? setup,
+        GameState state,
+        GameId gameId,
+        ILogger logger)
+    {
+        if (setup is null)
+        {
+            return MissingSetup();
+        }
+
+        var seats = setup.Seats.Select(item => item.Seat).OrderBy(seat => seat.Value).ToArray();
+
+        foreach (var seat in seats)
+        {
+            var character = state.Seat(seat)?.CharacterValue;
+            if (character is null)
+            {
+                return CommandDispatchResult.Rejected(new CommandRejection
+                {
+                    Code = "legality.character_unobserved",
+                    Message = $"席位 {seat.Value} 的角色还没有观测：无法核对白天契约（不猜）",
+                    Gate = "legality",
+                });
+            }
+
+            if (DayActions.IsDayRelevant(character.Value) && !DayActions.IsCovered(character.Value))
+            {
+                return CommandDispatchResult.Rejected(new CommandRejection
+                {
+                    Code = "legality.day_contract_missing",
+                    Message = $"角色 {character.Value.Value} 的白天相关能力还没有实现：按「不静默跳过」拒绝开白天",
+                    Gate = "legality",
+                });
+            }
+        }
+
+        var dayNumber = (machine.Day?.Days.Count ?? 0) + 1;
+        var plan = new StepPlan
+        {
+            Label = $"sv:day-{dayNumber}",
+            Phase = GamePhase.Day,
+            Slots = [StepSlot.DayWindow(new StepSlotId("day-window"))],
+        };
+
+        var started = StepMachine.StartDay(plan, dayNumber, machine);
+        logger.LogInformation(
+            "已开启白天：game={GameId} day={DayNumber} 计划={Label} 席位数={SeatCount}",
+            gameId,
+            dayNumber,
+            plan.Label,
+            seats.Length);
+
+        return new CommandDispatchResult(started.State, started.Events, null);
     }
 
     /// <summary>开局分配：每席记录角色与初始生死（存活），产出一条 <see cref="SeatStateChangedEvent"/>。</summary>
@@ -186,6 +319,7 @@ internal static class GameCommandDispatcher
     /// </remarks>
     private static CommandDispatchResult DispatchStartNight(
         StartNightCommand command,
+        StepMachineState? machine,
         GameSetup? setup,
         GameState state,
         GameId gameId,
@@ -216,7 +350,7 @@ internal static class GameCommandDispatcher
             });
         }
 
-        var started = StepMachine.StartPhase(outcome.Plan);
+        var started = StepMachine.StartPhase(outcome.Plan, machine);
         logger.LogInformation(
             "已按规则表建表：game={GameId} night={NightNumber} variant={Variant} 槽位数={SlotCount} 计划={Label}",
             gameId,

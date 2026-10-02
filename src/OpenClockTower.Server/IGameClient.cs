@@ -22,4 +22,7 @@ public interface IGameClient
 
     /// <summary>服务端推给某个玩家的信息类结果（定向单播；只有内容）。</summary>
     Task ReceiveInformationResult(InformationResultDto information);
+
+    /// <summary>服务端广播白天状态（公开信息；按席位投影，含"我现在能不能动"）。</summary>
+    Task ReceiveDayChanged(PlayerDayDto day);
 }

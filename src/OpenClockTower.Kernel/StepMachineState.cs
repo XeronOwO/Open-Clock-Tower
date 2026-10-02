@@ -31,6 +31,12 @@ public sealed record StepMachineState
     /// <summary>阻塞报警（R-0009 BlockAndAlert）；null 表示没有。</summary>
     public StepBlock? Block { get; init; }
 
+    /// <summary>
+    /// 白天账（跨阶段保留）：逐日提名 / 投票 / 处决的事实与死亡玩家已消耗的投票权。
+    /// 详见 <see cref="DayState"/>；夜晚阶段它保持原样，不被清空。
+    /// </summary>
+    public DayState? Day { get; init; }
+
     /// <summary>当前槽位；计划已走完时为 null。</summary>
     public StepSlot? CurrentSlot =>
         SlotIndex >= 0 && SlotIndex < Plan.Slots.Count ? Plan.Slots[SlotIndex] : null;

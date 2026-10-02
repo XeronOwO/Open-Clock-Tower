@@ -180,6 +180,12 @@ public sealed class GameSession
                 return null;
             }
 
+            if (machine.CurrentSlot is { Kind: StepSlotKind.DayWindow })
+            {
+                // 白天窗口不消耗配额：白天节奏由说书人掌握，没有节拍可送。
+                return null;
+            }
+
             var slot = machine.CurrentSlot!;
             var envelope = new CommandEnvelope
             {
@@ -203,6 +209,8 @@ public sealed class GameSession
         {
             return GameProjection.ForSeat(
                 _machine,
+                _state,
+                SeatList(),
                 _lastSequence,
                 seat,
                 _trackers.InformationResultsFor(seat));
@@ -269,6 +277,8 @@ public sealed class GameSession
                 Sequence = _lastSequence,
                 View = GameProjection.ForSeat(
                     _machine,
+                    _state,
+                    SeatList(),
                     _lastSequence,
                     seat,
                     _trackers.InformationResultsFor(seat)),
@@ -541,6 +551,10 @@ public sealed class GameSession
     /// </summary>
     private async Task<GameSetup?> EnsureSetupAsync(CancellationToken cancellationToken) =>
         _setup ??= await _catalog.FindAsync(GameId, cancellationToken);
+
+    /// <summary>本局席位名单（投影用）；会话信息还没读到时为空表——宁可少给可提名目标，不猜。</summary>
+    private IReadOnlyList<SeatId> SeatList() =>
+        _setup is { } setup ? [.. setup.Seats.Select(item => item.Seat)] : [];
 
     private CommandResult Reject(CommandEnvelope envelope, CommandRejection rejection)
     {

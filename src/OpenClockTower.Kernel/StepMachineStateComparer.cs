@@ -28,7 +28,74 @@ public static class StepMachineStateComparer
                && PlanEquivalent(left.Plan, right.Plan)
                && RequestEquivalent(left.PendingRequest, right.PendingRequest)
                && DecisionEquivalent(left.AwaitingDecision, right.AwaitingDecision)
-               && string.Equals(left.Block?.Reason, right.Block?.Reason, StringComparison.Ordinal);
+               && string.Equals(left.Block?.Reason, right.Block?.Reason, StringComparison.Ordinal)
+               && DayEquivalent(left.Day, right.Day);
+    }
+
+    private static bool DayEquivalent(DayState? left, DayState? right)
+    {
+        if (ReferenceEquals(left, right))
+        {
+            return true;
+        }
+
+        if (left is null || right is null)
+        {
+            return false;
+        }
+
+        if (!SeatsEquivalent(left.SpentVoteTokens, right.SpentVoteTokens) || left.Days.Count != right.Days.Count)
+        {
+            return false;
+        }
+
+        for (var index = 0; index < left.Days.Count; index++)
+        {
+            var dayLeft = left.Days[index];
+            var dayRight = right.Days[index];
+            if (dayLeft.DayNumber != dayRight.DayNumber
+                || dayLeft.Status != dayRight.Status
+                || dayLeft.AboutToBeExecuted != dayRight.AboutToBeExecuted
+                || dayLeft.Executed != dayRight.Executed
+                || dayLeft.Nominations.Count != dayRight.Nominations.Count)
+            {
+                return false;
+            }
+
+            for (var nominationIndex = 0; nominationIndex < dayLeft.Nominations.Count; nominationIndex++)
+            {
+                var nominationLeft = dayLeft.Nominations[nominationIndex];
+                var nominationRight = dayRight.Nominations[nominationIndex];
+                if (nominationLeft.Index != nominationRight.Index
+                    || nominationLeft.Nominator != nominationRight.Nominator
+                    || nominationLeft.Nominee != nominationRight.Nominee
+                    || nominationLeft.Status != nominationRight.Status
+                    || !SeatsEquivalent(nominationLeft.Ballot, nominationRight.Ballot))
+                {
+                    return false;
+                }
+            }
+        }
+
+        return true;
+    }
+
+    private static bool SeatsEquivalent(IReadOnlyList<SeatId> left, IReadOnlyList<SeatId> right)
+    {
+        if (left.Count != right.Count)
+        {
+            return false;
+        }
+
+        for (var index = 0; index < left.Count; index++)
+        {
+            if (left[index] != right[index])
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private static bool PlanEquivalent(StepPlan left, StepPlan right)

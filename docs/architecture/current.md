@@ -163,6 +163,21 @@ DecisionPoint
 逐角色实现（25 个角色）仍按票分批补，残余事项见
 `docs/backlog/done/settlement-engine.md`。
 
+**白天阶段（2026-10-02 落地）**：
+
+| 环节 | 实现 | 依据 |
+|---|---|---|
+| 阶段与计划 | `StepPlan { Phase = Day, Slots = [StepSlotKind.DayWindow] }`：白天窗口**不消耗配额、不自动推进**；`CloseDayInput` 走完计划，`ForceAdvanceInput` 兜底立即结束（不产生处决；若还有未计票的提名，先要求计票——强推不替说书人拍板计票结论） | 票据 `done/day-phase.md`；D-0014 |
+| 白天账 | `DayState`（在 `StepMachineState.Day`，随快照持久化、随事件折叠、**跨阶段保留**）：逐日提名 / 票面 / 即将被处决 / 处决，以及死亡玩家已消耗的投票权 | D-0010 |
+| 事件 | `DayStarted` / `NominationMade` / `VoteCast` / `VoteCounted` / `Executed` / `DayClosed`；计票结论随事件携带（阈值依赖计票当刻的存活人数，折叠层不重算） | D-0010 |
+| 提名 | 仅存活者可发起、同日一次、被提名一次、同一时间一项；死亡玩家可被提名；自我提名暂取允许 | 百科《提名》· 2026-10-01 抓取；R-0018 |
+| 投票与计票 | 投票窗口内可改票（平台口径）；计票以快照为准：票数**严格最多** + ≥ 存活人数一半 + ≥1；平局取消，后来者须超过打平票数 | 百科《投票》· 2026-10-01 抓取；R-0017 |
+| 处决 | 提名阶段结束时处决当前「即将被处决」者；`ExecutedEvent` 与死亡 `SeatStateChangedEvent` **分开记录**（处决 ≠ 死亡）；每白天最多一次；无人够票则白天以无人被处决收尾 | 百科《规则概要》三-3 /《处决》 |
+| 命令与投影 | `StartDay` / `Nominate` / `CastVote` / `CountVotes` / `CloseDay` 五条命令；白天是公开信息，按席位投影后广播（`ReceiveDayChanged`），重连由 `PlayerView.Day` 快照覆盖同一份事实 | D-0012 §4.3 |
+| 边界 | 与白天相关但契约未实现的角色（博学者 / 艺术家 / 杂耍艺人 / 畸形秀演员 / 洗脑师 / 女巫 / 心上人 / 理发师 / 呆瓜 / 镜像双子 / 涡流）在场时，开白天显式拒绝（`legality.day_contract_missing`） | 架构 §2.6 能力边界同族 |
+
+白天**不走 D-0013 的恒定配额节奏**：那条约束的是夜晚时序防泄漏，白天的提名与投票本身就是公开信息。
+
 ### 2.7 步骤机与操作请求（D-0011）
 
 "自动步骤系统"不是一个 UI 特性，它是内核里的一台状态机。
@@ -201,17 +216,18 @@ StepMachine（步骤机）
 | 概念 | 实现（`src/OpenClockTower.Kernel` / `.Application` / `.Server`） |
 |---|---|
 | 同源选择原语 | `ChoicePrompt`；`DecisionPoint`（说书人）与 `OperationRequest`（玩家）是它的两套投影 |
-| 步骤表与槽位 | `StepPlan` / `StepSlot`（`Action` / `Empty` / `Beat` 节拍 / `DawnWait`）；空槽位与节拍照样消耗配额 |
+| 步骤表与槽位 | `StepPlan` / `StepSlot`（`Action` / `Empty` / `Beat` 节拍 / `DawnWait` / `DayWindow` 白天窗口）；空槽位与节拍照样消耗配额，白天窗口不消耗、不自动推进 |
 | 挂起 | `StepMachineState` 的 `PendingRequest` / `AwaitingDecision` / `Block`；请求**没有超时字段**（门禁锁死） |
 | 推进条件 | `SlotQuotaState`：配额是**最短**时间；自动推进 = 配额走完 **且** 无挂起；强推可越过（D-0014） |
-| 事件与重放 | 19 种 `GameEvent`（含 4 种状态账事件）；`StepMachine.Handle` 产事件、`StepMachineFolder` 折叠重建；**账事件可先于任何阶段**（开局分配），此时步骤机保持"尚未开始"；重启 = 重放，恢复 = 重放后替换快照 |
+| 事件与重放 | 25 种 `GameEvent`（含 4 种状态账事件与 6 种白天事件）；`StepMachine.Handle` 产事件、`StepMachineFolder` 折叠重建；**账事件可先于任何阶段**（开局分配），此时步骤机保持"尚未开始"；重启 = 重放，恢复 = 重放后替换快照 |
 | 开局分配 | `AssignCharactersCommand`：每席一条 `SeatStateChangedEvent`（角色 + 初始生死 = 存活），只允许在首个阶段开始前使用（D-0017 / R-0015） |
 | 建表 | `NightPlanBuilder` + `StartNightCommand`：口径进 `StepPlan.Variant`；缺事实显式拒绝，不猜（R-0014 / D-0013） |
+| 白天阶段 | `StartDayCommand` 开白天（单 `DayWindow` 槽位）→ `Nominate` / `CastVote` / `CountVotes` → `CloseDay` 处决并走完计划；`ForceAdvance` 兜底立即结束白天（未计票的提名先被要求计票，`docs/backlog/done/day-phase.md` / R-0017） |
 | 状态变化归因 | `SeatStateChangedEvent`（座位 + 实际观测维度 + 原因 + 导致方）；说书人视图给 `RecentSeatChanges` / `CurrentSlotActor` / `CurrentSlotContext` / `StepDigest`（每步摘要：状态 + 能力判定 + 作废说明） |
 | 玩家可见事件 | 重连补齐只下发 `PlayerEvent` **白名单投影**（公开阶段 + 发给自己的请求 / 响应 / 作废），**绝不下发原始事件流**；**在线推送的覆盖面与它一一对应**（五类事件各有通知，`PlayerNotificationBuilderTests` 锁住） |
 | 控制模式 | `ControlMode.Automatic` / `StorytellerTakeover`；接管时节拍器不自动推进，交还后恢复 |
 | 作废 | 座位依赖（`SeatDependency`）失效 → 自动作废并写明原因；说书人可强制作废 |
-| 推送 | SignalR 定向单播（请求 / 信息 / 作废 / 响应只到当事连接）；阶段开始是公开信息，广播给**全部已绑定席位**；断线重连 = 快照 + 补齐 + **重投未响应请求**；说书人变更也推送（不需要轮询） |
+| 推送 | SignalR 定向单播（请求 / 信息 / 作废 / 响应只到当事连接）；阶段开始与**白天变化**是公开信息，广播给**全部已绑定席位**（白天按席位投影后各发一份 `ReceiveDayChanged`）；断线重连 = 快照 + 补齐 + **重投未响应请求**；说书人变更也推送（不需要轮询） |
 
 ### 2.8 状态账与效果归因链（D-0015）
 

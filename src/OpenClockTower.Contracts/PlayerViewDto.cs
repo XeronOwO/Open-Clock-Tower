@@ -16,4 +16,7 @@ public sealed record PlayerViewDto
 
     /// <summary>发给该玩家的信息类结果（他自己能力得到的信息），按发生顺序。</summary>
     public required IReadOnlyList<InformationResultDto> InformationResults { get; init; }
+
+    /// <summary>白天投影（公开事实 + 自己能做什么）；还没有开过白天时为 null。</summary>
+    public PlayerDayDto? Day { get; init; }
 }

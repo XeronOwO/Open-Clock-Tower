@@ -316,6 +316,39 @@ public sealed class GameHub : Hub<IGameClient>
             idempotencyKey);
     }
 
+    /// <summary>说书人 / 宿主开启白天：天数由服务端按已开始的白天数推导（R-0014 同族的做法）。</summary>
+    public Task<CommandResultDto> StartDay(string credential, string idempotencyKey) =>
+        ExecuteAsync(ResolveActor(credential), new StartDayCommand(), idempotencyKey);
+
+    /// <summary>玩家发起提名（提名者由连接凭据推导，命令面无自称身份）。</summary>
+    public Task<CommandResultDto> Nominate(string credential, int nomineeSeat, string idempotencyKey) =>
+        ExecuteAsync(
+            ResolveActor(credential),
+            new NominateCommand { Nominee = new SeatId(nomineeSeat) },
+            idempotencyKey);
+
+    /// <summary>玩家在当前开放的提名上投票 / 撤回（在线口径见 R-0017）。</summary>
+    public Task<CommandResultDto> CastVote(
+        string credential,
+        int nominationIndex,
+        bool voted,
+        string idempotencyKey) =>
+        ExecuteAsync(
+            ResolveActor(credential),
+            new CastVoteCommand { NominationIndex = nominationIndex, Voted = voted },
+            idempotencyKey);
+
+    /// <summary>说书人 / 宿主对当前开放的提名计票（票面快照冻结）。</summary>
+    public Task<CommandResultDto> CountVotes(string credential, int nominationIndex, string idempotencyKey) =>
+        ExecuteAsync(
+            ResolveActor(credential),
+            new CountVotesCommand { NominationIndex = nominationIndex },
+            idempotencyKey);
+
+    /// <summary>说书人 / 宿主结束白天：处决当前「即将被处决」者（如果有），然后关闭白天。</summary>
+    public Task<CommandResultDto> CloseDay(string credential, string idempotencyKey) =>
+        ExecuteAsync(ResolveActor(credential), new CloseDayCommand(), idempotencyKey);
+
     /// <summary>说书人 / 宿主按事件日志重建房间（D-0014 恢复）。</summary>
     public Task<CommandResultDto> RebuildRoom(string credential, string reason, string idempotencyKey) =>
         ExecuteAsync(ResolveActor(credential), new RebuildRoomCommand { Reason = reason }, idempotencyKey);

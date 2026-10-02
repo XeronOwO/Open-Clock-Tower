@@ -2,9 +2,12 @@ import { describe, expect, it, vi } from 'vitest'
 import type { HubConnection } from '@microsoft/signalr'
 import { newIdempotencyKey } from '@/services/idempotency'
 import {
+  closeDay,
+  countVotes,
   forceAdvance,
   invokeCommand,
   normalizeOutcome,
+  startDay,
   type CommandSender,
 } from '@/services/storytellerCommands'
 
@@ -96,5 +99,19 @@ describe('命令必须出示连接凭据（D-0012）', () => {
 
     expect(outcome.ok).toBe(false)
     expect(invoke).not.toHaveBeenCalled()
+  })
+
+  it('白天命令按 Hub 方法名与参数顺序发出（开白天 / 计票 / 结束并处决）', async () => {
+    const invoke = vi.fn(async () => ({ kind: 'Accepted', sequence: 9 }))
+    const sender: CommandSender = { connection: { invoke } as unknown as HubConnection, credential }
+
+    await startDay(sender, 'key-day')
+    expect(invoke).toHaveBeenCalledWith('StartDay', credential, 'key-day')
+
+    await countVotes(sender, 2, 'key-count')
+    expect(invoke).toHaveBeenCalledWith('CountVotes', credential, 2, 'key-count')
+
+    await closeDay(sender, 'key-close')
+    expect(invoke).toHaveBeenCalledWith('CloseDay', credential, 'key-close')
   })
 })

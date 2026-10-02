@@ -22,4 +22,11 @@ public enum StepSlotKind
 
     /// <summary>黎明宣布的等待：纳入同一节奏，不是独立计时（D-0013 §3）。</summary>
     DawnWait,
+
+    /// <summary>
+    /// 白天窗口：白天阶段的唯一槽位，**不消耗配额、不自动推进**；
+    /// 只由说书人结束白天（<see cref="CloseDayInput"/>）或强推兜底（<see cref="ForceAdvanceInput"/>）走完。
+    /// 白天不走 D-0013 的恒定节奏——那条约束的是夜晚时序防泄漏，白天的提名与投票本身就是公开信息。
+    /// </summary>
+    DayWindow,
 }

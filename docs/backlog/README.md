@@ -67,10 +67,10 @@ todo/  →  in-progress/  →  review/  →  done/
 
 ### Review
 
-- [零信任安全模型](review/zero-trust-security-model.md) — **High** — 鉴权两级凭据 + 操作四道闸 + 服务端强制投影，负向测试为主
-
 ### Done
 
+- [白天阶段：提名 / 投票 / 处决](done/day-phase.md) — 开白天 / 提名 / 投票 / 计票 / 处决 + 阶段闸与公开投影；解开了零信任票行 5
+- [零信任安全模型](done/zero-trust-security-model.md) — 鉴权两级凭据 + 操作四道闸 + 服务端强制投影；批次 E9 行 1–11 全部有运行时证据
 - [玩家重连「补齐缺口」判据与白名单投影不一致](done/player-reconnect-gap-semantics.md) — 可见事件条数不可能覆盖全局序号区间；改为快照权威判据，坏包不采纳、不前进 watermark
 - [重建报告对比状态账](done/rebuild-state-ledger-comparison.md) — 重建报告对状态账五账做等价对比，与步骤机 / 快照并列成三项结论
 - [恢复失败后的房间健康位](done/room-health-degradation-flag.md) — 区分「空账」与「数据丢了」；降级位置位后显式重建才清除，玩家侧不下发

@@ -1,6 +1,6 @@
 # 零信任安全模型：鉴权、命令校验与信息隔离
 
-- Status: Review
+- Status: Done
 - Priority: High
 - Depends on: 建解决方案、项目骨架与门禁工程
 
@@ -212,6 +212,16 @@
 - Join 失败的暴力尝试只有日志、没有限流（限流属部署范畴，本票备注已排除）；
 - 幂等回执只按幂等键索引、未绑定 actor（回执表没有身份列）；键是客户端随机 UUID、
   被拒命令不落回执，当前不可利用，属防御性加固项。
+
+**验收结论（批次 E9，2026-10-02）**：**行 5 的原场景（白天提交夜间行动）真机通过**——
+负向装置 `tools/verify-zero-trust.mjs`（真宿主 + Node SignalR 篡改客户端）：完成首夜 → 说书人开白天 →
+玩家在白天提交夜间行动 → `phase.no_request_for_you`、回执不带全局事件序号、白天状态不变、拒绝有审计；
+集成 `DayPhaseHostTests.ZeroTrustRow5_SubmitNightActionDuringDay_IsRejectedByPhaseGate` 同步覆盖。
+行 2 / 3 / 8 / 10 / 11 在 E9 同批复跑通过（该装置 **41 项断言全过**）。
+**行 1–11 全部有运行时证据，票据移入 `done/`。**
+
+行 6 的"僧侣保护自己"仍以"选项不在服务端合法集合"作为等价反例（角色未实现，见上文边界）；
+行 8 的取证仍是**消息级收包扫描**（浏览器 WebSocket 原始帧级抓包未做）。
 
 ## 备注
 

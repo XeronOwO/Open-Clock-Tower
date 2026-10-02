@@ -149,6 +149,41 @@ export interface PhaseStartedDto {
   phase: string
 }
 
+/** 白天一次提名的公开账目（提名与投票本身是桌面上的公开信息）。 */
+export interface DayNominationDto {
+  index: number
+  nominator: number
+  nominee: number
+  /** Voting（投票窗口开着）/ Counted（已计票）。 */
+  status: string
+  /** 当前 / 最终票数。 */
+  votes: number
+  /** 当前 / 最终投赞成者的席位（按席位号升序）。 */
+  voters: number[]
+}
+
+/** 白天公开事实（最新一天：进行中或最近结束）。 */
+export interface DayViewDto {
+  dayNumber: number
+  /** Open（进行中）/ Closed（已结束）。 */
+  status: string
+  nominations: DayNominationDto[]
+  aboutToBeExecuted: number | null
+  executed: number | null
+  openNominationIndex: number | null
+}
+
+/** 某个玩家的白天投影：公开事实 + 他现在能做什么（服务端算好，呈现层不判规则）。 */
+export interface PlayerDayDto {
+  /** 公开的当天事实（字段名避开说书人专属禁词，见 PlayerProjectionLeakGateTests）。 */
+  publicFacts: DayViewDto
+  canNominate: boolean
+  canVote: boolean
+  voted: boolean
+  /** 今天还没被提名过的席位（可提名目标，按席位号升序）。 */
+  candidates: number[]
+}
+
 /** 说书人视图：完整看板 + 兜底所需的一切（D-0014）。 */
 export interface StorytellerViewDto {
   sequence: number
@@ -174,6 +209,8 @@ export interface StorytellerViewDto {
   lastResolution: AbilityResolutionDto | null
   stepDigest: StepDigestDto | null
   lastVoidedRequest: OperationRequestVoidedDto | null
+  /** 最新一天（进行中或最近结束）的白天账；还没有开过白天时为 null。 */
+  day: DayViewDto | null
 }
 
 /** 命令回执。 */
@@ -200,6 +237,8 @@ export interface PlayerViewDto {
   phase: string
   pendingRequest: OperationRequestDto | null
   informationResults: InformationResultDto[]
+  /** 白天投影（公开事实 + 自己能做什么）；还没有开过白天时为 null。 */
+  day: PlayerDayDto | null
 }
 
 /** 推给玩家的操作请求（刻意不含槽位 / 轮次 / 进度）。 */

@@ -12,15 +12,21 @@ public static class GameProjection
 {
     /// <summary>某个玩家的投影。</summary>
     /// <param name="machine">步骤机状态。</param>
+    /// <param name="state">状态账（白天权限判定要读生死）。</param>
+    /// <param name="seats">本局完整座次（算可提名目标用）。</param>
     /// <param name="sequence">投影对应的事件序号。</param>
     /// <param name="seat">接收者席位。</param>
     /// <param name="informationResults">派生自事件流、发给该席位的信息结果。</param>
     public static PlayerView ForSeat(
         StepMachineState? machine,
+        GameState state,
+        IReadOnlyList<SeatId> seats,
         long sequence,
         SeatId seat,
         IReadOnlyList<InformationResultSnapshot> informationResults)
     {
+        ArgumentNullException.ThrowIfNull(state);
+        ArgumentNullException.ThrowIfNull(seats);
         ArgumentNullException.ThrowIfNull(informationResults);
 
         var pending = machine?.PendingRequest;
@@ -34,6 +40,7 @@ public static class GameProjection
             Phase = machine?.Plan.Phase,
             PendingRequest = deliverable,
             InformationResults = informationResults,
+            Day = DayProjection.ForSeat(machine?.Day, state, seats, seat),
             Sequence = sequence,
         };
     }
@@ -88,6 +95,7 @@ public static class GameProjection
             LastResolution = lastResolution,
             StepDigest = stepDigest,
             LastVoidedRequest = lastVoidedRequest,
+            Day = machine?.Day?.Days.LastOrDefault(),
         };
     }
 }

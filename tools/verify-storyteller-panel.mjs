@@ -2,7 +2,7 @@
  * 真机验收批次装置（说书人 + 多玩家同局）。
  *
  * 它回答：**用真服务端 + 真浏览器 + 真 SQLite 做一次多客户端会话，
- * 说书人面板与玩家端能不能真的玩通一个夜晚？**（验收规程：docs/acceptance/AGENTS.md §3）
+ * 说书人面板与玩家端能不能真的玩通夜晚与白天？**（验收规程：docs/acceptance/AGENTS.md §3）
  *
  * 场景（花名册固定为 clockmaker / dreamer / no-dashii——当前已实现契约的三名角色）：
  *   1) 起真宿主（独立临时库）→ 读说书人票据与各席位票据 → 起 Vite → 起 Chromium；
@@ -13,22 +13,24 @@
  *      裁定点 → 每步摘要断言行 2（中毒 + 醉酒 + 未生效 R-0004 + 无选项行为）→ 信息只到 1 号玩家；
  *   6) 筑梦师槽位：2 号玩家收到定向请求（摘要断言行 1：中毒 + 归因 + 未生效）→ 作答 →
  *      说书人自由裁定（能力未生效）→ 信息只到 2 号玩家；期间其余玩家必须零请求、零进度；
- *   7) 第一夜 13 个槽位走完 → 第二夜（Recommended）：阶段推送让页头变「夜晚」（行 3）→
- *      诺-达鲺击杀请求由说书人**代填**（行 2：3 号玩家不刷新就回空态并注明代填）→
+ *   7) 第一夜 13 个槽位自行走完（服务端推送，无刷新）；
+ *   8) 白天阶段：说书人开白天 → 2 号提名 1 号 → 1 / 3 号投赞成 → 计票 → 结束并处决
+ *      （公开事实各端可见；处决与死亡分开记录）；
+ *   9) 第二夜（Recommended）：诺-达鲺击杀请求由说书人**代填**（行 2：3 号玩家不刷新就回空态并注明代填）→
  *      筑梦师请求由说书人**强制作废**（行 1：2 号玩家不刷新就看到请求消失与原因）；
  *      两个窗口都对无关玩家做窗口采样（行 4：持续零请求、零了结说明）；
- *   8) 第二夜走完 → 第三夜：诺-达鲺击杀请求由 3 号玩家本人作答（保留提交链路覆盖）→
+ *  10) 第二夜走完 → 第三夜：诺-达鲺击杀请求由 3 号玩家本人作答（保留提交链路覆盖）→
  *      等筑梦师请求挂起后，先报 3 号死亡（2 号中毒解除进摘要——行 5），再报 2 号死亡
- *      （请求依赖失效自动作废、作废说明进摘要——行 6；玩家侧同样收到作废推送）；
- *   9) 魔典主视图逐行取证（说书人端主视图 = 席位圆环）：行 1 圆环牌面、行 2 牌面标记 + 操作台
+ *      （请求依赖失效自动作废、作废说明进摘要——行 6；玩家侧同样收到作废推送）→ 2 号复活；
+ *  11) 魔典主视图逐行取证（说书人端主视图 = 席位圆环）：行 1 圆环牌面、行 2 牌面标记 + 操作台
  *      归因、行 4 当前槽位高亮 + 操作台内完成真实裁定、行 3 死亡帷幕与复活解除、
  *      行 6 下钻表格与牌面同源、行 8 窄视口纵向列表；行 5（视角隔离）沿用玩家端反方向断言；
- *  10) 恢复与重建：干净流重建 → 三项等价；改脏事件流里的原因文本 → 状态账报"不一致"并由重建修回；
+ *  12) 恢复与重建：干净流重建 → 三项等价；改脏事件流里的原因文本 → 状态账报"不一致"并由重建修回；
  *      停宿主 + 弄坏事件载荷 + 重启 → 说书人视图出现降级位与原因；重建仍失败 → 保持降级、原因更新；
  *      修复载荷后重建成功 → 降级清除；玩家端全程没有健康位文案 / 锚点；
- *  11) 重连补齐（快照权威）：隐藏事件不报假缺口、watermark 随快照序号前进；非零 watermark 跨掉线窗口
+ *  13) 重连补齐（快照权威）：隐藏事件不报假缺口、watermark 随快照序号前进；非零 watermark 跨掉线窗口
  *      重连（窗口内有其他席位的隐藏状态变化）仍无假告警；
- *  12) 全程截图（29 张）；断言只落在真正渲染数据的面板 / 牌面内（`data-testid` 锚点 + 单调计数）。
+ *  14) 全程截图（33 张）；断言只落在真正渲染数据的面板 / 牌面内（`data-testid` 锚点 + 单调计数）。
  *
  * 前置：Node >= 22.5（node:sqlite）、web/node_modules 已安装、本机已装 Chromium：
  *   cd web
@@ -613,6 +615,78 @@ async function main() {
 
   const nightOneClosed = await waitForPlanCompleted(storyteller.page, 120_000)
   check('第一夜 13 个槽位自行走完（服务端推送，无刷新）', nightOneClosed)
+
+  console.log('=== 9.5/11 白天阶段：开白天 → 提名 → 投票 → 计票 → 处决 ===')
+  // 白天是公开信息（百科《规则概要》三；在线口径 R-0017）：提名 / 票面 / 处决各端都能看到；
+  // 能不能动由服务端算好的权限位决定，前端只做使能提示。
+  const startDayOutcome = await runCommand(storyteller.page, '开白天', () =>
+    storyteller.page.getByTestId('st-start-day').click(),
+  )
+  check('白天阶段：开白天被受理', startDayOutcome.kind === 'Accepted', startDayOutcome.raw)
+
+  const dayPanel = storyteller.page.getByTestId('st-day')
+  const dayOpen = await waitForAttribute(dayPanel, 'data-day-status', 'Open', 30_000)
+  check('白天阶段：说书人面板进入「白天进行中」', dayOpen === 'Open', `data-day-status=${dayOpen}`)
+  await screenshot(storyteller.page, '30-day-open')
+
+  // 2 号提名 1 号（1 号被处决，不影响后续夜晚剧情需要存活的 2 / 3 号）。
+  const nominatorPage = players.get(dreamerSeat).page
+  await nominatorPage.getByTestId('player-nominee-select').selectOption(String(clockmakerSeat))
+  await nominatorPage.getByTestId('player-nominate').click()
+
+  const nominationList = storyteller.page.getByTestId('st-day-nominations')
+  const nominationCount = await waitForAttribute(nominationList, 'data-nomination-count', '1', 30_000)
+  check('白天阶段：提名进入公开账目', nominationCount === '1', `data-nomination-count=${nominationCount}`)
+  await screenshot(storyteller.page, '31-day-nomination')
+
+  // 三名存活玩家各投一票（2 号提名者也投；1 号作为被提名者可以投自己——百科《规则概要》三-2）。
+  // 玩家端没有回执区：判据是公开票数随推送变化。
+  for (const voteSeat of [clockmakerSeat, dreamerSeat, demonSeat]) {
+    await players.get(voteSeat).page.getByTestId('player-vote-yes').click()
+  }
+
+  const firstNomination = nominationList.locator('li').first()
+  const voteCount = await waitForAttribute(firstNomination, 'data-nomination-votes', '3', 30_000)
+  check('白天阶段：三次投票都到服务端（公开票数 3）', voteCount === '3', `data-nomination-votes=${voteCount}`)
+
+  const countVotesOutcome = await runCommand(storyteller.page, '计票', () =>
+    storyteller.page.getByTestId('st-count-votes').click(),
+  )
+  check('白天阶段：计票被受理', countVotesOutcome.kind === 'Accepted', countVotesOutcome.raw)
+
+  const aboutToBeExecuted = storyteller.page.getByTestId('st-about-to-be-executed')
+  const aboutSeat = await waitForAttribute(aboutToBeExecuted, 'data-seat', String(clockmakerSeat), 30_000)
+  check(
+    '白天阶段：票数过半且最多 → 进入「即将被处决」',
+    aboutSeat === String(clockmakerSeat),
+    `data-seat=${aboutSeat}`,
+  )
+  await screenshot(storyteller.page, '32-day-counted')
+
+  const closeDayOutcome = await runCommand(storyteller.page, '结束白天并处决', () =>
+    storyteller.page.getByTestId('st-close-day').click(),
+  )
+  check('白天阶段：结束白天被受理', closeDayOutcome.kind === 'Accepted', closeDayOutcome.raw)
+
+  const executed = storyteller.page.getByTestId('st-executed')
+  const executedSeat = await waitForAttribute(executed, 'data-seat', String(clockmakerSeat), 30_000)
+  const dayClosed = await waitForAttribute(dayPanel, 'data-day-status', 'Closed', 30_000)
+  const executedLife = await waitForAttribute(cardOf(clockmakerSeat), 'data-life', 'Dead', 15_000)
+  check(
+    '白天阶段：处决被记录且死亡另行落账（处决 ≠ 死亡）',
+    executedSeat === String(clockmakerSeat) && dayClosed === 'Closed' && executedLife === 'Dead',
+    `处决=${executedSeat}；白天=${dayClosed}；牌面=${executedLife}`,
+  )
+
+  // 玩家侧同一条公开事实：无关玩家也能看到「1 号被处决」。
+  const playerExecuted = players.get(demonSeat).page.getByTestId('player-executed')
+  const playerExecutedSeat = await waitForAttribute(playerExecuted, 'data-seat', String(clockmakerSeat), 30_000)
+  check(
+    '白天阶段：公开事实推到无关玩家（3 号看到 1 号被处决）',
+    playerExecutedSeat === String(clockmakerSeat),
+    `data-seat=${playerExecutedSeat}`,
+  )
+  await screenshot(players.get(demonSeat).page, '33-day-executed')
 
   console.log('=== 10/11 第二夜与第三夜：代填 / 强制作废 / 阶段推送（行 1–4）→ 依赖变化（行 5 / 6）===')
   const nightTwo = await runCommand(storyteller.page, '开夜2', async () => {
@@ -1203,6 +1277,10 @@ async function main() {
     '27-room-health-rebuild-failed',
     '28-room-health-cleared',
     '29-player-reconnect-no-gap',
+    '30-day-open',
+    '31-day-nomination',
+    '32-day-counted',
+    '33-day-executed',
   ]
   const missingShots = expectedShots.filter((name) => !existsSync(path.join(screenshotsDir, `${name}.png`)))
   check(`证据截图都已落盘（${expectedShots.length} 张）`, missingShots.length === 0, missingShots.join(',') || screenshotsDir)

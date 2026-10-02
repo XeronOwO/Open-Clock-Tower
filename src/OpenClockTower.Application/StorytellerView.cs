@@ -78,4 +78,7 @@ public sealed record StorytellerView
 
     /// <summary>最近一次被作废的操作请求（含「哪条依赖不满足」的说明）；还没有作废过时为 null。</summary>
     public VoidedRequestSnapshot? LastVoidedRequest { get; init; }
+
+    /// <summary>最新一天（进行中或最近结束）的白天账；还没有开过白天时为 null。</summary>
+    public DayRecord? Day { get; init; }
 }

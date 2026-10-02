@@ -132,6 +132,11 @@ public sealed class NotificationDispatcher
                     await PushPhaseStartedAsync(startedPhase, cancellationToken);
                     break;
 
+                // 白天是公开信息：按席位投影后各推一份（含"我现在能不能动"）。
+                case GameNotificationKind.DayChanged:
+                    await PushDayChangedAsync(cancellationToken);
+                    break;
+
                 case GameNotificationKind.StorytellerViewChanged:
                 case GameNotificationKind.RoomRebuilt:
                     await PushStorytellerViewAsync(cancellationToken);
@@ -161,6 +166,32 @@ public sealed class NotificationDispatcher
             phase,
             pushed,
             seats.Count);
+    }
+
+    /// <summary>把白天状态按席位投影广播给已绑定的连接；未连接玩家重连时从快照取同一份事实。</summary>
+    private async Task PushDayChangedAsync(CancellationToken cancellationToken)
+    {
+        var seats = _registry.Seats;
+        var pushed = 0;
+        foreach (var seat in seats)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!_registry.TryGetSeatConnection(seat, out var connectionId))
+            {
+                continue;
+            }
+
+            var day = _session.GetPlayerView(seat).Day;
+            if (day is null)
+            {
+                continue;
+            }
+
+            await _hub.Clients.Client(connectionId).ReceiveDayChanged(ProjectionMapper.ToDto(day));
+            pushed++;
+        }
+
+        _logger.LogInformation("已广播白天状态：推送={Pushed}/{Total}", pushed, seats.Count);
     }
 
     private async Task PushStorytellerViewAsync(CancellationToken cancellationToken)

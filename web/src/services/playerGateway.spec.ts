@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import type { ReconnectBundleDto } from '@/contracts/game'
+import { normalizeDayView } from '@/display/format'
 import {
   applyBundle,
   normalizeAnswered,
   normalizeBundle,
   normalizePhaseStarted,
+  normalizePlayerDay,
   normalizePlayerEvent,
   normalizeRequest,
   normalizeSeatJoin,
@@ -84,10 +86,41 @@ describe('重连包规范化', () => {
   })
 })
 
+describe('白天投影规范化', () => {
+  it('公开事实与权限位保留；缺关键字段的历史数据不编造', () => {
+    const day = normalizePlayerDay({
+      publicFacts: {
+        dayNumber: 1,
+        status: 'Open',
+        nominations: [
+          { index: 1, nominator: 1, nominee: 2, status: 'Voting', votes: 1, voters: [3] },
+        ],
+        aboutToBeExecuted: null,
+        executed: null,
+        openNominationIndex: 1,
+      },
+      canNominate: false,
+      canVote: true,
+      voted: false,
+      candidates: [3],
+    })
+
+    expect(day?.publicFacts.dayNumber).toBe(1)
+    expect(day?.publicFacts.nominations[0]?.voters).toEqual([3])
+    expect(day?.canVote).toBe(true)
+    expect(day?.candidates).toEqual([3])
+
+    // 公开事实缺天数 / 状态 → 整份白天投影不可识别，宁可少显示。
+    expect(normalizePlayerDay({ publicFacts: { status: 'Open' } })).toBeNull()
+    expect(normalizeDayView({ dayNumber: 2 })).toBeNull()
+    expect(normalizePlayerDay(null)).toBeNull()
+  })
+})
+
 describe('重连补齐折叠（快照权威）', () => {
   const bundle = (sequence: number, events: ReconnectBundleDto['events']): ReconnectBundleDto => ({
     sequence,
-    view: { seat: 1, phase: 'FirstNight', pendingRequest: null, informationResults: [] },
+    view: { seat: 1, phase: 'FirstNight', pendingRequest: null, informationResults: [], day: null },
     events,
   })
 

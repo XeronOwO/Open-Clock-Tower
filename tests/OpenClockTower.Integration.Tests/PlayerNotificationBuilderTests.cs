@@ -98,4 +98,37 @@ public sealed class PlayerNotificationBuilderTests
         Assert.DoesNotContain(notifications, item => item.Kind == GameNotificationKind.OperationRequestAnswered);
         Assert.Contains(notifications, item => item.Kind == GameNotificationKind.StorytellerViewChanged);
     }
+
+    /// <summary>白天是公开信息：同批白天事件折算成一条 DayChanged（去重），并照旧附带说书人视图变更。</summary>
+    [Fact]
+    public void DayEvents_ProduceASingleDayChangedBroadcast()
+    {
+        var notifications = GameNotificationBuilder.Build(
+            [
+                new DayStartedEvent { DayNumber = 1 },
+                new NominationMadeEvent
+                {
+                    DayNumber = 1,
+                    NominationIndex = 1,
+                    Nominator = new SeatId(1),
+                    Nominee = new SeatId(2),
+                },
+                new VoteCastEvent
+                {
+                    DayNumber = 1,
+                    NominationIndex = 1,
+                    Voter = new SeatId(1),
+                    Voted = true,
+                },
+                new ExecutedEvent { DayNumber = 1, Seat = new SeatId(2) },
+                new DayClosedEvent { DayNumber = 1 },
+            ],
+            previousMachine: null);
+
+        Assert.Single(notifications, item => item.Kind == GameNotificationKind.DayChanged);
+        Assert.Contains(notifications, item => item.Kind == GameNotificationKind.StorytellerViewChanged);
+        Assert.All(
+            notifications.Where(item => item.Kind == GameNotificationKind.DayChanged),
+            item => Assert.Null(item.Seat));
+    }
 }

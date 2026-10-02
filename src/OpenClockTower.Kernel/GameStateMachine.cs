@@ -72,6 +72,15 @@ public static class GameStateMachine
             OperationRequestVoidedEvent => current,
             InformationResultIssuedEvent => current,
 
+            // 白天流程事件：它们改变的是步骤机状态里的白天账（StepMachineFolder），不改六维度与效果；
+            // 处决产生的死亡由配套的 SeatStateChangedEvent 折进账里（处决 ≠ 死亡，百科《处决》）。
+            DayStartedEvent => current,
+            NominationMadeEvent => current,
+            VoteCastEvent => current,
+            VoteCountedEvent => current,
+            ExecutedEvent => current,
+            DayClosedEvent => current,
+
             _ => throw new InvalidOperationException($"未知事件类型：{gameEvent.GetType().Name}"),
         };
     }

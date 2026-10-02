@@ -101,6 +101,36 @@ public static class CommandGatePipeline
                 "只有说书人或宿主可以上报座位状态（上帝视角的观测）",
                 "identity"),
 
+            StartDayCommand when actor.Kind is ActorKind.Host or ActorKind.Storyteller => null,
+            StartDayCommand => Reject(
+                "identity.host_only",
+                "只有宿主或说书人可以开启白天",
+                "identity"),
+
+            NominateCommand when actor.Kind == ActorKind.Player && actor.Seat is not null => null,
+            NominateCommand => Reject(
+                "identity.player_only",
+                "只有玩家本人可以发起提名",
+                "identity"),
+
+            CastVoteCommand when actor.Kind == ActorKind.Player && actor.Seat is not null => null,
+            CastVoteCommand => Reject(
+                "identity.player_only",
+                "只有玩家本人可以投票",
+                "identity"),
+
+            CountVotesCommand when actor.Kind is ActorKind.Host or ActorKind.Storyteller => null,
+            CountVotesCommand => Reject(
+                "identity.storyteller_only",
+                "只有说书人或宿主可以计票",
+                "identity"),
+
+            CloseDayCommand when actor.Kind is ActorKind.Host or ActorKind.Storyteller => null,
+            CloseDayCommand => Reject(
+                "identity.storyteller_only",
+                "只有说书人或宿主可以结束白天",
+                "identity"),
+
             _ when actor.Kind == ActorKind.Storyteller => null,
             _ => Reject("identity.storyteller_only", "这条命令只有说书人可以发出", "identity"),
         };
@@ -139,6 +169,42 @@ public static class CommandGatePipeline
                 return null;
 
             case RebuildRoomCommand:
+                return null;
+
+            case StartDayCommand:
+                if (machine is null)
+                {
+                    return Reject(
+                        "phase.day_requires_night",
+                        "白天只能跟在夜晚之后：本局还没有开始过任何阶段",
+                        "phase");
+                }
+
+                if (!machine.IsPlanCompleted)
+                {
+                    return Reject(
+                        "phase.phase_running",
+                        "当前阶段还没有走完；先推进、强推或重建，不要静默丢弃挂起",
+                        "phase");
+                }
+
+                if (machine.Plan.Phase is not (GamePhase.FirstNight or GamePhase.OtherNight))
+                {
+                    return Reject(
+                        "phase.day_requires_night",
+                        "白天只能跟在夜晚之后：上一个阶段不是夜晚",
+                        "phase");
+                }
+
+                return null;
+
+            // 白天四类输入统一要求"白天开着"：具体规则（谁有资格、票数够不够）在内核里判。
+            case NominateCommand or CastVoteCommand or CountVotesCommand or CloseDayCommand:
+                if (machine is null || machine.Plan.Phase != GamePhase.Day || machine.Day?.OpenDay is null)
+                {
+                    return Reject("phase.not_open_day", "现在不是白天，或白天已经结束", "phase");
+                }
+
                 return null;
 
             case StartPhaseCommand:
@@ -198,6 +264,9 @@ public static class CommandGatePipeline
             AssignCharactersCommand assign => CheckAssignments(assign, setup),
             StartNightCommand startNight => CheckStartNight(startNight, machine, setup),
             ApplySeatStateCommand seat => CheckSeatExists(seat.Seat, setup),
+            NominateCommand nominate => CheckSeatExists(nominate.Nominee, setup),
+            CastVoteCommand castVote => CheckNominationIndex(castVote.NominationIndex),
+            CountVotesCommand countVotes => CheckNominationIndex(countVotes.NominationIndex),
             SubmitResponseCommand submit => CheckOption(machine, submit.RequestId, submit.OptionValue),
             ProxyFillCommand proxy => CheckOption(machine, proxy.RequestId, proxy.OptionValue),
             VoidRequestCommand voidRequest => Enum.IsDefined(voidRequest.Reason)
@@ -326,6 +395,12 @@ public static class CommandGatePipeline
             ? null
             : Reject("legality.option_not_legal", $"选项不在合法集合里：{optionValue}", "legality");
     }
+
+    /// <summary>提名序号的形状检查：从 1 开始。是否"当前开放的那一项"由内核按白天账判定。</summary>
+    private static CommandRejection? CheckNominationIndex(int index) =>
+        index < 1
+            ? Reject("legality.nomination_index_invalid", $"提名序号必须从 1 开始：{index}", "legality")
+            : null;
 
     private static CommandRejection Reject(string code, string message, string gate) =>
         new() { Code = code, Message = message, Gate = gate };
