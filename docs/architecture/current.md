@@ -208,10 +208,10 @@ StepMachine（步骤机）
 | 开局分配 | `AssignCharactersCommand`：每席一条 `SeatStateChangedEvent`（角色 + 初始生死 = 存活），只允许在首个阶段开始前使用（D-0017 / R-0015） |
 | 建表 | `NightPlanBuilder` + `StartNightCommand`：口径进 `StepPlan.Variant`；缺事实显式拒绝，不猜（R-0014 / D-0013） |
 | 状态变化归因 | `SeatStateChangedEvent`（座位 + 实际观测维度 + 原因 + 导致方）；说书人视图给 `RecentSeatChanges` / `CurrentSlotActor` / `CurrentSlotContext` / `StepDigest`（每步摘要：状态 + 能力判定 + 作废说明） |
-| 玩家可见事件 | 重连补齐只下发 `PlayerEvent` **白名单投影**（公开阶段 + 发给自己的请求 / 响应 / 作废），**绝不下发原始事件流** |
+| 玩家可见事件 | 重连补齐只下发 `PlayerEvent` **白名单投影**（公开阶段 + 发给自己的请求 / 响应 / 作废），**绝不下发原始事件流**；**在线推送的覆盖面与它一一对应**（五类事件各有通知，`PlayerNotificationBuilderTests` 锁住） |
 | 控制模式 | `ControlMode.Automatic` / `StorytellerTakeover`；接管时节拍器不自动推进，交还后恢复 |
 | 作废 | 座位依赖（`SeatDependency`）失效 → 自动作废并写明原因；说书人可强制作废 |
-| 推送 | SignalR 定向单播；断线重连 = 快照 + 补齐 + **重投未响应请求**；说书人变更也推送（不需要轮询） |
+| 推送 | SignalR 定向单播（请求 / 信息 / 作废 / 响应只到当事连接）；阶段开始是公开信息，广播给**全部已绑定席位**；断线重连 = 快照 + 补齐 + **重投未响应请求**；说书人变更也推送（不需要轮询） |
 
 ### 2.8 状态账与效果归因链（D-0015）
 
@@ -357,7 +357,7 @@ StepMachine（步骤机）
 | `tests/OpenClockTower.Kernel.Tests` | 内核行为测试 | 已建（123 条：六状态 / 效果生命周期 / 两本账 / 裁定点与疯狂 / 步骤机与操作请求 / 状态账与效果归因 / 能力生效判定 / 结算调度 / 维度对账） |
 | `tests/OpenClockTower.Rules.Tests` | 规则数据测试 | 已建（57 条：夜晚顺序表 / 结构不变量 / 变体差异 / 建表 / 花名册档案 / 诺-达鲺常驻中毒与角色契约） |
 | `tests/OpenClockTower.NormativeGates.Tests` | 把规范写成会失败的测试 | 已建（17 条门禁，逐条先红后绿） |
-| `tests/OpenClockTower.Integration.Tests` | 多客户端端到端 | 已建（34 条：真实宿主 + 真实 SignalR 客户端；含真实进程重启、损坏载荷恢复、预阶段状态观测、分配→开夜→请求/裁定点，以及结算引擎验收矩阵 1–8 的 3 条真宿主链路） |
+| `tests/OpenClockTower.Integration.Tests` | 多客户端端到端 | 已建（43 条：真实宿主 + 真实 SignalR 客户端；含真实进程重启、损坏载荷恢复、预阶段状态观测、分配→开夜→请求/裁定点，结算引擎验收矩阵 1–8 的 3 条真宿主链路，以及玩家推送的覆盖面与投递方向） |
 | `web/` | Vue 3 + TS 前端（单 SPA 两套视图） | 已建（说书人上帝视角面板 + 玩家端骨架；连接 / 命令 / 防御性呈现分层，见 `web/AGENTS.md`、D-0018） |
 | `tools/` | 抓取、索引、数据生成、来源核对 | 已建（`fetch-wiki.ps1`：79 页快照 + SHA256 索引；`check-night-order.ps1`：顺序表与快照逐条核对） |
 

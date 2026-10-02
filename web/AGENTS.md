@@ -44,13 +44,14 @@ npm run dev          # http://localhost:5273
 ## 3.1 验收批次取证（说书人 + 玩家多客户端）
 
 ```bash
-node tools/verify-storyteller-panel.mjs        # 退出码 0 = 71 项断言全过
+node tools/verify-storyteller-panel.mjs        # 退出码 0 = 91 项断言全过
 ```
 
 它起真宿主 + 真 Vite + 真 Chromium，按 `--seats` 给每一席开一个**独立浏览器上下文**
-（同一 SPA 的 `#player`），走完"三客户端加入 → 分配 → 开夜 → 钟表匠裁定 → 筑梦师请求与作答 →
-信息单播 → 第一夜走完 → 第二夜击杀请求 → 挂起请求下报来源死亡与行动者死亡"，
-把 13 张截图写进 `artifacts/web/`（gitignored；运行日志由调用方重定向，
+（同一 SPA 的 `#player`），走完"三客户端加入 → 分配 → 开夜（阶段推送见页头）→ 钟表匠裁定 →
+筑梦师请求与作答 → 信息单播 → 第一夜走完 → 第二夜代填与强制作废（无关玩家窗口采样）→
+第三夜击杀请求与依赖变化（中毒解除、请求自动作废）"，
+把 16 张截图写进 `artifacts/web/`（gitignored；运行日志由调用方重定向，
 如 `2>&1 | Tee-Object artifacts/web/batch-run.log`）。
 场景固定三角色（clockmaker / dreamer / no-dashii），节拍配额默认 `--quota 2` 秒。
 **外部耦合（换机器前先核对）**：

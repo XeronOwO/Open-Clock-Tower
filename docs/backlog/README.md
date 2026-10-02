@@ -61,7 +61,6 @@ todo/  →  in-progress/  →  review/  →  done/
 ### Todo
 
 - [界面游戏化：魔典式小镇视图](todo/grimoire-view.md) — **Medium** — 说书人看板从"数据表格"改为"以席位为中心"的图形化魔典：角色 / 生死 / 状态 / 提示标记一眼可见
-- [玩家端视图新鲜度：请求了结与阶段变化的推送 / 呈现](todo/player-view-freshness.md) — **Medium** — 作废 / 代填 / 阶段变化没有到达玩家界面，玩家会停在旧请求与旧阶段
 - [零信任安全模型](todo/zero-trust-security-model.md) — **High** — 鉴权两级凭据 + 操作四道闸 + 服务端强制投影，负向测试为主
 - [重建报告对比状态账](todo/rebuild-state-ledger-comparison.md) — **Medium** — 重建报告补上状态账等价对比，半个结论变完整
 - [恢复失败后的房间健康位](todo/room-health-degradation-flag.md) — **Medium** — 区分「空账」与「数据丢了」，降级标记显式重建才清除
@@ -72,6 +71,7 @@ todo/  →  in-progress/  →  review/  →  done/
 
 ### Done
 
+- [玩家端视图新鲜度：请求了结与阶段变化的推送 / 呈现](done/player-view-freshness.md) — 作废 / 代填 / 阶段变化在线到达玩家界面（含阶段中文化）；批次 E4 行 1–5 全通过
 - [说书人上帝视角：每步状态信息、归因与最终计算结论](done/storyteller-step-insights.md) — 说书人每步摘要：行动者全部已观测状态及归因、能力生效判定、无选项行为、解除与作废说明；批次 E3 行 1–6 全通过
 - [自动步骤机与操作请求](done/operation-request-step-machine.md) — 轮到你时服务端主动推送请求；无超时，说书人可接管/强推/重建；批次 E2 判行 16 / 17 通过
 - [《梦殒春宵》夜晚顺序表（结算引擎的输入）](done/sects-and-violets-night-order.md) — 规则层第一块数据：两套口径 + 逐条来源 + 占位移除；批次 E2 真机建表 13 槽位
