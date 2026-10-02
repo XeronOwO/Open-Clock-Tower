@@ -93,9 +93,12 @@ internal static class StepSlotEntry
             {
                 Target = deferred.Target,
                 Killed = true,
-                Note = "窗口关闭时仍未裁定：按恶魔攻击的自然结果生效（rulings.md R-0030 第 3 条）",
+                Note = deferred.Transformation is null
+                    ? "窗口关闭时仍未裁定：按恶魔攻击的自然结果生效（rulings.md R-0030 第 3 条）"
+                    : "窗口关闭时仍未裁定：方古的侵染按自然结果生效——外来者变成新的邪恶方古、"
+                        + "原方古死亡（rulings.md R-0030 第 3 条 / R-0034）",
             });
-            PitHagNightMachine.AppendKill(events, ledger, deferred, "窗口关闭时未裁定");
+            PitHagNightMachine.AppendOutcome(events, ledger, deferred, "窗口关闭时未裁定");
         }
 
         events.Add(new PitHagNightClosedEvent

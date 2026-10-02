@@ -69,6 +69,16 @@ public sealed record AbilityResolutionContext
     public bool PitHagNightActive { get; init; }
 
     /// <summary>
+    /// 方古的「限一次」事实是否已经用掉（本局已完成过一次外来者侵染）。
+    /// </summary>
+    /// <remarks>
+    /// 方古契约据此决定「首次成功杀死外来者 → 转化」是否仍成立：标记落在魔典中心后**整局不复用**，
+    /// 即使原方古死亡 / 换角（百科《方古》· 2026-10-01 抓取 · 运作方式 14）；
+    /// 平台口径见 <c>docs/standard/rulings.md</c> R-0034。
+    /// </remarks>
+    public bool FangGuInfectionConsumed { get; init; }
+
+    /// <summary>
     /// 本次行动开始时，白天账里**已经开始的白天数**（夜晚 N 行动时为 N−1）。
     /// 需要"跨夜存续窗口"的能力用它算绝对到期日——洗脑师的疯狂要求在施加夜的次日白天与其后夜晚有效，
     /// 下一个黎明撤下（<c>docs/standard/rulings.md</c> R-0021）。

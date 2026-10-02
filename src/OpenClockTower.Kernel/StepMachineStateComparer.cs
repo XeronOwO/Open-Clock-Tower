@@ -31,8 +31,99 @@ public static class StepMachineStateComparer
                && string.Equals(left.Block?.Reason, right.Block?.Reason, StringComparison.Ordinal)
                && DayEquivalent(left.Day, right.Day)
                && OutcomeEquivalent(left.Outcome, right.Outcome)
-               && KlutzChoicesEquivalent(left.KlutzChoices, right.KlutzChoices);
+               && KlutzChoicesEquivalent(left.KlutzChoices, right.KlutzChoices)
+               && FangGuInfectionEquivalent(left.FangGuInfection, right.FangGuInfection)
+               && PitHagNightEquivalent(left.PitHagNight, right.PitHagNight)
+               && BarberNightEquivalent(left.BarberNight, right.BarberNight);
     }
+
+    /// <summary>
+    /// 方古的「限一次」整局事实必须进比较器：它是"要不要侵染"的判定输入，
+    /// 漏比会让重建校验在整局标记上失明（R-0034）。
+    /// </summary>
+    private static bool FangGuInfectionEquivalent(FangGuInfection? left, FangGuInfection? right) =>
+        (left, right) switch
+        {
+            (null, null) => true,
+            (not null, null) or (null, not null) => false,
+            ({ } a, { } b) => a.Seat == b.Seat
+                && a.Source == b.Source
+                && string.Equals(a.Note, b.Note, StringComparison.Ordinal),
+        };
+
+    /// <summary>麻脸巫婆之夜的裁量窗口（含待定死亡与转化载荷）进比较器：窗口状态直接决定后续裁定结果。</summary>
+    private static bool PitHagNightEquivalent(PitHagNight? left, PitHagNight? right)
+    {
+        if (ReferenceEquals(left, right))
+        {
+            return true;
+        }
+
+        if (left is null || right is null)
+        {
+            return false;
+        }
+
+        return left.Source == right.Source
+               && left.ClosesAfterSlotIndex == right.ClosesAfterSlotIndex
+               && left.CasualtyAbility == right.CasualtyAbility
+               && DeferredDeathsEquivalent(left.Deferred, right.Deferred);
+    }
+
+    private static bool DeferredDeathsEquivalent(
+        IReadOnlyList<DeferredDeath> left,
+        IReadOnlyList<DeferredDeath> right)
+    {
+        if (left.Count != right.Count)
+        {
+            return false;
+        }
+
+        for (var index = 0; index < left.Count; index++)
+        {
+            var a = left[index];
+            var b = right[index];
+            if (a.Target != b.Target
+                || a.Source != b.Source
+                || a.Ability != b.Ability
+                || !string.Equals(a.Note, b.Note, StringComparison.Ordinal)
+                || !TransformationEquivalent(a.Transformation, b.Transformation))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool TransformationEquivalent(DeferredTransformation? left, DeferredTransformation? right)
+    {
+        if (ReferenceEquals(left, right))
+        {
+            return true;
+        }
+
+        if (left is null || right is null)
+        {
+            return false;
+        }
+
+        return left.Target == right.Target
+               && left.Character == right.Character
+               && left.Alignment == right.Alignment
+               && left.Dies == right.Dies
+               && string.Equals(left.Note, right.Note, StringComparison.Ordinal);
+    }
+
+    /// <summary>「今晚理发」事实（R-0033）进比较器：跨阶段保留的事实决定当夜是否还有恶魔交互。</summary>
+    private static bool BarberNightEquivalent(BarberNight? left, BarberNight? right) =>
+        (left, right) switch
+        {
+            (null, null) => true,
+            (not null, null) or (null, not null) => false,
+            ({ } a, { } b) => a.Source == b.Source
+                && string.Equals(a.Note, b.Note, StringComparison.Ordinal),
+        };
 
     private static bool OutcomeEquivalent(GameOutcome? left, GameOutcome? right) =>
         (left, right) switch

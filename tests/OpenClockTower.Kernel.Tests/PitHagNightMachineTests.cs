@@ -92,6 +92,94 @@ public sealed class PitHagNightMachineTests
         Assert.Null(outcome.State!.PitHagNight);
     }
 
+    /// <summary>
+    /// 携带「转化」载荷的待定死亡：说书人确认时**不产生被攻击者的死亡**，改为
+    /// 「外来者变邪恶方古 + 原方古死亡 + 限一次标记」——方古侵染；平台口径见 R-0034。
+    /// </summary>
+    [Fact]
+    public void ResolveDeferred_Transformation_ConvertsInsteadOfKilling()
+    {
+        var state = TransformationState(slotIndex: 1, closesAfter: 2);
+        var ledger = Ledger(
+            (1, "pit-hag", LifeState.Alive),
+            (2, "sweetheart", LifeState.Alive),
+            (3, "fang-gu", LifeState.Alive));
+
+        var outcome = StepMachine.Handle(
+            state,
+            Context(ledger),
+            new ResolveDeferredDeathInput { Target = new SeatId(2), Killed = true });
+
+        Assert.Equal(StepMachineOutcomeKind.Applied, outcome.Kind);
+
+        var changes = outcome.Events.OfType<SeatStateChangedEvent>().ToArray();
+        Assert.Equal(2, changes.Length);
+
+        var converted = Assert.Single(changes, change => change.Seat == new SeatId(2));
+        Assert.Equal(new CharacterId("fang-gu"), converted.Character);
+        Assert.Equal(Alignment.Evil, converted.Alignment);
+        Assert.Null(converted.Life);
+
+        var died = Assert.Single(changes, change => change.Seat == new SeatId(3));
+        Assert.Equal(LifeState.Dead, died.Life);
+
+        var marker = Assert.Single(outcome.Events.OfType<FangGuInfectionRecordedEvent>());
+        Assert.Equal(new SeatId(2), marker.Seat);
+        Assert.Equal(new SeatId(3), marker.Source);
+        Assert.NotNull(outcome.State!.FangGuInfection);
+        Assert.Empty(outcome.State!.PitHagNight!.Deferred);
+    }
+
+    /// <summary>
+    /// 目标在确认前已经死亡 → 整体不发生（没有「成功杀死」这回事，原方古也不死）；
+    /// 裁定本身仍留在事件流里，只从待定表移除。
+    /// </summary>
+    [Fact]
+    public void ResolveDeferred_Transformation_WhenTargetAlreadyDead_SkipsConversion()
+    {
+        var state = TransformationState(slotIndex: 1, closesAfter: 2);
+        var ledger = Ledger(
+            (1, "pit-hag", LifeState.Alive),
+            (2, "sweetheart", LifeState.Dead),
+            (3, "fang-gu", LifeState.Alive));
+
+        var outcome = StepMachine.Handle(
+            state,
+            Context(ledger),
+            new ResolveDeferredDeathInput { Target = new SeatId(2), Killed = true });
+
+        Assert.Equal(StepMachineOutcomeKind.Applied, outcome.Kind);
+        Assert.Contains(outcome.Events, gameEvent => gameEvent is DeferredDeathResolvedEvent { Killed: true });
+        Assert.Empty(outcome.Events.OfType<SeatStateChangedEvent>());
+        Assert.Empty(outcome.Events.OfType<FangGuInfectionRecordedEvent>());
+        Assert.Null(outcome.State!.FangGuInfection);
+    }
+
+    /// <summary>窗口收口时未裁定的转化载荷按自然结果生效：走转化而不是击杀（R-0030 第 3 条 / R-0034）。</summary>
+    [Fact]
+    public void WindowClose_Transformation_TakesEffectAsConversion()
+    {
+        var state = TransformationState(slotIndex: 2, closesAfter: 2);
+        var ledger = Ledger(
+            (1, "pit-hag", LifeState.Alive),
+            (2, "sweetheart", LifeState.Alive),
+            (3, "fang-gu", LifeState.Alive));
+
+        var outcome = StepMachine.Handle(state, Context(ledger), new SlotQuotaElapsedInput());
+
+        Assert.Equal(StepMachineOutcomeKind.Applied, outcome.Kind);
+        Assert.Contains(
+            outcome.Events,
+            gameEvent => gameEvent is DeferredDeathResolvedEvent { Killed: true, Note: var note }
+                && note.Contains("侵染", StringComparison.Ordinal));
+        var changes = outcome.Events.OfType<SeatStateChangedEvent>().ToArray();
+        Assert.Equal(2, changes.Length);
+        Assert.Contains(changes, change => change.Seat == new SeatId(3) && change.Life == LifeState.Dead);
+        Assert.Single(outcome.Events.OfType<FangGuInfectionRecordedEvent>());
+        Assert.NotNull(outcome.State!.FangGuInfection);
+        Assert.Null(outcome.State!.PitHagNight);
+    }
+
     /// <summary>窗口关闭之后：追加死亡与裁定都被显式拒绝（不是静默忽略）。</summary>
     [Fact]
     public void AfterClose_BothCommandsAreRejected()
@@ -192,6 +280,29 @@ public sealed class PitHagNightMachineTests
             StepSlot.Beat(new StepSlotId("dawn")),
         ],
     };
+
+    /// <summary>带一条「方古侵染」转化载荷的窗口状态（目标 2 号外来者、来源 3 号方古）。</summary>
+    private static StepMachineState TransformationState(int slotIndex, int closesAfter)
+    {
+        var state = NightState(slotIndex, closesAfter);
+        return StepMachine.Apply(
+            state,
+            new DeferredDeathRecordedEvent
+            {
+                Target = new SeatId(2),
+                Source = new SeatId(3),
+                Ability = new AbilityId("fang-gu"),
+                Note = "方古夜间击杀（首次命中外来者：说书人确认则按侵染结算）",
+                Transformation = new DeferredTransformation
+                {
+                    Target = new SeatId(2),
+                    Character = new CharacterId("fang-gu"),
+                    Alignment = Alignment.Evil,
+                    Dies = new SeatId(3),
+                    Note = "外来者（2 号）变成新的邪恶方古，原方古（3 号）死亡",
+                },
+            })!;
+    }
 
     private static SettlementContext Context(GameState ledger) =>
         new()

@@ -14,8 +14,10 @@ namespace OpenClockTower.Rules;
 /// 非角色条目（黄昏 / 爪牙信息 / 恶魔信息 / 信息环节开始 / 黎明）→ 节拍或黎明等待槽位。
 /// </para>
 /// <para>
-/// **不猜**：席位没有角色、在场角色的生死未观测、行动契约未实现、角色出现在多个席位，
+/// **不猜**：席位没有角色、在场角色的生死未观测、行动契约未实现、同一角色被**多名存活玩家**持有，
 /// 一律返回失败结果，由调用方拒绝开夜；禁止把"不知道"映射成默认值（D-0015 的同一原则）。
+/// 已死亡玩家的角色标记仍留在魔典上（角色唯一只约束存活持有者）——
+/// 方古侵染外来者造成的「已死亡原方古 + 存活新方古」两个同名标记即由此而来（R-0034）。
 /// </para>
 /// <para>
 /// 角色合法性（是否在首版花名册里）由分配闸独占；建表器只处理夜晚顺序表上的角色——
@@ -152,27 +154,36 @@ public static class NightPlanBuilder
             return (StepSlot.Empty(new StepSlotId(tag), character), null);
         }
 
-        if (owners.Length > 1)
-        {
-            return (null, NightPlanOutcome.Failure(
-                "plan.character_duplicated",
-                $"角色 {character.Value} 同时出现在多个席位：{string.Join(", ", owners.Select(owner => owner.Seat.Value))}"));
-        }
-
-        var actor = owners[0];
-        if (actor.LifeValue is null)
+        // 生死未观测的持有者：不猜（D-0015）。任何一名持有者的生死未观测都拒绝——
+        // 否则"他是不是也活着"无从判定，角色归属就不唯一。
+        var unobserved = owners.FirstOrDefault(owner => owner.LifeValue is null);
+        if (unobserved is not null)
         {
             return (null, NightPlanOutcome.Failure(
                 "plan.life_unobserved",
-                $"席位 {actor.Seat.Value}（{character.Value}）的生死还没有观测，建表不替它猜"));
+                $"席位 {unobserved.Seat.Value}（{character.Value}）的生死还没有观测，建表不替它猜"));
         }
 
-        if (actor.LifeValue == LifeState.Dead)
+        // 「角色唯一」的规范对象是**存活的持有者**：已死亡玩家的角色标记仍留在魔典上
+        // （百科《理发师》· 2026-10-01 抓取 · 范例：角色可以落到已死亡的玩家身上；R-0029 口径同族）。
+        // 方古侵染外来者会产生「已死亡的原方古 + 存活的新方古」两个同名标记（R-0034）——
+        // 这一格属于存活的那一位；**多名存活持有者**才是真正的数据缺陷。
+        var aliveOwners = owners.Where(owner => owner.LifeValue == LifeState.Alive).ToArray();
+        if (aliveOwners.Length > 1)
         {
-            // 已死亡：空槽位，照样走配额；角色同样记在槽位上（复活 / 换角后由进入时求值决定是否唤醒）。
+            return (null, NightPlanOutcome.Failure(
+                "plan.character_duplicated",
+                $"角色 {character.Value} 同时被多名存活玩家持有："
+                + string.Join(", ", aliveOwners.Select(owner => owner.Seat.Value))));
+        }
+
+        if (aliveOwners.Length == 0)
+        {
+            // 全部持有者都已死亡：空槽位，照样走配额（复活 / 换角后由进入时求值决定是否唤醒）。
             return (StepSlot.Empty(new StepSlotId(tag), character), null);
         }
 
+        var actor = aliveOwners[0];
         if (request.Actions.Find(character) is not { } action)
         {
             return (null, NightPlanOutcome.Failure(
@@ -213,18 +224,24 @@ public static class NightPlanBuilder
         string tag)
     {
         var owners = request.State.Seats.Where(entry => entry.CharacterValue == character).ToArray();
-        if (owners.Length > 1)
-        {
-            return (null, NightPlanOutcome.Failure(
-                "plan.character_duplicated",
-                $"角色 {character.Value} 同时出现在多个席位：{string.Join(", ", owners.Select(owner => owner.Seat.Value))}"));
-        }
 
-        if (owners.Length == 1 && owners[0].LifeValue is null)
+        // 与行动槽位同一把尺子：生死未观测的持有者一律拒绝（不猜）。
+        var unobserved = owners.FirstOrDefault(owner => owner.LifeValue is null);
+        if (unobserved is not null)
         {
             return (null, NightPlanOutcome.Failure(
                 "plan.life_unobserved",
-                $"席位 {owners[0].Seat.Value}（{character.Value}）的生死还没有观测，建表不替它猜"));
+                $"席位 {unobserved.Seat.Value}（{character.Value}）的生死还没有观测，建表不替它猜"));
+        }
+
+        // 「角色唯一」只约束存活持有者：已死亡玩家的标记仍在魔典上（与行动槽位的口径一致）。
+        var aliveOwners = owners.Where(owner => owner.LifeValue == LifeState.Alive).ToArray();
+        if (aliveOwners.Length > 1)
+        {
+            return (null, NightPlanOutcome.Failure(
+                "plan.character_duplicated",
+                $"角色 {character.Value} 同时被多名存活玩家持有："
+                + string.Join(", ", aliveOwners.Select(owner => owner.Seat.Value))));
         }
 
         return (StepSlot.Trigger(new StepSlotId(tag), character), null);

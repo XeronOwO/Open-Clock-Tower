@@ -43,6 +43,54 @@ public sealed class StepMachineStateComparerTests
         Assert.False(StepMachineStateComparer.AreEquivalent(left, right));
     }
 
+    /// <summary>
+    /// 方古的「限一次」整局事实（R-0034）必须进比较器：它是"要不要侵染"的判定输入，
+    /// 漏比会让重建校验在这条事实上失明。
+    /// </summary>
+    [Fact]
+    public void FangGuInfection_IsPartOfTheComparison()
+    {
+        var state = StepMachine.StartPhase(NightPlan(secondary: "clockmaker")).State;
+        var marked = StepMachine.Apply(
+            state,
+            new FangGuInfectionRecordedEvent { Seat = new SeatId(3), Source = new SeatId(1) })!;
+
+        Assert.True(StepMachineStateComparer.AreEquivalent(marked, marked with { }));
+        Assert.False(StepMachineStateComparer.AreEquivalent(marked, marked with
+        {
+            FangGuInfection = marked.FangGuInfection! with { Seat = new SeatId(4) },
+        }));
+    }
+
+    /// <summary>麻脸巫婆的裁量窗口与「今晚理发」事实同样进比较器（同类整机事实一次收口）。</summary>
+    [Fact]
+    public void MachineFacts_ArePartOfTheComparison()
+    {
+        var state = StepMachine.StartPhase(NightPlan(secondary: "clockmaker")).State;
+        var opened = state with
+        {
+            PitHagNight = new PitHagNight
+            {
+                Source = new SeatId(1),
+                ClosesAfterSlotIndex = 2,
+                CasualtyAbility = new AbilityId("pit-hag.casualty"),
+                Deferred = [],
+            },
+            BarberNight = new BarberNight { Source = new SeatId(2), Note = "测试：今晚理发" },
+        };
+
+        Assert.False(StepMachineStateComparer.AreEquivalent(state, opened));
+        Assert.True(StepMachineStateComparer.AreEquivalent(opened, opened with { }));
+        Assert.False(StepMachineStateComparer.AreEquivalent(opened, opened with
+        {
+            PitHagNight = opened.PitHagNight! with { ClosesAfterSlotIndex = 3 },
+        }));
+        Assert.False(StepMachineStateComparer.AreEquivalent(opened, opened with
+        {
+            BarberNight = opened.BarberNight! with { Source = new SeatId(4) },
+        }));
+    }
+
     private static StepPlan NightPlan(string secondary) => new()
     {
         Label = "sv:night-2",

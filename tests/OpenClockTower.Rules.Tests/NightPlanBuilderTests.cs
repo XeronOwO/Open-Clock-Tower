@@ -158,7 +158,57 @@ public sealed class NightPlanBuilderTests
         Assert.Equal("plan.life_unobserved", BuildFailure(Request(state, nightNumber: 2, seatCount: 1)));
     }
 
-    /// <summary>已死亡的行动者：空槽位，照样走配额（D-0013 §1）。</summary>
+    /// <summary>
+    /// 方古的夜间行动契约已就位：其他夜晚在场 → 行动槽位（不再 `plan.contract_missing`）；
+    /// 首个夜晚的顺序表上没有方古条目——「除首个夜晚外」由顺序表本身表达。
+    /// </summary>
+    [Fact]
+    public void FangGuSlot_IsActionSlot_OnlyOnOtherNights()
+    {
+        var state = State((1, "fang-gu", LifeState.Alive));
+
+        var plan = Build(Request(state, nightNumber: 2, seatCount: 1));
+        var fangGu = plan.Slots.Single(slot => slot.Id.Value == "fang-gu");
+        Assert.Equal(StepSlotKind.Action, fangGu.Kind);
+        Assert.Equal(new SeatId(1), fangGu.Actor);
+        Assert.Equal(new CharacterId("fang-gu"), fangGu.Owner);
+        Assert.Single(fangGu.Dependencies);
+
+        var firstNight = Build(Request(state, seatCount: 1));
+        Assert.DoesNotContain(firstNight.Slots, slot => slot.Id.Value == "fang-gu");
+    }
+
+    /// <summary>
+    /// 方古侵染后的两个同名标记（已死亡的原方古 + 存活的新方古，R-0034）：这一格属于存活的那一位；
+    /// 只有**多名存活持有者**才是真正的数据缺陷（角色唯一只约束存活持有者）。
+    /// </summary>
+    [Fact]
+    public void FangGuTokens_DeadOriginalAndAliveSuccessor_BindToAlive()
+    {
+        var state = State((1, "fang-gu", LifeState.Dead), (2, "fang-gu", LifeState.Alive), (3, "klutz", LifeState.Alive));
+
+        var plan = Build(Request(state, nightNumber: 2, seatCount: 3));
+
+        var fangGu = plan.Slots.Single(slot => slot.Id.Value == "fang-gu");
+        Assert.Equal(StepSlotKind.Action, fangGu.Kind);
+        Assert.Equal(new SeatId(2), fangGu.Actor);
+        Assert.Equal(new CharacterId("fang-gu"), fangGu.Owner);
+    }
+
+    /// <summary>两具同名标记都死亡 → 空槽位照样走配额（不是数据缺陷）。</summary>
+    [Fact]
+    public void FangGuTokens_AllDead_BecomesEmptySlot()
+    {
+        var state = State((1, "fang-gu", LifeState.Dead), (2, "fang-gu", LifeState.Dead), (3, "vortox", LifeState.Alive));
+
+        var plan = Build(Request(state, nightNumber: 2, seatCount: 3));
+
+        var fangGu = plan.Slots.Single(slot => slot.Id.Value == "fang-gu");
+        Assert.Equal(StepSlotKind.Empty, fangGu.Kind);
+        Assert.Equal(new CharacterId("fang-gu"), fangGu.Character);
+    }
+
+    /// <summary>已经死亡的行动者：空槽位，照样走配额（D-0013 §1）。</summary>
     [Fact]
     public void DeadActor_BecomesEmptySlot()
     {

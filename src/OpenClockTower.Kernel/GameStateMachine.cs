@@ -94,6 +94,10 @@ public static class GameStateMachine
             BarberNightClosedEvent => current,
             BarberNightSkippedEvent => current,
 
+            // 方古的「限一次」标记（R-0034）：整局事实记在步骤机状态里，不改六维度与效果；
+            // 侵染产生的角色 / 阵营变化与死亡另有配套的 SeatStateChangedEvent 折进账里。
+            FangGuInfectionRecordedEvent => current,
+
             // 白天流程事件：它们改变的是步骤机状态里的白天账（StepMachineFolder），不改六维度与效果；
             // 处决产生的死亡由配套的 SeatStateChangedEvent 折进账里（处决 ≠ 死亡，百科《处决》）。
             DayStartedEvent => current,

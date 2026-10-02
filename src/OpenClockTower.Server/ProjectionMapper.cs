@@ -305,6 +305,7 @@ public static class ProjectionMapper
                         Source = deferred.Source.Value,
                         Ability = deferred.Ability.Value,
                         Note = deferred.Note,
+                        Transformation = deferred.Transformation is not null,
                     }),
                 ],
             }

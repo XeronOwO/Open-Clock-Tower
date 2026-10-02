@@ -59,6 +59,16 @@ public sealed record StepMachineState
     public PitHagNight? PitHagNight { get; init; }
 
     /// <summary>
+    /// 方古的「限一次」事实：本局已经完成过一次外来者侵染；null = 还没用掉。
+    /// </summary>
+    /// <remarks>
+    /// 跨**整局**保留（同 <see cref="KlutzChoices"/> 的幂等账）：标记持续到游戏结束，即使原方古死亡 /
+    /// 换角、或之后出现新的方古也不再侵染（百科《方古》· 2026-10-01 抓取 · 运作方式 14）。
+    /// 口径见 <c>docs/standard/rulings.md</c> R-0034。
+    /// </remarks>
+    public FangGuInfection? FangGuInfection { get; init; }
+
+    /// <summary>
     /// 「今晚理发」事实：理发师死亡后待恶魔在当夜交互；null = 没有待处理的理发师之夜。
     /// </summary>
     /// <remarks>

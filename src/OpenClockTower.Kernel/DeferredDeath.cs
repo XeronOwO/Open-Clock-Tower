@@ -21,4 +21,12 @@ public sealed record DeferredDeath
 
     /// <summary>发生位置与依据说明（进审计与说书人视图）。</summary>
     public required string Note { get; init; }
+
+    /// <summary>
+    /// 确认时改为「转化」的载荷（方古侵染外来者）；null = 普通击杀。
+    /// </summary>
+    /// <remarks>
+    /// 依据与平台口径见 <see cref="DeferredTransformation"/> 与 <c>docs/standard/rulings.md</c> R-0034。
+    /// </remarks>
+    public DeferredTransformation? Transformation { get; init; }
 }

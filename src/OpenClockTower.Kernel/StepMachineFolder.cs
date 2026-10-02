@@ -33,6 +33,10 @@ internal static class StepMachineFolder
                 Outcome = state?.Outcome,
                 KlutzChoices = state?.KlutzChoices ?? [],
 
+                // 方古的「限一次」标记整局保留：即使原方古死亡 / 换角、之后又出现新的方古，
+                // 也不再侵染（百科《方古》· 2026-10-01 抓取 · 运作方式 14；R-0034）。
+                FangGuInfection = state?.FangGuInfection,
+
                 // 「今晚理发」事实跨阶段保留：白天死亡 → 当夜交互（R-0033）。
                 // 从**夜晚**带进新阶段说明夜末的「过时不候」收口缺失——CarryBarberNight 显式失败。
                 BarberNight = CarryBarberNight(state),
@@ -86,6 +90,10 @@ internal static class StepMachineFolder
             BarberNightOpenedEvent barberOpened => ApplyBarberNightOpened(state, barberOpened),
             BarberNightClosedEvent barberClosed => ApplyBarberNightClosed(state, barberClosed),
             BarberNightSkippedEvent => state,
+
+            // 方古的「限一次」标记（R-0034）：整局事实，落下后不再重复。
+            FangGuInfectionRecordedEvent infection => ApplyFangGuInfection(state, infection),
+
             SeatStateChangedEvent => state,
             DecisionPointRaisedEvent raised => Require(state, raised) with
             {
@@ -279,6 +287,7 @@ internal static class StepMachineFolder
                         Source = recorded.Source,
                         Ability = recorded.Ability,
                         Note = recorded.Note,
+                        Transformation = recorded.Transformation,
                     },
                 ],
             },
@@ -366,6 +375,34 @@ internal static class StepMachineFolder
         }
 
         return current with { BarberNight = null };
+    }
+
+    /// <summary>
+    /// 落下方古的「限一次」标记；一局只能落下一次（重复即事件流损坏——标记整局不复用）。
+    /// </summary>
+    private static StepMachineState ApplyFangGuInfection(
+        StepMachineState? state,
+        FangGuInfectionRecordedEvent recorded)
+    {
+        var current = Require(state, recorded);
+        if (current.FangGuInfection is not null)
+        {
+            throw new InvalidOperationException(
+                $"事件流顺序损坏：方古的「限一次」标记已经落下"
+                + $"（{current.FangGuInfection.Source.Value} 号 → {current.FangGuInfection.Seat.Value} 号），"
+                + "不能再次侵染");
+        }
+
+        return current with
+        {
+            FangGuInfection = new FangGuInfection
+            {
+                Seat = recorded.Seat,
+                Source = recorded.Source,
+                Note = $"方古侵染：{recorded.Source.Value} 号方古把 {recorded.Seat.Value} 号外来者"
+                    + "变成新的邪恶方古（限一次标记放置于魔典中心，整局保留）",
+            },
+        };
     }
 
     private static StepMachineState ApplyAdvance(StepMachineState? state, int fromIndex, int toIndex)

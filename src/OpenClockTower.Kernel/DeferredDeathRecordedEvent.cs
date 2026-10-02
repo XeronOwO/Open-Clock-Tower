@@ -16,4 +16,13 @@ public sealed record DeferredDeathRecordedEvent : GameEvent
 
     /// <summary>发生位置与依据说明。</summary>
     public required string Note { get; init; }
+
+    /// <summary>
+    /// 确认时改为「转化」的载荷（方古侵染外来者）；null = 普通击杀。
+    /// </summary>
+    /// <remarks>
+    /// 依据：百科《方古》· 2026-10-01 抓取 · 角色简介 2——「方古首次攻击并成功杀死外来者时，
+    /// 改为方古死亡，外来者变成邪恶的方古」。平台口径见 <c>docs/standard/rulings.md</c> R-0034。
+    /// </remarks>
+    public DeferredTransformation? Transformation { get; init; }
 }

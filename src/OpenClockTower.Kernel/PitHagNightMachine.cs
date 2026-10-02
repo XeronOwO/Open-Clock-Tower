@@ -117,10 +117,105 @@ internal static class PitHagNightMachine
 
         if (input.Killed)
         {
-            AppendKill(events, context.State, deferred, "说书人确认死亡");
+            AppendOutcome(events, context.State, deferred, "说书人确认死亡");
         }
 
         return Applied(state, events);
+    }
+
+    /// <summary>
+    /// 把一条待定死亡按它的载荷落成事实：携带「转化」载荷的按转化结算（方古侵染），
+    /// 否则按普通击杀。说书人「确认」与窗口关闭的默认结果都走这里——口径必须只有一处。
+    /// </summary>
+    /// <remarks>
+    /// 依据：百科《方古》· 2026-10-01 抓取 · 角色简介 2（「改为方古死亡，外来者变成邪恶的方古」）；
+    /// 平台口径见 <c>docs/standard/rulings.md</c> R-0034。
+    /// </remarks>
+    internal static void AppendOutcome(
+        List<GameEvent> events,
+        GameState ledger,
+        DeferredDeath deferred,
+        string note)
+    {
+        if (deferred.Transformation is { } transformation)
+        {
+            AppendTransformation(events, ledger, deferred, transformation, note);
+            return;
+        }
+
+        AppendKill(events, ledger, deferred, note);
+    }
+
+    /// <summary>
+    /// 把一条「转化」载荷落成事实：目标变成新的邪恶方古、原方古死亡、「限一次」标记落下；
+    /// **被攻击的外来者不死亡**。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 依据：百科《方古》· 2026-10-01 抓取 · 角色简介 2 / 运作方式 11–14；
+    /// 平台口径（确认 = 按能力转化、阻止 = 两者都不发生）见 <c>docs/standard/rulings.md</c> R-0034。
+    /// </para>
+    /// <para>
+    /// 目标在确认时已经死亡 → **整体不发生**：没有「成功杀死」这回事，方古也不死
+    /// （百科《方古》· 2026-10-01 抓取 · 范例：方古攻击已死亡的呆瓜，「因为呆瓜已经死了，
+    /// 他不会再次死亡，所以方古不会死」）。原方古若已经死亡，不再重复记一条死亡事实。
+    /// </para>
+    /// </remarks>
+    internal static void AppendTransformation(
+        List<GameEvent> events,
+        GameState ledger,
+        DeferredDeath deferred,
+        DeferredTransformation transformation,
+        string note)
+    {
+        ArgumentNullException.ThrowIfNull(events);
+        ArgumentNullException.ThrowIfNull(ledger);
+        ArgumentNullException.ThrowIfNull(deferred);
+        ArgumentNullException.ThrowIfNull(transformation);
+
+        if (ledger.Seat(transformation.Target)?.LifeValue == LifeState.Dead)
+        {
+            return;
+        }
+
+        var effectId = new EffectId($"{deferred.Ability.Value}:{transformation.Target.Value}:infection");
+        events.Add(new InstantaneousEffectAppliedEvent
+        {
+            Effect = new InstantaneousEffect
+            {
+                Id = effectId,
+                Source = deferred.Source,
+                Ability = deferred.Ability,
+                Target = transformation.Target,
+            },
+        });
+        events.Add(new SeatStateChangedEvent
+        {
+            Seat = transformation.Target,
+            Character = transformation.Character,
+            Alignment = transformation.Alignment,
+            Reason = $"方古侵染（麻脸巫婆之夜由说书人裁定：{note}）：{transformation.Note}",
+            CausedBy = deferred.Source,
+            EffectId = effectId,
+        });
+
+        if (ledger.Seat(transformation.Dies)?.LifeValue != LifeState.Dead)
+        {
+            events.Add(new SeatStateChangedEvent
+            {
+                Seat = transformation.Dies,
+                Life = LifeState.Dead,
+                Reason = $"方古侵染（麻脸巫婆之夜由说书人裁定：{note}）：原方古死亡",
+                CausedBy = deferred.Source,
+                EffectId = effectId,
+            });
+        }
+
+        events.Add(new FangGuInfectionRecordedEvent
+        {
+            Seat = transformation.Target,
+            Source = deferred.Source,
+        });
     }
 
     /// <summary>
