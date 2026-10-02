@@ -467,9 +467,9 @@ public sealed class SettlementHostTests
     /// 第二夜还要先处理恶魔的击杀请求。
     /// </summary>
     private static async Task RunNightAsync(
-        HubConnection storyteller,
-        HubConnection dreamer,
-        HubConnection demon,
+        GameClient storyteller,
+        GameClient dreamer,
+        GameClient demon,
         int night,
         Func<OperationRequestDto?> dreamerRequest,
         Func<OperationRequestDto?> demonRequest,
@@ -524,7 +524,7 @@ public sealed class SettlementHostTests
     }
 
     private static async Task ResolveDecisionAsync(
-        HubConnection storyteller,
+        GameClient storyteller,
         StorytellerViewDto view,
         string decision,
         string key)

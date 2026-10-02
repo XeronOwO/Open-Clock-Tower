@@ -2,6 +2,8 @@
  * 玩家端连接：只做 JoinSeat / SubmitResponse 与推送接收（D-0013 §5）。
  *
  * 与说书人网关刻意分开：玩家连接**没有**、也不该有获取整份说书人视图的能力。
+ * 零信任（D-0012）：JoinSeat 下发的**连接级凭据**只存在内存里，每条命令随参数出示；
+ * 掉线重连必须重新用票据加入并换新凭据——旧连接的凭据在新连接上无效。
  */
 import {
   HubConnectionBuilder,
@@ -19,8 +21,16 @@ import type {
   PlayerEventDto,
   ReconnectBundleDto,
   PlayerViewDto,
+  SeatJoinDto,
 } from '@/contracts/game'
-import { asArray, asNumber, asText, normalizeOption } from '@/display/format'
+import {
+  asArray,
+  asCount,
+  asCredential,
+  asSizedText,
+  asText,
+  normalizeOption,
+} from '@/display/format'
 import { HUB_PATH, type GatewayState } from '@/services/connectionState'
 
 /** 玩家侧回调。 */
@@ -42,6 +52,8 @@ export class PlayerGateway {
   private readonly connection: HubConnection
   private ticket = ''
   private lastSequence = 0
+  /** 连接级凭据：只在内存中；票据才进 TicketStore，凭据绝不落盘。 */
+  private credentialValue = ''
 
   constructor(private readonly callbacks: PlayerCallbacks) {
     this.connection = new HubConnectionBuilder()
@@ -86,12 +98,18 @@ export class PlayerGateway {
     return this.connection
   }
 
+  /** 当前连接凭据（只读；诊断与测试用，不渲染、不落盘）。 */
+  get credential(): string {
+    return this.credentialValue
+  }
+
   /**
    * 加入席位并取重连包（快照 + 从本客户端已知序号起的全部事件）。
    *
    * 同步口径（架构 §5、D-0010）：**快照 + 缺口事件一起用**，不许只取快照把事件丢掉。
    * 事件的作用是证明"从我的序号到快照序号之间没有缺口"：序号不连续就说明补齐不完整，
    * 那时**不装作没事**——报诊断并停在当前视图，由人决定重连还是重建（禁止本地先跑再说）。
+   * 零信任口径（D-0012）：加入结果里的连接级凭据是后续发命令的唯一凭据；拿不到就显式失败。
    */
   async joinSeat(ticket: string): Promise<PlayerViewDto> {
     this.ticket = ticket
@@ -100,8 +118,15 @@ export class PlayerGateway {
     }
 
     this.callbacks.onState('connected')
-    const raw = await this.connection.invoke<unknown>('JoinSeat', ticket, this.lastSequence)
-    const bundle = normalizeBundle(raw)
+    const joined = normalizeSeatJoin(
+      await this.connection.invoke<unknown>('JoinSeat', ticket, this.lastSequence),
+    )
+    if (joined === null) {
+      throw new Error('服务端没有下发连接凭据：加入结果不可识别（D-0012）')
+    }
+
+    this.credentialValue = joined.credential
+    const bundle = joined.bundle
     const applied = applyBundle(bundle, this.lastSequence)
     this.lastSequence = applied.sequence
     // 空诊断 = "补齐完整"，不是一条消息：原样转发会让界面多出一个空条目（2026-10-02 批次实机发现）。
@@ -118,8 +143,8 @@ export class PlayerGateway {
     return bundle.view
   }
 
-  /** 提交响应（幂等键由调用方持有）。 */
-  submitResponse(
+  /** 提交响应（幂等键由调用方持有）；没有连接凭据就不发命令。 */
+  async submitResponse(
     requestId: string,
     optionValue: string,
     idempotencyKey: string,
@@ -127,6 +152,7 @@ export class PlayerGateway {
   ): Promise<unknown> {
     return this.connection.invoke<unknown>(
       'SubmitResponse',
+      this.requireCredential(),
       requestId,
       optionValue,
       idempotencyKey,
@@ -151,6 +177,31 @@ export class PlayerGateway {
       this.callbacks.onDiagnostic(`重连后重新加入失败：${error instanceof Error ? error.message : String(error)}`)
     }
   }
+
+  /** 没有凭据就不发命令：服务端会拒绝，客户端也不该装作能发。 */
+  private requireCredential(): string {
+    if (this.credentialValue.length === 0) {
+      throw new Error('尚未加入：没有连接凭据，不能提交命令')
+    }
+
+    return this.credentialValue
+  }
+}
+
+/** 未知载荷 → 加入结果；凭据缺失 / 越界或重连包不可识别时返回 null（宁可加入失败，不带坏凭据继续）。 */
+export function normalizeSeatJoin(raw: unknown): SeatJoinDto | null {
+  if (raw === null || typeof raw !== 'object') {
+    return null
+  }
+
+  const join = raw as Record<string, unknown>
+  const credential = asCredential(join['credential'])
+  const bundle = join['bundle']
+  if (credential === null || bundle === null || typeof bundle !== 'object') {
+    return null
+  }
+
+  return { credential, bundle: normalizeBundle(bundle) }
 }
 
 /** 未知载荷 → 操作请求；缺关键字段时返回 null（宁可少显示，不编造请求）。 */
@@ -167,8 +218,8 @@ export function normalizeRequest(raw: unknown): OperationRequestDto | null {
 
   return {
     requestId,
-    seat: asNumber(request['seat']) ?? 0,
-    context: asText(request['context']) ?? '',
+    seat: asCount(request['seat']) ?? 0,
+    context: asSizedText(request['context'], 512) ?? '',
     options: asArray<unknown>(request['options'])
       .map(normalizeOption)
       .filter((option): option is DecisionOptionDto => option !== null),
@@ -187,7 +238,7 @@ export function normalizeInformation(raw: unknown): InformationResultDto | null 
     return null
   }
 
-  return { ability, content: asText(information['content']) ?? '' }
+  return { ability, content: asSizedText(information['content'], 4096) ?? '' }
 }
 
 /** 未知载荷 → 请求作废；缺请求标识或原因时返回 null（宁可少显示，不编造原因）。 */
@@ -203,7 +254,7 @@ export function normalizeVoided(raw: unknown): OperationRequestVoidedDto | null 
     return null
   }
 
-  return { requestId, reason, note: asText(voided['note']) }
+  return { requestId, reason, note: asSizedText(voided['note'], 512) }
 }
 
 /** 未知载荷 → 请求响应；缺请求标识 / 选项 / 来源时返回 null（表达不了来源就不编）。 */
@@ -220,7 +271,7 @@ export function normalizeAnswered(raw: unknown): OperationRequestAnsweredDto | n
     return null
   }
 
-  return { requestId, optionValue, source, note: asText(answered['note']) }
+  return { requestId, optionValue, source, note: asSizedText(answered['note'], 512) }
 }
 
 /** 未知载荷 → 阶段开始；缺阶段名时返回 null（不知道阶段就不动页头）。 */
@@ -239,9 +290,9 @@ export function normalizeBundle(raw: unknown): ReconnectBundleDto {
   const view = (bundle['view'] ?? {}) as Record<string, unknown>
 
   return {
-    sequence: asNumber(bundle['sequence']) ?? 0,
+    sequence: asCount(bundle['sequence']) ?? 0,
     view: {
-      seat: asNumber(view['seat']) ?? 0,
+      seat: asCount(view['seat']) ?? 0,
       phase: asText(view['phase']) ?? '',
       pendingRequest: normalizeRequest(view['pendingRequest']),
       informationResults: asArray<unknown>(view['informationResults'])
@@ -261,7 +312,7 @@ export function normalizePlayerEvent(raw: unknown): PlayerEventDto | null {
   }
 
   const event = raw as Record<string, unknown>
-  const sequence = asNumber(event['sequence'])
+  const sequence = asCount(event['sequence'])
   const kind = asText(event['kind'])
   if (sequence === null || kind === null) {
     return null
@@ -275,7 +326,7 @@ export function normalizePlayerEvent(raw: unknown): PlayerEventDto | null {
     requestId: asText(event['requestId']),
     optionValue: asText(event['optionValue']),
     voidReason: asText(event['voidReason']),
-    voidNote: asText(event['voidNote']),
+    voidNote: asSizedText(event['voidNote'], 512),
     information: normalizeInformation(event['information']),
   }
 }

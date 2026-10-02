@@ -569,7 +569,8 @@ public sealed class GameSession
         return new CommandResult
         {
             Kind = CommandResultKind.Rejected,
-            Sequence = _lastSequence,
+            // 拒绝回执刻意不带全局序号：带上它，任何玩家都能用伪造命令的差分探测房间活动节奏（D-0013 §5）。
+            Sequence = 0,
             Events = [],
             Notifications = [],
             Rejection = rejection,

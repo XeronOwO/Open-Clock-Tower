@@ -361,7 +361,7 @@ public sealed class StepMachineHostTests
             1L);
 
         Assert.Equal("Rejected", result.Kind);
-        Assert.Equal("phase.not_your_request", result.RejectionCode);
+        Assert.Equal("phase.no_request_for_you", result.RejectionCode);
     }
 
     /// <summary>行 11：同一幂等键重复投递 → 只生效一次，第二次返回同一结果。</summary>

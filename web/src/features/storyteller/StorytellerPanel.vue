@@ -5,13 +5,13 @@
  *
  * 信息姿态：本面板只显示服务端下发的说书人视图（D-0012：视图由服务端重新投影）；
  * 前端不做领域推断，也不缓存旧值假装"还是那样"——掉线重连后整份重取。
+ * 零信任姿态：命令必须带连接级凭据；凭据只在内存里，不渲染、不落盘。
  */
-import type { HubConnection } from '@microsoft/signalr'
 import type { StorytellerViewDto } from '@/contracts/game'
 import { labelOf } from '@/display/labels'
 import { StorytellerGateway, type GatewayState } from '@/services/storytellerGateway'
 import { TicketStore } from '@/services/ticketStore'
-import type { CommandOutcome } from '@/services/storytellerCommands'
+import type { CommandOutcome, CommandSender } from '@/services/storytellerCommands'
 import StatusStrip from '@/features/storyteller/StatusStrip.vue'
 import StepDigest from '@/features/storyteller/StepDigest.vue'
 import DecisionPanel from '@/features/storyteller/DecisionPanel.vue'
@@ -45,8 +45,22 @@ const joining = ref(false)
 
 let gateway: StorytellerGateway | null = null
 
-/** 命令面板只在连接建立后渲染；null 时对应的控制面板整块不出现。 */
-const connection = shallowRef<HubConnection | null>(null)
+/** 网关实例的响应式引用：命令发送方要随它计算。 */
+const gatewayRef = shallowRef<StorytellerGateway | null>(null)
+
+/** 当前连接级凭据（内存态；重连换新凭据后由 onView 回调刷新）。 */
+const credential = ref('')
+
+/**
+ * 命令发送方 = 连接 + 连接级凭据。
+ * 只有"已连接 + 凭据在手"时才存在：没有凭据就不给任何发命令的入口（D-0012）。
+ */
+const sender = computed<CommandSender | null>(() => {
+  const current = gatewayRef.value
+  return connectionState.value === 'connected' && current !== null && credential.value.length > 0
+    ? { connection: current.raw, credential: credential.value }
+    : null
+})
 
 const stateText: Record<GatewayState, string> = {
   disconnected: '未连接',
@@ -59,8 +73,10 @@ const connected = computed(() => connectionState.value === 'connected' && view.v
 
 function ensureGateway(): StorytellerGateway {
   if (gateway === null) {
-    gateway = new StorytellerGateway({
+    const created = new StorytellerGateway({
       onView: (next) => {
+        // 每次 Join（含重连后的重新加入）都换一条连接：凭据与视图一起刷新，绝不沿用旧连接的。
+        credential.value = created.credential
         view.value = next
       },
       onState: (state) => {
@@ -68,7 +84,8 @@ function ensureGateway(): StorytellerGateway {
       },
       onDiagnostic: (message) => pushDiagnostic(message),
     })
-    connection.value = gateway.raw
+    gateway = created
+    gatewayRef.value = created
   }
 
   return gateway
@@ -82,7 +99,9 @@ async function join(): Promise<void> {
   joining.value = true
   try {
     store.write(ticket.value.trim())
-    await ensureGateway().join(ticket.value.trim())
+    const current = ensureGateway()
+    await current.join(ticket.value.trim())
+    credential.value = current.credential
     outcome.value = null
   } catch (error) {
     pushDiagnostic(`加入失败：${error instanceof Error ? error.message : String(error)}`)
@@ -102,7 +121,7 @@ async function refresh(): Promise<void> {
 async function disconnect(): Promise<void> {
   await gateway?.stop()
   view.value = null
-  connection.value = null
+  credential.value = ''
 }
 
 /** 命令回执统一在这里展示：服务端的拒绝是信息，不是故障。 */
@@ -170,24 +189,24 @@ onBeforeUnmount(() => {
             </template>
             <template v-else>
               <strong>{{ labelOf(outcome.kind) }}</strong>
-              <span v-if="outcome.sequence !== null" class="mono">序号 {{ outcome.sequence }}</span>
+              <span v-if="outcome.sequence !== null && outcome.sequence > 0" class="mono">序号 {{ outcome.sequence }}</span>
               <span v-if="outcome.message">{{ outcome.message }}</span>
               <span class="marker" :data-outcome-marker="outcome.kind" hidden>#</span>
             </template>
           </div>
           <AssignmentControl
-            v-if="connection"
+            v-if="sender"
             :view="view!"
-            :connection="connection"
+            :sender="sender"
             :seat-count="seatCount"
             @outcome="showOutcome"
           />
-          <OperationsControl v-if="connection" :view="view!" :connection="connection" @outcome="showOutcome" />
-          <DecisionPanel v-if="connection" :view="view!" :connection="connection" @outcome="showOutcome" />
+          <OperationsControl v-if="sender" :view="view!" :sender="sender" @outcome="showOutcome" />
+          <DecisionPanel v-if="sender" :view="view!" :sender="sender" @outcome="showOutcome" />
           <StateReportControl
-            v-if="connection"
+            v-if="sender"
             :view="view!"
-            :connection="connection"
+            :sender="sender"
             :seat-count="seatCount"
             @outcome="showOutcome"
           />

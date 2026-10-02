@@ -318,6 +318,20 @@ StepMachine（步骤机）
 重复投递必须返回首次结果，否则阶段闸会把"请求已了结"的重复命令误判成非法。
 第 ①③④ 闸的语义不变，只有顺序按实现需要调整——这是唯一一处与本节图顺序不同的地方。
 
+**已落地（2026-10-02）**：
+
+| 环节 | 实现 |
+|---|---|
+| 连接级凭据 | `ConnectionCredential`（32 字节密码学随机，base64url）；`ConnectionRegistry` 只存 SHA-256 哈希、固定时间比较；Join 成功签发并随 `SeatJoinDto` / `StorytellerJoinDto` 下发，此后**每条命令第一个参数**都是它 |
+| 凭据生命周期 | 同席新连接替换旧连接 → 旧连接凭据**立即作废**（TCP 未断也发不出命令）；断开即失效；重连必须重新出示票据（矩阵行 3） |
+| 身份解析 | `GameHub.ResolveActor(credential)`：凭据 → 服务端身份（`Player(席位)` / `Storyteller`），客户端声明一律不认；凭据无效在 Server 拒绝 + 审计，**不触达 Application** |
+| 四道闸 | 仍在 Application（`CommandGatePipeline`）：身份 → 幂等 → 阶段 → 合法性；玩家凭据调说书人命令由**身份闸**拒绝（`identity.storyteller_only`），不被凭据解析吞掉 |
+| 审计 | 两层：Server（凭据闸：连接 id、方法、凭据短指纹、原因，含参数层拒绝）与 Application（gate / code / actor / seat / command）；日志绝不写凭据明文 |
+| 并发与路由一致性 | 注册表的签发 / 作废 / 断开在**同一临界区**完成；`Validate` 核对"凭据身份与当前席位路由一致"——防并发抢占残留与"同一连接换席位"的路由分叉（复核发现，2026-10-02） |
+| 拒绝回执脱敏 | 阶段闸把"没有请求 / 已了结 / 不是发给你的"统一成 `phase.no_request_for_you`；拒绝回执**不带全局事件序号**——拒绝码与序号都不许当探测他人活动的预言机（D-0013 §5） |
+| 前端 | 凭据只存内存（票据才进 `TicketStore`）；命令经 `CommandSender`（连接 + 凭据）发出，组件拿不到裸连接；`display/format.ts` 对长度 / 类型 / 范围做有界化 |
+| 取证 | 负向集成套件 `ZeroTrustHostTests`（行 1–6、11 的真宿主反例）＋ 真机装置 `tools/verify-zero-trust.mjs`（篡改客户端直调 Hub、玩家收包扫描、审计日志扫描） |
+
 ### 4.3 信息只在**下发方向**校验
 
 - 服务端按接收者投影；**越权信息根本不下发**，不依赖"前端不显示"。

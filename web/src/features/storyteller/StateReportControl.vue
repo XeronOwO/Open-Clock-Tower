@@ -4,17 +4,21 @@
  *
  * 口径：只上报**本次真正观测到的维度**——不给的维度不参与判定、也不进状态账（D-0015）；
  * 五个状态维度相互独立（角色 / 阵营 / 生死 / 醉酒 / 中毒），一次只改被勾选的那些。
+ * 命令必须带连接级凭据（D-0012）。
  */
 import type { StorytellerViewDto } from '@/contracts/game'
 import { ROSTER } from '@/display/labels'
 import { newIdempotencyKey } from '@/services/idempotency'
-import { reportSeatState, type CommandOutcome } from '@/services/storytellerCommands'
-import type { HubConnection } from '@microsoft/signalr'
+import {
+  reportSeatState,
+  type CommandOutcome,
+  type CommandSender,
+} from '@/services/storytellerCommands'
 import { computed, ref } from 'vue'
 
 const props = defineProps<{
   view: StorytellerViewDto
-  connection: HubConnection
+  sender: CommandSender
   seatCount: number
 }>()
 const emit = defineEmits<{ outcome: [CommandOutcome] }>()
@@ -74,7 +78,7 @@ async function submit(): Promise<void> {
   busy.value = true
   try {
     const outcome = await reportSeatState(
-      props.connection,
+      props.sender,
       {
         seat: seat.value,
         life: useLife.value ? life.value : null,

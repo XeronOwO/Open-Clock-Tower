@@ -222,7 +222,7 @@ public sealed class TakeoverAndRecoveryTests
         }
     }
 
-    private static async Task CompleteTestNightAsync(HubConnection storyteller)
+    private static async Task CompleteTestNightAsync(GameClient storyteller)
     {
         var view = await storyteller.InvokeAsync<StorytellerViewDto>("GetStorytellerView");
         var guard = 0;

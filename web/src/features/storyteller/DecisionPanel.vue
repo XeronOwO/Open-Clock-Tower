@@ -3,6 +3,7 @@
  * 裁定点与卡点操作：
  * - 裁定点（R-0009）：只呈现引擎算出的合法选项 + 自由决定输入；平台不替说书人拍板（D-0002）。
  * - 卡点（挂起请求）：说书人可代填或强制作废。
+ * 命令必须带连接级凭据（D-0012）：组件只拿得到 `sender`，拿不到"裸连接"。
  */
 import type { DecisionOptionDto, StorytellerViewDto } from '@/contracts/game'
 import { newIdempotencyKey } from '@/services/idempotency'
@@ -11,12 +12,12 @@ import {
   resolveDecisionPoint,
   voidRequest,
   type CommandOutcome,
+  type CommandSender,
 } from '@/services/storytellerCommands'
 import { seatLabelOf } from '@/display/format'
-import type { HubConnection } from '@microsoft/signalr'
 import { ref } from 'vue'
 
-const props = defineProps<{ view: StorytellerViewDto; connection: HubConnection }>()
+const props = defineProps<{ view: StorytellerViewDto; sender: CommandSender }>()
 const emit = defineEmits<{ outcome: [CommandOutcome] }>()
 
 const decisionNote = ref('')
@@ -45,7 +46,7 @@ async function decide(decision: string | null): Promise<void> {
   busy.value = true
   try {
     const outcome = await resolveDecisionPoint(
-      props.connection,
+      props.sender,
       decisionPointId,
       decision,
       decisionNote.value.length > 0 ? decisionNote.value : null,
@@ -72,7 +73,7 @@ async function fill(option: DecisionOptionDto | null): Promise<void> {
   busy.value = true
   try {
     const outcome = await proxyFill(
-      props.connection,
+      props.sender,
       pending.requestId,
       value,
       proxyNote.value.length > 0 ? proxyNote.value : null,
@@ -93,7 +94,7 @@ async function voidPending(): Promise<void> {
   busy.value = true
   try {
     const outcome = await voidRequest(
-      props.connection,
+      props.sender,
       pending.requestId,
       voidReason.value,
       voidNote.value.length > 0 ? voidNote.value : null,

@@ -4,18 +4,22 @@
  *
  * 注意：只有已经实现夜间契约的角色才能开夜成功——未实现角色在场时，服务端会用
  * plan.contract_missing 显式拒绝，页面把它当作正常结果展示，不掩饰、不静默跳过。
+ * 命令必须带连接级凭据（D-0012）：`sender` 把连接与凭据绑在一起，组件拿不到"裸连接"。
  */
 import type { StorytellerViewDto } from '@/contracts/game'
 import { ROSTER } from '@/display/labels'
 import { seatLabelOf } from '@/display/format'
 import { newIdempotencyKey } from '@/services/idempotency'
-import { assignCharacters, type CommandOutcome } from '@/services/storytellerCommands'
-import type { HubConnection } from '@microsoft/signalr'
+import {
+  assignCharacters,
+  type CommandOutcome,
+  type CommandSender,
+} from '@/services/storytellerCommands'
 import { computed, ref } from 'vue'
 
 const props = defineProps<{
   view: StorytellerViewDto
-  connection: HubConnection
+  sender: CommandSender
   /** 席位名单是会话信息（服务端持有）；这里由宿主配置传入，客户端不猜。 */
   seatCount: number
 }>()
@@ -53,7 +57,7 @@ async function submit(): Promise<void> {
 
   busy.value = true
   try {
-    const outcome = await assignCharacters(props.connection, assignments, newIdempotencyKey('assign'))
+    const outcome = await assignCharacters(props.sender, assignments, newIdempotencyKey('assign'))
     emit('outcome', outcome)
   } finally {
     busy.value = false

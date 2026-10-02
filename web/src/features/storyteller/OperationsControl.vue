@@ -2,6 +2,7 @@
 /**
  * 说书人兜底操作（D-0014）：开夜、强推、接管 / 交还、重建房间。
  * 每个动作都要求一句原因——原因会进事件流，事后能回答"这一步为什么被强推"。
+ * 命令必须带连接级凭据（D-0012）。
  */
 import type { StorytellerViewDto } from '@/contracts/game'
 import { newIdempotencyKey } from '@/services/idempotency'
@@ -12,11 +13,11 @@ import {
   startNight,
   takeOver,
   type CommandOutcome,
+  type CommandSender,
 } from '@/services/storytellerCommands'
-import type { HubConnection } from '@microsoft/signalr'
 import { ref } from 'vue'
 
-defineProps<{ view: StorytellerViewDto; connection: HubConnection }>()
+defineProps<{ view: StorytellerViewDto; sender: CommandSender }>()
 const emit = defineEmits<{ outcome: [CommandOutcome] }>()
 
 const nightNumber = ref(1)
@@ -57,7 +58,7 @@ function reasonOrFallback(): string {
         type="button"
         class="primary"
         :disabled="busy"
-        @click="run(() => startNight(connection, nightNumber, variant, newIdempotencyKey('night')))"
+        @click="run(() => startNight(sender, nightNumber, variant, newIdempotencyKey('night')))"
       >
         开夜（服务端按顺序表建表）
       </button>
@@ -68,28 +69,28 @@ function reasonOrFallback(): string {
       <button
         type="button"
         :disabled="busy"
-        @click="run(() => forceAdvance(connection, reasonOrFallback(), newIdempotencyKey('force')))"
+        @click="run(() => forceAdvance(sender, reasonOrFallback(), newIdempotencyKey('force')))"
       >
         强推当前槽位
       </button>
       <button
         type="button"
         :disabled="busy"
-        @click="run(() => takeOver(connection, reasonOrFallback(), newIdempotencyKey('takeover')))"
+        @click="run(() => takeOver(sender, reasonOrFallback(), newIdempotencyKey('takeover')))"
       >
         接管
       </button>
       <button
         type="button"
         :disabled="busy || view.control !== 'StorytellerTakeover'"
-        @click="run(() => releaseControl(connection, reasonOrFallback(), newIdempotencyKey('release')))"
+        @click="run(() => releaseControl(sender, reasonOrFallback(), newIdempotencyKey('release')))"
       >
         交还自动化
       </button>
       <button
         type="button"
         :disabled="busy"
-        @click="run(() => rebuildRoom(connection, reasonOrFallback(), newIdempotencyKey('rebuild')))"
+        @click="run(() => rebuildRoom(sender, reasonOrFallback(), newIdempotencyKey('rebuild')))"
       >
         重建房间
       </button>

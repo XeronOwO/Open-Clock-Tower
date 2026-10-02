@@ -38,6 +38,35 @@ export function asArray<T>(value: unknown): readonly T[] {
   return Array.isArray(value) ? (value as readonly T[]) : []
 }
 
+/** 安全取"有界文本"：类型 / 非空 / 长度上限；超长截断，绝不把面板撑爆。 */
+export function asSizedText(value: unknown, maxLength: number): string | null {
+  const text = asText(value)
+  if (text === null) {
+    return null
+  }
+
+  return text.length <= maxLength ? text : text.slice(0, maxLength)
+}
+
+/**
+ * 安全取连接级凭据：服务端数据是**不可信输入**，凭据必须是有界、无空白 / 控制字符的串。
+ * 凭据只用于发命令，绝不渲染、绝不写日志、绝不落盘（D-0012）。
+ */
+export function asCredential(value: unknown): string | null {
+  if (typeof value !== 'string' || value.length < 16 || value.length > 512) {
+    return null
+  }
+
+  return /^[A-Za-z0-9_-]+$/.test(value) ? value : null
+}
+
+/** 安全取计数（非负整数）：席位 / 序号 / 下标必须落在这个形状里，浮点与负数一律视为坏载荷。 */
+export function asCount(value: unknown, max = 1_000_000): number | null {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= max
+    ? value
+    : null
+}
+
 /** 席位号 → 「N 号」。非法值退化成占位符。 */
 export function seatLabelOf(seat: number | null | undefined): string {
   return typeof seat === 'number' && Number.isFinite(seat) ? `${seat} 号` : '—'
@@ -86,7 +115,7 @@ export function normalizeFact(raw: unknown): SeatStateFactDto | null {
     dimension,
     value,
     reason,
-    causedBy: asNumber(fact['causedBy']),
+    causedBy: asCount(fact['causedBy']),
     effectId: asText(fact['effectId']),
   }
 }
@@ -98,7 +127,7 @@ export function normalizeSeatState(raw: unknown): SeatStateDto | null {
   }
 
   const entry = raw as Record<string, unknown>
-  const seat = asNumber(entry['seat'])
+  const seat = asCount(entry['seat'])
   if (seat === null) {
     return null
   }
@@ -143,7 +172,7 @@ export function normalizeStepDigest(raw: unknown): StepDigestDto | null {
   }
 
   const digest = raw as Record<string, unknown>
-  const seat = asNumber(digest['seat'])
+  const seat = asCount(digest['seat'])
   if (seat === null) {
     return null
   }
@@ -156,7 +185,7 @@ export function normalizeStepDigest(raw: unknown): StepDigestDto | null {
         ? null
         : normalizeSeatState(digest['state']),
     ability: normalizeSlotAbility(digest['ability']),
-    optionCount: asNumber(digest['optionCount']),
+    optionCount: asCount(digest['optionCount']),
     onNoOption: asText(digest['onNoOption']),
   }
 }
@@ -174,7 +203,7 @@ export function normalizeVoidedRequest(raw: unknown): OperationRequestVoidedDto 
     return null
   }
 
-  return { requestId, reason, note: asText(voided['note']) }
+  return { requestId, reason, note: asSizedText(voided['note'], 512) }
 }
 
 /** 归一化一条效果归因。 */
@@ -186,8 +215,8 @@ export function normalizeEffect(raw: unknown): EffectDto | null {
   const effect = raw as Record<string, unknown>
   const effectId = asText(effect['effectId'])
   const ability = asText(effect['ability'])
-  const source = asNumber(effect['source'])
-  const target = asNumber(effect['target'])
+  const source = asCount(effect['source'])
+  const target = asCount(effect['target'])
   if (effectId === null || ability === null || source === null || target === null) {
     return null
   }
@@ -215,9 +244,9 @@ export function normalizeSeatChange(raw: unknown): SeatChangeDto | null {
   }
 
   const change = raw as Record<string, unknown>
-  const seat = asNumber(change['seat'])
-  const reason = asText(change['reason'])
-  const sequence = asNumber(change['sequence'])
+  const seat = asCount(change['seat'])
+  const reason = asSizedText(change['reason'], 512)
+  const sequence = asCount(change['sequence'])
   if (seat === null || reason === null || sequence === null) {
     return null
   }
@@ -249,7 +278,7 @@ export function normalizeOption(raw: unknown): DecisionOptionDto | null {
     return null
   }
 
-  return { value, preview: asText(option['preview']) ?? value }
+  return { value, preview: asSizedText(option['preview'], 512) ?? value }
 }
 
 /** 归一化整个说书人视图。任何缺失都退化成空集合 / null，不编造状态。 */
@@ -258,21 +287,21 @@ export function normalizeStorytellerView(raw: unknown): StorytellerViewDto {
   const pending = view['pending']
 
   return {
-    sequence: asNumber(view['sequence']) ?? 0,
+    sequence: asCount(view['sequence']) ?? 0,
     phase: asText(view['phase']) ?? '未开始',
     control: asText(view['control']) ?? '未知',
-    slotIndex: asNumber(view['slotIndex']) ?? 0,
-    slotCount: asNumber(view['slotCount']) ?? 0,
+    slotIndex: asCount(view['slotIndex']) ?? 0,
+    slotCount: asCount(view['slotCount']) ?? 0,
     currentSlotId: asText(view['currentSlotId']),
     planCompleted: asBoolean(view['planCompleted']) ?? false,
     pending:
       pending === null || typeof pending !== 'object'
         ? null
         : {
-            seat: asNumber((pending as Record<string, unknown>)['seat']) ?? 0,
+            seat: asCount((pending as Record<string, unknown>)['seat']) ?? 0,
             requestId: asText((pending as Record<string, unknown>)['requestId']) ?? '',
             slotId: asText((pending as Record<string, unknown>)['slotId']) ?? '',
-            slotIndex: asNumber((pending as Record<string, unknown>)['slotIndex']) ?? 0,
+            slotIndex: asCount((pending as Record<string, unknown>)['slotIndex']) ?? 0,
             waitingSeconds: asNumber((pending as Record<string, unknown>)['waitingSeconds']),
           },
     awaitingDecisionId: asText(view['awaitingDecisionId']),
@@ -332,13 +361,13 @@ export function normalizeStorytellerView(raw: unknown): StorytellerViewDto {
       view['lastResolution'] === null || typeof view['lastResolution'] !== 'object'
         ? null
         : {
-            seat: asNumber((view['lastResolution'] as Record<string, unknown>)['seat']) ?? 0,
+            seat: asCount((view['lastResolution'] as Record<string, unknown>)['seat']) ?? 0,
             ability: asText((view['lastResolution'] as Record<string, unknown>)['ability']) ?? '',
             effective:
               asBoolean((view['lastResolution'] as Record<string, unknown>)['effective']) ?? false,
             malfunction: asText((view['lastResolution'] as Record<string, unknown>)['malfunction']),
             note: asText((view['lastResolution'] as Record<string, unknown>)['note']),
-            sequence: asNumber((view['lastResolution'] as Record<string, unknown>)['sequence']) ?? 0,
+            sequence: asCount((view['lastResolution'] as Record<string, unknown>)['sequence']) ?? 0,
           },
     stepDigest: normalizeStepDigest(view['stepDigest']),
     lastVoidedRequest: normalizeVoidedRequest(view['lastVoidedRequest']),

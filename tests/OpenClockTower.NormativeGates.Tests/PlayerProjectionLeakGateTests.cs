@@ -19,6 +19,7 @@ public sealed partial class PlayerProjectionLeakGateTests
         Path.Combine("src", "OpenClockTower.Contracts", "PlayerViewDto.cs"),
         Path.Combine("src", "OpenClockTower.Contracts", "OperationRequestDto.cs"),
         Path.Combine("src", "OpenClockTower.Contracts", "ReconnectBundleDto.cs"),
+        Path.Combine("src", "OpenClockTower.Contracts", "SeatJoinDto.cs"),
         Path.Combine("src", "OpenClockTower.Contracts", "PlayerEventDto.cs"),
         Path.Combine("src", "OpenClockTower.Contracts", "OperationRequestAnsweredDto.cs"),
         Path.Combine("src", "OpenClockTower.Contracts", "PhaseStartedDto.cs"),
@@ -242,6 +243,7 @@ public sealed partial class PlayerProjectionLeakGateTests
         "AbilityResolutionDto",
         "SeatChangeDto",
         "PendingRequestDto",
+        "normalizeStorytellerView",
     ];
 
     private static Regex WholeWord(string token) =>

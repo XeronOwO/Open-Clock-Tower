@@ -365,7 +365,7 @@ public sealed class StepDigestHostTests
     }
 
     private static async Task ResolveDecisionAsync(
-        HubConnection storyteller,
+        GameClient storyteller,
         StorytellerViewDto view,
         string decision,
         string key)

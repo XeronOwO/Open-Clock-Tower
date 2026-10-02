@@ -3,9 +3,19 @@
  *
  * 与 GameHub 的方法签名逐条对应（src/OpenClockTower.Server/GameHub.cs）。
  * 每条命令调用都带幂等键；幂等键由调用方持有，重试复用同一个键。
+ *
+ * 零信任口径（D-0012）：命令的**第一个参数**永远是当前连接的凭据；
+ * 连接与凭据必须成对出现——所以这里用 `CommandSender` 把两者绑在一起，
+ * 不提供"只给连接"的发命令入口。
  */
 import type { HubConnection } from '@microsoft/signalr'
 import { asNumber, asText } from '@/display/format'
+
+/** 一条命令的两个必要条件：连接 + 该连接的凭据（D-0012）。 */
+export interface CommandSender {
+  connection: HubConnection
+  credential: string
+}
 
 /** 命令回执的规范化结果：服务端拒绝 / 抛错都收敛成这里的一种形态。 */
 export interface CommandOutcome {
@@ -41,14 +51,18 @@ export function normalizeOutcome(raw: unknown): CommandOutcome {
   }
 }
 
-/** 发一条命令并规范化回执；传输层异常不吞，收敛成 Transport 回执。 */
+/** 发一条命令（凭据永远随方法参数先出示）并规范化回执；传输层异常不吞，收敛成 Transport 回执。 */
 export async function invokeCommand(
-  connection: HubConnection,
+  sender: CommandSender,
   method: string,
   ...args: readonly unknown[]
 ): Promise<CommandOutcome> {
+  if (sender.credential.length === 0) {
+    return { ok: false, kind: 'Rejected', sequence: null, message: '尚未加入：没有连接凭据' }
+  }
+
   try {
-    const raw = await connection.invoke<unknown>(method, ...args)
+    const raw = await sender.connection.invoke<unknown>(method, sender.credential, ...args)
     return normalizeOutcome(raw)
   } catch (error) {
     return {
@@ -62,81 +76,81 @@ export async function invokeCommand(
 
 /** 分配角色：服务端会按会话席位名单与首版花名册重新校验。 */
 export function assignCharacters(
-  connection: HubConnection,
+  sender: CommandSender,
   assignments: readonly { seat: number; character: string }[],
   idempotencyKey: string,
 ): Promise<CommandOutcome> {
-  return invokeCommand(connection, 'AssignCharacters', assignments, idempotencyKey)
+  return invokeCommand(sender, 'AssignCharacters', assignments, idempotencyKey)
 }
 
 /** 开夜（口径是引擎输入，R-0014）。 */
 export function startNight(
-  connection: HubConnection,
+  sender: CommandSender,
   nightNumber: number,
   variant: string,
   idempotencyKey: string,
 ): Promise<CommandOutcome> {
-  return invokeCommand(connection, 'StartNight', nightNumber, variant, idempotencyKey)
+  return invokeCommand(sender, 'StartNight', nightNumber, variant, idempotencyKey)
 }
 
 /** 代填挂起请求。 */
 export function proxyFill(
-  connection: HubConnection,
+  sender: CommandSender,
   requestId: string,
   optionValue: string,
   note: string | null,
   idempotencyKey: string,
 ): Promise<CommandOutcome> {
-  return invokeCommand(connection, 'ProxyFill', requestId, optionValue, note, idempotencyKey)
+  return invokeCommand(sender, 'ProxyFill', requestId, optionValue, note, idempotencyKey)
 }
 
 /** 强制作废挂起请求（原因必须是服务端认识的枚举名）。 */
 export function voidRequest(
-  connection: HubConnection,
+  sender: CommandSender,
   requestId: string,
   reason: string,
   note: string | null,
   idempotencyKey: string,
 ): Promise<CommandOutcome> {
-  return invokeCommand(connection, 'VoidRequest', requestId, reason, note, idempotencyKey)
+  return invokeCommand(sender, 'VoidRequest', requestId, reason, note, idempotencyKey)
 }
 
 /** 强推当前槽位（D-0014 兜底）。 */
 export function forceAdvance(
-  connection: HubConnection,
+  sender: CommandSender,
   reason: string,
   idempotencyKey: string,
 ): Promise<CommandOutcome> {
-  return invokeCommand(connection, 'ForceAdvance', reason, idempotencyKey)
+  return invokeCommand(sender, 'ForceAdvance', reason, idempotencyKey)
 }
 
 /** 接管自动化。 */
 export function takeOver(
-  connection: HubConnection,
+  sender: CommandSender,
   reason: string,
   idempotencyKey: string,
 ): Promise<CommandOutcome> {
-  return invokeCommand(connection, 'TakeOver', reason, idempotencyKey)
+  return invokeCommand(sender, 'TakeOver', reason, idempotencyKey)
 }
 
 /** 交还自动化。 */
 export function releaseControl(
-  connection: HubConnection,
+  sender: CommandSender,
   reason: string,
   idempotencyKey: string,
 ): Promise<CommandOutcome> {
-  return invokeCommand(connection, 'ReleaseControl', reason, idempotencyKey)
+  return invokeCommand(sender, 'ReleaseControl', reason, idempotencyKey)
 }
 
 /** 了结裁定点（R-0009 自由决定）。 */
 export function resolveDecisionPoint(
-  connection: HubConnection,
+  sender: CommandSender,
   decisionPointId: string,
   decision: string | null,
   note: string | null,
   idempotencyKey: string,
 ): Promise<CommandOutcome> {
-  return invokeCommand(connection, 'ResolveDecisionPoint', decisionPointId, decision, note, idempotencyKey)
+  return invokeCommand(sender, 'ResolveDecisionPoint', decisionPointId, decision, note, idempotencyKey)
 }
 
 /**
@@ -144,7 +158,7 @@ export function resolveDecisionPoint(
  * 只上报本次观测到的维度；不给的维度不参与判定，也不会进状态账。
  */
 export function reportSeatState(
-  connection: HubConnection,
+  sender: CommandSender,
   report: {
     seat: number
     life: string | null
@@ -158,7 +172,7 @@ export function reportSeatState(
   idempotencyKey: string,
 ): Promise<CommandOutcome> {
   return invokeCommand(
-    connection,
+    sender,
     'ReportSeatState',
     report.seat,
     report.life,
@@ -174,9 +188,9 @@ export function reportSeatState(
 
 /** 按事件日志重建房间（D-0014 恢复）。 */
 export function rebuildRoom(
-  connection: HubConnection,
+  sender: CommandSender,
   reason: string,
   idempotencyKey: string,
 ): Promise<CommandOutcome> {
-  return invokeCommand(connection, 'RebuildRoom', reason, idempotencyKey)
+  return invokeCommand(sender, 'RebuildRoom', reason, idempotencyKey)
 }

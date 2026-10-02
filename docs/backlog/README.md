@@ -61,13 +61,14 @@ todo/  →  in-progress/  →  review/  →  done/
 ### Todo
 
 - [界面游戏化：魔典式小镇视图](todo/grimoire-view.md) — **Medium** — 说书人看板从"数据表格"改为"以席位为中心"的图形化魔典：角色 / 生死 / 状态 / 提示标记一眼可见
-- [零信任安全模型](todo/zero-trust-security-model.md) — **High** — 鉴权两级凭据 + 操作四道闸 + 服务端强制投影，负向测试为主
 - [重建报告对比状态账](todo/rebuild-state-ledger-comparison.md) — **Medium** — 重建报告补上状态账等价对比，半个结论变完整
 - [恢复失败后的房间健康位](todo/room-health-degradation-flag.md) — **Medium** — 区分「空账」与「数据丢了」，降级标记显式重建才清除
 
 ### In progress
 
 ### Review
+
+- [零信任安全模型](review/zero-trust-security-model.md) — **High** — 鉴权两级凭据 + 操作四道闸 + 服务端强制投影，负向测试为主
 
 ### Done
 

@@ -6,6 +6,9 @@
  * - 断电 / 掉线后重连成功 → 重新 Join 并重新拉一次完整视图，不做本地增量猜测；
  * - 任何推送到达 → 整份替换视图，不让前端自己合并出服务端没有的状态。
  * 命令的幂等键由调用方持有，重试复用同一个键。
+ *
+ * 零信任口径（D-0012）：JoinStoryteller 下发的**连接级凭据**只存在内存里，
+ * 每条命令（含刷新视图）随参数出示；掉线重连必须重新出示票据换新凭据。
  */
 import {
   HubConnectionBuilder,
@@ -13,8 +16,8 @@ import {
   LogLevel,
   type HubConnection,
 } from '@microsoft/signalr'
-import type { StorytellerViewDto } from '@/contracts/game'
-import { normalizeStorytellerView } from '@/display/format'
+import type { StorytellerJoinDto, StorytellerViewDto } from '@/contracts/game'
+import { asCredential, normalizeStorytellerView } from '@/display/format'
 import { HUB_PATH, type GatewayState } from '@/services/connectionState'
 
 export type { GatewayState } from '@/services/connectionState'
@@ -38,6 +41,8 @@ export interface GatewayCallbacks {
 export class StorytellerGateway {
   private readonly connection: HubConnection
   private ticket = ''
+  /** 连接级凭据：只在内存中；票据才进 TicketStore，凭据绝不落盘。 */
+  private credentialValue = ''
 
   constructor(private readonly callbacks: GatewayCallbacks) {
     this.connection = new HubConnectionBuilder()
@@ -64,11 +69,16 @@ export class StorytellerGateway {
     return this.connection
   }
 
+  /** 当前连接凭据（只读；命令发送方持有它，不渲染、不落盘）。 */
+  get credential(): string {
+    return this.credentialValue
+  }
+
   get state(): GatewayState {
     return mapState(this.connection.state)
   }
 
-  /** 连接并加入说书人席位，返回首次视图。 */
+  /** 连接并加入说书人席位，返回首次视图；拿不到连接凭据就显式失败。 */
   async join(ticket: string): Promise<StorytellerViewDto> {
     this.ticket = ticket
     this.callbacks.onState(this.state)
@@ -77,15 +87,27 @@ export class StorytellerGateway {
     }
 
     this.callbacks.onState('connected')
-    const view = await this.connection.invoke<unknown>('JoinStoryteller', ticket)
-    const normalized = normalizeStorytellerView(view)
-    this.callbacks.onView(normalized)
-    return normalized
+    const joined = normalizeStorytellerJoin(
+      await this.connection.invoke<unknown>('JoinStoryteller', ticket),
+    )
+    if (joined === null) {
+      throw new Error('服务端没有下发连接凭据：加入结果不可识别（D-0012）')
+    }
+
+    this.credentialValue = joined.credential
+    this.callbacks.onView(joined.view)
+    return joined.view
   }
 
-  /** 主动拉取整份视图（刷新按钮 / 重连补齐）。 */
+  /** 主动拉取整份视图（刷新按钮 / 重连补齐）；没有凭据就不发。 */
   async refresh(): Promise<StorytellerViewDto> {
-    const view = normalizeStorytellerView(await this.connection.invoke<unknown>('GetStorytellerView'))
+    if (this.credentialValue.length === 0) {
+      throw new Error('尚未加入：没有连接凭据，不能刷新视图')
+    }
+
+    const view = normalizeStorytellerView(
+      await this.connection.invoke<unknown>('GetStorytellerView', this.credentialValue),
+    )
     this.callbacks.onView(view)
     return view
   }
@@ -103,6 +125,22 @@ export class StorytellerGateway {
       this.callbacks.onDiagnostic(`重连后重新加入失败：${describe(error)}`)
     }
   }
+}
+
+/** 未知载荷 → 加入结果；凭据缺失 / 越界或视图不可识别时返回 null。 */
+export function normalizeStorytellerJoin(raw: unknown): StorytellerJoinDto | null {
+  if (raw === null || typeof raw !== 'object') {
+    return null
+  }
+
+  const join = raw as Record<string, unknown>
+  const credential = asCredential(join['credential'])
+  const view = join['view']
+  if (credential === null || view === null || typeof view !== 'object') {
+    return null
+  }
+
+  return { credential, view: normalizeStorytellerView(view) }
 }
 
 function mapState(state: HubConnectionState): GatewayState {

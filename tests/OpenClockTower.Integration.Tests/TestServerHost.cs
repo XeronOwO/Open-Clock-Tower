@@ -1,10 +1,12 @@
 using System.Collections.Concurrent;
 using System.Globalization;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http.Connections;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using OpenClockTower.Application;
 using OpenClockTower.Contracts;
 using OpenClockTower.Kernel;
@@ -19,6 +21,10 @@ namespace OpenClockTower.Integration.Tests;
 /// 验收规程要求关键链路在**真实运行**里被证明：这里跑的是真宿主、真 Hub 协议与真 SQLite
 /// （临时文件），而不是直接调用领域方法。生产宿主不再自动开阶段（占位计划已移除），
 /// 需要步骤机的用例由本装置按需开启一个**测试夹具**夜晚（<see cref="TestNightPlan"/>）。
+/// <para>
+/// 零信任（D-0012）：客户端一律用 <see cref="GameClient"/>——它持有 Join 时下发的连接级凭据，
+/// 每条命令自动出示；负向用例改用 <see cref="GameClient.InvokeRawAsync"/> 或裸连接。
+/// </para>
 /// </remarks>
 public sealed class TestServerHost : IAsyncDisposable
 {
@@ -50,6 +56,7 @@ public sealed class TestServerHost : IAsyncDisposable
             builder.UseSetting("GameServer:SlotQuotaSeconds", slotQuotaSeconds.ToString(CultureInfo.InvariantCulture));
             builder.UseSetting("GameServer:SeatCount", seatCount.ToString(CultureInfo.InvariantCulture));
             builder.UseSetting("GameServer:PacerIntervalMilliseconds", "50");
+            builder.ConfigureLogging(logging => logging.AddProvider(new CollectingLoggerProvider(Logs)));
         });
 
         // 触发宿主启动：建库、恢复事件流、播种会话票据
@@ -74,6 +81,9 @@ public sealed class TestServerHost : IAsyncDisposable
     /// <summary>事件存储（测试用来读事件与审计）。</summary>
     public IGameStore Store => _factory.Services.GetRequiredService<IGameStore>();
 
+    /// <summary>宿主日志（负向套件用来断言"每次拒绝都有可定位的审计"）。</summary>
+    public ConcurrentQueue<string> Logs { get; } = new();
+
     /// <summary>默认游戏标识。</summary>
     public static GameId GameId => new("default");
 
@@ -85,8 +95,8 @@ public sealed class TestServerHost : IAsyncDisposable
         await _factory.Services.GetRequiredService<IGameCatalog>().FindAsync(GameId, CancellationToken.None)
         ?? throw new InvalidOperationException("测试宿主尚未播种会话票据");
 
-    /// <summary>以某席位加入（可挂收件回调）。</summary>
-    public async Task<HubConnection> ConnectSeatAsync(
+    /// <summary>以某席位加入（可挂收件回调）；返回带凭据的客户端。</summary>
+    public async Task<GameClient> ConnectSeatAsync(
         SeatId seat,
         Action<OperationRequestDto>? onRequest = null,
         Action<OperationRequestVoidedDto>? onVoided = null,
@@ -130,14 +140,14 @@ public sealed class TestServerHost : IAsyncDisposable
         }
 
         await connection.StartAsync();
-        var bundle = await connection.InvokeAsync<ReconnectBundleDto>("JoinSeat", ticket, lastSequence);
-        Bundles[seat] = bundle;
+        var joined = await connection.InvokeAsync<SeatJoinDto>("JoinSeat", ticket, lastSequence);
+        Bundles[seat] = joined.Bundle;
         _connections.Add(connection);
-        return connection;
+        return new GameClient(connection, joined.Credential);
     }
 
-    /// <summary>以说书人身份加入。</summary>
-    public async Task<HubConnection> ConnectStorytellerAsync(Action<StorytellerViewDto>? onViewChanged = null)
+    /// <summary>以说书人身份加入；返回带凭据的客户端。</summary>
+    public async Task<GameClient> ConnectStorytellerAsync(Action<StorytellerViewDto>? onViewChanged = null)
     {
         var setup = await GetSetupAsync();
         var connection = CreateConnection();
@@ -147,7 +157,16 @@ public sealed class TestServerHost : IAsyncDisposable
         }
 
         await connection.StartAsync();
-        await connection.InvokeAsync<StorytellerViewDto>("JoinStoryteller", setup.StorytellerTicket);
+        var joined = await connection.InvokeAsync<StorytellerJoinDto>("JoinStoryteller", setup.StorytellerTicket);
+        _connections.Add(connection);
+        return new GameClient(connection, joined.Credential);
+    }
+
+    /// <summary>起一条**没有 Join** 的裸连接：负向用例用它证明"未持票据的连接什么都做不了"。</summary>
+    public async Task<HubConnection> ConnectAnonymousAsync()
+    {
+        var connection = CreateConnection();
+        await connection.StartAsync();
         _connections.Add(connection);
         return connection;
     }
@@ -189,7 +208,7 @@ public sealed class TestServerHost : IAsyncDisposable
 
     /// <summary>轮询说书人视图直到条件成立；超时返回最后一次视图。</summary>
     public static async Task<StorytellerViewDto?> WaitForViewAsync(
-        HubConnection storyteller,
+        GameClient storyteller,
         Func<StorytellerViewDto, bool> predicate,
         TimeSpan? timeout = null)
     {

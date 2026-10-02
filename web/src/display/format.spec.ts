@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
   asArray,
+  asCount,
+  asCredential,
+  asSizedText,
   clockTimeOf,
   normalizeStorytellerView,
   seatLabelOf,
@@ -123,5 +126,39 @@ describe('说书人视图规范化', () => {
 
     expect(view.stepDigest).toBeNull()
     expect(view.lastVoidedRequest).toBeNull()
+  })
+})
+
+describe('不可信输入的有界化（长度 / 范围，架构 §4.4）', () => {
+  it('文本超长截断，而不是把面板撑爆；非字符串仍是坏载荷', () => {
+    expect(asSizedText('x'.repeat(50), 10)).toBe('x'.repeat(10))
+    expect(asSizedText('短', 10)).toBe('短')
+    expect(asSizedText(123, 10)).toBeNull()
+    expect(asSizedText('', 10)).toBeNull()
+  })
+
+  it('计数只接受非负整数：负数 / 小数 / 超大值都是坏载荷', () => {
+    expect(asCount(3)).toBe(3)
+    expect(asCount(0)).toBe(0)
+    expect(asCount(-1)).toBeNull()
+    expect(asCount(1.5)).toBeNull()
+    expect(asCount(1_000_001)).toBeNull()
+    expect(asCount('3')).toBeNull()
+  })
+
+  it('凭据必须是有界、无空白 / 控制字符的串（凭据不渲染，但形状要先校验）', () => {
+    const valid = 'A'.repeat(43)
+    expect(asCredential(valid)).toBe(valid)
+    expect(asCredential('short')).toBeNull()
+    expect(asCredential(`${'A'.repeat(20)} ${'B'.repeat(20)}`)).toBeNull()
+    expect(asCredential('A'.repeat(513))).toBeNull()
+    expect(asCredential(42)).toBeNull()
+  })
+
+  it('说书人视图里的负数 / 小数序号被当作坏载荷（退化为 0，而不是显示 -1）', () => {
+    const view = normalizeStorytellerView({ sequence: -5, slotIndex: 1.5, slotCount: Number.NaN })
+    expect(view.sequence).toBe(0)
+    expect(view.slotIndex).toBe(0)
+    expect(view.slotCount).toBe(0)
   })
 })

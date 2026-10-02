@@ -111,28 +111,16 @@ public static class CommandGatePipeline
         switch (envelope.Command)
         {
             case SubmitResponseCommand:
-                if (machine is null)
-                {
-                    return Reject("phase.not_started", "本局还没有开始任何阶段", "phase");
-                }
+                var pending = machine?.PendingRequest;
 
-                var pending = machine.PendingRequest;
-                if (pending is null)
+                // 统一成一条不区分"没有请求 / 已了结 / 不是发给你的"的拒绝：区分它们会让拒绝码本身
+                // 成为探测他人活动的预言机（谁在行动、进行到哪一步都是场外信息，D-0013 §5）。
+                if (machine is null
+                    || pending is null
+                    || pending.Status != OperationRequestStatus.Pending
+                    || envelope.Actor.Seat != pending.Addressee)
                 {
-                    return Reject("phase.no_pending_request", "当前没有等待响应的请求", "phase");
-                }
-
-                if (pending.Status != OperationRequestStatus.Pending)
-                {
-                    return Reject("phase.request_resolved", "这条请求已经了结（已响应或已作废）", "phase");
-                }
-
-                if (envelope.Actor.Seat != pending.Addressee)
-                {
-                    return Reject(
-                        "phase.not_your_request",
-                        $"这条请求是给座位 {pending.Addressee} 的",
-                        "phase");
+                    return Reject("phase.no_request_for_you", "现在没有等待你响应的请求", "phase");
                 }
 
                 return null;

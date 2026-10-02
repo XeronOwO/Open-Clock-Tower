@@ -7,6 +7,7 @@ import {
   normalizePhaseStarted,
   normalizePlayerEvent,
   normalizeRequest,
+  normalizeSeatJoin,
   normalizeVoided,
 } from '@/services/playerGateway'
 
@@ -151,5 +152,27 @@ describe('在线推送载荷规范化', () => {
     expect(normalizePhaseStarted({ phase: 'FirstNight' })).toEqual({ phase: 'FirstNight' })
     expect(normalizePhaseStarted({ phase: 42 })).toBeNull()
     expect(normalizePhaseStarted(undefined)).toBeNull()
+  })
+})
+
+describe('加入结果：连接级凭据（D-0012）', () => {
+  const credential = 'C'.repeat(43)
+  const bundle = {
+    sequence: 0,
+    view: { seat: 1, phase: 'FirstNight', pendingRequest: null, informationResults: [] },
+    events: [],
+  }
+
+  it('凭据与重连包都在，才算可识别的加入结果', () => {
+    expect(normalizeSeatJoin({ credential, bundle })?.credential).toBe(credential)
+    expect(normalizeSeatJoin({ credential, bundle })?.bundle.view.seat).toBe(1)
+  })
+
+  it('凭据缺失 / 越界 / 带空白，或重连包缺失 → 坏载荷（宁可加入失败，不带坏凭据继续）', () => {
+    expect(normalizeSeatJoin({ credential: '', bundle })).toBeNull()
+    expect(normalizeSeatJoin({ credential: 'short', bundle })).toBeNull()
+    expect(normalizeSeatJoin({ credential, bundle: null })).toBeNull()
+    expect(normalizeSeatJoin({ credential })).toBeNull()
+    expect(normalizeSeatJoin(null)).toBeNull()
   })
 })

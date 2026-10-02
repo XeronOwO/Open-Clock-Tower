@@ -54,6 +54,11 @@ node tools/verify-storyteller-panel.mjs        # 退出码 0 = 91 项断言全�
 把 16 张截图写进 `artifacts/web/`（gitignored；运行日志由调用方重定向，
 如 `2>&1 | Tee-Object artifacts/web/batch-run.log`）。
 场景固定三角色（clockmaker / dreamer / no-dashii），节拍配额默认 `--quota 2` 秒。
+
+零信任负向取证：`node tools/verify-zero-trust.mjs`（退出码 0 = 26 项全过）——真宿主 + Node SignalR
+客户端扮演**篡改前端**：伪造 / 冒用 / 旧连接凭据直调 Hub，扫描玩家收包与宿主日志（拒绝审计、无凭据明文）。
+它是主批次的补充，不替代主批次（UI 与玩法仍归 `verify-storyteller-panel.mjs`）。
+
 **外部耦合（换机器前先核对）**：
 
 | 耦合 | 位置 | 失败时的表现 |
@@ -70,6 +75,9 @@ node tools/verify-storyteller-panel.mjs        # 退出码 0 = 91 项断言全�
   前端只做映射与显示，`display/` 之外不出现领域判断。
 - **服务端数据是输入，不是保证**（架构 §4.4）：`display/format.ts` 负责长度 / 类型 /
   范围防御；坏字段只降级该行，不许白屏。
+- **连接级凭据不进呈现层**（D-0012）：Join 成功后才拿到凭据，只存网关私有字段（内存），
+  每条命令经 `CommandSender`（连接 + 凭据）发出；不渲染、不落盘、不进日志；
+  掉线重连重新 Join 换新凭据——旧连接的凭据在新连接上无效。
 - **本地状态只允许是"呈现态"**：选中项、折叠、诊断消息；任何游戏状态一律来自视图推送，
   禁止在前端算出服务端没给的状态。
 - **同步**：掉线重连后整份重取视图（`GetStorytellerView` / `JoinSeat`），

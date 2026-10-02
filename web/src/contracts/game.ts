@@ -214,6 +214,18 @@ export interface ReconnectBundleDto {
   events: PlayerEventDto[]
 }
 
+/** 玩家加入结果：连接级凭据 + 重连包（凭据只在签发它的那条连接上有效，D-0012）。 */
+export interface SeatJoinDto {
+  credential: string
+  bundle: ReconnectBundleDto
+}
+
+/** 说书人加入结果：连接级凭据 + 首份视图。 */
+export interface StorytellerJoinDto {
+  credential: string
+  view: StorytellerViewDto
+}
+
 /** 玩家可见事件（白名单投影）。 */
 export interface PlayerEventDto {
   sequence: number
