@@ -19,6 +19,11 @@ internal static class PitHagAbility
     internal static readonly AbilityId TransformAbility = new("pit-hag.transform");
 
     /// <summary>
+    /// 说书人在窗口期内追加死亡的归因标识（内核不硬编码角色，这个标识由规则层在开窗时交给它）。
+    /// </summary>
+    internal static readonly AbilityId CasualtyAbility = new("pit-hag.casualty");
+
+    /// <summary>
     /// 可选择的角色表 = 花名册全部 25 个角色。
     /// </summary>
     /// <remarks>

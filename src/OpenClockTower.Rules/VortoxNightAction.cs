@@ -77,27 +77,7 @@ internal sealed class VortoxNightAction : INightAction, IAbilityResolution
             return [];
         }
 
-        var effectId = new EffectId($"{context.PlanLabel}:{context.SlotId}:kill");
-        return
-        [
-            new InstantaneousEffectAppliedEvent
-            {
-                Effect = new InstantaneousEffect
-                {
-                    Id = effectId,
-                    Source = context.Actor,
-                    Ability = Ability,
-                    Target = target,
-                },
-            },
-            new SeatStateChangedEvent
-            {
-                Seat = target,
-                Life = LifeState.Dead,
-                Reason = "涡流夜间击杀",
-                CausedBy = context.Actor,
-                EffectId = effectId,
-            },
-        ];
+        // 统一出口：麻脸巫婆之夜（创造了恶魔的那一晚）里，这次击杀记为待定死亡，由说书人裁定（R-0030 第 2 条）。
+        return NightKill.Resolve(context, target, Ability, "涡流夜间击杀");
     }
 }

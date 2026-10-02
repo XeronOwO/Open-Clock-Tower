@@ -59,6 +59,16 @@ public sealed record AbilityResolutionContext
     public int SlotIndex { get; init; }
 
     /// <summary>
+    /// 今夜是否处于麻脸巫婆的死亡裁量窗口（创造了恶魔 → 当晚死亡由说书人决定）。
+    /// </summary>
+    /// <remarks>
+    /// 恶魔契约据此把击杀记为**待定死亡**而不是直接致死：规则的原文是「说书人能够自由决定是否让某名玩家死亡，
+    /// 或让被恶魔攻击的某名玩家存活」（百科《麻脸巫婆》· 2026-10-01 抓取 · 规则细节 1）；
+    /// 平台口径见 <c>docs/standard/rulings.md</c> R-0030 第 2 条。
+    /// </remarks>
+    public bool PitHagNightActive { get; init; }
+
+    /// <summary>
     /// 本次行动开始时，白天账里**已经开始的白天数**（夜晚 N 行动时为 N−1）。
     /// 需要"跨夜存续窗口"的能力用它算绝对到期日——洗脑师的疯狂要求在施加夜的次日白天与其后夜晚有效，
     /// 下一个黎明撤下（<c>docs/standard/rulings.md</c> R-0021）。

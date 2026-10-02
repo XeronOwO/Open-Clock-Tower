@@ -26,6 +26,8 @@ internal static class StepSlotEntry
     /// <summary>产出一条自动推进事件；推进后进入新槽位（计划走完则补阶段完成事件）。</summary>
     internal static void AppendAdvance(StepMachineState state, GameState ledger, List<GameEvent> events)
     {
+        AppendPitHagNightClose(state, ledger, events);
+
         var from = state.SlotIndex;
         var to = from + 1;
         events.Add(new SlotAdvancedEvent { FromIndex = from, ToIndex = to });
@@ -49,6 +51,8 @@ internal static class StepSlotEntry
         List<GameEvent> events,
         string reason)
     {
+        AppendPitHagNightClose(state, ledger, events);
+
         var from = state.SlotIndex;
         var to = from + 1;
         events.Add(new SlotForceAdvancedEvent { FromIndex = from, ToIndex = to, Reason = reason });
@@ -63,6 +67,40 @@ internal static class StepSlotEntry
                 ?? throw new InvalidOperationException("事件流损坏：推进后丢失步骤机状态"),
             ledger,
             events);
+    }
+
+    /// <summary>
+    /// 麻脸巫婆之夜的窗口收口：当前槽位已经走到（或越过）最后一个「能造成死亡的恶魔行动」时，
+    /// 把仍未裁定的待定死亡按恶魔攻击的自然结果生效，并关闭窗口。
+    /// </summary>
+    /// <remarks>
+    /// 依据 <c>docs/standard/rulings.md</c> R-0030 第 1、3 条：窗口到「最后一个能够造成死亡的恶魔
+    /// 行动结束后」为止；未裁定的按默认结果生效，并**显式**记一条说明（不是静默默认）。
+    /// 收口事件排在推进事件之前，因此不影响"最后一条事件"的折叠口径。
+    /// </remarks>
+    private static void AppendPitHagNightClose(StepMachineState state, GameState ledger, List<GameEvent> events)
+    {
+        if (state.PitHagNight is not { } night || state.SlotIndex < night.ClosesAfterSlotIndex)
+        {
+            return;
+        }
+
+        foreach (var deferred in night.Deferred)
+        {
+            events.Add(new DeferredDeathResolvedEvent
+            {
+                Target = deferred.Target,
+                Killed = true,
+                Note = "窗口关闭时仍未裁定：按恶魔攻击的自然结果生效（rulings.md R-0030 第 3 条）",
+            });
+            PitHagNightMachine.AppendKill(events, ledger, deferred, "窗口关闭时未裁定");
+        }
+
+        events.Add(new PitHagNightClosedEvent
+        {
+            Note = "麻脸巫婆之夜的死亡裁量窗口已关闭（最后一名能造成死亡的恶魔行动结束）："
+                + $"未裁定的待定死亡 {night.Deferred.Count} 条按默认结果生效",
+        });
     }
 
     /// <summary>进入当前槽位：产出槽位进入事件，并按槽位种类与选择契约派生后续事件。</summary>

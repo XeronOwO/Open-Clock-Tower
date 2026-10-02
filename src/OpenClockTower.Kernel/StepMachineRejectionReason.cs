@@ -37,4 +37,10 @@ public enum StepMachineRejectionReason
 
     /// <summary>本局已经结束：一切输入都被拒（R-0024）。</summary>
     GameEnded,
+
+    /// <summary>
+    /// 今晚没有麻脸巫婆的死亡裁量窗口：还没创造出恶魔，或窗口已经越过最后一个恶魔行动关闭
+    /// （口径见 <c>docs/standard/rulings.md</c> R-0030）。
+    /// </summary>
+    NoPitHagNight,
 }

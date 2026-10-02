@@ -68,6 +68,7 @@ internal static class AbilitySettlement
             DaysStarted = state.Day?.Days.Count ?? 0,
             Plan = state.Plan,
             SlotIndex = state.SlotIndex,
+            PitHagNightActive = state.PitHagNight is not null,
         };
 
         // 玩家选完、说书人还没裁：先问是否需要再裁定一次（信息类能力要把信息内容交给说书人）。

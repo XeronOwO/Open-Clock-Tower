@@ -71,6 +71,12 @@ internal static class StepMachineFolder
             ControlModeChangedEvent control => Require(state, control) with { Control = control.Mode },
             PromptSkippedEvent skipped => Require(state, skipped),
             SlotActivatedEvent activated => ApplySlotActivation(state, activated),
+
+            // 麻脸巫婆之夜的死亡裁量窗口（R-0030）。
+            PitHagNightOpenedEvent opened => ApplyPitHagNightOpened(state, opened),
+            DeferredDeathRecordedEvent recorded => ApplyDeferredDeathRecorded(state, recorded),
+            DeferredDeathResolvedEvent deferredResolved => ApplyDeferredDeathResolved(state, deferredResolved),
+            PitHagNightClosedEvent closed => ApplyPitHagNightClosed(state, closed),
             SeatStateChangedEvent => state,
             DecisionPointRaisedEvent raised => Require(state, raised) with
             {
@@ -200,6 +206,93 @@ internal static class StepMachineFolder
             slot.Character);
 
         return current with { Plan = current.Plan with { Slots = slots } };
+    }
+
+    /// <summary>开启麻脸巫婆之夜的死亡裁量窗口；同一夜不能开两次。</summary>
+    private static StepMachineState ApplyPitHagNightOpened(StepMachineState? state, PitHagNightOpenedEvent opened)
+    {
+        var current = Require(state, opened);
+        if (current.PitHagNight is not null)
+        {
+            throw new InvalidOperationException("事件流顺序损坏：麻脸巫婆之夜的死亡裁量窗口已经开启过");
+        }
+
+        return current with
+        {
+            PitHagNight = new PitHagNight
+            {
+                Source = opened.Source,
+                ClosesAfterSlotIndex = opened.ClosesAfterSlotIndex,
+                CasualtyAbility = opened.CasualtyAbility,
+                Deferred = [],
+            },
+        };
+    }
+
+    /// <summary>记一条待定死亡；没有窗口、或同一席位已有待定死亡一律抛错。</summary>
+    private static StepMachineState ApplyDeferredDeathRecorded(
+        StepMachineState? state,
+        DeferredDeathRecordedEvent recorded)
+    {
+        var current = Require(state, recorded);
+        var night = current.PitHagNight
+            ?? throw new InvalidOperationException("事件流顺序损坏：没有麻脸巫婆之夜的窗口，却记了一条待定死亡");
+        if (night.Deferred.Any(deferred => deferred.Target == recorded.Target))
+        {
+            throw new InvalidOperationException($"事件流顺序损坏：席位 {recorded.Target.Value} 已经有一条待定死亡");
+        }
+
+        return current with
+        {
+            PitHagNight = night with
+            {
+                Deferred =
+                [
+                    .. night.Deferred,
+                    new DeferredDeath
+                    {
+                        Target = recorded.Target,
+                        Source = recorded.Source,
+                        Ability = recorded.Ability,
+                        Note = recorded.Note,
+                    },
+                ],
+            },
+        };
+    }
+
+    /// <summary>裁定（或窗口收口）一条待定死亡：把它从待定表里移除。</summary>
+    private static StepMachineState ApplyDeferredDeathResolved(
+        StepMachineState? state,
+        DeferredDeathResolvedEvent resolved)
+    {
+        var current = Require(state, resolved);
+        var night = current.PitHagNight
+            ?? throw new InvalidOperationException("事件流顺序损坏：没有麻脸巫婆之夜的窗口，却裁定了待定死亡");
+        if (!night.Deferred.Any(deferred => deferred.Target == resolved.Target))
+        {
+            throw new InvalidOperationException($"事件流顺序损坏：席位 {resolved.Target.Value} 没有待定的死亡");
+        }
+
+        return current with
+        {
+            PitHagNight = night with
+            {
+                Deferred = [.. night.Deferred.Where(deferred => deferred.Target != resolved.Target)],
+            },
+        };
+    }
+
+    /// <summary>关闭窗口：清空状态（关闭前必须先把它名下的待定死亡收口）。</summary>
+    private static StepMachineState ApplyPitHagNightClosed(StepMachineState? state, PitHagNightClosedEvent closed)
+    {
+        var current = Require(state, closed);
+        if (current.PitHagNight is null)
+        {
+            throw new InvalidOperationException("事件流顺序损坏：麻脸巫婆之夜的窗口没有开启，却要关闭");
+        }
+
+        return current with { PitHagNight = null };
     }
 
     private static StepMachineState ApplyAdvance(StepMachineState? state, int fromIndex, int toIndex)

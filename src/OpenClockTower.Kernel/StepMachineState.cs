@@ -49,6 +49,15 @@ public sealed record StepMachineState
     /// </summary>
     public IReadOnlyList<KlutzChoiceRecord> KlutzChoices { get; init; } = [];
 
+    /// <summary>
+    /// 麻脸巫婆之夜的死亡裁量窗口；null = 今晚没有这个窗口（口径见 <c>rulings.md</c> R-0030）。
+    /// </summary>
+    /// <remarks>
+    /// 只属于那一夜：新阶段由 <see cref="PhaseStartedEvent"/> 折叠成全新状态，不会继承它。
+    /// 窗口关闭（越过最后一个能造成死亡的恶魔行动）时清空，未裁定的待定死亡按默认结果生效。
+    /// </remarks>
+    public PitHagNight? PitHagNight { get; init; }
+
     /// <summary>当前槽位；计划已走完时为 null。</summary>
     public StepSlot? CurrentSlot =>
         SlotIndex >= 0 && SlotIndex < Plan.Slots.Count ? Plan.Slots[SlotIndex] : null;

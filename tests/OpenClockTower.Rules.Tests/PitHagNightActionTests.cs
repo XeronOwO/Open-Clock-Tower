@@ -102,6 +102,52 @@ public sealed class PitHagNightActionTests
         Assert.Empty(events.OfType<SlotActivatedEvent>());
     }
 
+    /// <summary>
+    /// 创造恶魔 → 开一个到「最后一个能造成死亡的恶魔行动」为止的死亡裁量窗口（R-0030 第 1 条）。
+    /// </summary>
+    [Fact]
+    public void TransformToDemon_OpensDeathAdjudicationWindow()
+    {
+        var state = NightLedger((1, "pit-hag"), (2, "clockmaker"), (3, "dreamer"));
+        var plan = OtherNightPlan();
+
+        var events = Contract().Resolve(Context(state, "seat:2|vortox", plan: plan, slotIndex: 1));
+
+        var opened = Assert.Single(events.OfType<PitHagNightOpenedEvent>());
+        Assert.Equal(new SeatId(1), opened.Source);
+        Assert.Equal(2, opened.ClosesAfterSlotIndex);
+        Assert.Equal(new AbilityId("pit-hag.casualty"), opened.CasualtyAbility);
+    }
+
+    /// <summary>窗口开启时，恶魔击杀改记**待定死亡**（不直接致死）——由说书人裁定（R-0030 第 2 条）。</summary>
+    [Fact]
+    public void DemonKill_WhileWindowOpen_IsDeferred()
+    {
+        var state = NightLedger((1, "pit-hag"), (2, "clockmaker"), (3, "vortox"));
+        var vortox = NightActions.Resolutions.Find(new CharacterId("vortox"))
+            ?? throw new InvalidOperationException("涡流没有注册结算契约");
+
+        var events = vortox.Resolve(new AbilityResolutionContext
+        {
+            SlotId = new StepSlotId("vortox"),
+            PlanLabel = "sv:night-2",
+            Phase = GamePhase.OtherNight,
+            Actor = new SeatId(3),
+            ActorCharacter = new CharacterId("vortox"),
+            Seats = [.. state.Seats.Select(entry => entry.Seat)],
+            State = state,
+            Outcome = new AbilityOutcome { Effective = true },
+            Choice = "seat:2",
+            DaysStarted = 1,
+            PitHagNightActive = true,
+        });
+
+        var deferred = Assert.Single(events.OfType<DeferredDeathRecordedEvent>());
+        Assert.Equal(new SeatId(2), deferred.Target);
+        Assert.Equal(new SeatId(3), deferred.Source);
+        Assert.Empty(events.OfType<SeatStateChangedEvent>());
+    }
+
     /// <summary>从公开目录取结算契约（角色实现是 internal，测试只走注册表）。</summary>
     private static IAbilityResolution Contract() =>
         NightActions.Resolutions.Find(PitHag)
