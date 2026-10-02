@@ -30,7 +30,7 @@ internal static class GameCommandDispatcher
     {
         if (envelope.Command is StartPhaseCommand start)
         {
-            var outcome = StepMachine.StartPhase(start.Plan, machine, start.Control);
+            var outcome = StepMachine.StartPhase(start.Plan, machine, settlement.State, start.Control);
             return new CommandDispatchResult(outcome.State, outcome.Events, null);
         }
 
@@ -363,7 +363,7 @@ internal static class GameCommandDispatcher
             });
         }
 
-        var started = StepMachine.StartPhase(outcome.Plan, machine);
+        var started = StepMachine.StartPhase(outcome.Plan, machine, state);
         logger.LogInformation(
             "已按规则表建表：game={GameId} night={NightNumber} variant={Variant} 槽位数={SlotCount} 计划={Label}",
             gameId,

@@ -36,15 +36,28 @@ public static class StepMachine
     /// 否则白天账（死亡玩家票权 / 逐日事实）会被丢掉。不带前一状态的版本供全新对局与测试夹具使用。
     /// </remarks>
     public static StepMachineOutcome StartPhase(StepPlan plan, ControlMode control = ControlMode.Automatic) =>
-        StartPhase(plan, previous: null, control);
+        StartPhase(plan, previous: null, GameState.Empty, control);
 
     /// <summary>开启一个新阶段，并保留现有状态里的非计划账（尤其白天账与已消耗票权）。</summary>
     public static StepMachineOutcome StartPhase(
         StepPlan plan,
         StepMachineState? previous,
+        ControlMode control = ControlMode.Automatic) =>
+        StartPhase(plan, previous, GameState.Empty, control);
+
+    /// <summary>
+    /// 开启一个新阶段，并带上**当前状态账**：进入槽位时按它确认行动者是否还站得住
+    /// （说书人杀掉了尚未唤醒的恶魔、或行动者的角色在夜里被换走时，这一格不再唤醒他；
+    /// 见 <see cref="StepSlotEntry.Enter"/> 与 rulings.md R-0030）。
+    /// </summary>
+    public static StepMachineOutcome StartPhase(
+        StepPlan plan,
+        StepMachineState? previous,
+        GameState ledger,
         ControlMode control = ControlMode.Automatic)
     {
         ArgumentNullException.ThrowIfNull(plan);
+        ArgumentNullException.ThrowIfNull(ledger);
 
         var events = new List<GameEvent>(capacity: 4)
         {
@@ -54,7 +67,7 @@ public static class StepMachine
             ?? throw new InvalidOperationException("事件流损坏：开启阶段没有产出步骤机状态");
         if (!state.IsPlanCompleted)
         {
-            StepSlotEntry.Enter(state, events);
+            StepSlotEntry.Enter(state, ledger, events);
         }
         else
         {
@@ -121,15 +134,17 @@ public static class StepMachine
 
         return input switch
         {
-            SlotQuotaElapsedInput => HandleQuotaElapsed(state),
+            SlotQuotaElapsedInput => HandleQuotaElapsed(state, context),
             SubmitResponseInput response => HandleResponse(state, context, response),
-            VoidRequestInput voidRequest => HandleVoid(state, voidRequest),
+            VoidRequestInput voidRequest => HandleVoid(state, context, voidRequest),
             ForceAdvanceInput forceAdvance when state.Plan.Phase == GamePhase.Day
                 => DayStepMachine.ForceAdvance(state, forceAdvance),
-            ForceAdvanceInput forceAdvance => HandleForceAdvance(state, forceAdvance),
-            TakeOverInput takeOver => HandleControlChange(state, ControlMode.StorytellerTakeover, takeOver.Reason),
-            ReleaseControlInput release => HandleControlChange(state, ControlMode.Automatic, release.Reason),
-            SeatStateChangedInput seatChanged => HandleSeatStateChanged(state, seatChanged),
+            ForceAdvanceInput forceAdvance => HandleForceAdvance(state, context, forceAdvance),
+            TakeOverInput takeOver
+                => HandleControlChange(state, context, ControlMode.StorytellerTakeover, takeOver.Reason),
+            ReleaseControlInput release
+                => HandleControlChange(state, context, ControlMode.Automatic, release.Reason),
+            SeatStateChangedInput seatChanged => HandleSeatStateChanged(state, context, seatChanged),
             ResolveDecisionPointInput resolve => HandleDecisionResolved(state, context, resolve),
             PunishExecutionInput punish => AdjudicatedExecutionMachine.Handle(state, context, punish),
             NominateInput or CastVoteInput or CountVotesInput or CloseDayInput
@@ -158,7 +173,7 @@ public static class StepMachine
         return StepMachineFolder.ApplyAll(null, events);
     }
 
-    private static StepMachineOutcome HandleQuotaElapsed(StepMachineState state)
+    private static StepMachineOutcome HandleQuotaElapsed(StepMachineState state, SettlementContext context)
     {
         if (state.IsPlanCompleted)
         {
@@ -180,7 +195,7 @@ public static class StepMachine
         {
             new SlotQuotaElapsedEvent { SlotId = state.CurrentSlot!.Id },
         };
-        return Applied(state, WithAutoAdvance(state, events));
+        return Applied(state, WithAutoAdvance(state, context, events));
     }
 
     private static StepMachineOutcome HandleResponse(
@@ -271,10 +286,13 @@ public static class StepMachine
             }
         }
 
-        return Applied(state, WithAutoAdvance(state, events));
+        return Applied(state, WithAutoAdvance(state, context, events));
     }
 
-    private static StepMachineOutcome HandleVoid(StepMachineState state, VoidRequestInput input)
+    private static StepMachineOutcome HandleVoid(
+        StepMachineState state,
+        SettlementContext context,
+        VoidRequestInput input)
     {
         if (state.IsPlanCompleted)
         {
@@ -305,10 +323,13 @@ public static class StepMachine
                 Void = new OperationRequestVoid { Reason = input.Reason, Note = input.Note },
             },
         };
-        return Applied(state, WithAutoAdvance(state, events));
+        return Applied(state, WithAutoAdvance(state, context, events));
     }
 
-    private static StepMachineOutcome HandleForceAdvance(StepMachineState state, ForceAdvanceInput input)
+    private static StepMachineOutcome HandleForceAdvance(
+        StepMachineState state,
+        SettlementContext context,
+        ForceAdvanceInput input)
     {
         if (state.IsPlanCompleted)
         {
@@ -342,11 +363,15 @@ public static class StepMachine
 
         var afterHolds = StepMachineFolder.ApplyAll(state, events)
             ?? throw new InvalidOperationException("事件流损坏：处理输入后丢失步骤机状态");
-        StepSlotEntry.AppendForceAdvance(afterHolds, events, input.Reason);
+        StepSlotEntry.AppendForceAdvance(afterHolds, context.State, events, input.Reason);
         return Applied(state, events);
     }
 
-    private static StepMachineOutcome HandleControlChange(StepMachineState state, ControlMode mode, string reason)
+    private static StepMachineOutcome HandleControlChange(
+        StepMachineState state,
+        SettlementContext context,
+        ControlMode mode,
+        string reason)
     {
         if (state.Control == mode)
         {
@@ -357,10 +382,13 @@ public static class StepMachine
         {
             new ControlModeChangedEvent { Mode = mode, Reason = reason },
         };
-        return Applied(state, WithAutoAdvance(state, events));
+        return Applied(state, WithAutoAdvance(state, context, events));
     }
 
-    private static StepMachineOutcome HandleSeatStateChanged(StepMachineState state, SeatStateChangedInput input)
+    private static StepMachineOutcome HandleSeatStateChanged(
+        StepMachineState state,
+        SettlementContext context,
+        SeatStateChangedInput input)
     {
         if (input.Life is null
             && input.Character is null
@@ -410,7 +438,7 @@ public static class StepMachine
                 Note = SeatDependencyCheck.Describe(violated, input),
             },
         });
-        return Applied(state, WithAutoAdvance(state, events));
+        return Applied(state, WithAutoAdvance(state, context, events));
     }
 
     private static StepMachineOutcome HandleDecisionResolved(
@@ -474,16 +502,19 @@ public static class StepMachine
             }
         }
 
-        return Applied(state, WithAutoAdvance(state, events));
+        return Applied(state, WithAutoAdvance(state, context, events));
     }
 
-    private static List<GameEvent> WithAutoAdvance(StepMachineState state, List<GameEvent> events)
+    private static List<GameEvent> WithAutoAdvance(
+        StepMachineState state,
+        SettlementContext context,
+        List<GameEvent> events)
     {
         var after = StepMachineFolder.ApplyAll(state, events)
             ?? throw new InvalidOperationException("事件流损坏：处理输入后丢失步骤机状态");
         if (StepSlotEntry.CanAutoAdvance(after))
         {
-            StepSlotEntry.AppendAdvance(after, events);
+            StepSlotEntry.AppendAdvance(after, context.State, events);
         }
 
         return events;

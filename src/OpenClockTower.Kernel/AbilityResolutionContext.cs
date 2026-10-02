@@ -46,6 +46,19 @@ public sealed record AbilityResolutionContext
     public string? Decision { get; init; }
 
     /// <summary>
+    /// 本夜的步骤计划；没有计划（内核夹具 / 阶段外结算）时为 null。
+    /// </summary>
+    /// <remarks>
+    /// 给「角色变更之后要激活未来的槽位」的能力用（<see cref="SlotActivatedEvent"/>）：
+    /// 契约在**结算时**就能算出这个角色今夜还有没有位置，不必等提交管线的批末补全——
+    /// 那时紧邻的槽位可能已经被进入了。
+    /// </remarks>
+    public StepPlan? Plan { get; init; }
+
+    /// <summary>本次结算所在的槽位下标（结算发生在推进之前，因此它指向正在结算的这一格）。</summary>
+    public int SlotIndex { get; init; }
+
+    /// <summary>
     /// 本次行动开始时，白天账里**已经开始的白天数**（夜晚 N 行动时为 N−1）。
     /// 需要"跨夜存续窗口"的能力用它算绝对到期日——洗脑师的疯狂要求在施加夜的次日白天与其后夜晚有效，
     /// 下一个黎明撤下（<c>docs/standard/rulings.md</c> R-0021）。

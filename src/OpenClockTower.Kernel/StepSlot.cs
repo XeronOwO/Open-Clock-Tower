@@ -37,6 +37,18 @@ public sealed record StepSlot
     /// </remarks>
     public CharacterId? Owner { get; init; }
 
+    /// <summary>
+    /// 本槽位**对应**的角色（角色条目槽位一律有值；节拍 / 黎明 / 白天窗口为 null）。
+    /// </summary>
+    /// <remarks>
+    /// 与 <see cref="Owner"/> 的分工：Owner 是"建表时就在场的行动者"（空槽位没有）；
+    /// Character 是"这个槽位是谁的位置"。角色变更能力（麻脸巫婆等）在夜里把某个角色创造出来之后，
+    /// 尚未进入的槽位据此被**激活**（<see cref="SlotActivatedEvent"/>）——见
+    /// <c>docs/standard/rulings.md</c> R-0030 第 6 条与百科《夜晚行动顺序一览》麻脸巫婆条
+    /// 「否则，就需要唤醒这名玩家」。
+    /// </remarks>
+    public CharacterId? Character { get; init; }
+
     /// <summary>座位依赖：任一不满足即自动作废该请求。</summary>
     public IReadOnlyList<SeatDependency> Dependencies { get; init; } = [];
 
@@ -60,10 +72,14 @@ public sealed record StepSlot
             Prompt = prompt,
             Dependencies = dependencies ?? [],
             Owner = owner,
+            Character = owner,
         };
 
     /// <summary>构造一个空槽位（角色不在场 / 已死亡 / 被跳过）。</summary>
-    public static StepSlot Empty(StepSlotId id) => new() { Id = id, Kind = StepSlotKind.Empty };
+    /// <param name="id">槽位标识。</param>
+    /// <param name="character">这个槽位对应的角色；null = 非角色条目。</param>
+    public static StepSlot Empty(StepSlotId id, CharacterId? character = null) =>
+        new() { Id = id, Kind = StepSlotKind.Empty, Character = character };
 
     /// <summary>构造一个黎明等待槽位。</summary>
     public static StepSlot DawnWait(StepSlotId id) => new() { Id = id, Kind = StepSlotKind.DawnWait };

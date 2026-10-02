@@ -128,8 +128,9 @@ public static class NightPlanBuilder
         var owners = request.State.Seats.Where(entry => entry.CharacterValue == character).ToArray();
         if (owners.Length == 0)
         {
-            // 角色不在场：空槽位，照样走配额。
-            return (StepSlot.Empty(new StepSlotId(tag)), null);
+            // 角色不在场：空槽位，照样走配额；但记住**这一格是谁的位置**——
+            // 麻脸巫婆之类的角色变更能力当夜把该角色创造出来时，这一格会被激活（SlotActivatedEvent）。
+            return (StepSlot.Empty(new StepSlotId(tag), character), null);
         }
 
         if (owners.Length > 1)
@@ -149,8 +150,8 @@ public static class NightPlanBuilder
 
         if (actor.LifeValue == LifeState.Dead)
         {
-            // 已死亡：空槽位，照样走配额。
-            return (StepSlot.Empty(new StepSlotId(tag)), null);
+            // 已死亡：空槽位，照样走配额；角色同样记在槽位上（复活 / 换角后由进入时求值决定是否唤醒）。
+            return (StepSlot.Empty(new StepSlotId(tag), character), null);
         }
 
         if (request.Actions.Find(character) is not { } action)

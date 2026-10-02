@@ -66,6 +66,8 @@ internal static class AbilitySettlement
             Choice = choice,
             Decision = decision,
             DaysStarted = state.Day?.Days.Count ?? 0,
+            Plan = state.Plan,
+            SlotIndex = state.SlotIndex,
         };
 
         // 玩家选完、说书人还没裁：先问是否需要再裁定一次（信息类能力要把信息内容交给说书人）。

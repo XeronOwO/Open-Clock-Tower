@@ -70,6 +70,7 @@ internal static class StepMachineFolder
             PhaseCompletedEvent completed => Require(state, completed),
             ControlModeChangedEvent control => Require(state, control) with { Control = control.Mode },
             PromptSkippedEvent skipped => Require(state, skipped),
+            SlotActivatedEvent activated => ApplySlotActivation(state, activated),
             SeatStateChangedEvent => state,
             DecisionPointRaisedEvent raised => Require(state, raised) with
             {
@@ -155,6 +156,50 @@ internal static class StepMachineFolder
         }
 
         return current with { AwaitingDecision = null };
+    }
+
+    /// <summary>
+    /// 把一次槽位激活折进计划：只有**尚未进入**的槽位可以被激活（过时不候，《隐性规则汇总》§6）。
+    /// </summary>
+    /// <remarks>
+    /// 顺序损坏一律显式抛错：激活一个已经走过的槽位、下标越界、槽位标识对不上、
+    /// 或者重复激活已经激活过的行动槽位，都是事件流损坏（恢复必须失败，不许静默继续）。
+    /// </remarks>
+    private static StepMachineState ApplySlotActivation(StepMachineState? state, SlotActivatedEvent activated)
+    {
+        var current = Require(state, activated);
+        if (activated.SlotIndex <= current.SlotIndex)
+        {
+            throw new InvalidOperationException(
+                $"事件流顺序损坏：槽位 {activated.SlotId.Value} 已经进入过（当前下标 {current.SlotIndex}），不能再激活");
+        }
+
+        if (activated.SlotIndex >= current.Plan.Slots.Count)
+        {
+            throw new InvalidOperationException($"事件流顺序损坏：激活下标 {activated.SlotIndex} 越界");
+        }
+
+        var slot = current.Plan.Slots[activated.SlotIndex];
+        if (slot.Id != activated.SlotId)
+        {
+            throw new InvalidOperationException(
+                $"事件流顺序损坏：下标 {activated.SlotIndex} 是槽位 {slot.Id.Value}，不是 {activated.SlotId.Value}");
+        }
+
+        if (slot.Kind == StepSlotKind.Action)
+        {
+            throw new InvalidOperationException($"事件流顺序损坏：槽位 {activated.SlotId.Value} 已经是行动槽位，不能重复激活");
+        }
+
+        var slots = current.Plan.Slots.ToArray();
+        slots[activated.SlotIndex] = StepSlot.Action(
+            slot.Id,
+            activated.Actor,
+            activated.Prompt,
+            activated.Dependencies,
+            slot.Character);
+
+        return current with { Plan = current.Plan with { Slots = slots } };
     }
 
     private static StepMachineState ApplyAdvance(StepMachineState? state, int fromIndex, int toIndex)

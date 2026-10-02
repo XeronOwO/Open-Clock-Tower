@@ -24,7 +24,7 @@ internal static class StepSlotEntry
         && !state.IsHeld;
 
     /// <summary>产出一条自动推进事件；推进后进入新槽位（计划走完则补阶段完成事件）。</summary>
-    internal static void AppendAdvance(StepMachineState state, List<GameEvent> events)
+    internal static void AppendAdvance(StepMachineState state, GameState ledger, List<GameEvent> events)
     {
         var from = state.SlotIndex;
         var to = from + 1;
@@ -38,11 +38,16 @@ internal static class StepSlotEntry
         Enter(
             StepMachineFolder.Apply(state, events[^1])
                 ?? throw new InvalidOperationException("事件流损坏：推进后丢失步骤机状态"),
+            ledger,
             events);
     }
 
     /// <summary>产出一条强推事件（说书人兜底，D-0014）；推进后进入新槽位。</summary>
-    internal static void AppendForceAdvance(StepMachineState state, List<GameEvent> events, string reason)
+    internal static void AppendForceAdvance(
+        StepMachineState state,
+        GameState ledger,
+        List<GameEvent> events,
+        string reason)
     {
         var from = state.SlotIndex;
         var to = from + 1;
@@ -56,12 +61,18 @@ internal static class StepSlotEntry
         Enter(
             StepMachineFolder.Apply(state, events[^1])
                 ?? throw new InvalidOperationException("事件流损坏：推进后丢失步骤机状态"),
+            ledger,
             events);
     }
 
     /// <summary>进入当前槽位：产出槽位进入事件，并按槽位种类与选择契约派生后续事件。</summary>
-    internal static void Enter(StepMachineState state, List<GameEvent> events)
+    /// <param name="state">步骤机状态（提供当前槽位）。</param>
+    /// <param name="ledger">状态账：进入时按**当前**账确认行动者还站得住（见 <see cref="UnavailableReason"/>）。</param>
+    /// <param name="events">事件出口（就地追加）。</param>
+    internal static void Enter(StepMachineState state, GameState ledger, List<GameEvent> events)
     {
+        ArgumentNullException.ThrowIfNull(ledger);
+
         var slot = state.CurrentSlot
             ?? throw new InvalidOperationException("进入槽位失败：计划已走完");
 
@@ -69,6 +80,14 @@ internal static class StepSlotEntry
 
         if (slot.Kind != StepSlotKind.Action)
         {
+            // 空槽位通常是「角色不在场 / 已死亡」。但角色可能在这一夜被创造出来：有契约的会在结算时
+            // 被激活成行动槽位（SlotActivatedEvent）；已经站在场上却仍是空槽位的，说明这一格
+            // 在夜晚顺序表上却没有夜间行动契约——**显式阻塞**，与建表期的 plan.contract_missing 同族。
+            if (OrphanReason(ledger, slot) is { } orphan)
+            {
+                events.Add(new SlotBlockedEvent { SlotId = slot.Id, Reason = orphan });
+            }
+
             return;
         }
 
@@ -79,6 +98,15 @@ internal static class StepSlotEntry
                 SlotId = slot.Id,
                 Reason = "行动槽位缺少行动者或选择契约（数据缺陷）——说书人可强推 / 接管 / 重建",
             });
+            return;
+        }
+
+        // 进入时按**当前账**再确认一次（D-0013 §1 的配额不受影响）：
+        // 说书人在恶魔行动前杀死了尚未唤醒的恶魔，这一格就不再唤醒他；
+        // 行动者的角色在夜里被换走，同理。依据见 rulings.md R-0030 第 6 条。
+        if (UnavailableReason(ledger, slot) is { } unavailable)
+        {
+            events.Add(new PromptSkippedEvent { SlotId = slot.Id, Reason = unavailable });
             return;
         }
 
@@ -110,6 +138,61 @@ internal static class StepSlotEntry
                 events.Add(new SlotBlockedEvent { SlotId = slot.Id, Reason = slot.Prompt.Context });
                 break;
         }
+    }
+
+    /// <summary>
+    /// 空槽位却已经有人站在场上的原因；null = 正常的空槽位（角色不在场 / 已死亡 / 非角色槽位）。
+    /// </summary>
+    /// <remarks>
+    /// 只认「恰好一名存活持有者」：多持有是数据损坏，不在这一格的职责里（角色唯一由分配闸与
+    /// 角色变更能力自己保证）。
+    /// </remarks>
+    private static string? OrphanReason(GameState ledger, StepSlot slot)
+    {
+        if (slot.Character is not { } character)
+        {
+            return null;
+        }
+
+        var holders = ledger.Seats
+            .Where(entry => entry.CharacterValue == character && entry.LifeValue == LifeState.Alive)
+            .ToArray();
+        if (holders.Length != 1)
+        {
+            return null;
+        }
+
+        return $"角色 {character.Value} 此刻由 {holders[0].Seat.Value} 号持有且存活，但这一格没有行动契约"
+            + "（夜间行动未实现或未被激活）：拒绝静默跳过（说书人可强推 / 接管 / 重建）";
+    }
+
+    /// <summary>
+    /// 行动者此刻是否还站得住；返回 null = 可以唤醒。
+    /// </summary>
+    /// <remarks>
+    /// 账里查不到这一席（内核夹具 / 半初始化场景）时返回 null——**判定不了就不改变行为**，
+    /// 与「一次只报本次观测到的维度」是同一副保守姿态。
+    /// </remarks>
+    private static string? UnavailableReason(GameState ledger, StepSlot slot)
+    {
+        var entry = ledger.Seat(slot.Actor!.Value);
+        if (entry is null)
+        {
+            return null;
+        }
+
+        if (entry.LifeValue == LifeState.Dead)
+        {
+            return $"行动者（{slot.Actor.Value} 号）已经死亡：本步不唤醒（配额照走；rulings.md R-0030）";
+        }
+
+        if (entry.CharacterValue is { } current && slot.Character is { } expected && current != expected)
+        {
+            return $"行动者（{slot.Actor.Value} 号）现在的角色是 {current.Value}，不是 {expected.Value}："
+                + "本步跳过（配额照走；过时不候）";
+        }
+
+        return null;
     }
 
     /// <summary>为一个行动槽位构造操作请求（槽位来源：随槽位推进了结、消耗夜晚配额）。</summary>
