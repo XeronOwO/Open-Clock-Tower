@@ -5,6 +5,7 @@ import {
   characterNameOf,
   characterTypeOf,
   dimensionLabelOf,
+  effectMarkNameOf,
   labelOf,
   voidReasonLabelOf,
 } from '@/display/labels'
@@ -33,6 +34,7 @@ describe('文案映射', () => {
     expect(labelOf('Sober')).toBe('清醒')
     expect(labelOf('Evil')).toBe('邪恶')
     expect(labelOf('SourceDied')).toBe('来源死亡')
+    expect(labelOf('NoLongerApplies')).toBe('条件不再满足')
     expect(labelOf('Open')).toBe('未定（R-0004）')
   })
 
@@ -66,6 +68,12 @@ describe('文案映射', () => {
     expect(labelOf(null)).toBe('—')
     expect(labelOf(undefined)).toBe('—')
     expect(labelOf('')).toBe('—')
+  })
+
+  it('提示标记名按能力登记：女巫的诅咒是「被诅咒」，未登记的能力不编名字', () => {
+    expect(effectMarkNameOf('witch.curse')).toBe('被诅咒')
+    expect(effectMarkNameOf('no-dashii.poison')).toBeNull()
+    expect(effectMarkNameOf(null)).toBeNull()
   })
 
   it('维度名与角色名有中文，未知 slug 不回显空', () => {

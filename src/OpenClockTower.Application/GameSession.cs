@@ -347,7 +347,7 @@ public sealed class GameSession
 
             // 固定点对账：常驻效果（诺-达鲺的中毒等）与由效果压制的维度重算（D-0015 推论 1）。
             // 派生事件与业务事件**同一次提交**落库；重放只折事件，恢复不重算。
-            var reconciliation = SessionSettlement.Reconcile(nextState, settlement);
+            var reconciliation = SessionSettlement.Reconcile(nextState, settlement, dispatch.Events);
             foreach (var diagnostic in reconciliation.Diagnostics)
             {
                 _logger.LogDebug(

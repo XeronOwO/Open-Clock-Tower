@@ -26,7 +26,10 @@ public sealed record EffectDto
     /// <summary>是否已终止（终止不可逆）。</summary>
     public required bool Terminated { get; init; }
 
-    /// <summary>终止原因分类：SourceDied / SourceLostAbility / StorytellerVoided；未终止时为空。</summary>
+    /// <summary>
+    /// 终止原因分类：SourceDied / SourceLostAbility / StorytellerVoided / NoLongerApplies；
+    /// 未终止时为空。
+    /// </summary>
     public string? TerminationKind { get; init; }
 
     /// <summary>终止说明；未终止时为空。</summary>

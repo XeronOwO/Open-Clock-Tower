@@ -182,6 +182,21 @@ describe('牌面派生（未观测 ≠ 默认值）', () => {
     ).toBe('no-dashii.poison')
   })
 
+  it('登记的提示标记优先于来源角色名：女巫的诅咒在牌面上就是「被诅咒」', () => {
+    // 百科《女巫》· 2026-10-01 抓取 · 提示标记：「被诅咒」
+    const curse = effectOf(4, {
+      effectId: 'sv:night-1:witch:curse',
+      ability: 'witch.curse',
+      source: 1,
+      sourceCharacter: 'witch',
+    })
+
+    expect(effectMarkLabel(curse)).toBe('被诅咒')
+    expect(buildSeatMarks([], [], [curse])).toEqual([
+      { kind: 'effect', label: '被诅咒', detail: '生效中' },
+    ])
+  })
+
   it('未知枚举值原样留在值里，由呈现层决定怎么显示（不吞）', () => {
     const card = buildSeatCard(
       viewOf({ seats: [seatOf(5, [fact(DIMENSION_ALIGNMENT, 'Chaotic', '说书人裁定')])] }),

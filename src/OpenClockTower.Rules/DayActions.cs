@@ -16,7 +16,8 @@ namespace OpenClockTower.Rules;
 /// 白天事实、自身仍是夜晚能力，不在本闸名单里）。
 /// </para>
 /// <para>
-/// 本票没有已实现的白天契约：<see cref="IsCovered"/> 恒为 false。角色分批实现时在这里登记，
+/// 已实现的白天契约登记在 <see cref="CoveredCharacters"/>：女巫的诅咒在夜晚施加、在下个白天触发
+/// （提名即死），触发与存续两族契约见 <see cref="RoleContracts"/>。角色分批实现时在这里登记，
 /// 并补上对应的运行时证据。
 /// </para>
 /// </remarks>
@@ -44,10 +45,20 @@ public static class DayActions
         new("vortox"),
     ];
 
+    /// <summary>
+    /// 白天契约**已经实现**的角色（分批登记）：女巫的诅咒在夜晚施加、在下个白天提名时触发。
+    /// </summary>
+    private static readonly CharacterId[] CoveredCharacters =
+    [
+        // 女巫：夜晚选择目标施加「被诅咒」，被诅咒者下个白天发起提名即死（提名仍生效）；
+        // 诅咒的触发与存续见 RoleContracts。
+        new("witch"),
+    ];
+
     /// <summary>该角色是否与白天阶段相关（无论实现与否）。</summary>
     public static bool IsDayRelevant(CharacterId character) =>
         DayRelevantCharacters.Contains(character);
 
-    /// <summary>该角色的白天契约是否已实现；本票为空，全部未实现。</summary>
-    public static bool IsCovered(CharacterId character) => false;
+    /// <summary>该角色的白天契约是否已实现；未实现的角色在场时开白天会被显式拒绝。</summary>
+    public static bool IsCovered(CharacterId character) => CoveredCharacters.Contains(character);
 }

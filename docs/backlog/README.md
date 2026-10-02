@@ -61,6 +61,7 @@ todo/  →  in-progress/  →  review/  →  done/
 ### Todo
 
 - [说书人注记：魔典上的自由文本提示标记](todo/storyteller-annotation.md) — **Low** — 魔典上的自由文本 token；首版刻意不做，待定归属 / 持久化 / 审计边界
+- [玩家端的死亡公告面缺失](todo/player-death-announcement.md) — **Medium** — 玩家视图没有任何席位生死；夜间击杀与咒杀对玩家不可见，只有处决可见
 
 ### In progress
 
@@ -68,6 +69,7 @@ todo/  →  in-progress/  →  review/  →  done/
 
 ### Done
 
+- [女巫：夜晚诅咒 → 白天提名咒杀](done/witch-curse.md) — 夜晚施加的无维度持续型效果在下个白天触发（提名即死，提名仍生效）；顺带打通「事件触发契约」与「能力存续契约」；批次 E11 行 1–11 全过（主装置 139 / 零信任 42 / 女巫装置 26 项断言）
 - [补齐期间到达的信息推送会被快照覆盖丢弃](done/player-information-resync-race.md) — 推送携带事件序号 + 客户端单一写入者按序号合并（含阶段 / 白天 / 请求三态与说书人整视图）；批次 E10 行 1–5 全过
 - [白天阶段：提名 / 投票 / 处决](done/day-phase.md) — 开白天 / 提名 / 投票 / 计票 / 处决 + 阶段闸与公开投影；解开了零信任票行 5
 - [零信任安全模型](done/zero-trust-security-model.md) — 鉴权两级凭据 + 操作四道闸 + 服务端强制投影；批次 E9 行 1–11 全部有运行时证据

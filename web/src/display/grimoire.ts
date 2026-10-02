@@ -8,7 +8,7 @@
  * - 服务端数据是不可信输入：坏值只降级该格，不炸渲染（架构 §4.4）。
  */
 import type { EffectDto, SeatStateFactDto, StorytellerViewDto } from '@/contracts/game'
-import { characterLabelOf, characterNameOf } from '@/display/labels'
+import { characterLabelOf, characterNameOf, effectMarkNameOf } from '@/display/labels'
 
 /** 六维度里可在牌面上呈现的五个；疯狂要求另列（`SeatStateDto.madnesses`）。 */
 export const DIMENSION_LIFE = 'Life'
@@ -65,9 +65,12 @@ export function factValueOf(
   return factOf(facts, dimension)?.value ?? null
 }
 
-/** 效果链在牌面上的简称：优先施加时的来源角色（中文名），没有来源角色时退回能力 slug。 */
+/**
+ * 效果链在牌面上的简称：**登记的提示标记名优先**（百科口径，如女巫的「被诅咒」），
+ * 未登记的能力退回施加时的来源角色（中文名），再退回能力 slug。
+ */
 export function effectMarkLabel(effect: EffectDto): string {
-  return characterNameOf(effect.sourceCharacter ?? effect.ability)
+  return effectMarkNameOf(effect.ability) ?? characterNameOf(effect.sourceCharacter ?? effect.ability)
 }
 
 /** 效果状态：生效中 / 已终止（终止原因交给操作台的下钻查看）。 */

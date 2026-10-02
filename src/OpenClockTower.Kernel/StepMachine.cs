@@ -542,7 +542,8 @@ public static class StepMachine
                 events.Add(new PromptSkippedEvent
                 {
                     SlotId = slot.Id,
-                    Reason = "无合法选项：按声明的 Skip 走（R-0009），配额照走",
+                    Reason = $"无合法选项：{slot.Prompt.Context}"
+                        + "（按声明的 Skip 走，R-0009；配额照走）",
                 });
                 break;
             case DecisionPointOutcome.StorytellerDecides:

@@ -5,9 +5,9 @@ namespace OpenClockTower.Kernel;
 /// </summary>
 /// <remarks>
 /// <para>
-/// 一轮的顺序是：常驻效果期望集 → 补缺 / 终止多余 → 折账 → <see cref="DimensionEffectReconciler"/>
-/// 重算维度 → 折账；只要还有新事件就再来一轮。<see cref="MaxPasses"/> 是防呆：
-/// 不收敛说明规则互相打架，显式抛错——恢复必须失败，不得静默继续（D-0014 能力 3）。
+/// 一轮的顺序是：能力存续（失去能力 → 解除其效果）→ 常驻效果期望集 → 补缺 / 终止多余 → 折账 →
+/// <see cref="DimensionEffectReconciler"/> 重算维度 → 折账；只要还有新事件就再来一轮。
+/// <see cref="MaxPasses"/> 是防呆：不收敛说明规则互相打架，显式抛错——恢复必须失败，不得静默继续（D-0014 能力 3）。
 /// </para>
 /// <para>
 /// 产出的事件由调用方与业务事件**同一次原子提交**落库；重放只折事件、不重算，
@@ -36,6 +36,7 @@ public static class SettlementReconciler
         for (var pass = 0; pass <= MaxPasses; pass++)
         {
             var passEvents = new List<GameEvent>();
+            passEvents.AddRange(PlanAbsentAbilities(current, context, diagnostics));
             foreach (var source in context.StandingEffects)
             {
                 var assessment = source.Evaluate(new StandingEffectContext
@@ -135,6 +136,66 @@ public static class SettlementReconciler
                     Reason = $"常驻效果重算：{source.Ability} 的条件不再满足，效果 {effect.Id} 终止",
                 },
             });
+        }
+
+        return events;
+    }
+
+    /// <summary>
+    /// 能力存续：某些角色的能力会在特定局势下失去（女巫「只剩三名存活玩家」），
+    /// 它名下的持续型效果必须随之解除——否则账上会留下一条**假事实**。
+    /// </summary>
+    /// <remarks>
+    /// 判定不了（输入不全）时<b>什么都不做</b>并留一条诊断：不猜（D-0015）。
+    /// 与常驻效果共用本固定点，是为了让"能力没了 → 效果解除 → 维度重算"在同一次提交里收敛。
+    /// </remarks>
+    private static IReadOnlyList<GameEvent> PlanAbsentAbilities(
+        GameState state,
+        SettlementContext context,
+        List<string> diagnostics)
+    {
+        if (context.AbilityPresences.Count == 0)
+        {
+            return [];
+        }
+
+        var events = new List<GameEvent>();
+        foreach (var presence in context.AbilityPresences)
+        {
+            var present = presence.IsPresent(new AbilityPresenceContext
+            {
+                State = state,
+                Seats = context.Seats,
+            });
+            if (present is null)
+            {
+                diagnostics.Add($"能力存续 {presence.Ability} 本次未判定：输入不全，不解除它名下的效果");
+                continue;
+            }
+
+            if (present.Value)
+            {
+                continue;
+            }
+
+            foreach (var effect in state.PersistentEffects)
+            {
+                if (effect.Ability != presence.Ability || effect.IsTerminated)
+                {
+                    continue;
+                }
+
+                events.Add(new PersistentEffectTerminatedEvent
+                {
+                    EffectId = effect.Id,
+                    Termination = new EffectTermination
+                    {
+                        Kind = EffectTerminationKind.NoLongerApplies,
+                        Reason = $"能力存续条件不再满足：{presence.Ability} 已经失去，"
+                            + $"效果 {effect.Id} 立即解除",
+                    },
+                });
+            }
         }
 
         return events;

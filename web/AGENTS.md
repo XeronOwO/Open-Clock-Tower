@@ -48,24 +48,27 @@ node tools/verify-storyteller-panel.mjs        # 退出码 0 = 全部断言通�
 ```
 
 真宿主 + 真 Vite + 真 Chromium，按 `--seats` 给每一席开一个**独立浏览器上下文**（同一 SPA 的
-`#player`）；**场景清单与逐步断言以脚本头部注释为准**（加入 → 分配 → 首夜 → 白天提名 / 投票 /
-计票 / 处决 → 二、三夜的代填与强制作废 → 魔典逐行取证 → 重建与降级位 → 重连补齐），
+`#player`）；**场景清单与逐步断言以脚本头部注释为准**（加入 → 分配 → 首夜 → 白天提名 / 计票 / 处决 →
+后续夜晚与强制作废 → 重建与降级位 → 重连补齐），
 截图写进 `artifacts/web/`（gitignored；日志由调用方重定向，
 如 `2>&1 | Tee-Object artifacts/web/batch-run.log`）。场景固定三角色
 （clockmaker / dreamer / no-dashii），节拍配额默认 `--quota 2` 秒。
 
 零信任负向取证：`node tools/verify-zero-trust.mjs`（退出码 0 = 全部断言通过）——真宿主 + Node SignalR
-客户端扮演**篡改前端**：伪造 / 冒用 / 旧连接凭据直调 Hub、**白天提交夜间行动**、扫描玩家收包与宿主
-日志（拒绝审计、无凭据明文）。它是补充装置，不替代主批次（UI / 玩法归主批次）。
+客户端扮演**篡改前端**：伪造 / 冒用 / 旧连接凭据直调 Hub、白天提交夜间行动、扫描玩家收包与宿主
+日志（拒绝审计）。它是补充装置，不替代主批次。
+
+女巫链路：`node tools/verify-witch.mjs`（固定 4 席，两个真浏览器 + 三席 Node SignalR 客户端）：
+夜晚诅咒 → 白天提名即死（提名仍生效）→ 存活 ≤3 时解除，含三席玩家收包扫描。
 
 **外部耦合（换机器前先核对）**：
 
 | 耦合 | 位置 | 失败时的表现 |
 |---|---|---|
-| 宿主编译产物路径 `src/OpenClockTower.Server/bin/Release/net10.0/OpenClockTower.Server[.exe]` | `tools/verify-storyteller-panel.mjs` | 进程启动失败，退出码 1（脚本自己也打印路径） |
+| 宿主编译产物路径 `src/OpenClockTower.Server/bin/Release/net10.0/OpenClockTower.Server[.exe]` | `tools/verify-*.mjs` | 进程启动失败，退出码 1（脚本自己也打印路径） |
 | SQLite 表 `Games`、列 `StorytellerTicket` / `SeatsJson`（`SeatId` 序列化为 `{ "value": N }`） | 同上 | 读票据抛错并退出（票据取不到就不测） |
-| 席位数量 | `--seats` 与 `--assign` 必须同数（建表要求每席都有角色） | 开夜被拒 `plan.seat_unassigned`，断言失败 |
-| 场景角色 | `--assign` 必须同时含 clockmaker / dreamer / no-dashii | 参数校验直接报错退出 |
+| 席位数量 | `--seats` 与 `--assign` 必须同数（建表要求每席都有角色） | 开夜被拒 `plan.seat_unassigned` |
+| 场景角色 | 主装置 `--assign` 含 clockmaker / dreamer / no-dashii | 参数校验直接报错退出 |
 | Node ≥ 22.5（`node:sqlite`）+ `npx playwright install chromium` | 本机环境 | 脚本以退出码 2 明确报"缺少 Playwright" |
 
 ## 4. 边界

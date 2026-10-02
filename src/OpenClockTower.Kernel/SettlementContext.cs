@@ -1,7 +1,7 @@
 namespace OpenClockTower.Kernel;
 
 /// <summary>
-/// 结算管线的一次输入：账 + 座次 + 规则层契约目录 + 常驻效果来源。
+/// 结算管线的一次输入：账 + 座次 + 规则层契约目录 + 常驻效果来源 + 事件触发器 + 能力存续契约。
 /// </summary>
 /// <remarks>
 /// <para>
@@ -25,6 +25,12 @@ public sealed record SettlementContext
 
     /// <summary>常驻效果来源；没有就只做账内的维度重算。</summary>
     public IReadOnlyList<IStandingEffectSource> StandingEffects { get; init; } = [];
+
+    /// <summary>事件触发器（规则层实现）；没有就不产出任何触发后果。</summary>
+    public IReadOnlyList<IEventTrigger> EventTriggers { get; init; } = [];
+
+    /// <summary>能力存续契约（规则层实现）；没有就不解除任何「能力已失去」的效果。</summary>
+    public IReadOnlyList<IAbilityPresence> AbilityPresences { get; init; } = [];
 
     /// <summary>没有规则层契约的上下文（内核夹具 / 只推进不结算）。</summary>
     public static SettlementContext Empty { get; } = new()

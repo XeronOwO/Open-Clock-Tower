@@ -77,6 +77,7 @@ const VALUE_LABELS: Readonly<Record<string, string>> = {
   SourceDied: '来源死亡',
   SourceLostAbility: '来源失去能力',
   StorytellerVoided: '说书人裁定作废',
+  NoLongerApplies: '条件不再满足',
   // 失效原因（Kernel MalfunctionKind ↔ rulings.md R-0004）
   Open: '未定（R-0004）',
   Jinx: '相克',
@@ -177,4 +178,22 @@ export function characterLabelOf(slug: string | null | undefined): string {
 
   const profile = ROSTER_BY_SLUG.get(slug)
   return profile === undefined ? slug : `${profile.name}（${profile.slug}）`
+}
+
+/**
+ * 能力 slug → 它在魔典牌面上留下的**提示标记名**（百科口径）。
+ * 未登记的能力**不在这里编名字**：由调用方退回「施加时的来源角色」，未知取值原样回显。
+ */
+const EFFECT_MARK_LABELS: Readonly<Record<string, string>> = {
+  // 百科《女巫》· 2026-10-01 抓取 · 提示标记：「被诅咒」（放置在女巫要诅咒的玩家角色标记旁）
+  'witch.curse': '被诅咒',
+}
+
+/** 能力 slug → 提示标记名；未登记或空值返回 null。 */
+export function effectMarkNameOf(ability: string | null | undefined): string | null {
+  if (ability === null || ability === undefined || ability === '') {
+    return null
+  }
+
+  return EFFECT_MARK_LABELS[ability] ?? null
 }
