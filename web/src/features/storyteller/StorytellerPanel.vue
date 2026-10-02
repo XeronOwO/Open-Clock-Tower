@@ -1,7 +1,9 @@
 <script setup lang="ts">
 /**
- * 说书人上帝视角面板：把服务端已经算好的每一步摘要、状态账与归因、两本账、结算结论、
- * 裁定点与卡点操作、以及兜底控制全部呈现出来。
+ * 说书人上帝视角面板的容器：连接 / 票据 / 命令回执 / 布局装配。
+ *
+ * 主视图是魔典圆环（`GrimoireView`，以席位为中心）；数据与审计收在可展开的下钻面板里
+ * （与主视图同一份视图，矩阵行 6）；局务（兜底与推进 / 开局分配）在右列。
  *
  * 信息姿态：本面板只显示服务端下发的说书人视图（D-0012：视图由服务端重新投影）；
  * 前端不做领域推断，也不缓存旧值假装"还是那样"——掉线重连后整份重取。
@@ -14,14 +16,14 @@ import { TicketStore } from '@/services/ticketStore'
 import type { CommandOutcome, CommandSender } from '@/services/storytellerCommands'
 import StatusStrip from '@/features/storyteller/StatusStrip.vue'
 import StepDigest from '@/features/storyteller/StepDigest.vue'
-import DecisionPanel from '@/features/storyteller/DecisionPanel.vue'
 import SeatChangeTimeline from '@/features/storyteller/SeatChangeTimeline.vue'
 import SeatLedgerPanel from '@/features/storyteller/SeatLedgerPanel.vue'
 import EffectChainPanel from '@/features/storyteller/EffectChainPanel.vue'
 import LedgerPanel from '@/features/storyteller/LedgerPanel.vue'
 import AssignmentControl from '@/features/storyteller/AssignmentControl.vue'
-import StateReportControl from '@/features/storyteller/StateReportControl.vue'
 import OperationsControl from '@/features/storyteller/OperationsControl.vue'
+import GrimoireView from '@/features/storyteller/GrimoireView.vue'
+import GrimoireDataDrawer from '@/features/storyteller/GrimoireDataDrawer.vue'
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef } from 'vue'
 
 /** 席位名单是会话信息（服务端持有）。真实服务端的席位数量由配置决定，可用 VITE_SEAT_COUNT 覆盖。 */
@@ -172,7 +174,18 @@ onBeforeUnmount(() => {
     <template v-else>
       <StatusStrip :view="view!" />
       <div class="body">
-        <aside class="controls">
+        <main class="stage">
+          <GrimoireView
+            v-if="sender"
+            :view="view!"
+            :sender="sender"
+            :seat-count="seatCount"
+            @outcome="showOutcome"
+          />
+          <p v-else class="placeholder">已连接，但还没有可用的连接级凭据——先在登录区重新加入。</p>
+        </main>
+
+        <aside class="dock">
           <div class="row">
             <button type="button" @click="refresh()">刷新视图</button>
             <button type="button" @click="disconnect()">断开</button>
@@ -194,16 +207,8 @@ onBeforeUnmount(() => {
               <span class="marker" :data-outcome-marker="outcome.kind" hidden>#</span>
             </template>
           </div>
-          <AssignmentControl
-            v-if="sender"
-            :view="view!"
-            :sender="sender"
-            :seat-count="seatCount"
-            @outcome="showOutcome"
-          />
           <OperationsControl v-if="sender" :view="view!" :sender="sender" @outcome="showOutcome" />
-          <DecisionPanel v-if="sender" :view="view!" :sender="sender" @outcome="showOutcome" />
-          <StateReportControl
+          <AssignmentControl
             v-if="sender"
             :view="view!"
             :sender="sender"
@@ -215,13 +220,15 @@ onBeforeUnmount(() => {
           </ul>
         </aside>
 
-        <main class="board">
-          <StepDigest :view="view!" />
-          <SeatLedgerPanel :view="view!" />
-          <SeatChangeTimeline :view="view!" />
-          <EffectChainPanel :view="view!" />
-          <LedgerPanel :view="view!" />
-        </main>
+        <section class="data">
+          <GrimoireDataDrawer>
+            <StepDigest :view="view!" />
+            <SeatLedgerPanel :view="view!" />
+            <SeatChangeTimeline :view="view!" />
+            <EffectChainPanel :view="view!" />
+            <LedgerPanel :view="view!" />
+          </GrimoireDataDrawer>
+        </section>
       </div>
     </template>
   </div>
@@ -257,27 +264,43 @@ h1 {
 
 .body {
   display: grid;
-  grid-template-columns: minmax(320px, 420px) 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(340px, 400px);
   gap: 10px;
   align-items: start;
 }
 
-@media (max-width: 1100px) {
+.stage {
+  grid-column: 1;
+  grid-row: 1;
+  min-width: 0;
+}
+
+.dock {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.data {
+  grid-column: 1;
+  grid-row: 2;
+  min-width: 0;
+}
+
+@media (max-width: 1180px) {
   .body {
     grid-template-columns: 1fr;
   }
-}
 
-.controls {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.board {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+  .stage,
+  .dock,
+  .data {
+    grid-column: 1;
+    grid-row: auto;
+  }
 }
 
 .outcome {

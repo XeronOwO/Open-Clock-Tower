@@ -137,8 +137,9 @@ export function normalizeSeatState(raw: unknown): SeatStateDto | null {
     facts: asArray<unknown>(entry['facts'])
       .map(normalizeFact)
       .filter((fact): fact is SeatStateFactDto => fact !== null),
+    // 疯狂要求是自由文本，必须有界：超长只截断显示，不把牌面撑爆（架构 §4.4 的有界化）。
     madnesses: asArray<unknown>(entry['madnesses'])
-      .map(asText)
+      .map((raw) => asSizedText(raw, 200))
       .filter((text): text is string => text !== null),
   }
 }

@@ -161,4 +161,13 @@ describe('不可信输入的有界化（长度 / 范围，架构 §4.4）', () =
     expect(view.slotIndex).toBe(0)
     expect(view.slotCount).toBe(0)
   })
+
+  it('疯狂要求（自由文本）逐条有界化：超长截断，非字符串丢掉', () => {
+    const view = normalizeStorytellerView({
+      seats: [{ seat: 1, facts: [], madnesses: ['x'.repeat(300), 42, ''] }],
+    })
+
+    expect(view.seats[0]?.madnesses).toHaveLength(1)
+    expect(view.seats[0]?.madnesses[0]?.length).toBe(200)
+  })
 })

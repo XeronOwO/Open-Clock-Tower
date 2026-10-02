@@ -6,8 +6,8 @@
 
 Vue 3 + TypeScript + Vite 的单页应用，**两套视图同一个构建**：
 
-- 说书人上帝视角面板（默认入口 `/`）：每步摘要、状态账与归因、效果链、两本账、
-  裁定点与卡点操作、兜底控制；
+- 说书人上帝视角面板（默认入口 `/`）：魔典席位圆环（角色 / 生死 / 状态标记）、
+  席位操作台（卡点 / 裁定 / 上报）、可展开的数据与审计（当前步骤与四张表）、局务（兜底 / 开局分配）；
 - 玩家端（`/#player`）：只显示服务端下发给该玩家的席位、阶段、请求与信息类结果。
 
 两者**从不共享视图数据**：玩家侧不出现、也不该出现说书人专属字段（有门禁扫）。
@@ -44,20 +44,20 @@ npm run dev          # http://localhost:5273
 ## 3.1 验收批次取证（说书人 + 玩家多客户端）
 
 ```bash
-node tools/verify-storyteller-panel.mjs        # 退出码 0 = 91 项断言全过
+node tools/verify-storyteller-panel.mjs        # 退出码 0 = 全部断言通过
 ```
 
 它起真宿主 + 真 Vite + 真 Chromium，按 `--seats` 给每一席开一个**独立浏览器上下文**
 （同一 SPA 的 `#player`），走完"三客户端加入 → 分配 → 开夜（阶段推送见页头）→ 钟表匠裁定 →
 筑梦师请求与作答 → 信息单播 → 第一夜走完 → 第二夜代填与强制作废（无关玩家窗口采样）→
-第三夜击杀请求与依赖变化（中毒解除、请求自动作废）"，
-把 16 张截图写进 `artifacts/web/`（gitignored；运行日志由调用方重定向，
+第三夜击杀请求与依赖变化（中毒解除、请求自动作废）→ 魔典主视图逐行取证（席位环 / 帷幕 / 就近操作 / 窄屏）"，
+把 23 张截图写进 `artifacts/web/`（gitignored；运行日志由调用方重定向，
 如 `2>&1 | Tee-Object artifacts/web/batch-run.log`）。
 场景固定三角色（clockmaker / dreamer / no-dashii），节拍配额默认 `--quota 2` 秒。
 
-零信任负向取证：`node tools/verify-zero-trust.mjs`（退出码 0 = 26 项全过）——真宿主 + Node SignalR
+零信任负向取证：`node tools/verify-zero-trust.mjs`（退出码 0 = 全部断言通过）——真宿主 + Node SignalR
 客户端扮演**篡改前端**：伪造 / 冒用 / 旧连接凭据直调 Hub，扫描玩家收包与宿主日志（拒绝审计、无凭据明文）。
-它是主批次的补充，不替代主批次（UI 与玩法仍归 `verify-storyteller-panel.mjs`）。
+它是补充装置，不替代主批次（UI / 玩法归主批次）。
 
 **外部耦合（换机器前先核对）**：
 

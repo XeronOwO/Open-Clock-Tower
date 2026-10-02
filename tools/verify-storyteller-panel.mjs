@@ -20,7 +20,10 @@
  *   8) 第二夜走完 → 第三夜：诺-达鲺击杀请求由 3 号玩家本人作答（保留提交链路覆盖）→
  *      等筑梦师请求挂起后，先报 3 号死亡（2 号中毒解除进摘要——行 5），再报 2 号死亡
  *      （请求依赖失效自动作废、作废说明进摘要——行 6；玩家侧同样收到作废推送）；
- *   9) 全程截图；断言只落在真正渲染数据的面板内（`data-testid` 锚点 + 单调计数）。
+ *   9) 魔典主视图逐行取证（说书人端主视图 = 席位圆环）：行 1 圆环牌面、行 2 牌面标记 + 操作台
+ *      归因、行 4 当前槽位高亮 + 操作台内完成真实裁定、行 3 死亡帷幕与复活解除、
+ *      行 6 下钻表格与牌面同源、行 8 窄视口纵向列表；行 5（视角隔离）沿用玩家端反方向断言；
+ *  10) 全程截图（23 张）；断言只落在真正渲染数据的面板 / 牌面内（`data-testid` 锚点 + 单调计数）。
  *
  * 前置：Node >= 22.5（node:sqlite）、web/node_modules 已安装、本机已装 Chromium：
  *   cd web
@@ -161,9 +164,15 @@ async function main() {
   await storyteller.page.goto(viteUrl)
   await storyteller.page.getByPlaceholder('说书人票据').fill(ticket)
   await storyteller.page.getByRole('button', { name: '加入' }).click()
-  await storyteller.page.getByText('当前步骤').waitFor({ timeout: 30_000 })
+  const grimoire = storyteller.page.locator('[data-testid="grimoire"]')
+  await grimoire.waitFor({ timeout: 30_000 })
   await screenshot(storyteller.page, '01-storyteller-joined')
-  check('说书人加入后看板可见', (await storyteller.page.getByText('当前步骤').count()) === 1)
+  check('说书人加入后看板可见（魔典主视图）', (await grimoire.count()) === 1)
+  check(
+    '魔典默认不被表格抢占：数据与审计收拢',
+    (await storyteller.page.locator('[data-testid="data-drawer-toggle"]').getAttribute('aria-expanded')) === 'false'
+      && !(await storyteller.page.locator('[data-testid="data-drawer-body"]').isVisible()),
+  )
 
   const players = new Map()
   for (const seatTicket of seatTickets) {
@@ -184,10 +193,15 @@ async function main() {
     )
 
     const shellText = await client.page.locator('.shell').innerText()
+    const storytellerLeak = ['状态账', '效果归因链', '账本与结算结论', '裁定点与卡点', '席位操作台'].filter(
+      (heading) => shellText.includes(heading),
+    )
     check(
       `玩家 ${seatTicket.seat} 号界面不含说书人面板`,
-      !['状态账', '效果归因链', '账本与结算结论', '裁定点与卡点'].some((heading) => shellText.includes(heading)),
-      shellText.replace(/\s+/g, ' ').slice(0, 120),
+      storytellerLeak.length === 0
+        && (await client.page.locator('[data-testid="grimoire"]').count()) === 0
+        && (await client.page.locator('[data-testid="seat-console"]').count()) === 0,
+      storytellerLeak.join(',') || shellText.replace(/\s+/g, ' ').slice(0, 120),
     )
     players.set(seatTicket.seat, client)
   }
@@ -204,8 +218,11 @@ async function main() {
     seatCount === options.assign.length,
     `UI 席位数=${seatCount}，分配清单=${options.assign.length}`,
   )
+  const assignmentSelects = storyteller.page
+    .locator('section', { hasText: '开局分配' })
+    .locator('select')
   for (const [index, slug] of options.assign.entries()) {
-    await storyteller.page.locator('select').nth(index).selectOption(slug)
+    await assignmentSelects.nth(index).selectOption(slug)
     console.log(`  席位 ${index + 1} → ${slug}`)
   }
   const assigned = await runCommand(storyteller.page, '分配', () =>
@@ -270,6 +287,56 @@ async function main() {
     clockmakerLines.includes('中毒') && clockmakerLines.includes('醉酒'),
     clockmakerLines.slice(0, 240),
   )
+
+  // —— 魔典主视图取证（矩阵行 1 / 2）：收拢表格，只看牌面与操作台 ——
+  const cardOf = (seat) =>
+    storyteller.page.locator(`[data-testid="grimoire-seat"][data-seat="${seat}"]`)
+  await setDataDrawer(storyteller.page, false)
+  const renderedSeats = await storyteller.page
+    .locator('[data-testid="grimoire-seat"]')
+    .evaluateAll((nodes) =>
+      nodes.map((node) => Number(node.getAttribute('data-seat'))).sort((left, right) => left - right),
+    )
+  const expectedSeats = Array.from({ length: options.assign.length }, (_, index) => index + 1)
+  check(
+    '行 1：圆环按服务端席位号逐一渲染（1..N 各一张）',
+    JSON.stringify(renderedSeats) === JSON.stringify(expectedSeats),
+    `牌上席位=${renderedSeats.join(',')}，期望=${expectedSeats.join(',')}`,
+  )
+  const clockmakerCardText = (await cardOf(clockmakerSeat).innerText()).replace(/\s+/g, ' ')
+  check(
+    `行 1：${clockmakerSeat} 号牌面直接显示角色（${characterNameOf(options.assign[0])}）`,
+    clockmakerCardText.includes(characterNameOf(options.assign[0])),
+    clockmakerCardText.slice(0, 140),
+  )
+  check(
+    '行 2：牌面同时挂出中毒与醉酒标记（互不抵消）',
+    clockmakerCardText.includes('中毒') && clockmakerCardText.includes('醉酒'),
+    clockmakerCardText.slice(0, 200),
+  )
+  await screenshot(storyteller.page, '17-grimoire-assigned')
+
+  // 先点一张"非默认选中"的牌，证明点选链路真的把操作台切过去；再切回 1 号看归因。
+  await cardOf(dreamerSeat).click()
+  const consoleSeatAfterPick = await storyteller.page
+    .locator('[data-testid="seat-console"]')
+    .getAttribute('data-console-seat')
+  check(
+    '行 2：点选席位牌 → 操作台跟随该席（data-console-seat / aria-pressed）',
+    consoleSeatAfterPick === String(dreamerSeat)
+      && (await cardOf(dreamerSeat).getAttribute('aria-pressed')) === 'true',
+    `console-seat=${consoleSeatAfterPick}`,
+  )
+  await cardOf(clockmakerSeat).click()
+  const consoleText = (await storyteller.page.locator('[data-testid="seat-console"]').innerText())
+    .replace(/\s+/g, ' ')
+  check(
+    '行 2：点开席位能在操作台追到归因（3 号 / 常驻效果 / 效果链接）',
+    consoleText.includes(`${demonSeat} 号`) && consoleText.includes(poisonLinkFor(clockmakerSeat)),
+    consoleText.slice(0, 260),
+  )
+  await screenshot(storyteller.page, '18-grimoire-seat-console')
+  await setDataDrawer(storyteller.page, true)
   await screenshot(storyteller.page, '02-pre-night')
 
   console.log('=== 6/10 开夜 → 钟表匠裁定点（无玩家选项）→ 1 号玩家收信息 ===')
@@ -357,6 +424,20 @@ async function main() {
     clockmakerDigest.includes('由说书人自由决定'),
     clockmakerDigest.replace(/\s+/g, ' ').slice(0, 240),
   )
+
+  // —— 矩阵行 4：当前槽位高亮 + 就在操作台完成一次真实裁定 ——
+  await setDataDrawer(storyteller.page, false)
+  check(
+    '行 4：当前槽位行动者的牌面高亮（data-current-slot=true）',
+    (await cardOf(clockmakerSeat).getAttribute('data-current-slot')) === 'true',
+    `current=${await cardOf(clockmakerSeat).getAttribute('data-current-slot')}`,
+  )
+  check(
+    '行 4：裁定点在席位操作台里就近可处理',
+    await storyteller.page.locator('[data-testid="console-decision"]').isVisible(),
+  )
+  await screenshot(storyteller.page, '19-grimoire-current-slot')
+  await setDataDrawer(storyteller.page, true)
   await screenshot(storyteller.page, '04-clockmaker-decision')
 
   const clockmakerOutcome = await settleFreeDecision(storyteller.page, CLOCKMAKER_INFO)
@@ -745,6 +826,105 @@ async function main() {
   )
   await screenshot(storyteller.page, '13-digest-request-voided')
 
+  // —— 矩阵行 3：死亡 → 帷幕；复活 → 帷幕解除（真实状态上报，同一份视图推送）——
+  await setDataDrawer(storyteller.page, false)
+  const deadCardText = (await cardOf(dreamerSeat).innerText()).replace(/\s+/g, ' ')
+  check(
+    '行 3：2 号死亡后牌面盖上帷幕（data-life=Dead）',
+    (await cardOf(dreamerSeat).getAttribute('data-life')) === 'Dead' && deadCardText.includes('帷幕'),
+    deadCardText.slice(0, 160),
+  )
+  await screenshot(storyteller.page, '20-grimoire-death')
+
+  const reviveOutcome = await reportSeatState(storyteller.page, {
+    seat: dreamerSeat,
+    dimensionLabel: '生死',
+    value: 'Alive',
+    reason: '批次取证：复活 2 号，验证帷幕解除与标记同步',
+  })
+  check('第三夜上报 2 号复活被受理', reviveOutcome.kind === 'Accepted', reviveOutcome.raw)
+  await waitForAttribute(cardOf(dreamerSeat), 'data-life', 'Alive', 15_000)
+  const revivedCardText = (await cardOf(dreamerSeat).innerText()).replace(/\s+/g, ' ')
+  check(
+    '行 3：复活后帷幕解除、牌面回到存活（状态标记仍在同一张牌上）',
+    (await cardOf(dreamerSeat).getAttribute('data-life')) === 'Alive'
+      && !revivedCardText.includes('帷幕'),
+    revivedCardText.slice(0, 160),
+  )
+  await screenshot(storyteller.page, '21-grimoire-revive')
+
+  // —— 矩阵行 6：主视图与下钻表格同源（同一份视图推送）——
+  await setDataDrawer(storyteller.page, true)
+  const ledgerText = await panelText(storyteller.page, '状态账')
+  const sameSource = options.assign.map((slug, index) =>
+    linesOf(ledgerText, `${index + 1} 号`).includes(characterNameOf(slug)),
+  )
+  check(
+    '行 6：每席牌面角色与下钻状态账里的角色一一对应（同一次视图推送）',
+    sameSource.every(Boolean),
+    sameSource.map((ok, index) => `${index + 1}:${ok ? 'ok' : 'x'}`).join(' '),
+  )
+  await screenshot(storyteller.page, '22-grimoire-data-drawer')
+
+  // —— 矩阵行 8：窄视口退化为纵向席位列表 ——
+  await storyteller.page.setViewportSize({ width: 430, height: 1200 })
+  await setDataDrawer(storyteller.page, false)
+  const stackedBoxes = []
+  for (let seat = 1; seat <= options.assign.length; seat += 1) {
+    stackedBoxes.push(await cardOf(seat).boundingBox())
+  }
+  check(
+    '行 8：窄视口下席位牌自上而下纵向排列，角色信息不丢',
+    stackedBoxes.every((box) => box !== null)
+      && stackedBoxes.every((box, index) => index === 0 || box.y > stackedBoxes[index - 1].y)
+      && (await cardOf(1).innerText()).includes(characterNameOf(options.assign[0])),
+    stackedBoxes.map((box) => (box === null ? 'null' : Math.round(box.y))).join(','),
+  )
+  await screenshot(storyteller.page, '23-grimoire-narrow')
+  await storyteller.page.setViewportSize({ width: 1600, height: 1100 })
+
+  // —— 上报表单回归（对抗性复核 H-1 / M-2）：换席整表复位 + 勾选维度必须有取值 ——
+  const alignmentReport = await reportSeatState(storyteller.page, {
+    seat: dreamerSeat,
+    dimensionLabel: '阵营',
+    value: 'Evil',
+    reason: '批次取证：换席复位回归（本局尾声，不影响前面玩法断言）',
+  })
+  check(
+    '尾声：上报 2 号阵营被受理（用于验证换席复位）',
+    alignmentReport.kind === 'Accepted',
+    alignmentReport.raw,
+  )
+
+  await cardOf(clockmakerSeat).click()
+  const alignmentLabel = storyteller.page.locator(
+    '[data-testid="seat-console"] .report .dimensions label',
+    { hasText: '阵营' },
+  )
+  const alignmentCheckbox = alignmentLabel.locator('input[type=checkbox]')
+  const alignmentValue = await alignmentLabel.locator('select').inputValue()
+  check(
+    'H-1 回归：换席后上报表单整表复位（勾选清空、取值回到「未选择」）',
+    alignmentValue === '' && !(await alignmentCheckbox.isChecked()),
+    `阵营 select="${alignmentValue}"，勾选=${await alignmentCheckbox.isChecked()}`,
+  )
+
+  await alignmentCheckbox.check()
+  // 先补上原因，确保走到"勾选维度但没选取值"这条分支，而不是先被"原因必填"拦下。
+  await storyteller.page
+    .getByPlaceholder('变化原因（必填，会随事件流记录）')
+    .fill('批次取证：验证「勾选但没选取值」被本地拒绝')
+  const guardOutcome = await runCommand(storyteller.page, '缺取值上报', () =>
+    storyteller.page.getByRole('button', { name: '上报', exact: true }).click(),
+  )
+  check(
+    'M-2 回归：勾选维度但没选取值 → 本地拒绝、不发命令（不再"受理但静默丢维度"）',
+    guardOutcome.kind === 'Rejected'
+      && guardOutcome.raw.includes('必须先选一个取值')
+      && !guardOutcome.raw.includes('序号'),
+    guardOutcome.raw,
+  )
+
   await browser.close()
 
   const serverCrash = /Unhandled exception|Application is shutting down/i.test(serverLog.join(''))
@@ -768,9 +948,16 @@ async function main() {
     '14-player-phase-night-two',
     '15-player-proxy-filled',
     '16-player-forced-void',
+    '17-grimoire-assigned',
+    '18-grimoire-seat-console',
+    '19-grimoire-current-slot',
+    '20-grimoire-death',
+    '21-grimoire-revive',
+    '22-grimoire-data-drawer',
+    '23-grimoire-narrow',
   ]
   const missingShots = expectedShots.filter((name) => !existsSync(path.join(screenshotsDir, `${name}.png`)))
-  check('十六张证据截图都已落盘', missingShots.length === 0, missingShots.join(',') || screenshotsDir)
+  check('二十三张证据截图都已落盘', missingShots.length === 0, missingShots.join(',') || screenshotsDir)
 }
 
 /** 起一个独立浏览器上下文（= 一台设备）：页面级 console 错误统一收集。 */
@@ -809,9 +996,26 @@ async function progressLeakOf(page) {
   return { hits: counter ? [...hits, counter[0]] : hits, text }
 }
 
-/** 某个 section.panel（按标题定位）的可见文本；找不到返回空串。 */
+/** 展开 / 收拢"数据与审计"下钻面板（幂等）；没有该面板（如玩家端）时什么都不做。 */
+async function setDataDrawer(page, open) {
+  const toggle = page.locator('[data-testid="data-drawer-toggle"]')
+  if ((await toggle.count()) === 0) {
+    return
+  }
+
+  if (((await toggle.getAttribute('aria-expanded')) === 'true') !== open) {
+    await toggle.click()
+  }
+}
+
+/** 某个 section.panel（按标题定位）的可见文本；找不到返回空串。下钻面板会自动展开。 */
 async function panelText(page, heading) {
-  const panel = page.locator('section.panel', { hasText: heading })
+  await setDataDrawer(page, true)
+  // 说书人页：只在「数据与审计」容器内找表格面板——主区还有席位操作台等同为 section.panel 的组件，
+  // 用全文 hasText 会先命中它们（实测：操作台提示里出现"状态账"三个字，旧断言落到错误的面板）。
+  const drawerBody = page.locator('[data-testid="data-drawer-body"]')
+  const scope = (await drawerBody.count()) > 0 ? drawerBody : page
+  const panel = scope.locator('section.panel', { hasText: heading })
   if ((await panel.count()) === 0) {
     return ''
   }
@@ -935,7 +1139,7 @@ async function sampleUnrelatedIdle(players, seats, label, seconds) {
 
 /** 说书人代填当前挂起的请求（值必须来自该请求的合法选项集合）。 */
 async function proxyFillPending(page, optionValue, note) {
-  const pending = page.locator('section.panel', { hasText: '裁定点与卡点' }).locator('.block.pending')
+  const pending = page.locator('[data-testid="console-pending"]')
   await pending.waitFor({ state: 'visible', timeout: 30_000 })
   await pending.locator('input[placeholder="代填的值（与合法选项一致）"]').fill(optionValue)
   if (note) {
@@ -947,7 +1151,7 @@ async function proxyFillPending(page, optionValue, note) {
 
 /** 说书人强制作废当前挂起的请求。 */
 async function forceVoidPending(page, reason, note) {
-  const pending = page.locator('section.panel', { hasText: '裁定点与卡点' }).locator('.block.pending')
+  const pending = page.locator('[data-testid="console-pending"]')
   await pending.waitFor({ state: 'visible', timeout: 30_000 })
   if (reason) {
     await pending.locator('select').selectOption(reason)
@@ -964,7 +1168,7 @@ async function forceVoidPending(page, reason, note) {
 
 /** 裁定点区块的可见文本（没有等待中的裁定点时为空串）。 */
 async function readDecisionText(page) {
-  const block = page.locator('section.panel', { hasText: '裁定点与卡点' }).locator('.block.decision')
+  const block = page.locator('[data-testid="console-decision"]')
   if ((await block.count()) === 0) {
     return ''
   }
@@ -994,10 +1198,11 @@ async function settleFreeDecision(page, content) {
   return runCommand(page, '裁定', () => page.getByRole('button', { name: '按自由决定结清' }).click())
 }
 
-/** 说书人上报座位状态：先清空既有勾选，再只报本次观测到的维度（避免把上一次的选择带过去）。 */
+/** 说书人上报座位状态：先点选该席的牌（操作台按席位就近），再只报本次观测到的维度。 */
 async function reportSeatState(page, report) {
-  const panel = page.locator('section.panel', { hasText: '上报座位状态' })
-  await panel.locator('select').first().selectOption(String(report.seat))
+  await page.locator(`[data-testid="grimoire-seat"][data-seat="${report.seat}"]`).click()
+  const panel = page.locator('[data-testid="seat-console"]')
+  await panel.waitFor({ state: 'visible', timeout: 10_000 })
 
   const checkboxes = panel.locator('.dimensions input[type=checkbox]')
   for (let index = 0; index < (await checkboxes.count()); index += 1) {
@@ -1008,10 +1213,10 @@ async function reportSeatState(page, report) {
   await dimension.locator('input[type=checkbox]').check()
   await dimension.locator('select').selectOption(report.value)
   if (typeof report.causedBy === 'number') {
-    await panel.locator('select').nth(1).selectOption(String(report.causedBy))
+    await panel.locator('label.inline select').selectOption(String(report.causedBy))
   }
 
-  await page.getByPlaceholder('变化原因（必填，会随事件流记录）').fill(report.reason)
+  await panel.getByPlaceholder('变化原因（必填，会随事件流记录）').fill(report.reason)
   return runCommand(page, `上报-${report.dimensionLabel}`, () =>
     page.getByRole('button', { name: '上报', exact: true }).click(),
   )

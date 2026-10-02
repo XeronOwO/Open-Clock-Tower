@@ -7,6 +7,7 @@
  * 命令必须带连接级凭据（D-0012）：`sender` 把连接与凭据绑在一起，组件拿不到"裸连接"。
  */
 import type { StorytellerViewDto } from '@/contracts/game'
+import { seatNumbersOf } from '@/display/grimoire'
 import { ROSTER } from '@/display/labels'
 import { seatLabelOf } from '@/display/format'
 import { newIdempotencyKey } from '@/services/idempotency'
@@ -31,19 +32,8 @@ const busy = ref(false)
 /** 席位号 → 已选角色 slug。 */
 const selection = ref<Record<number, string>>({})
 
-/** 可分配席位 = 配置席位名单 ∪ 状态账里已观测到的席位（分配后就常驻在账里）。 */
-const seatNumbers = computed(() => {
-  const seats = new Set<number>()
-  for (let seat = 1; seat <= props.seatCount; seat += 1) {
-    seats.add(seat)
-  }
-
-  for (const seat of props.view.seats) {
-    seats.add(seat.seat)
-  }
-
-  return [...seats].sort((left, right) => left - right)
-})
+/** 可分配席位 = 配置席位名单 ∪ 状态账里已观测到的席位（分配后就常驻在账里）；与魔典圆环同一份口径。 */
+const seatNumbers = computed(() => seatNumbersOf(props.view, props.seatCount))
 
 async function submit(): Promise<void> {
   const assignments = Object.entries(selection.value)
