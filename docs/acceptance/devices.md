@@ -13,6 +13,7 @@
 | 女巫链路 | `tools/verify-witch.mjs` | 4 席：`witch / clockmaker / dreamer / no-dashii`（存活 4 > 3，女巫保住能力的最小局面） | 夜晚诅咒 → 下个白天提名即死（提名仍生效；存活 ≤3 时解除）+ 三席收包扫描 |
 | 处罚处决链路 | `tools/verify-madness.mjs` | 4 席：`cerenovus / clockmaker / dreamer / mutant` | 洗脑师两维选择 → 魔典疯狂要求 → 夜晚处罚（夜晚继续）→ 白天处罚（占上限 + 立即入夜） |
 | 零信任负向 | `tools/verify-zero-trust.mjs` | Node SignalR 客户端扮演**篡改前端**（无浏览器） | 伪造 / 冒用 / 旧连接凭据直调 Hub、白天越权提交、非法选项、收包与审计扫描 |
+| 角色变更族 | `tools/verify-character-change.mjs` | 6 席：`philosopher / dreamer / fang-gu / barber / klutz / mutant` | 哲学家在真界面上从镇民 / 外来者清单获得能力（不变身）→ 被选角色持有者醉酒、醉酒者**照常被唤醒** → 次夜在**自己的格**上代行获得的能力 → 方古首次成功杀外来者即侵染（目标变邪恶方古、原方古死亡）→「限一次」已用后普通死亡 → 理发师死亡当夜换角 + 尚未进入的格重绑 |
 
 分工：主装置跑通用玩法回归；其余五个各跑一条能力链路（胜负 / 角色变更 + 死亡裁量 / 白天触发 / 处罚处决 / 安全负向）。
 辅助装置的席位号从各自 `ASSIGN` 派生，调换花名册顺序不会打翻断言。
