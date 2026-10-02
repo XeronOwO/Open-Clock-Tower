@@ -11,7 +11,9 @@
  *   5) 用「追加死亡」控件杀 5 号（归因麻脸巫婆，不触发「被恶魔杀死」类能力）；
  *   6) 3 号（当夜被创造的涡流）**真的被唤醒**并击杀 2 号 → 待定 1 条 → 点「确认死亡」→ 2 号死亡；
  *   7) 走完第二夜 → 窗口在越过最后一个恶魔行动后收口（控件消失）；
- *   8) 收包扫描：无关玩家（5 号）的全部推送里没有窗口 / 待定死亡字段（D-0012 §4.3）。
+ *   8) 第三夜：麻脸巫婆把 3 号（此时已是涡流）再变成「镜像双子」——3 号阵营始终是善良，
+ *      说书人面板开出「选择对立双子」裁定（候选只有邪恶玩家），选定 4 号后配对落库、裁定控件结清；
+ *   9) 收包扫描：无关玩家（5 号）的全部推送里没有窗口 / 待定死亡字段（D-0012 §4.3）。
  *
  * 与主批次的分工：主批次跑五席固定花名册的通用玩法回归；本装置只跑这条能力链路。
  * 前置：Node >= 22.5（node:sqlite）、本机已构建 web/node_modules（playwright + @microsoft/signalr）。
@@ -83,8 +85,16 @@ const PUSH_METHODS = [
   'ReceiveDayChanged',
 ]
 
-/** 无关玩家端不该出现的词：窗口 / 待定死亡 / 裁量字段（D-0012 §4.3 的信息隔离）。 */
-const FORBIDDEN_PLAYER_TOKENS = ['pitHagNight', 'closesAfterSlotIndex', 'deferred', '待定死亡', '死亡裁量']
+/** 无关玩家端不该出现的词：窗口 / 待定死亡 / 裁量 / 裁定点字段（D-0012 §4.3 的信息隔离）。 */
+const FORBIDDEN_PLAYER_TOKENS = [
+  'pitHagNight',
+  'closesAfterSlotIndex',
+  'deferred',
+  '待定死亡',
+  '死亡裁量',
+  'awaitingDecision',
+  '对立双子',
+]
 
 process.on('exit', () => killChildren())
 
@@ -102,11 +112,11 @@ try {
 }
 
 async function main() {
-  console.log('=== 1/7 构建并启动真宿主（独立临时库，5 席）===')
+  console.log('=== 1/8 构建并启动真宿主（独立临时库，5 席）===')
   await ensureServerArtifacts({ repositoryRoot, buildMode: config.buildMode })
   await startServer()
 
-  console.log('=== 2/7 取票据并起 Vite ===')
+  console.log('=== 2/8 取票据并起 Vite ===')
   const ticket = readStorytellerTicket(databasePath)
   const seatTickets = readSeatTickets(databasePath)
   check('席位票据齐备（5 席）', seatTickets.length === 5, `数据库 ${seatTickets.length} 张`)
@@ -128,7 +138,7 @@ async function main() {
   children.push(vite)
   await waitForHttp(viteUrl, 'Vite 开发服务器', 60_000)
 
-  console.log('=== 3/7 说书人 + 麻脸巫婆席（1 号）加入真浏览器 ===')
+  console.log('=== 3/8 说书人 + 麻脸巫婆席（1 号）加入真浏览器 ===')
   const browser = await playwright.chromium.launch()
   const consoleErrors = []
   const storytellerPage = await newPage(browser, { width: 1600, height: 1100 }, consoleErrors)
@@ -151,7 +161,7 @@ async function main() {
   // 5 号是无关玩家：它的全部推送要接受越权扫描。
   const klutzSeat = await connectSeat(seatTickets[KLUTZ_SEAT - 1])
 
-  console.log('=== 4/7 分配 → 首夜（自动走完）→ 第二夜 ===')
+  console.log('=== 4/8 分配 → 首夜（自动走完）→ 第二夜 ===')
   const assignmentSelects = storytellerPage.locator('section', { hasText: '开局分配' }).locator('select')
   for (const [index, slug] of ASSIGN.entries()) {
     await assignmentSelects.nth(index).selectOption(slug)
@@ -167,7 +177,7 @@ async function main() {
   const secondNight = await startNightWhenReady(storytellerPage, 2)
   check('第二夜被受理（首夜自动走完后开夜）', secondNight.kind === 'Accepted', secondNight.raw)
 
-  console.log('=== 5/7 麻脸巫婆在真界面上做两维选择：把 3 号变成涡流 ===')
+  console.log('=== 5/8 麻脸巫婆在真界面上做两维选择：把 3 号变成涡流 ===')
   const primaryOptions = pitHagPage.locator('[data-testid="player-request-options"] [data-option-value]')
   const secondaryOptions = pitHagPage.locator(
     '[data-testid="player-request-secondary-options"] [data-option-value]',
@@ -207,7 +217,7 @@ async function main() {
   check('3 号牌面变成涡流（角色变更，阵营不变）', artistCharacter.includes('涡流'), compact(artistCharacter))
   await screenshot(storytellerPage, 'pithag-02-window-open')
 
-  console.log('=== 6/7 待定死亡：阻止（免死）→ 追加死亡 → 当夜被创造的涡流真的被唤醒 ===')
+  console.log('=== 6/8 待定死亡：阻止（免死）→ 追加死亡 → 当夜被创造的涡流真的被唤醒 ===')
   const demonRequests = await waitForSeatRequest(demonSeat, 90_000)
   check('4 号（诺-达鲺）当夜拿到击杀请求', demonRequests.length >= 1, `收到 ${demonRequests.length} 条`)
   await demonSeat.invoke('SubmitResponse', demonRequests[0].requestId, `seat:${KLUTZ_SEAT}`, 'pithag-kill-klutz', 1)
@@ -254,13 +264,51 @@ async function main() {
   )
   check('说书人确认死亡被受理', confirmed.kind === 'Accepted', confirmed.raw)
 
-  console.log('=== 7/7 收口与视角扫描 ===')
+  console.log('=== 7/8 第二夜收口 ===')
   // 剩下的都是空槽位：等夜晚自动走完——窗口在越过最后一个恶魔行动之后收口，控件随之消失。
   const panelGone = await waitForCount(storytellerPage.getByTestId('st-pit-hag-night'), 0, 60_000)
   check('越过最后一个恶魔行动后窗口收口（控件消失）', panelGone, '等待控件归零')
   const clockmakerCard = storytellerPage.locator(`[data-testid="grimoire-seat"][data-seat="${TARGET_SEAT}"]`)
   check('被确认的 2 号死亡、3 号存活', (await clockmakerCard.getAttribute('data-life')) === 'Dead')
   check('当夜被创造的涡流（3 号）仍存活', (await artistCard.getAttribute('data-life')) === 'Alive')
+  await screenshot(storytellerPage, 'pithag-05-window-closed')
+
+  console.log('=== 8/8 第三夜：创造镜像双子 → 「选择对立双子」配对裁定 ===')
+  // 行 12 的界面级取证：同一夹具继续走第三夜。3 号阵营从未改变（一直是善良），
+  // 变成镜像双子后候选只有邪恶玩家（1 号麻脸巫婆 / 4 号诺-达鲺）；新双子自己不在候选里。
+  const thirdNight = await startNightWhenReady(storytellerPage, 3)
+  check('开第三夜被受理', thirdNight.kind === 'Accepted', thirdNight.raw)
+
+  await primaryOptions.first().waitFor({ timeout: 90_000 })
+  await pitHagPage.locator(`[data-testid="player-request-options"] [data-option-value="seat:${ARTIST_SEAT}"]`).click()
+  await pitHagPage.locator('[data-testid="player-request-secondary-options"] [data-option-value="evil-twin"]').click()
+  await screenshot(pitHagPage, 'pithag-06-evil-twin-request')
+  await pitHagPage.getByTestId('player-submit').click()
+
+  const decisionPanel = storytellerPage.getByTestId('console-decision')
+  await decisionPanel.waitFor({ timeout: 30_000 })
+  const decisionContext = compact(await decisionPanel.locator('.context').innerText())
+  check('创造镜像双子开出「选择对立双子」裁定', decisionContext.includes('对立双子'), decisionContext)
+  const decisionOptions = (
+    await decisionPanel.locator('.options button').evaluateAll((nodes) => nodes.map((node) => node.textContent))
+  ).map((text) => compact(text))
+  check(
+    '候选恰为邪恶玩家（1 号 / 4 号），新双子自己不在列',
+    decisionOptions.length === 2 && decisionOptions.includes('1 号玩家') && decisionOptions.includes('4 号玩家'),
+    decisionOptions.join(' | '),
+  )
+  await screenshot(storytellerPage, 'pithag-07-pairing-decision')
+
+  const paired = await runCommand(storytellerPage, '选择对立双子', () =>
+    decisionPanel.locator('.options button', { hasText: `${DEMON_SEAT} 号玩家` }).click(),
+  )
+  check('说书人选定 4 号为对立双子被受理', paired.kind === 'Accepted', paired.raw)
+  const twinCard = storytellerPage.locator(`[data-testid="grimoire-seat"][data-seat="${ARTIST_SEAT}"]`)
+  const twinCharacter = await waitForLocatorContains(twinCard, '镜像双子', 30_000)
+  check('3 号牌面变成镜像双子', twinCharacter.includes('镜像双子'), compact(twinCharacter))
+  const decisionCleared = await waitForCount(storytellerPage.getByTestId('console-decision'), 0, 30_000)
+  check('配对后裁定控件结清', decisionCleared, '等待 console-decision 归零')
+  await screenshot(storytellerPage, 'pithag-08-paired')
 
   const unrelatedText = JSON.stringify(klutzSeat.messages)
   const leaked = FORBIDDEN_PLAYER_TOKENS.filter((token) => unrelatedText.includes(token))
@@ -271,7 +319,6 @@ async function main() {
   )
 
   check('浏览器控制台没有报错', consoleErrors.length === 0, consoleErrors.slice(0, 3).join(' | '))
-  await screenshot(storytellerPage, 'pithag-05-window-closed')
   await browser.close()
 }
 
