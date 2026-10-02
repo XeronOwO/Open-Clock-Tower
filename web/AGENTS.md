@@ -1,0 +1,71 @@
+# web/ — 前端
+
+约束 `web/` 下的代码。**这里只写"怎么跑、边界在哪"**；架构与取舍在 `docs/decisions/active.md` D-0018。
+
+## 1. 是什么
+
+Vue 3 + TypeScript + Vite 的单页应用，**两套视图同一个构建**：
+
+- 说书人上帝视角面板（默认入口 `/`）：每步摘要、状态账与归因、效果链、两本账、
+  裁定点与卡点操作、兜底控制；
+- 玩家端（`/#player`）：只显示服务端下发给该玩家的席位、阶段、请求与信息类结果。
+
+两者**从不共享视图数据**：玩家侧不出现、也不该出现说书人专属字段（有门禁扫）。
+
+## 2. 怎么跑
+
+```bash
+# 1) 起宿主（席位数量与库路径可用环境变量覆盖）
+GameServer__SeatCount=5 GameServer__DatabasePath=/tmp/oct.db \
+  ASPNETCORE_URLS=http://localhost:5080 dotnet run --project src/OpenClockTower.Server
+
+# 2) 起前端（浏览器只连 Vite，/hub 由 Vite 代理到上面的 5080）
+cd web
+npm install
+npm run dev          # http://localhost:5273
+```
+
+说书人票据由服务端引导生成，落在 `Games.StorytellerTicket`（SQLite）或启动日志里；
+面板只是**记住上次输入**，不会自己造票据（D-0018）。
+
+## 3. 命令
+
+| 命令 | 作用 |
+|---|---|
+| `npm run dev` | 开发服务器（HMR） |
+| `npm run typecheck` | `vue-tsc --noEmit` |
+| `npm run test` | vitest（纯函数与防御性渲染） |
+| `npm run build` | 类型检查 + 生产构建 |
+| `npm run gate` | 上面三样串起来跑 |
+
+`web/` 不进 `OpenClockTower.slnx`（不引入 Node 到 .NET 构建链）。改动前端后，
+除 `dotnet build/test/format` 外必须补跑 `npm run gate`。
+
+## 3.1 真机会话取证（说书人面板）
+
+```bash
+node tools/verify-storyteller-panel.mjs        # 退出码 0 = 21 项断言全过
+```
+
+它起真宿主 + 真 Vite + 真 Chromium，走完"加入 → 分配 → 开夜 → 推送推进 → 状态上报与归因"，
+把 5 张截图写进 `artifacts/web/`（gitignored）。**外部耦合（换机器前先核对）**：
+
+| 耦合 | 位置 | 失败时的表现 |
+|---|---|---|
+| 宿主编译产物路径 `src/OpenClockTower.Server/bin/Release/net10.0/OpenClockTower.Server[.exe]` | `tools/verify-storyteller-panel.mjs` | 进程启动失败，退出码 1（脚本自己也打印路径） |
+| SQLite 表与列名 `Games.StorytellerTicket` | 同上 | 读票据抛错并退出（票据取不到就不测） |
+| 席位数量 | `--seats` 与 `--assign` 必须同数（建表要求每席都有角色） | 开夜被拒 `plan.seat_unassigned`，断言失败 |
+| Node ≥ 22.5（`node:sqlite`）+ `npx playwright install chromium` | 本机环境 | 脚本以退出码 2 明确报"缺少 Playwright" |
+
+## 4. 边界
+
+- **呈现层不判规则**：能力是否生效、信息真假、合法选项都由服务端算好；
+  前端只做映射与显示，`display/` 之外不出现领域判断。
+- **服务端数据是输入，不是保证**（架构 §4.4）：`display/format.ts` 负责长度 / 类型 /
+  范围防御；坏字段只降级该行，不许白屏。
+- **本地状态只允许是"呈现态"**：选中项、折叠、诊断消息；任何游戏状态一律来自视图推送，
+  禁止在前端算出服务端没给的状态。
+- **同步**：掉线重连后整份重取视图（`GetStorytellerView` / `JoinSeat`），
+  不做本地增量补齐、不加延迟窗口。
+- **文案**：角色与枚举的中文名在 `display/labels.ts`，来源 `docs/standard/terminology.md` §9；
+  未知取值原样回显，不猜、不吞。

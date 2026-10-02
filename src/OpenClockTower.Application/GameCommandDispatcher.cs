@@ -17,7 +17,7 @@ internal static class GameCommandDispatcher
     private const string SetupAssignmentReason = "setup.assignment";
 
     /// <summary>
-    /// 分派一条命令；步骤机尚未开启时，只有开始阶段 / 开局分配 / 开夜三类命令会走到这里。
+    /// 分派一条命令；步骤机尚未开启时，只有开始阶段 / 开局分配 / <b>状态观测</b> / 开夜四类命令会走到这里。
     /// <paramref name="settlement"/> 携带当前账、座次与结算契约目录——行动槽位结算要靠它。
     /// </summary>
     internal static CommandDispatchResult Dispatch(
@@ -37,6 +37,13 @@ internal static class GameCommandDispatcher
         if (envelope.Command is AssignCharactersCommand assign)
         {
             return DispatchAssignCharacters(assign, setup, settlement.State);
+        }
+
+        if (envelope.Command is ApplySeatStateCommand applySeatState && machine is null)
+        {
+            // 预阶段的状态观测：状态账本来就是"观测即记账"（D-0015），开局分配走的也是这条通路（D-0017）。
+            // 注意：建表要求每一席都有角色（plan.seat_unassigned），所以这里不是"补角色"的旁路。
+            return DispatchPrePhaseSeatState(applySeatState);
         }
 
         if (envelope.Command is StartNightCommand startNight)
@@ -126,6 +133,48 @@ internal static class GameCommandDispatcher
                 Reason = SetupAssignmentReason,
             })
             .ToArray();
+
+        return new CommandDispatchResult(null, events, null);
+    }
+
+    /// <summary>
+    /// 预阶段观位状态观测：只写"本次观测到的维度"这一条账事件，不动步骤机（它还没有状态）。
+    /// </summary>
+    /// <remarks>
+    /// 为什么需要它：夜晚建表要求**每一席的生死都已观测**，否则整条开夜命令被拒绝；
+    /// 而分配只覆盖被分配到的席位（未分配的席位必须能补报），所以观测必须能在
+    /// 首个阶段开始前写入。事件形状与运行期完全一致（同样带原因与归因），重放不做特殊处理。
+    /// </remarks>
+    private static CommandDispatchResult DispatchPrePhaseSeatState(ApplySeatStateCommand command)
+    {
+        if (command.Life is null
+            && command.Character is null
+            && command.Alignment is null
+            && command.Drunk is null
+            && command.Poison is null)
+        {
+            return CommandDispatchResult.Rejected(new CommandRejection
+            {
+                Code = "legality.seat_state_empty",
+                Message = "座位状态变化至少要给出一个观测维度",
+                Gate = "legality",
+            });
+        }
+
+        var events = new GameEvent[]
+        {
+            new SeatStateChangedEvent
+            {
+                Seat = command.Seat,
+                Life = command.Life,
+                Character = command.Character,
+                Alignment = command.Alignment,
+                Drunk = command.Drunk,
+                Poison = command.Poison,
+                Reason = command.Reason,
+                CausedBy = command.CausedBy,
+            },
+        };
 
         return new CommandDispatchResult(null, events, null);
     }

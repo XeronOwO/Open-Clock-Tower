@@ -49,7 +49,17 @@ internal static class RepositoryLayout
     /// <c>*.GlobalUsings.g.cs</c>。扫构建产物会让门禁在"干净"与"已构建"两种状态下结论不同，
     /// 也会把 ImplicitUsings 自动引入的命名空间误报成违规调用。
     /// </remarks>
-    internal static IReadOnlyList<string> EnumerateSourceFiles(params string[] segments)
+    internal static IReadOnlyList<string> EnumerateSourceFiles(params string[] segments) =>
+        EnumerateFiles("*.cs", segments);
+
+    /// <summary>
+    /// 枚举某个子树下匹配给定模式的**手写**文件（相对仓库根）。
+    /// </summary>
+    /// <remarks>
+    /// 前端（<c>web/</c>）的门禁用它找 <c>*.ts</c> / <c>*.vue</c>：
+    /// 与 .NET 侧同一套"跳过 bin / obj"的规则，不依赖 git（未跟踪文件也要被扫到）。
+    /// </remarks>
+    internal static IReadOnlyList<string> EnumerateFiles(string searchPattern, params string[] segments)
     {
         var directory = PathOf(segments);
         if (!Directory.Exists(directory))
@@ -59,7 +69,7 @@ internal static class RepositoryLayout
 
         return
         [
-            .. Directory.EnumerateFiles(directory, "*.cs", SearchOption.AllDirectories)
+            .. Directory.EnumerateFiles(directory, searchPattern, SearchOption.AllDirectories)
                 .Where(path => !IsBuildOutput(path))
                 .Select(Relative)
                 .OrderBy(path => path, StringComparer.Ordinal),

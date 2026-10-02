@@ -85,3 +85,5 @@ todo/  →  in-progress/  →  review/  →  done/
 ### Resolved
 
 ### Watchlist
+
+- [结算结论的三态表达：把「未知」写进契约](watchlist/settlement-conclusion-three-state.md) — **Low** — 三处 `bool` 表达不了"服务端没给结论"，前端只能退化成 false

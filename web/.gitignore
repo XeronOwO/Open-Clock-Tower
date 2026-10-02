@@ -1,0 +1,2 @@
+# 忽略规则统一在仓库根 .gitignore（node_modules/ dist/ artifacts/ *.db 已覆盖），
+# 这里不再重复，避免两处分叉。

@@ -356,9 +356,9 @@ StepMachine（步骤机）
 | `OpenClockTower.Server` | ASP.NET Core 宿主、SignalR、EF Core | 已建（定向单播、EF Core + SQLite 事件/快照/回执/票据、服务端节拍器；不再自动开阶段；`AssignCharacters` / `StartNight` 入口；心跳产生的通知照常分发） |
 | `tests/OpenClockTower.Kernel.Tests` | 内核行为测试 | 已建（123 条：六状态 / 效果生命周期 / 两本账 / 裁定点与疯狂 / 步骤机与操作请求 / 状态账与效果归因 / 能力生效判定 / 结算调度 / 维度对账） |
 | `tests/OpenClockTower.Rules.Tests` | 规则数据测试 | 已建（57 条：夜晚顺序表 / 结构不变量 / 变体差异 / 建表 / 花名册档案 / 诺-达鲺常驻中毒与角色契约） |
-| `tests/OpenClockTower.NormativeGates.Tests` | 把规范写成会失败的测试 | 已建（14 条门禁，逐条先红后绿） |
-| `tests/OpenClockTower.Integration.Tests` | 多客户端端到端 | 已建（32 条：真实宿主 + 真实 SignalR 客户端；含真实进程重启、损坏载荷恢复、分配→开夜→请求/裁定点，以及结算引擎验收矩阵 1–8 的 3 条真宿主链路） |
-| `web/` | Vue 3 + TS 前端 | 未建 |
+| `tests/OpenClockTower.NormativeGates.Tests` | 把规范写成会失败的测试 | 已建（17 条门禁，逐条先红后绿） |
+| `tests/OpenClockTower.Integration.Tests` | 多客户端端到端 | 已建（34 条：真实宿主 + 真实 SignalR 客户端；含真实进程重启、损坏载荷恢复、预阶段状态观测、分配→开夜→请求/裁定点，以及结算引擎验收矩阵 1–8 的 3 条真宿主链路） |
+| `web/` | Vue 3 + TS 前端（单 SPA 两套视图） | 已建（说书人上帝视角面板 + 玩家端骨架；连接 / 命令 / 防御性呈现分层，见 `web/AGENTS.md`、D-0018） |
 | `tools/` | 抓取、索引、数据生成、来源核对 | 已建（`fetch-wiki.ps1`：79 页快照 + SHA256 索引；`check-night-order.ps1`：顺序表与快照逐条核对） |
 
 门禁清单（每条都做过"见红"验证）：
@@ -379,6 +379,9 @@ StepMachine（步骤机）
 | 会话票据不承载角色 | `GameSetup` / 会话表出现角色字段（角色分配必须走事件流，D-0017） |
 | 行动契约带规则来源 | `INightAction` 实现缺「百科《…》+ 抓取日期」引用 |
 | 计划不进 wire | `Contracts` 出现 `StepPlan` / `StepSlot`（客户端不提供计划、也不该看到计划） |
+| 玩家端不引用说书人字段 | `web/src/features/player` 与共享 `web/src/services` 里出现 `seats` / `effects` / `causedBy` / `slotIndex` 等说书人专属字段名（D-0018、§4.3） |
+| 玩家端只依赖玩家侧模块 | `web/src/features/player` 与共享 `web/src/services` 里出现允许清单之外的 import，或引用说书人专属 DTO 类型名（D-0018） |
+| 前端契约镜像对账 | `web/src/contracts/game.ts` 与 `src/OpenClockTower.Contracts/*.cs` 字段名 / 形状 / 必填性不一致，或镜像出现契约里没有的幽灵字段（D-0004、D-0018） |
 
 ## 7. 相关阅读
 

@@ -95,6 +95,12 @@ public static class CommandGatePipeline
                 "只有宿主或说书人可以开启夜晚",
                 "identity"),
 
+            ApplySeatStateCommand when actor.Kind is ActorKind.Host or ActorKind.Storyteller => null,
+            ApplySeatStateCommand => Reject(
+                "identity.storyteller_only",
+                "只有说书人或宿主可以上报座位状态（上帝视角的观测）",
+                "identity"),
+
             _ when actor.Kind == ActorKind.Storyteller => null,
             _ => Reject("identity.storyteller_only", "这条命令只有说书人可以发出", "identity"),
         };
@@ -180,6 +186,11 @@ public static class CommandGatePipeline
 
                 return null;
 
+            case ApplySeatStateCommand:
+                // 首个阶段之前也允许状态观测：夜晚建表要求每一席生死都已观测，
+                // 而未分配角色的席位只能靠上报补全（否则永远开不了夜）。
+                return null;
+
             default:
                 if (machine is null)
                 {
@@ -198,6 +209,7 @@ public static class CommandGatePipeline
         {
             AssignCharactersCommand assign => CheckAssignments(assign, setup),
             StartNightCommand startNight => CheckStartNight(startNight, machine, setup),
+            ApplySeatStateCommand seat => CheckSeatExists(seat.Seat, setup),
             SubmitResponseCommand submit => CheckOption(machine, submit.RequestId, submit.OptionValue),
             ProxyFillCommand proxy => CheckOption(machine, proxy.RequestId, proxy.OptionValue),
             VoidRequestCommand voidRequest => Enum.IsDefined(voidRequest.Reason)
@@ -205,6 +217,22 @@ public static class CommandGatePipeline
                 : Reject("legality.reason_invalid", $"未知作废原因：{voidRequest.Reason}", "legality"),
             _ => null,
         };
+
+    /// <summary>状态观测的合法性：席位必须在本局席位名单里（与开局分配同一把尺子）。</summary>
+    /// <remarks>
+    /// 预阶段与运行期都走这一条：账里写一个不存在的席位，等于让建表读到幽灵数据。
+    /// </remarks>
+    private static CommandRejection? CheckSeatExists(SeatId seat, GameSetup? setup)
+    {
+        if (setup is null)
+        {
+            return Reject("legality.setup_missing", "本局还没有会话信息（席位名单）", "legality");
+        }
+
+        return setup.Seats.Any(item => item.Seat == seat)
+            ? null
+            : Reject("legality.seat_unknown", $"席位 {seat.Value} 不在本局席位名单里", "legality");
+    }
 
     /// <summary>开局分配的合法性：席位属于本局、角色在首版花名册里、同批不重复（角色唯一）。</summary>
     private static CommandRejection? CheckAssignments(AssignCharactersCommand command, GameSetup? setup)
