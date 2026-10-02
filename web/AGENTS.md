@@ -42,23 +42,16 @@ npm run dev          # http://localhost:5273
 
 ## 3.1 验收批次取证（说书人 + 玩家多客户端）
 
+装置清单（六个装置 / 夹具 / 档位 / 分段 / 退出码）在 `docs/acceptance/devices.md`；
+本页只留运行入口与外部耦合。
+
 ```bash
-node tools/verify-storyteller-panel.mjs        # 退出码 0 = 全部断言通过
+node tools/verify-storyteller-panel.mjs        # 主装置：退出码 0 = 全部断言通过
 ```
 
 真宿主 + 真 Vite + 真 Chromium，按 `--seats` 每席开**独立浏览器上下文**（同一 SPA 的 `#player`）；
-**场景与断言以脚本头部注释为准**（加入 → 分配 → 首夜 → 白天 → 后续夜晚 → 重建 → 重连补齐），
-含公开生死面断言（R-0022）；截图与日志进 `artifacts/web/`（gitignored，可重生成）。
-默认五席；默认迭代档（0.3s/槽、不落盘截图），取证用 `--quota 2 --screenshots-all`。
-
-零信任：`node tools/verify-zero-trust.mjs`——真宿主 + Node SignalR 客户端扮演
-**篡改前端**：伪造 / 冒用 / 旧连接凭据直调 Hub、白天越权提交、收包与审计扫描。补充装置。
-
-女巫链路：`node tools/verify-witch.mjs`（4 席：两真浏览器 + 三席 Node 客户端）：
-夜晚诅咒 → 白天提名即死（提名仍生效；即时死亡公告面 R-0022）→ 存活 ≤3 时解除，含三席收包扫描。
-
-处罚处决链路：`node tools/verify-madness.mjs`（4 席：两真浏览器 + 三席 Node 客户端）：
-洗脑师两维选择 → 魔典疯狂要求 → 夜晚处罚（夜晚继续；死亡下个黎明公开）→ 白天处罚（占上限 + 立即入夜）。
+截图与日志进 `artifacts/web/`（gitignored，可重生成）。默认五席；默认迭代档（0.3s/槽、不落盘截图），
+**正式取证必须显式** `--quota 2 --screenshots-all`（一批一次、只对冻结版本）。
 
 **外部耦合（换机器前先核对）**：
 

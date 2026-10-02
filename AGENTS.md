@@ -78,6 +78,7 @@ dotnet format OpenClockTower.slnx
 - 空目录保留用 0 字节 `.gitkeep`。
 - 不提交官方美术资源；图片在运行期外链。见 `docs/decisions/active.md`。
 - **绝不提交**任何机器绝对路径（盘符、UNC、用户目录）；本地路径只进 `AGENTS.local.md`。
+- 本文件是长文入口，不适用仓库指令文件的 5,120 字节上限（见 `docs/AGENTS.md` §6）。
 
 ## 首版明确不做
 

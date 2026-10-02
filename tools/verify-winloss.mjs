@@ -1,5 +1,5 @@
 /**
- * 胜败判定与游戏结束批次装置 —— 票据 docs/backlog/in-progress/win-loss-and-game-end.md 的验收矩阵。
+ * 胜败判定与游戏结束批次装置 —— 票据 docs/backlog/done/win-loss-and-game-end.md 的验收矩阵。
  *
  * 它回答：**「呆瓜死亡后的公开选择 → 胜负判定 → 结束面」这条链路，在真界面上一路跑得通吗？**
  * 场景（固定 5 席：1 涡流 / 2 呆瓜 / 3 畸形秀演员 / 4 女巫 / 5 筑梦师）：

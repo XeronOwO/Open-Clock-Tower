@@ -1,5 +1,5 @@
 /**
- * 疯狂与裁定式处决（洗脑师 + 畸形秀演员）批次装置 —— 票据 docs/backlog/in-progress/madness-and-adjudicated-execution.md 的验收矩阵。
+ * 疯狂与裁定式处决（洗脑师 + 畸形秀演员）批次装置 —— 票据 docs/backlog/done/madness-and-adjudicated-execution.md 的验收矩阵。
  *
  * 它回答：**「夜晚签发疯狂要求 → 说书人处罚处决」这条链路，在真界面上一路跑得通吗？**
  * 场景（固定 4 席：1 洗脑师 / 2 钟表匠 / 3 筑梦师 / 4 畸形秀演员）：

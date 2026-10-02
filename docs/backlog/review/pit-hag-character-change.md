@@ -1,8 +1,8 @@
 # 麻脸巫婆：角色变更与「创造恶魔」之夜的死亡裁量
 
-- Status: In progress
+- Status: Review
 - Priority: High
-- Depends on: 胜负判定与游戏结束（`review/win-loss-and-game-end.md`）；结算引擎（`done/settlement-engine.md`）；镜像双子配对（同胜负票）；处罚处决命令面（`done/madness-and-adjudicated-execution.md`）
+- Depends on: 胜负判定与游戏结束（`done/win-loss-and-game-end.md`）；结算引擎（`done/settlement-engine.md`）；镜像双子配对（同胜负票）；处罚处决命令面（`done/madness-and-adjudicated-execution.md`）
 - 来源口径：`references/wiki/麻脸巫婆.wiki`、`夜晚行动顺序一览.wiki`、`重要细节.wiki`、`术语汇总.wiki`、`规则概要.wiki`、`镜像双子.wiki`、`诺-达鲺.wiki`、`贤者.wiki`、`免死.wiki`、`额外死亡.wiki`、`设计师总结的国内玩家对染的错误理解.wiki`（均为 2026-10-01 抓取）
 
 ## 要解决的问题
@@ -100,7 +100,7 @@
 | 15 | 重连 / 重放 | 窗口与待定死亡随快照与事件重建；重放不重算 | D-0010 |
 | 16 | 缺陷②复核 | 角色变更族下 `HandleVoid` 的非槽位旁路是否需要（结论写进票据） | 胜负票 F-4 |
 
-## 已落地（阶段性）
+## 已落地（全部）
 
 | 提交 | 内容 | 证据 |
 |---|---|---|
@@ -127,12 +127,13 @@
 修复（提交 `edd0273`）：把 `IsPlanCompleted` 检查移到触发来源旁路之后，与作答路径对称；
 回归 `TriggerRequestVoidTests` 先红后绿——触发来源 + 计划走完 → 作废成功；槽位来源 + 计划走完 → 仍被拒（不放松原有约束）。
 
-**尚未落地（本票剩余）**：
+**收口记录（2026-10-05）**：
 
-1. **装置清单登记**：`web/AGENTS.md` §3.1 已 5102 / 5120 字节，装不下新条目——先把三个既有装置段外移到
-   `docs/acceptance/` 新页，再统一登记五个装置（含 `verify-pit-hag.mjs`）；
-2. **登记残余**：说书人手工上报换角（`ApplySeatStateCommand`）路径暂不触发槽位激活——目前只有角色契约在结算时激活；
-   与"角色变更族其余角色"一起收口时统一（届时把激活接到上报路径）。
+1. **装置清单登记**：已外移到 `docs/acceptance/devices.md`（登记六个装置：主装置 / 胜负 / 麻脸巫婆 / 女巫 /
+   处罚处决 / 零信任；`web/AGENTS.md` §3.1 只留运行入口与外部耦合，体积不再随装置增长）；
+2. **登记残余（上报换角槽位激活）**：已移交 `todo/character-change-family.md`，与该族其余角色一起收口。
+
+本票转入 `review/`：代码与装置证据已齐（见上表），等待下一验收批次（E15）按验收矩阵逐行判定。
 
 ## 决定与依据
 
