@@ -63,7 +63,8 @@ public sealed class PlayerNotificationBuilderTests
                 Draft(14, informationEvent),
                 Draft(15, phaseEvent),
             ],
-            previousMachine: null);
+            previousMachine: null,
+            publicSurfaceChanged: false);
 
         var issued = notifications.Single(item => item.Kind == GameNotificationKind.OperationRequestIssued);
         Assert.Equal(pending.Addressee, issued.Seat);
@@ -102,7 +103,8 @@ public sealed class PlayerNotificationBuilderTests
                         },
                     }),
             ],
-            previousMachine: null);
+            previousMachine: null,
+            publicSurfaceChanged: false);
 
         Assert.DoesNotContain(notifications, item => item.Kind == GameNotificationKind.OperationRequestAnswered);
         Assert.Equal(3, notifications.Single(item => item.Kind == GameNotificationKind.StorytellerViewChanged).Sequence);
@@ -136,12 +138,54 @@ public sealed class PlayerNotificationBuilderTests
                 Draft(4, new ExecutedEvent { DayNumber = 1, Seat = new SeatId(2), Kind = ExecutionKind.Day }),
                 Draft(5, new DayClosedEvent { DayNumber = 1 }),
             ],
-            previousMachine: null);
+            previousMachine: null,
+            publicSurfaceChanged: false);
 
         var dayChanged = notifications.Single(item => item.Kind == GameNotificationKind.DayChanged);
         Assert.Equal(5, dayChanged.Sequence);
         Assert.Null(dayChanged.Seat);
         Assert.Equal(5, notifications.Single(item => item.Kind == GameNotificationKind.StorytellerViewChanged).Sequence);
+    }
+
+    /// <summary>
+    /// 白天上报的生死变化没有白天事件背书：公开面变化本身必须触发一次 DayChanged 读时投影，
+    /// 否则"白天即时公开"退化成"下次刷新才看得见"；夜晚挂起不变化、不推（D-0013 §5）。
+    /// </summary>
+    [Fact]
+    public void PublicSurfaceChangeWithoutDayEvents_StillProducesADayChangedBroadcast()
+    {
+        var notifications = GameNotificationBuilder.Build(
+            [
+                Draft(
+                    7,
+                    new SeatStateChangedEvent
+                    {
+                        Seat = new SeatId(2),
+                        Life = LifeState.Dead,
+                        Reason = "说书人裁定",
+                    }),
+            ],
+            previousMachine: null,
+            publicSurfaceChanged: true);
+
+        var dayChanged = notifications.Single(item => item.Kind == GameNotificationKind.DayChanged);
+        Assert.Equal(7, dayChanged.Sequence);
+
+        var quiet = GameNotificationBuilder.Build(
+            [
+                Draft(
+                    8,
+                    new SeatStateChangedEvent
+                    {
+                        Seat = new SeatId(2),
+                        Life = LifeState.Dead,
+                        Reason = "夜晚击杀：公开面仍是挂起态",
+                    }),
+            ],
+            previousMachine: null,
+            publicSurfaceChanged: false);
+
+        Assert.DoesNotContain(quiet, item => item.Kind == GameNotificationKind.DayChanged);
     }
 
     /// <summary>测试用草案：只关心序号与事件本身，记录时刻统一取纪元。</summary>

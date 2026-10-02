@@ -265,6 +265,36 @@ async function main() {
     '被诅咒者页面上看得到提名这一公开事实',
     (await cursedPage.locator('[data-testid="player-day-nominations"]').count()) > 0,
   )
+
+  // R-0022：白天咒杀**即时**进入公开生死面——被诅咒者自己的界面显式可见（横幅 + 自己席位翻死亡 +
+  // 本日死亡公告），且公告只含"谁死了"，不含死因 / 来源 / 效果。
+  const selfDeadBanner = await cursedPage.getByTestId('player-self-dead').count()
+  const selfLife = await waitForAttribute(
+    cursedPage.locator(`[data-testid="player-lives"] li[data-seat="${CURSED_SEAT}"]`),
+    'data-life',
+    'Dead',
+    30_000,
+  )
+  const announcedDeath = await cursedPage
+    .locator(`[data-testid="player-life-announcements"] li[data-seat="${CURSED_SEAT}"][data-state="Dead"]`)
+    .count()
+  check(
+    'R-0022：自己的死亡显式可见（横幅 + 自己席位翻死亡 + 本日死亡公告）',
+    selfDeadBanner >= 1 && selfLife === 'Dead' && announcedDeath >= 1,
+    `横幅=${selfDeadBanner}；牌面=${selfLife}；公告=${announcedDeath}`,
+  )
+  const announcementText = compact(
+    await cursedPage.locator('[data-testid="player-life-announcements"]').innerText(),
+  )
+  check(
+    'R-0022：公告只含"谁死了"，不含死因 / 来源',
+    announcementText.includes(`${CURSED_SEAT} 号`)
+      && announcementText.includes('死亡')
+      && !announcementText.includes('女巫')
+      && !announcementText.includes('witch.curse'),
+    announcementText,
+  )
+
   await screenshot(cursedPage, 'witch-05-cursed-player-view')
 
   const scannedSeats = [witchSeat, ...unrelatedSeats]

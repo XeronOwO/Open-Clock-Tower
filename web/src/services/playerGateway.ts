@@ -25,6 +25,7 @@ import type {
   PhaseStartedDto,
   PlayerDayDto,
   PlayerEventDto,
+  PlayerLifeDto,
   ReconnectBundleDto,
   PlayerViewDto,
 } from '@/contracts/game'
@@ -35,8 +36,10 @@ import {
   asCredential,
   asSizedText,
   asText,
+  MAX_PUBLIC_LIFE_ENTRIES,
   normalizeDayView,
   normalizeOption,
+  normalizePlayerLife,
 } from '@/display/format'
 import { HUB_PATH, type GatewayState } from '@/services/connectionState'
 import { PlayerViewMerge, type PlayerPush } from '@/services/playerViewMerge'
@@ -398,15 +401,24 @@ export function normalizePlayerDay(raw: unknown): PlayerDayDto | null {
   }
 
   const day = raw as Record<string, unknown>
-  const publicFacts = normalizeDayView(day['publicFacts'])
+  const publicView = normalizeDayView(day['publicView'])
   const sequence = asCount(day['sequence'])
-  if (publicFacts === null || sequence === null) {
+  if (publicView === null || sequence === null) {
     return null
   }
 
   return {
     sequence,
-    publicFacts,
+    publicView,
+    // 公开生死面（R-0022）：坏条目单条丢弃，整体不消失——少显示一条，不编一个状态。
+    lives: asArray<unknown>(day['lives'])
+      .map(normalizePlayerLife)
+      .filter((entry): entry is PlayerLifeDto => entry !== null)
+      .slice(0, MAX_PUBLIC_LIFE_ENTRIES),
+    announcements: asArray<unknown>(day['announcements'])
+      .map(normalizePlayerLife)
+      .filter((entry): entry is PlayerLifeDto => entry !== null)
+      .slice(0, MAX_PUBLIC_LIFE_ENTRIES),
     canNominate: asBoolean(day['canNominate']) ?? false,
     canVote: asBoolean(day['canVote']) ?? false,
     voted: asBoolean(day['voted']) ?? false,

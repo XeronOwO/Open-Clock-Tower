@@ -27,7 +27,7 @@ const request = (sequence: number): OperationRequestDto => ({
 
 const day = (dayNumber: number, sequence: number): PlayerDayDto => ({
   sequence,
-  publicFacts: {
+  publicView: {
     dayNumber,
     status: 'Open',
     nominations: [],
@@ -35,6 +35,8 @@ const day = (dayNumber: number, sequence: number): PlayerDayDto => ({
     executed: null,
     openNominationIndex: null,
   },
+  lives: [],
+  announcements: [],
   canNominate: true,
   canVote: true,
   voted: false,
@@ -164,7 +166,7 @@ describe('同族：阶段 / 白天 / 请求三态不被迟到快照拉回', () =
     merge.applyPush({ kind: 'Day', sequence: 6, day: day(2, 6) })
     merge.applySnapshot(snapshotView({ day: day(1, 5) }), 5)
 
-    expect(merge.snapshot().day?.publicFacts.dayNumber).toBe(2)
+    expect(merge.snapshot().day?.publicView.dayNumber).toBe(2)
   })
 
   it('请求：较新的状态胜出；迟到快照不让已了结的请求复活', () => {

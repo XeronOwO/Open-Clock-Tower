@@ -3,7 +3,7 @@ using OpenClockTower.Kernel;
 namespace OpenClockTower.Application;
 
 /// <summary>
-/// 会话级派生跟踪器：最近状态变化、最近一次能力结算、发给各席位的信息结果、卡点起算与槽位起算。
+/// 会话级派生跟踪器：最近状态变化、最近一次能力结算、发给各席位的信息结果、公开生死面、卡点起算与槽位起算。
 /// </summary>
 /// <remarks>
 /// <para>
@@ -21,12 +21,16 @@ public sealed class SessionTrackers
     private readonly List<SeatChangeSnapshot> _recentSeatChanges = [];
     private readonly List<(SeatId Recipient, InformationResultSnapshot Result)> _informationResults = [];
     private readonly Dictionary<StepSlotId, AbilityResolutionSnapshot> _slotResolutions = [];
+    private PublicLifeBoard _publicLife = PublicLifeBoard.Empty;
 
     /// <summary>当前槽位的起算时刻；没有起点信息（异常数据）时为 null，此时宁可不动。</summary>
     public DateTimeOffset? SlotStartedAt { get; private set; }
 
     /// <summary>当前挂起请求的起算时刻；没有挂起时为 null（说书人视图据此算"卡了多久"）。</summary>
     public DateTimeOffset? PendingRequestSince { get; private set; }
+
+    /// <summary>公开生死面（生命标记等价物 + 本日生死公告）；由事件流按 `rulings.md` R-0022 折叠。</summary>
+    public PublicLifeBoard PublicLife => _publicLife;
 
     /// <summary>最近的状态变化（最新在后）；说书人视图的「刚发生了什么」。</summary>
     public IReadOnlyList<SeatChangeSnapshot> RecentSeatChanges => [.. _recentSeatChanges];
@@ -48,12 +52,15 @@ public sealed class SessionTrackers
     /// <summary>把一批**已提交**的事件记进跟踪器。</summary>
     /// <param name="drafts">刚提交的事件草案（带序号与发生时刻）。</param>
     /// <param name="recordedAt">宿主记录的发生时刻。</param>
-    public void Update(IReadOnlyList<StoredEventDraft> drafts, DateTimeOffset recordedAt)
+    /// <returns>本批是否让**公开生死面**（`Lives` / `Announcements`）实际变化——夜晚挂起不算。</returns>
+    public bool Update(IReadOnlyList<StoredEventDraft> drafts, DateTimeOffset recordedAt)
     {
         ArgumentNullException.ThrowIfNull(drafts);
 
+        var revisionBefore = _publicLife.PublicRevision;
         foreach (var draft in drafts)
         {
+            _publicLife = PublicLifeBoardFolder.Apply(_publicLife, draft.Event);
             switch (draft.Event)
             {
                 case PhaseStartedEvent:
@@ -88,6 +95,8 @@ public sealed class SessionTrackers
                     break;
             }
         }
+
+        return _publicLife.PublicRevision != revisionBefore;
     }
 
     /// <summary>从事件流重建（服务端重启恢复 / 房间重建）。</summary>
@@ -100,6 +109,7 @@ public sealed class SessionTrackers
         _recentSeatChanges.Clear();
         _informationResults.Clear();
         _slotResolutions.Clear();
+        _publicLife = PublicLifeBoard.Empty;
         LastResolution = null;
         LastVoidedRequest = null;
         SlotStartedAt = null;
@@ -111,6 +121,7 @@ public sealed class SessionTrackers
 
         foreach (var stored in storedEvents)
         {
+            _publicLife = PublicLifeBoardFolder.Apply(_publicLife, stored.Event);
             switch (stored.Event)
             {
                 case PhaseStartedEvent:
@@ -154,6 +165,7 @@ public sealed class SessionTrackers
         _recentSeatChanges.Clear();
         _informationResults.Clear();
         _slotResolutions.Clear();
+        _publicLife = PublicLifeBoard.Empty;
         LastResolution = null;
         LastVoidedRequest = null;
         SlotStartedAt = null;

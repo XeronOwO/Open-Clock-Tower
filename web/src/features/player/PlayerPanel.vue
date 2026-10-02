@@ -307,6 +307,7 @@ onBeforeUnmount(() => {
       <PlayerDayPanel
         v-if="day"
         :day="day"
+        :seat="view!.seat"
         :nominate="nominateSeat"
         :vote="voteOnNomination"
         @diagnostic="pushDiagnostic"

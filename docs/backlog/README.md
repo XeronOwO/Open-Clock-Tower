@@ -61,7 +61,6 @@ todo/  →  in-progress/  →  review/  →  done/
 ### Todo
 
 - [说书人注记：魔典上的自由文本提示标记](todo/storyteller-annotation.md) — **Low** — 魔典上的自由文本 token；首版刻意不做，待定归属 / 持久化 / 审计边界
-- [玩家端的死亡公告面缺失](todo/player-death-announcement.md) — **Medium** — 玩家视图没有任何席位生死；夜间击杀与咒杀对玩家不可见，只有处决可见
 
 ### In progress
 
@@ -69,6 +68,7 @@ todo/  →  in-progress/  →  review/  →  done/
 
 ### Done
 
+- [玩家端的死亡公告面缺失](done/player-death-announcement.md) — **Medium** — 公开生死面（生命标记等价物）+ 本日生死公告：夜晚净变化到黎明公开、白天变化即时公开、不含死因；批次 E13 装置 143 / 43 / 28 / 28 项
 - [疯狂与裁定式处决：洗脑师 + 畸形秀演员](done/madness-and-adjudicated-execution.md) — **High** — 洗脑师夜晚签发疯狂要求（玩家 + 善良角色、目标知情、按"白天 + 夜晚"存续）；畸形秀演员与处罚处决共用一条说书人主动处决命令面（白天占当日上限并立即入夜、夜晚不占次日上限）；批次 E12 装置 27 项 + 5 图
 - [女巫：夜晚诅咒 → 白天提名咒杀](done/witch-curse.md) — 夜晚施加的无维度持续型效果在下个白天触发（提名即死，提名仍生效）；顺带打通「事件触发契约」与「能力存续契约」；批次 E11 行 1–11 全过（主装置 139 / 零信任 42 / 女巫装置 26 项断言）
 - [补齐期间到达的信息推送会被快照覆盖丢弃](done/player-information-resync-race.md) — 推送携带事件序号 + 客户端单一写入者按序号合并（含阶段 / 白天 / 请求三态与说书人整视图）；批次 E10 行 1–5 全过

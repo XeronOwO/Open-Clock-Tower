@@ -464,6 +464,27 @@ async function main() {
     `phase=${afterDayAction.phase} day=${afterDayAction.day?.status}`,
   )
 
+  // 行 8 / R-0022：白天投影必须带**公开生死面**，且只有"谁是什么状态"——
+  // 不含死因 / 归因 / 效果链（那些仍只在说书人视图里）。扫描所有仍收得到白天推送的客户端。
+  await sleep(400)
+  const dayPushTexts = [...players.values(), reconnected]
+    .map((client) => ({
+      client,
+      text: JSON.stringify(client.inbox.filter((message) => message.method === 'ReceiveDayChanged')),
+    }))
+    .filter((entry) => entry.text !== '[]')
+  check(
+    '行 8：白天推送带公开生死面（lives / announcements），不含死因 / 归因 / 效果字段',
+    dayPushTexts.length > 0
+      && dayPushTexts.every(({ text }) =>
+        text.includes('"lives"')
+        && text.includes('"announcements"')
+        && !text.includes('"causedBy"')
+        && !text.includes('"reason"')
+        && !text.includes('"effects"')),
+    dayPushTexts.map(({ text }) => text.slice(0, 160)).join(' | ') || '没有客户端收到白天推送',
+  )
+
   console.log('=== 6/6 审计：拒绝有记录，凭据明文不在日志里（行 11）===')
   const logText = serverLog.join('')
   check('行 11：凭据闸拒绝有审计记录', logText.includes('凭据闸'), '')

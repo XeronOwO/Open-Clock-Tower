@@ -111,6 +111,25 @@ public sealed class DayPhaseHostTests
         var seat2Entry = Assert.Single(view!.Seats, entry => entry.Seat == 2);
         Assert.Contains(seat2Entry.Facts, fact => fact.Dimension == "Life" && fact.Value == "Dead");
 
+        // 行 2 / 行 3（R-0022）：处决致死进入全体玩家的公开生死面，且死亡与处决是两条分开的事实；
+        // 被处决者自己的界面显式可见、权限位随之更新。逐席位公开面一致、权限位各人自己。
+        var seatOneDay = host.Session.GetPlayerView(new SeatId(1)).Day;
+        var seatTwoDay = host.Session.GetPlayerView(new SeatId(2)).Day;
+        Assert.NotNull(seatOneDay);
+        Assert.NotNull(seatTwoDay);
+        Assert.Equal(new SeatId(2), seatOneDay!.PublicView.Executed);
+        Assert.Contains(seatOneDay.Lives, entry => entry.Seat.Value == 2 && entry.State == LifeState.Dead);
+        Assert.Contains(seatOneDay.Announcements, entry => entry.Seat.Value == 2 && entry.State == LifeState.Dead);
+        Assert.Equal(seatOneDay.Lives, seatTwoDay!.Lives);
+        Assert.Equal(seatOneDay.Announcements, seatTwoDay.Announcements);
+        Assert.False(seatTwoDay.CanNominate);
+
+        // 行 4：重连包（快照 + 补齐）与在线投影同源——公告面不回退、不丢。
+        var bundle = await host.Session.GetReconnectBundleAsync(new SeatId(1), 0, CancellationToken.None);
+        Assert.NotNull(bundle.View.Day);
+        Assert.Equal(seatOneDay.Lives, bundle.View.Day!.Lives);
+        Assert.Equal(seatOneDay.Announcements, bundle.View.Day.Announcements);
+
         // 白天结束后可以开下一夜；白天账跨阶段保留（卖花女孩 / 城镇公告员要读）。
         var nextNight = await storyteller.InvokeAsync<CommandResultDto>(
             "StartNight",
@@ -292,20 +311,20 @@ public sealed class DayPhaseHostTests
         Assert.NotNull(seatThree);
 
         // 公开事实逐字段一致：天数 / 状态 / 提名 / 票面 / 开放提名 / 候选名单。
-        Assert.Equal(seatOne!.PublicFacts.DayNumber, seatThree!.PublicFacts.DayNumber);
-        Assert.Equal(seatOne.PublicFacts.Status, seatThree.PublicFacts.Status);
-        Assert.Equal(seatOne.PublicFacts.Nominations.Count, seatThree.PublicFacts.Nominations.Count);
-        Assert.Equal(seatOne.PublicFacts.Nominations[0].Nominator, seatThree.PublicFacts.Nominations[0].Nominator);
-        Assert.Equal(seatOne.PublicFacts.Nominations[0].Nominee, seatThree.PublicFacts.Nominations[0].Nominee);
-        Assert.Equal(seatOne.PublicFacts.Nominations[0].Ballot, seatThree.PublicFacts.Nominations[0].Ballot);
-        Assert.Equal(seatOne.PublicFacts.OpenNomination?.Index, seatThree.PublicFacts.OpenNomination?.Index);
-        Assert.Equal(seatOne.PublicFacts.AboutToBeExecuted, seatThree.PublicFacts.AboutToBeExecuted);
+        Assert.Equal(seatOne!.PublicView.DayNumber, seatThree!.PublicView.DayNumber);
+        Assert.Equal(seatOne.PublicView.Status, seatThree.PublicView.Status);
+        Assert.Equal(seatOne.PublicView.Nominations.Count, seatThree.PublicView.Nominations.Count);
+        Assert.Equal(seatOne.PublicView.Nominations[0].Nominator, seatThree.PublicView.Nominations[0].Nominator);
+        Assert.Equal(seatOne.PublicView.Nominations[0].Nominee, seatThree.PublicView.Nominations[0].Nominee);
+        Assert.Equal(seatOne.PublicView.Nominations[0].Ballot, seatThree.PublicView.Nominations[0].Ballot);
+        Assert.Equal(seatOne.PublicView.OpenNomination?.Index, seatThree.PublicView.OpenNomination?.Index);
+        Assert.Equal(seatOne.PublicView.AboutToBeExecuted, seatThree.PublicView.AboutToBeExecuted);
         Assert.Equal(seatOne.NominationCandidates, seatThree.NominationCandidates);
 
         // 窗口期内票面公开（R-0017 第 5 条）：3 号投的票立刻出现在两个席位的公开事实里。
-        Assert.Single(seatOne.PublicFacts.Nominations[0].Ballot);
-        Assert.Equal(new SeatId(3), seatOne.PublicFacts.Nominations[0].Ballot[0]);
-        Assert.Null(seatOne.PublicFacts.AboutToBeExecuted);
+        Assert.Single(seatOne.PublicView.Nominations[0].Ballot);
+        Assert.Equal(new SeatId(3), seatOne.PublicView.Nominations[0].Ballot[0]);
+        Assert.Null(seatOne.PublicView.AboutToBeExecuted);
 
         // 权限位是"自己的"：投过票的 3 号 voted=true；1 号是提名者、没投票。
         Assert.True(seatThree.Voted);

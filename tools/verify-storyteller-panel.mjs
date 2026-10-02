@@ -743,6 +743,37 @@ async function main() {
   )
   await screenshot(players.get(demonSeat).page, '33-day-executed')
 
+  // R-0022（行 2 / 行 3）：处决致死的死亡进入公开生死面——无关玩家的牌面与本日公告都能看到；
+  // 被处决者自己的界面显式可见（横幅 + 自己席位翻死亡），而不是只有说书人的账。
+  const witnessLife = await waitForAttribute(
+    players.get(demonSeat).page.locator(`[data-testid="player-lives"] li[data-seat="${clockmakerSeat}"]`),
+    'data-life',
+    'Dead',
+    20_000,
+  )
+  const witnessAnnouncement = await players
+    .get(demonSeat)
+    .page.locator(`[data-testid="player-life-announcements"] li[data-seat="${clockmakerSeat}"][data-state="Dead"]`)
+    .count()
+  check(
+    '行 2：处决死亡进入无关玩家的公开生死面（牌面翻死亡 + 本日公告）',
+    witnessLife === 'Dead' && witnessAnnouncement >= 1,
+    `牌面=${witnessLife}；公告条数=${witnessAnnouncement}`,
+  )
+  const selfDeadBanner = await players.get(clockmakerSeat).page.getByTestId('player-self-dead').count()
+  const selfLife = await waitForAttribute(
+    players.get(clockmakerSeat).page.locator(`[data-testid="player-lives"] li[data-seat="${clockmakerSeat}"]`),
+    'data-life',
+    'Dead',
+    20_000,
+  )
+  check(
+    '行 3：被处决者自己的界面显式可见死亡（横幅 + 自己席位翻死亡）',
+    selfDeadBanner >= 1 && selfLife === 'Dead',
+    `横幅=${selfDeadBanner}；自己牌面=${selfLife}`,
+  )
+  await screenshot(players.get(clockmakerSeat).page, '34-player-self-dead')
+
   console.log('=== 10/11 第二夜与第三夜：代填 / 强制作废 / 阶段推送（行 1–4）→ 依赖变化（行 5 / 6）===')
   const nightTwo = await runCommand(storyteller.page, '开夜2', async () => {
     await storyteller.page
@@ -934,6 +965,23 @@ async function main() {
     `${autoVoided} / ${autoVoidNote || '（无了结说明）'}`,
   )
   await screenshot(storyteller.page, '13-digest-request-voided')
+
+  // R-0022 行 1 的反方向：夜里上报的死亡没到黎明——公开面不显示 2 / 3 号死亡（含本人）；
+  // 说书人账与玩家牌面在这里刻意"不一致"，直到下一个黎明（未公告不算数）。
+  const notYetAnnounced = []
+  for (const seat of [dreamerSeat, demonSeat]) {
+    const life = await players
+      .get(seat)
+      .page.locator(`[data-testid="player-lives"] li[data-seat="${seat}"]`)
+      .first()
+      .getAttribute('data-life')
+    notYetAnnounced.push(`${seat}:${life}`)
+  }
+  check(
+    '行 1：夜晚死亡在黎明前不进公开面（含本人；牌面仍显示 Alive）',
+    notYetAnnounced.every((entry) => entry.endsWith(':Alive')),
+    notYetAnnounced.join(', '),
+  )
 
   // —— 矩阵行 3：死亡 → 帷幕；复活 → 帷幕解除（真实状态上报，同一份视图推送）——
   await setDataDrawer(storyteller.page, false)
@@ -1190,6 +1238,15 @@ async function main() {
     reconnectedInfoText.includes(CLOCKMAKER_INFO),
     reconnectedInfoText.replace(/\s+/g, ' ').slice(0, 200),
   )
+  // R-0022 行 4：公开生死面随快照恢复、不回退——处决身亡的 1 号仍在牌面上；
+  // 夜里上报、尚未到黎明的 3 号仍然显示存活（未公告不算数）。
+  const reconnectedLife = await readPlayerLifeOf(probePlayer.page, clockmakerSeat)
+  const pendingLife = await readPlayerLifeOf(probePlayer.page, demonSeat)
+  check(
+    `重连票行 1（R-0022 行 4）：公开生死面随快照恢复且不回退（${clockmakerSeat} 号死亡、${demonSeat} 号夜死未公告）`,
+    reconnectedLife === 'Dead' && pendingLife === 'Alive',
+    `处决席=${reconnectedLife ?? '缺失'}；夜死席=${pendingLife ?? '缺失'}`,
+  )
   await screenshot(probePlayer.page, '29-player-reconnect-no-gap')
 
   // 补齐一次：本地已知 0 → 快照序号，证明新 watermark 真的落下去（卡 0 的话这里会再次带回 0）。
@@ -1337,6 +1394,7 @@ async function main() {
     '31-day-nomination',
     '32-day-counted',
     '33-day-executed',
+    '34-player-self-dead',
   ]
   const missingShots = expectedShots.filter((name) => !existsSync(path.join(screenshotsDir, `${name}.png`)))
   check(`证据截图都已落盘（${expectedShots.length} 张）`, missingShots.length === 0, missingShots.join(',') || screenshotsDir)
@@ -1601,6 +1659,12 @@ async function readPlayerDiagnostics(page) {
 /** 重连补包坏数据的指纹：applyBundle 的诊断都以"重连补齐"开头（成功提示"重新补齐"不匹配）。 */
 function reconnectDiagnosticIn(text) {
   return ['重连补齐'].filter((word) => text.includes(word))
+}
+
+/** 读玩家端公开生死面上某席位的对外状态；没有该条目时返回 null（不猜，R-0022）。 */
+async function readPlayerLifeOf(page, seat) {
+  const entry = page.locator(`[data-testid="player-lives"] li[data-seat="${seat}"]`)
+  return (await entry.count()) > 0 ? entry.first().getAttribute('data-life') : null
 }
 
 /** 玩家端"上一次请求怎么结束"的说明文本；没有这条说明时返回空串。 */

@@ -128,6 +128,58 @@ public sealed class WitchCurseHostTests
     }
 
     /// <summary>
+    /// 行 2 / 行 3 / 行 5（R-0022）：白天咒杀**即时**进入公开生死面（与 Executed 分开）；被诅咒者自己的
+    /// 界面显式可见、权限位随之更新；无关玩家的投影里只有公开事实，没有死因 / 来源 / 效果字段。
+    /// </summary>
+    [Fact]
+    public async Task CursedDeath_EntersThePublicLifeSurface_ImmediatelyAndWithoutCause()
+    {
+        await using var host = new TestServerHost(slotQuotaSeconds: 0.05, seatCount: 4, autoStartTestNight: false);
+        await using var storyteller = await host.ConnectStorytellerAsync();
+        await using var cursed = await OpenCursedDayAsync(host, storyteller);
+
+        // 开白天后：公开面只有"全活"的牌面，还没有任何公告（咒杀尚未发生）。
+        var before = host.Session.GetPlayerView(new SeatId(CursedSeat)).Day;
+        Assert.NotNull(before);
+        Assert.Empty(before!.Announcements);
+        Assert.All(before.Lives, entry => Assert.Equal(LifeState.Alive, entry.State));
+
+        var nominated = await cursed.InvokeAsync<CommandResultDto>(
+            "Nominate",
+            WitchSeat,
+            "test-witch-surface-nominate");
+        Assert.Equal("Accepted", nominated.Kind);
+
+        // 行 2：白天死亡即时公告（女巫"立即宣布"的等价物），且死亡 ≠ 处决。
+        var after = host.Session.GetPlayerView(new SeatId(CursedSeat)).Day;
+        Assert.NotNull(after);
+        var announcement = Assert.Single(after!.Announcements);
+        Assert.Equal(CursedSeat, announcement.Seat.Value);
+        Assert.Equal(LifeState.Dead, announcement.State);
+        Assert.Contains(after.Lives, entry => entry.Seat.Value == CursedSeat && entry.State == LifeState.Dead);
+        Assert.Null(after.PublicView.Executed);
+        Assert.Null(after.PublicView.AboutToBeExecuted);
+
+        // 行 3：自己的死亡显式可见，权限位随之更新——不能提名；死亡玩家仍有一次票权（白天还开着）。
+        Assert.False(after.CanNominate);
+        Assert.True(after.CanVote);
+
+        // 逐席位公开面一致：无关玩家的视图里也有同一条死亡事实（但只有公开事实）。
+        var other = host.Session.GetPlayerView(new SeatId(2)).Day;
+        Assert.NotNull(other);
+        Assert.Equal(after.Lives, other!.Lives);
+        Assert.Equal(after.Announcements, other.Announcements);
+
+        // 行 5：wire 形状里有公开生死面，没有死因 / 来源 / 效果字段。
+        var wire = JsonSerializer.Serialize(ProjectionMapper.ToDto(host.Session.GetPlayerView(new SeatId(2))));
+        Assert.Contains("Lives", wire, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Announcements", wire, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("causedBy", wire, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("witch.curse", wire, StringComparison.Ordinal);
+        Assert.DoesNotContain("Reason", wire, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// 白天进行中重启宿主：诅咒随事件流与快照恢复，重启后被诅咒者提名**仍然**触发死亡。
     /// </summary>
     [Fact]

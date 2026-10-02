@@ -16,14 +16,17 @@ public static class DayProjection
     /// <param name="state">状态账（判定生死与投票权）。</param>
     /// <param name="seats">本局完整座次（算可提名目标用；读不到时给空表，宁可少给、不猜）。</param>
     /// <param name="seat">接收者席位。</param>
+    /// <param name="board">公开生死面（`rulings.md` R-0022）：对外可见生死 + 本日公告；不含死因。</param>
     public static PlayerDay? ForSeat(
         DayState? day,
         GameState state,
         IReadOnlyList<SeatId> seats,
-        SeatId seat)
+        SeatId seat,
+        PublicLifeBoard board)
     {
         ArgumentNullException.ThrowIfNull(state);
         ArgumentNullException.ThrowIfNull(seats);
+        ArgumentNullException.ThrowIfNull(board);
 
         if (day is null || day.Days.Count == 0)
         {
@@ -54,7 +57,9 @@ public static class DayProjection
 
         return new PlayerDay
         {
-            PublicFacts = facts,
+            PublicView = facts,
+            Lives = [.. board.Lives],
+            Announcements = [.. board.Announcements],
             CanNominate = canNominate,
             CanVote = canVote,
             Voted = voted,

@@ -179,12 +179,23 @@ export interface DayViewDto {
   openNominationIndex: number | null
 }
 
-/** 某个玩家的白天投影：公开事实 + 他现在能做什么（服务端算好，呈现层不判规则）。 */
+/** 公开生死面上的一条事实：席位 + 对外可见 / 公告后的生死（后端同名契约；不含死因）。 */
+export interface PlayerLifeDto {
+  seat: number
+  /** Alive（存活 / 复活）/ Dead（死亡）。 */
+  state: string
+}
+
+/** 某个玩家的白天投影：公开事实 + 公开生死面 + 他现在能做什么（服务端算好，呈现层不判规则）。 */
 export interface PlayerDayDto {
   /** 这份投影对应的事件流序号（推送取读取时序号；快照取快照序号）。 */
   sequence: number
   /** 公开的当天事实（字段名避开说书人专属禁词，见 PlayerProjectionLeakGateTests）。 */
-  publicFacts: DayViewDto
+  publicView: DayViewDto
+  /** 公开生死面：全体席位对外可见的生死，按席位号升序（未观测的席位不出现）。 */
+  lives: PlayerLifeDto[]
+  /** 本日已公告的生死变化（黎明批次 + 白天即时）：state 是变化**之后**的状态；不含死因。 */
+  announcements: PlayerLifeDto[]
   canNominate: boolean
   canVote: boolean
   voted: boolean

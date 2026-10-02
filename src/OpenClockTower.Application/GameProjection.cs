@@ -16,18 +16,18 @@ public static class GameProjection
     /// <param name="seats">本局完整座次（算可提名目标用）。</param>
     /// <param name="sequence">投影对应的事件序号。</param>
     /// <param name="seat">接收者席位。</param>
-    /// <param name="informationResults">派生自事件流、发给该席位的信息结果。</param>
+    /// <param name="trackers">会话派生跟踪器：发给该席位的信息结果与公开生死面（R-0022）。</param>
     public static PlayerView ForSeat(
         StepMachineState? machine,
         GameState state,
         IReadOnlyList<SeatId> seats,
         long sequence,
         SeatId seat,
-        IReadOnlyList<InformationResultSnapshot> informationResults)
+        SessionTrackers trackers)
     {
         ArgumentNullException.ThrowIfNull(state);
         ArgumentNullException.ThrowIfNull(seats);
-        ArgumentNullException.ThrowIfNull(informationResults);
+        ArgumentNullException.ThrowIfNull(trackers);
 
         var pending = machine?.PendingRequest;
         var deliverable = pending is { Status: OperationRequestStatus.Pending } && pending.Addressee == seat
@@ -39,8 +39,8 @@ public static class GameProjection
             Seat = seat,
             Phase = machine?.Plan.Phase,
             PendingRequest = deliverable,
-            InformationResults = informationResults,
-            Day = DayProjection.ForSeat(machine?.Day, state, seats, seat),
+            InformationResults = trackers.InformationResultsFor(seat),
+            Day = DayProjection.ForSeat(machine?.Day, state, seats, seat, trackers.PublicLife),
             Sequence = sequence,
         };
     }

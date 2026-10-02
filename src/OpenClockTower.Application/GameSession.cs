@@ -213,7 +213,7 @@ public sealed class GameSession
                 SeatList(),
                 _lastSequence,
                 seat,
-                _trackers.InformationResultsFor(seat));
+                _trackers);
         }
         finally
         {
@@ -281,7 +281,7 @@ public sealed class GameSession
                     SeatList(),
                     _lastSequence,
                     seat,
-                    _trackers.InformationResultsFor(seat)),
+                    _trackers),
                 EventsSince = events,
             };
         }
@@ -393,9 +393,8 @@ public sealed class GameSession
             _machine = dispatch.Machine;
             _state = nextState;
             _lastSequence = sequence;
-            _trackers.Update(drafts, recordedAt);
-
-            var notifications = GameNotificationBuilder.Build(drafts, previousMachine);
+            var publicSurfaceChanged = _trackers.Update(drafts, recordedAt);
+            var notifications = GameNotificationBuilder.Build(drafts, previousMachine, publicSurfaceChanged);
             _logger.LogInformation(
                 "命令已接受：game={GameId} actor={ActorKind} command={Command} 事件数={EventCount} 派生事件数={DerivedCount} 序号={Sequence} 挂起={Held} clientSequence={ClientSequence}",
                 GameId,

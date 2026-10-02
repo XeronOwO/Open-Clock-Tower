@@ -17,13 +17,40 @@ public sealed partial class PlayerProjectionLeakGateTests
         Path.Combine("src", "OpenClockTower.Application", "PlayerView.cs"),
         Path.Combine("src", "OpenClockTower.Application", "PlayerEvent.cs"),
         Path.Combine("src", "OpenClockTower.Contracts", "PlayerViewDto.cs"),
+        Path.Combine("src", "OpenClockTower.Contracts", "PlayerDayDto.cs"),
+        Path.Combine("src", "OpenClockTower.Contracts", "DayViewDto.cs"),
+        Path.Combine("src", "OpenClockTower.Contracts", "PlayerLifeDto.cs"),
         Path.Combine("src", "OpenClockTower.Contracts", "OperationRequestDto.cs"),
+        Path.Combine("src", "OpenClockTower.Contracts", "DecisionOptionDto.cs"),
+        Path.Combine("src", "OpenClockTower.Contracts", "DayNominationDto.cs"),
+        Path.Combine("src", "OpenClockTower.Contracts", "InformationResultDto.cs"),
+        Path.Combine("src", "OpenClockTower.Contracts", "OperationRequestVoidedDto.cs"),
         Path.Combine("src", "OpenClockTower.Contracts", "ReconnectBundleDto.cs"),
         Path.Combine("src", "OpenClockTower.Contracts", "SeatJoinDto.cs"),
         Path.Combine("src", "OpenClockTower.Contracts", "PlayerEventDto.cs"),
         Path.Combine("src", "OpenClockTower.Contracts", "OperationRequestAnsweredDto.cs"),
         Path.Combine("src", "OpenClockTower.Contracts", "PhaseStartedDto.cs"),
     ];
+
+    /// <summary>说书人专属契约（只在说书人视图 / 说书人命令里出现）；新增项必须人工复核。</summary>
+    private static readonly HashSet<string> StorytellerOnlyContracts = new(StringComparer.Ordinal)
+    {
+        "AbilityResolutionDto.cs",
+        "AbilityUseDto.cs",
+        "CommandResultDto.cs",
+        "EffectDto.cs",
+        "MalfunctionDto.cs",
+        "PendingRequestDto.cs",
+        "RoomHealthDto.cs",
+        "SeatChangeDto.cs",
+        "SeatCharacterAssignmentDto.cs",
+        "SeatStateDto.cs",
+        "SeatStateFactDto.cs",
+        "SlotAbilityDto.cs",
+        "StepDigestDto.cs",
+        "StorytellerJoinDto.cs",
+        "StorytellerViewDto.cs",
+    };
 
     private static readonly string[] ForbiddenTokens =
     [
@@ -102,6 +129,37 @@ public sealed partial class PlayerProjectionLeakGateTests
     }
 
     /// <summary>
+    /// 契约目录必须"全覆盖"：每个 DTO 要么在玩家投影扫描面里，要么在显式豁免清单里。
+    /// </summary>
+    /// <remarks>
+    /// <see cref="ScannedFiles"/> 是手工名单——新增一个没登记的契约文件时，黑名单扫描不会红，
+    /// 等于给"往未扫描文件里塞玩家字段"留了后门。这条自检把遗漏变成红灯：
+    /// 新增 DTO 必须显式决定它进扫描面（玩家可见）还是进 <see cref="StorytellerOnlyContracts"/>（说书人专属）。
+    /// </remarks>
+    [Fact]
+    public void ContractFiles_AreEitherScannedOrExplicitlyExempt()
+    {
+        var contractFiles = FileNamesOf(
+            RepositoryLayout.EnumerateFiles("*.cs", "src", "OpenClockTower.Contracts"));
+        Assert.True(contractFiles.Count >= 25, $"契约目录只枚举到 {contractFiles.Count} 个文件，扫描范围可能写错了");
+
+        var scanned = FileNamesOf(ScannedFiles);
+        var uncovered = contractFiles
+            .Where(name => !scanned.Contains(name) && !StorytellerOnlyContracts.Contains(name))
+            .OrderBy(name => name, StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.True(
+            uncovered.Length == 0,
+            "契约文件既不在玩家投影扫描面、也不在说书人专属豁免清单里——新增 DTO 必须显式登记："
+            + string.Join(", ", uncovered));
+    }
+
+    /// <summary>相对路径集合 → 文件名集合（用于覆盖自检）。</summary>
+    private static HashSet<string> FileNamesOf(IEnumerable<string> paths) =>
+        paths.Select(path => Path.GetFileName(path) ?? string.Empty).ToHashSet(StringComparer.Ordinal);
+
+    /// <summary>
     /// 名单自检：把"玩家投影里塞健康位"的样本喂给与正式门禁**同一条**判定，必须命中。
     /// 没有这条，黑名单一旦写错字，门禁会静默变绿——"先红"不能只靠一次性人工实验。
     /// </summary>
@@ -113,6 +171,12 @@ public sealed partial class PlayerProjectionLeakGateTests
             "public string? Health { get; init; } public bool Degraded { get; init; }");
         Assert.Contains(hits, hit => hit.EndsWith("→ Health", StringComparison.Ordinal));
         Assert.Contains(hits, hit => hit.EndsWith("→ Degraded", StringComparison.Ordinal));
+
+        // 白天投影的公开事实字段曾叫 `PublicFacts`（PlayerDayDto 未纳入扫描时漏网）：
+        // 现在这一串会命中 `Facts` 令牌——这就是它改名 `PublicView` 的原因，样本锁住这条回归。
+        Assert.Contains(
+            ForbiddenHits("sample.cs", "public required DayViewDto PublicFacts { get; init; }"),
+            hit => hit.EndsWith("→ Facts", StringComparison.Ordinal));
 
         // 干净字段不误报：名单是整词子串匹配，普通字段不该被牵连。
         Assert.Empty(ForbiddenHits("sample.cs", "public required int Seat { get; init; }"));

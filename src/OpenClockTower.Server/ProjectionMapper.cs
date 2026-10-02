@@ -71,15 +71,24 @@ public static class ProjectionMapper
         Day = view.Day is { } day ? ToDto(day, view.Sequence) : null,
     };
 
-    /// <summary>玩家白天投影 → DTO（公开事实 + 权限位 + 可提名目标）。</summary>
+    /// <summary>玩家白天投影 → DTO（公开事实 + 公开生死面 + 权限位 + 可提名目标）。</summary>
     public static PlayerDayDto ToDto(PlayerDay day, long sequence) => new()
     {
         Sequence = sequence,
-        PublicFacts = ToDto(day.PublicFacts),
+        PublicView = ToDto(day.PublicView),
+        Lives = [.. day.Lives.Select(ToDto)],
+        Announcements = [.. day.Announcements.Select(ToDto)],
         CanNominate = day.CanNominate,
         CanVote = day.CanVote,
         Voted = day.Voted,
         Candidates = [.. day.NominationCandidates.Select(seat => seat.Value)],
+    };
+
+    /// <summary>公开生死面条目 → DTO（席位 + 对外可见生死；不含死因）。</summary>
+    public static PlayerLifeDto ToDto(PublicLifeEntry entry) => new()
+    {
+        Seat = entry.Seat.Value,
+        State = entry.State.ToString(),
     };
 
     /// <summary>白天公开事实 → DTO（最新一天）。</summary>

@@ -8,16 +8,33 @@
 import type { PlayerDayDto } from '@/contracts/game'
 import { seatLabelOf } from '@/display/format'
 import { newIdempotencyKey } from '@/services/idempotency'
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 
 const props = defineProps<{
   day: PlayerDayDto
+  /** 接收者自己的席位：公开生死面上标出"你"，并判断要不要给自己的死亡横幅。 */
+  seat: number
   /** 提名（父组件把网关包成函数传入；这里不直接持有连接）。 */
   nominate: (seat: number, idempotencyKey: string) => Promise<unknown>
   /** 投票 / 撤回。 */
   vote: (nominationIndex: number, voted: boolean, idempotencyKey: string) => Promise<unknown>
 }>()
 const emit = defineEmits<{ diagnostic: [string] }>()
+
+/** 公开生死状态 → 人话；未知取值原样回显（不猜、不吞，web/AGENTS §4）。 */
+function lifeLabel(state: string): string {
+  return state === 'Alive' ? '存活' : state === 'Dead' ? '死亡' : state
+}
+
+/** 公告里的状态是**变化之后**的状态：Dead = 死亡、Alive = 复活（R-0022）。 */
+function announcementLabel(state: string): string {
+  return state === 'Alive' ? '复活' : state === 'Dead' ? '死亡' : state
+}
+
+/** 自己是否已死亡：只读服务端下发的公开生死面，不在前端推断规则。 */
+const selfDead = computed(() =>
+  props.day.lives.some((entry) => entry.seat === props.seat && entry.state === 'Dead'),
+)
 
 const busy = ref(false)
 const nominee = ref<number | null>(null)
@@ -60,7 +77,7 @@ async function submitNomination(): Promise<void> {
 }
 
 async function castVote(voted: boolean): Promise<void> {
-  const index = props.day.publicFacts.openNominationIndex
+  const index = props.day.publicView.openNominationIndex
   if (index === null) {
     return
   }
@@ -83,17 +100,23 @@ async function castVote(voted: boolean): Promise<void> {
   <section
     class="panel"
     data-testid="player-day"
-    :data-day-number="day.publicFacts.dayNumber"
-    :data-day-status="day.publicFacts.status"
+    :data-day-number="day.publicView.dayNumber"
+    :data-day-status="day.publicView.status"
   >
-    <h2>白天 · 第 {{ day.publicFacts.dayNumber }} 天</h2>
+    <h2>白天 · 第 {{ day.publicView.dayNumber }} 天</h2>
     <p class="hint">提名与投票都是公开信息；能不能行动由服务端判定，这里的按钮只是使能提示。</p>
 
-    <div v-if="day.publicFacts.status === 'Open'" class="row">
+    <p v-if="selfDead" class="dead-note" data-testid="player-self-dead" :data-seat="seat">
+      你已死亡：不能发起提名{{ day.canVote ? '；你仍有投票标记，本白天还能再投一次票' : '；投票标记已经用完' }}。
+    </p>
+
+    <div v-if="day.publicView.status === 'Open'" class="row">
       <template v-if="day.canNominate">
         <select v-model.number="nominee" data-testid="player-nominee-select">
           <option :value="null" disabled>选择要提名的席位</option>
-          <option v-for="seat in day.candidates" :key="seat" :value="seat">{{ seatLabelOf(seat) }}</option>
+          <option v-for="candidate in day.candidates" :key="candidate" :value="candidate">
+            {{ seatLabelOf(candidate) }}
+          </option>
         </select>
         <button
           type="button"
@@ -105,7 +128,7 @@ async function castVote(voted: boolean): Promise<void> {
           提名
         </button>
       </template>
-      <template v-else-if="day.publicFacts.openNominationIndex !== null">
+      <template v-else-if="day.publicView.openNominationIndex !== null">
         <span class="hint" data-testid="player-vote-state">
           {{ day.voted ? '你已投赞成' : '你还没投票' }}
         </span>
@@ -131,23 +154,23 @@ async function castVote(voted: boolean): Promise<void> {
     <p v-else class="hint" data-testid="player-day-closed">白天已结束。</p>
 
     <p
-      v-if="day.publicFacts.aboutToBeExecuted !== null"
+      v-if="day.publicView.aboutToBeExecuted !== null"
       data-testid="player-about-to-be-executed"
-      :data-seat="day.publicFacts.aboutToBeExecuted"
+      :data-seat="day.publicView.aboutToBeExecuted"
     >
-      即将被处决：{{ seatLabelOf(day.publicFacts.aboutToBeExecuted) }}
+      即将被处决：{{ seatLabelOf(day.publicView.aboutToBeExecuted) }}
     </p>
-    <p v-if="day.publicFacts.executed !== null" data-testid="player-executed" :data-seat="day.publicFacts.executed">
-      已处决：{{ seatLabelOf(day.publicFacts.executed) }}
+    <p v-if="day.publicView.executed !== null" data-testid="player-executed" :data-seat="day.publicView.executed">
+      已处决：{{ seatLabelOf(day.publicView.executed) }}
     </p>
 
     <ul
       class="nominations"
       data-testid="player-day-nominations"
-      :data-nomination-count="day.publicFacts.nominations.length"
+      :data-nomination-count="day.publicView.nominations.length"
     >
       <li
-        v-for="nomination in day.publicFacts.nominations"
+        v-for="nomination in day.publicView.nominations"
         :key="nomination.index"
         :data-nomination-index="nomination.index"
         :data-nomination-status="nomination.status"
@@ -157,6 +180,41 @@ async function castVote(voted: boolean): Promise<void> {
         {{ nomination.votes }} 票（{{ nomination.status === 'Counted' ? '已计票' : '投票中' }}）
       </li>
     </ul>
+
+    <section class="board" data-testid="player-lives" :data-life-count="day.lives.length">
+      <h3>小镇生死</h3>
+      <ul class="board-list">
+        <li
+          v-for="entry in day.lives"
+          :key="entry.seat"
+          :data-seat="entry.seat"
+          :data-life="entry.state"
+          :class="{ 'is-self': entry.seat === seat }"
+        >
+          {{ seatLabelOf(entry.seat) }}{{ entry.seat === seat ? '（你）' : '' }} —— {{ lifeLabel(entry.state) }}
+        </li>
+      </ul>
+      <p v-if="day.lives.length === 0" class="hint">还没有公开的生死记录。</p>
+    </section>
+
+    <section
+      class="announcements"
+      data-testid="player-life-announcements"
+      :data-announcement-count="day.announcements.length"
+    >
+      <h3>生死公告 · 第 {{ day.publicView.dayNumber }} 天</h3>
+      <ul v-if="day.announcements.length > 0" class="announcements-list">
+        <li
+          v-for="(entry, index) in day.announcements"
+          :key="`${index}-${entry.seat}`"
+          :data-seat="entry.seat"
+          :data-state="entry.state"
+        >
+          {{ seatLabelOf(entry.seat) }} {{ announcementLabel(entry.state) }}
+        </li>
+      </ul>
+      <p v-else class="hint">本日还没有死亡或复活公告。</p>
+    </section>
   </section>
 </template>
 
@@ -175,5 +233,38 @@ async function castVote(voted: boolean): Promise<void> {
   display: flex;
   flex-direction: column;
   gap: 2px;
+}
+
+.dead-note {
+  margin: 6px 0;
+  padding: 6px 8px;
+  border: 1px solid var(--warn);
+  border-radius: 6px;
+  color: var(--warn);
+  font-size: 13px;
+}
+
+.board,
+.announcements {
+  margin-top: 10px;
+}
+
+.board h3,
+.announcements h3 {
+  margin: 0 0 4px;
+  font-size: 14px;
+}
+
+.board-list,
+.announcements-list {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.board-list .is-self {
+  font-weight: 600;
 }
 </style>

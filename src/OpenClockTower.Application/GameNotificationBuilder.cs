@@ -8,6 +8,9 @@ public static class GameNotificationBuilder
     /// <summary>
     /// 翻译一次提交产出的事件；总是附带一条说书人视图变更通知。
     /// </summary>
+    /// <param name="drafts">本批已提交的事件。</param>
+    /// <param name="previousMachine">提交前的步骤机状态（找请求收件人用）。</param>
+    /// <param name="publicSurfaceChanged">本批是否让公开生死面实际变化（由 <see cref="SessionTrackers.Update"/> 给出）。</param>
     /// <remarks>
     /// <para>
     /// 每条通知携带**背书事件的事件流序号**：客户端用它和快照序号比较先后并合并
@@ -21,10 +24,12 @@ public static class GameNotificationBuilder
     /// </remarks>
     public static IReadOnlyList<GameNotification> Build(
         IReadOnlyList<StoredEventDraft> drafts,
-        StepMachineState? previousMachine)
+        StepMachineState? previousMachine,
+        bool publicSurfaceChanged)
     {
         var notifications = new List<GameNotification>();
         long? lastDayEventSequence = null;
+        long? lastLifeChangeSequence = null;
         foreach (var draft in drafts)
         {
             if (draft.Event is DayStartedEvent
@@ -35,6 +40,13 @@ public static class GameNotificationBuilder
                 or DayClosedEvent)
             {
                 lastDayEventSequence = draft.Sequence;
+            }
+
+            if (draft.Event is SeatStateChangedEvent { Life: not null })
+            {
+                // 公开面变化的背书事件；无白天事件的补推序号用它，而不是"本批最后一条草案"
+                // （草案里可能跟着对账派生事件，口径与 lastDayEventSequence 保持一致）。
+                lastLifeChangeSequence = draft.Sequence;
             }
 
             switch (draft.Event)
@@ -113,6 +125,17 @@ public static class GameNotificationBuilder
             {
                 Kind = GameNotificationKind.DayChanged,
                 Sequence = daySequence,
+            });
+        }
+        else if (publicSurfaceChanged && drafts.Count > 0)
+        {
+            // 没有白天事件背书、但公开生死面变了（如说书人白天上报生死；R-0022 第 2 条"白天变化即时公开"）：
+            // 推一次读时投影，别让"已公开"退化成"下次刷新才看得见"。
+            // 夜晚挂起不算公开面变化（SessionTrackers 只按公开投影的版本号判定）→ 这里不会推（D-0013 §5）。
+            notifications.Add(new GameNotification
+            {
+                Kind = GameNotificationKind.DayChanged,
+                Sequence = lastLifeChangeSequence ?? drafts[^1].Sequence,
             });
         }
 

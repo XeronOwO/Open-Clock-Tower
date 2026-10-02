@@ -12,6 +12,7 @@ import type {
   DecisionOptionDto,
   EffectDto,
   OperationRequestVoidedDto,
+  PlayerLifeDto,
   RoomHealthDto,
   SeatChangeDto,
   SeatStateDto,
@@ -353,6 +354,24 @@ export function normalizeDayView(raw: unknown): DayViewDto | null {
     executed: asCount(day['executed']),
     openNominationIndex: asCount(day['openNominationIndex']),
   }
+}
+
+/** 公开生死面条目的条数上限：一桌人就这么多，超出的一律丢弃（坏数据不撑爆面板）。 */
+export const MAX_PUBLIC_LIFE_ENTRIES = 64
+
+/**
+ * 归一化一条公开生死事实（牌面 / 公告同形）；缺席位或状态时返回 null
+ * （宁可少一条，不编一个状态——服务端数据是输入，不是保证，web/AGENTS §4）。
+ */
+export function normalizePlayerLife(raw: unknown): PlayerLifeDto | null {
+  if (raw === null || typeof raw !== 'object') {
+    return null
+  }
+
+  const entry = raw as Record<string, unknown>
+  const seat = asCount(entry['seat'], 1_000)
+  const state = asSizedText(entry['state'], 32)
+  return seat === null || seat < 1 || state === null ? null : { seat, state }
 }
 
 /** 归一化整个说书人视图。任何缺失都退化成空集合 / null，不编造状态。 */

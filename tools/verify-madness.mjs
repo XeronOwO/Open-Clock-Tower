@@ -230,6 +230,30 @@ async function main() {
     (await storytellerPage.getByTestId('st-executed').count()) === 0,
   )
 
+  // R-0022：夜晚处罚的死亡在**下一个黎明**（开白天）进入公开面——1 号自己的页面上同时出现
+  // 4 号的死亡公告与牌面翻死亡；公告只含"谁死了"，夜晚处罚的理由（疯狂要求）仍然不可见。
+  const punishedLife = await waitForAttribute(
+    cerenovusPage.locator(`[data-testid="player-lives"] li[data-seat="${MUTANT_SEAT}"]`),
+    'data-life',
+    'Dead',
+    30_000,
+  )
+  const punishedAnnouncement = await cerenovusPage
+    .locator(`[data-testid="player-life-announcements"] li[data-seat="${MUTANT_SEAT}"][data-state="Dead"]`)
+    .count()
+  const dawnAnnouncementText = compact(
+    await cerenovusPage.locator('[data-testid="player-life-announcements"]').innerText(),
+  )
+  check(
+    'R-0022：夜间处罚的死亡在黎明进入公开面（牌面 + 本日公告），不含处罚理由',
+    punishedLife === 'Dead'
+      && punishedAnnouncement >= 1
+      && dawnAnnouncementText.includes(`${MUTANT_SEAT} 号`)
+      && !dawnAnnouncementText.includes('畸形秀演员')
+      && !dawnAnnouncementText.includes('疯狂'),
+    `牌面=${punishedLife}；公告条数=${punishedAnnouncement}｜${dawnAnnouncementText}`,
+  )
+
   console.log('=== 6/7 白天处罚洗脑师目标（2 号）：占上限、立即入夜 ===')
   await storytellerPage.locator(`[data-testid="grimoire-seat"][data-seat="${TARGET_SEAT}"]`).click()
   // 处罚来源不随选席复位：换成 2 号后必须显式改回洗脑师。

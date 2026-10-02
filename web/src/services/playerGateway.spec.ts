@@ -124,10 +124,10 @@ describe('事件序号是合并判据：缺序号 = 坏载荷', () => {
 })
 
 describe('白天投影规范化', () => {
-  it('公开事实 / 序号 / 权限位保留；缺关键字段的历史数据不编造', () => {
+  it('公开事实 / 公开生死面 / 序号 / 权限位保留；缺关键字段的历史数据不编造', () => {
     const day = normalizePlayerDay({
       sequence: 9,
-      publicFacts: {
+      publicView: {
         dayNumber: 1,
         status: 'Open',
         nominations: [
@@ -137,6 +137,11 @@ describe('白天投影规范化', () => {
         executed: null,
         openNominationIndex: 1,
       },
+      lives: [
+        { seat: 1, state: 'Dead' },
+        { seat: 2, state: 'Alive' },
+      ],
+      announcements: [{ seat: 1, state: 'Dead' }],
       canNominate: false,
       canVote: true,
       voted: false,
@@ -144,15 +149,37 @@ describe('白天投影规范化', () => {
     })
 
     expect(day?.sequence).toBe(9)
-    expect(day?.publicFacts.dayNumber).toBe(1)
-    expect(day?.publicFacts.nominations[0]?.voters).toEqual([3])
+    expect(day?.publicView.dayNumber).toBe(1)
+    expect(day?.publicView.nominations[0]?.voters).toEqual([3])
+    expect(day?.lives).toEqual([
+      { seat: 1, state: 'Dead' },
+      { seat: 2, state: 'Alive' },
+    ])
+    expect(day?.announcements).toEqual([{ seat: 1, state: 'Dead' }])
     expect(day?.canVote).toBe(true)
     expect(day?.candidates).toEqual([3])
 
     // 公开事实缺天数 / 状态，或缺序号 → 整份白天投影不可识别，宁可少显示。
-    expect(normalizePlayerDay({ sequence: 9, publicFacts: { status: 'Open' } })).toBeNull()
-    expect(normalizePlayerDay({ publicFacts: { dayNumber: 1, status: 'Open' } })).toBeNull()
+    expect(normalizePlayerDay({ sequence: 9, publicView: { status: 'Open' } })).toBeNull()
+    expect(normalizePlayerDay({ publicView: { dayNumber: 1, status: 'Open' } })).toBeNull()
     expect(normalizePlayerDay(null)).toBeNull()
+  })
+
+  it('公开生死面：坏条目单条丢弃、空数组不崩；缺字段的历史数据退化成空集合', () => {
+    const day = normalizePlayerDay({
+      sequence: 10,
+      publicView: { dayNumber: 2, status: 'Closed' },
+      // 席位 0 / 非数字 / 缺状态 / 非对象混在一起：只保留可识别的两条。
+      lives: [{ seat: 3, state: 'Dead' }, { seat: 0, state: 'Dead' }, '坏条目', { seat: 'x' }, { seat: 4 }],
+      canNominate: false,
+      canVote: false,
+      voted: false,
+      candidates: [],
+    })
+
+    expect(day?.lives).toEqual([{ seat: 3, state: 'Dead' }])
+    // announcements 缺失 = 旧服务端形状：退化成空集合，不编公告。
+    expect(day?.announcements).toEqual([])
   })
 })
 

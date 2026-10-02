@@ -3,17 +3,25 @@ using OpenClockTower.Kernel;
 namespace OpenClockTower.Application;
 
 /// <summary>
-/// 发给某个玩家的白天投影：公开事实 + "我现在能做什么"。
+/// 发给某个玩家的白天投影：公开事实 + 公开生死面 + "我现在能做什么"。
 /// </summary>
 /// <remarks>
 /// 白天信息是**公开信息**（百科《规则概要》三：提名、投票、处决都在桌面上进行）：
-/// <see cref="PublicFacts"/> 只含公开事实，权限位是服务端算好的便利值——呈现层不判规则（web/AGENTS §4）。
+/// <see cref="PublicView"/> 只含公开事实，<see cref="Lives"/> / <see cref="Announcements"/>
+/// 来自 R-0022 的公开生死面（生命标记与黎明公告的等价物，不含死因），
+/// 权限位是服务端算好的便利值——呈现层不判规则（web/AGENTS §4）。
 /// 字段名刻意避开"玩家的说书人专属数据"禁词表（PlayerProjectionLeakGateTests）。
 /// </remarks>
 public sealed record PlayerDay
 {
     /// <summary>最新一天（进行中或最近结束）的公开事实。</summary>
-    public required DayRecord PublicFacts { get; init; }
+    public required DayRecord PublicView { get; init; }
+
+    /// <summary>公开生死面：全体席位对外可见的生死（按席位升序；未观测的席位不出现）。</summary>
+    public required IReadOnlyList<PublicLifeEntry> Lives { get; init; }
+
+    /// <summary>本日已公告的生死变化（黎明批次 + 白天即时）：死 = <c>Dead</c>、复活 = <c>Alive</c>。</summary>
+    public required IReadOnlyList<PublicLifeEntry> Announcements { get; init; }
 
     /// <summary>现在能不能发起提名（白天开着、没有进行中的提名、存活、今天还没发起过）。</summary>
     public required bool CanNominate { get; init; }

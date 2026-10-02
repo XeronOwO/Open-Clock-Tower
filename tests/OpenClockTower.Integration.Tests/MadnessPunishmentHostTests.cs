@@ -153,11 +153,34 @@ public sealed class MadnessPunishmentHostTests
         // 当晚的处罚不占任何白天的上限：白天 1 的账不变，夜晚也照常走完。
         Assert.Equal(3, afterPunish!.Day!.Executed);
         Assert.False(afterPunish.PlanCompleted);
+
+        // 行 1 前半（R-0022）：夜晚的死亡还没进公开面——牌面仍是白天 1 的公开状态，
+        // 本日公告里没有 1 号；未公告的死亡对任何玩家（含本人）都不可见。
+        var stillNight = host.Session.GetPlayerView(new SeatId(2)).Day;
+        Assert.NotNull(stillNight);
+        Assert.DoesNotContain(stillNight!.Lives, entry => entry.Seat.Value == 1 && entry.State == LifeState.Dead);
+        Assert.DoesNotContain(stillNight.Announcements, entry => entry.Seat.Value == 1);
+
         await CompleteNightAsync(storyteller, "n2");
 
         // 白天 2：上限仍然可用——4 号提名 2 号并投票，正常处决。
         var dayTwo = await storyteller.InvokeAsync<CommandResultDto>("StartDay", "test-mutant-day-2");
         Assert.Equal("Accepted", dayTwo.Kind);
+
+        // 行 1 后半（R-0022）：开白天（黎明）后夜晚的死亡进入公开面——1 号死亡公告 + 牌面翻死亡；
+        // 白天 1 的公告被新一天的批次替换（公告是"本日"的），且夜晚处罚的**理由**不进公开面。
+        var afterDawn = host.Session.GetPlayerView(new SeatId(2)).Day;
+        Assert.NotNull(afterDawn);
+        Assert.Contains(afterDawn!.Lives, entry => entry.Seat.Value == 1 && entry.State == LifeState.Dead);
+        Assert.Contains(afterDawn.Announcements, entry => entry.Seat.Value == 1 && entry.State == LifeState.Dead);
+        Assert.DoesNotContain(afterDawn.Announcements, entry => entry.Seat.Value == 3);
+
+        // 行 3：被处罚者自己的界面看得到死亡，权限位随之更新（不能发起提名）。
+        var punishedDay = host.Session.GetPlayerView(new SeatId(1)).Day;
+        Assert.NotNull(punishedDay);
+        Assert.Contains(punishedDay!.Lives, entry => entry.Seat.Value == 1 && entry.State == LifeState.Dead);
+        Assert.False(punishedDay.CanNominate);
+
         Assert.Equal("Accepted", (await four.InvokeAsync<CommandResultDto>("Nominate", 2, "test-mutant-nominate-2")).Kind);
         Assert.Equal("Accepted", (await four.InvokeAsync<CommandResultDto>("CastVote", 1, true, "test-mutant-vote-4")).Kind);
         Assert.Equal("Accepted", (await storyteller.InvokeAsync<CommandResultDto>("CountVotes", 1, "test-mutant-count-2")).Kind);
