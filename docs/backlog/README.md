@@ -61,6 +61,7 @@ todo/  →  in-progress/  →  review/  →  done/
 ### Todo
 
 - [说书人上帝视角：每步状态信息、归因与最终计算结论](todo/storyteller-step-insights.md) — **High** — 每步摘要 + 状态变化归因 + 能力生效结论；批次 E2 判行 1 / 2 / 5 被拒（`StepDigest` 未收口），收口后重跑
+- [界面游戏化：魔典式小镇视图](todo/grimoire-view.md) — **Medium** — 说书人看板从"数据表格"改为"以席位为中心"的图形化魔典：角色 / 生死 / 状态 / 提示标记一眼可见
 - [玩家端视图新鲜度：请求了结与阶段变化的推送 / 呈现](todo/player-view-freshness.md) — **Medium** — 作废 / 代填 / 阶段变化没有到达玩家界面，玩家会停在旧请求与旧阶段
 - [零信任安全模型](todo/zero-trust-security-model.md) — **High** — 鉴权两级凭据 + 操作四道闸 + 服务端强制投影，负向测试为主
 - [重建报告对比状态账](todo/rebuild-state-ledger-comparison.md) — **Medium** — 重建报告补上状态账等价对比，半个结论变完整
