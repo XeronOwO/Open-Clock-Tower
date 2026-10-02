@@ -11,13 +11,14 @@
  *   5) 全程扫描三个 SignalR 席位（女巫 + 两名无关玩家）收到的每一条消息：玩家端不得出现
  *      诅咒 / 效果链 / 归因字段（被诅咒席 4 号走真浏览器，另行断言页面文本与积分）。
  *
- * 与主批次的分工：主批次（verify-storyteller-panel.mjs）跑三席固定花名册的通用玩法回归，
+ * 与主批次的分工：主批次（verify-storyteller-panel.mjs）跑五席固定花名册的通用玩法回归，
  * 本装置只跑女巫这一条能力链路，且**必须**是 4 席（三席局里女巫按规则根本没有诅咒）。
  *
  * 前置：Node >= 22.5（node:sqlite）、本机已构建 web/node_modules（playwright + @microsoft/signalr）。
- * 用法（在仓库根运行）：
- *   node tools/verify-witch.mjs
- *   node tools/verify-witch.mjs --port 5411 --vite-port 5291 --quota 1
+ * 用法（在仓库根运行；默认迭代档 = 快节拍 + 不落盘截图 + 复用产物）：
+ *   node tools/verify-witch.mjs                                        # 迭代档
+ *   node tools/verify-witch.mjs --quota 2 --screenshots-all --build    # 取证档（一批一次）
+ *   node tools/verify-witch.mjs --port 5411 --vite-port 5291           # 自定端口
  *
  * 外部耦合（换机器先核对 web/AGENTS.md §3.1）：宿主编译产物路径、SQLite 表 Games 的
  * StorytellerTicket / SeatsJson 列形状。退出码：0 = 全过；1 = 有失败；2 = 环境缺依赖。
@@ -29,10 +30,18 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { DatabaseSync } from 'node:sqlite'
+import { describeProfile, ensureServerArtifacts, extractProfileFlags, resolveProfile } from './lib/verify-profile.mjs'
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const webRoot = path.join(repositoryRoot, 'web')
-const options = parseArguments(process.argv.slice(2))
+const { flags, rest } = extractProfileFlags(process.argv.slice(2))
+const options = parseArguments(rest)
+
+/**
+ * 档位（tools/lib/verify-profile.mjs）：默认迭代档（快节拍 0.3s + 不落盘截图 + 复用产物）；
+ * 取证档显式传 `--quota 2 --screenshots-all`（必要时加 `--build`）。
+ */
+const config = resolveProfile(flags, { quotaSeconds: 0.3 })
 const results = []
 const children = []
 let playwright = null
@@ -48,6 +57,8 @@ try {
   process.exit(2)
 }
 
+console.log(`档位：${describeProfile(config)}`)
+
 const workspace = mkdtempSync(path.join(tmpdir(), 'oct-witch-'))
 const databasePath = path.join(workspace, 'witch.db')
 const screenshotsDir = path.resolve(repositoryRoot, 'artifacts', 'web')
@@ -59,8 +70,10 @@ const hubUrl = `${serverUrl}/hub/game`
 
 /** 四个席位（与 web/src/display/labels.ts 的花名册一致）。 */
 const ASSIGN = ['witch', 'clockmaker', 'dreamer', 'no-dashii']
-const WITCH_SEAT = 1
-const CURSED_SEAT = 4
+/** 席位号从花名册顺序派生：调换 ASSIGN 顺序时断言跟着走，不靠人工同步。 */
+const seatOf = (slug) => ASSIGN.indexOf(slug) + 1
+const WITCH_SEAT = seatOf('witch')
+const CURSED_SEAT = seatOf('no-dashii')
 
 /** 玩家客户端可能收到的全部推送（扫描越权字段用）。 */
 const PUSH_METHODS = [
@@ -107,7 +120,7 @@ try {
 
 async function main() {
   console.log('=== 1/7 构建并启动真宿主（独立临时库，4 席）===')
-  await runProcess('dotnet', ['build', 'src/OpenClockTower.Server', '-c', 'Release'], repositoryRoot)
+  await ensureServerArtifacts({ repositoryRoot, buildMode: config.buildMode })
   await startServer()
 
   console.log('=== 2/7 取票据并起 Vite ===')
@@ -505,6 +518,10 @@ async function waitForEnabled(locator, timeoutMs) {
 }
 
 async function screenshot(page, name) {
+  if (!config.screenshots) {
+    return
+  }
+
   const target = path.join(screenshotsDir, `${name}.png`)
   await page.screenshot({ path: target, fullPage: true })
   console.log(`  截图：${target}`)
@@ -551,7 +568,7 @@ async function startServer() {
       ASPNETCORE_URLS: serverUrl,
       GameServer__DatabasePath: databasePath,
       GameServer__SeatCount: String(ASSIGN.length),
-      GameServer__SlotQuotaSeconds: String(options.quotaSeconds),
+      GameServer__SlotQuotaSeconds: String(config.quotaSeconds),
       GameServer__PacerIntervalMilliseconds: '200',
       DOTNET_ENVIRONMENT: 'Production',
     },
@@ -612,7 +629,7 @@ function seatNumberOf(raw) {
 }
 
 function parseArguments(argv) {
-  const parsed = { port: 5411, vitePort: 5291, quotaSeconds: 1 }
+  const parsed = { port: 5411, vitePort: 5291 }
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index]
     if (argument === '--port') {
@@ -620,9 +637,6 @@ function parseArguments(argv) {
       index += 1
     } else if (argument === '--vite-port') {
       parsed.vitePort = Number.parseInt(argv[index + 1] ?? '', 10)
-      index += 1
-    } else if (argument === '--quota') {
-      parsed.quotaSeconds = Number.parseFloat(argv[index + 1] ?? '')
       index += 1
     }
   }
@@ -634,10 +648,6 @@ function parseArguments(argv) {
     if (!Number.isFinite(value) || value <= 0) {
       throw new Error(`${name} 非法：${value}`)
     }
-  }
-
-  if (!Number.isFinite(parsed.quotaSeconds) || parsed.quotaSeconds <= 0) {
-    throw new Error(`--quota 非法：${parsed.quotaSeconds}`)
   }
 
   return parsed
@@ -719,19 +729,4 @@ async function waitForChildrenExit(timeoutMs) {
 
 function sleep(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds))
-}
-
-function runProcess(command, args, cwd) {
-  return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { cwd, stdio: 'inherit' })
-    child.on('error', reject)
-    child.on('exit', (code) => {
-      if (code === 0) {
-        resolve()
-        return
-      }
-
-      reject(new Error(`${command} 退出码 ${code}`))
-    })
-  })
 }

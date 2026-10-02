@@ -10,13 +10,14 @@
  *      2 号页面出现结束横幅与公开选择记录；说书人面板出现同一份结束结论；
  *   5) 结束后再点「开夜」被拒（`phase.game_ended`）——结束态真的冻结了操作面。
  *
- * 与主批次的分工：主批次跑三席固定花名册的通用玩法回归；本装置只跑这条胜负链路。
+ * 与主批次的分工：主批次跑五席固定花名册的通用玩法回归；本装置只跑这条胜负链路。
  * 涡流「黄昏无人被处决」与镜像双子阻断由集成测试覆盖（同一套投影与横幅）。
  *
  * 前置：Node >= 22.5（node:sqlite）、本机已构建 web/node_modules（playwright + @microsoft/signalr）。
- * 用法（在仓库根运行）：
- *   node tools/verify-winloss.mjs
- *   node tools/verify-winloss.mjs --port 5414 --vite-port 5294 --quota 1
+ * 用法（在仓库根运行；默认迭代档 = 快节拍 + 不落盘截图 + 复用产物）：
+ *   node tools/verify-winloss.mjs                                        # 迭代档
+ *   node tools/verify-winloss.mjs --quota 2 --screenshots-all --build    # 取证档（一批一次）
+ *   node tools/verify-winloss.mjs --port 5414 --vite-port 5294           # 自定端口
  *
  * 外部耦合（换机器先核对 web/AGENTS.md §3.1）：宿主编译产物路径、SQLite 表 Games 的
  * StorytellerTicket / SeatsJson 列形状。退出码：0 = 全过；1 = 有失败；2 = 环境缺依赖。
@@ -28,19 +29,18 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { DatabaseSync } from 'node:sqlite'
+import { describeProfile, ensureServerArtifacts, extractProfileFlags, resolveProfile } from './lib/verify-profile.mjs'
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const webRoot = path.join(repositoryRoot, 'web')
-const options = parseArguments(process.argv.slice(2))
+const { flags, rest } = extractProfileFlags(process.argv.slice(2))
+const options = parseArguments(rest)
 
 /**
- * 迭代快参数（见 AGENTS.local.md「验证成本纪律」）：正式取证不用它们。
- *   --skip-build      复用已构建的 Release 产物（省一次 dotnet build）
- *   --no-screenshots  跳过 PNG 落盘（省每次截图的秒级开销）
+ * 档位（tools/lib/verify-profile.mjs）：默认迭代档（快节拍 0.3s + 不落盘截图 + 复用产物）；
+ * 取证档显式传 `--quota 2 --screenshots-all`（必要时加 `--build`）。
  */
-const fastFlags = new Set(process.argv.slice(2))
-const skipBuild = fastFlags.has('--skip-build')
-const noScreenshots = fastFlags.has('--no-screenshots')
+const config = resolveProfile(flags, { quotaSeconds: 0.3 })
 const results = []
 const children = []
 let playwright = null
@@ -56,6 +56,8 @@ try {
   process.exit(2)
 }
 
+console.log(`档位：${describeProfile(config)}`)
+
 const workspace = mkdtempSync(path.join(tmpdir(), 'oct-winloss-'))
 const databasePath = path.join(workspace, 'winloss.db')
 const screenshotsDir = path.resolve(repositoryRoot, 'artifacts', 'web')
@@ -67,9 +69,11 @@ const hubUrl = `${serverUrl}/hub/game`
 
 /** 五个席位（与 web/src/display/labels.ts 的花名册一致）：呆瓜要被处决，因此不能再放第二个恶魔。 */
 const ASSIGN = ['vortox', 'klutz', 'mutant', 'witch', 'dreamer']
-const VORTOX_SEAT = 1
-const KLUTZ_SEAT = 2
-const WITCH_SEAT = 4
+/** 席位号从花名册顺序派生：调换 ASSIGN 顺序时断言跟着走，不靠人工同步。 */
+const seatOf = (slug) => ASSIGN.indexOf(slug) + 1
+const VORTOX_SEAT = seatOf('vortox')
+const KLUTZ_SEAT = seatOf('klutz')
+const WITCH_SEAT = seatOf('witch')
 
 /** 玩家客户端可能收到的全部推送（扫描越权字段用）。 */
 const PUSH_METHODS = [
@@ -110,15 +114,13 @@ try {
 
 async function main() {
   console.log('=== 1/6 构建并启动真宿主（独立临时库，5 席）===')
-  if (!skipBuild) {
-    await runProcess('dotnet', ['build', 'src/OpenClockTower.Server', '-c', 'Release'], repositoryRoot)
-  }
+  await ensureServerArtifacts({ repositoryRoot, buildMode: config.buildMode })
   await startServer()
 
   console.log('=== 2/6 取票据并起 Vite ===')
   const ticket = readStorytellerTicket(databasePath)
   const seatTickets = readSeatTickets(databasePath)
-  check('席位票据齐备（5 席）', seatTickets.length === 5, `数据库 ${seatTickets.length} 张`)
+  check(`席位票据齐备（${ASSIGN.length} 席）`, seatTickets.length === ASSIGN.length, `数据库 ${seatTickets.length} 张`)
 
   const vite = spawn(
     process.execPath,
@@ -484,7 +486,7 @@ async function waitForEnabled(locator, timeoutMs) {
 }
 
 async function screenshot(page, name) {
-  if (noScreenshots) {
+  if (!config.screenshots) {
     return
   }
 
@@ -534,7 +536,7 @@ async function startServer() {
       ASPNETCORE_URLS: serverUrl,
       GameServer__DatabasePath: databasePath,
       GameServer__SeatCount: String(ASSIGN.length),
-      GameServer__SlotQuotaSeconds: String(options.quotaSeconds),
+      GameServer__SlotQuotaSeconds: String(config.quotaSeconds),
       GameServer__PacerIntervalMilliseconds: '200',
       DOTNET_ENVIRONMENT: 'Production',
     },
@@ -595,7 +597,7 @@ function seatNumberOf(raw) {
 }
 
 function parseArguments(argv) {
-  const parsed = { port: 5411, vitePort: 5291, quotaSeconds: 1 }
+  const parsed = { port: 5411, vitePort: 5291 }
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index]
     if (argument === '--port') {
@@ -603,9 +605,6 @@ function parseArguments(argv) {
       index += 1
     } else if (argument === '--vite-port') {
       parsed.vitePort = Number.parseInt(argv[index + 1] ?? '', 10)
-      index += 1
-    } else if (argument === '--quota') {
-      parsed.quotaSeconds = Number.parseFloat(argv[index + 1] ?? '')
       index += 1
     }
   }
@@ -617,10 +616,6 @@ function parseArguments(argv) {
     if (!Number.isFinite(value) || value <= 0) {
       throw new Error(`${name} 非法：${value}`)
     }
-  }
-
-  if (!Number.isFinite(parsed.quotaSeconds) || parsed.quotaSeconds <= 0) {
-    throw new Error(`--quota 非法：${parsed.quotaSeconds}`)
   }
 
   return parsed
@@ -702,19 +697,4 @@ async function waitForChildrenExit(timeoutMs) {
 
 function sleep(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds))
-}
-
-function runProcess(command, args, cwd) {
-  return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { cwd, stdio: 'inherit' })
-    child.on('error', reject)
-    child.on('exit', (code) => {
-      if (code === 0) {
-        resolve()
-        return
-      }
-
-      reject(new Error(`${command} 退出码 ${code}`))
-    })
-  })
 }

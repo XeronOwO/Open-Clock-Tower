@@ -12,10 +12,11 @@
  *         8（收包不含越权信息）、9 的在线面（无关玩家零活动）、11（拒绝审计）。
  * 行 6 的"僧侣"依赖尚未落地的角色，已在集成测试里用等价反例覆盖。
  *
- * 前置：Node >= 22.5（node:sqlite）、本机已构建；脚本自己会跑一次 Release 构建。
- * 用法（在仓库根运行）：
- *   node tools/verify-zero-trust.mjs
- *   node tools/verify-zero-trust.mjs --port 5397 --quota 0.5
+ * 前置：Node >= 22.5（node:sqlite）、本机已构建。
+ * 用法（在仓库根运行；默认迭代档 = 快节拍 + 复用产物）：
+ *   node tools/verify-zero-trust.mjs                  # 迭代档
+ *   node tools/verify-zero-trust.mjs --quota 2 --build  # 取证档（慢节拍 + 强制构建）
+ *   node tools/verify-zero-trust.mjs --port 5397      # 自定端口
  *
  * 外部耦合（换机器先核对 web/AGENTS.md §3.1）：宿主编译产物路径、SQLite 表 Games
  * 的 StorytellerTicket / SeatsJson 列形状。退出码：0 = 全过；1 = 有失败；2 = 环境缺依赖。
@@ -27,10 +28,18 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { DatabaseSync } from 'node:sqlite'
+import { describeProfile, ensureServerArtifacts, extractProfileFlags, resolveProfile } from './lib/verify-profile.mjs'
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const webRoot = path.join(repositoryRoot, 'web')
-const options = parseArguments(process.argv.slice(2))
+const { flags, rest } = extractProfileFlags(process.argv.slice(2))
+const options = parseArguments(rest)
+
+/**
+ * 档位（tools/lib/verify-profile.mjs）：默认迭代档（快节拍 + 复用产物）；本装置无浏览器截图，
+ * 取证档显式传 `--quota 2 --build`（`--screenshots-all` 传了也无副作用）。
+ */
+const config = resolveProfile(flags, { quotaSeconds: 0.3 })
 const results = []
 const children = []
 let signalR = null
@@ -43,6 +52,8 @@ try {
   console.error('先运行：cd web; npm install')
   process.exit(2)
 }
+
+console.log(`档位：${describeProfile(config)}`)
 
 const workspace = mkdtempSync(path.join(tmpdir(), 'oct-zero-trust-'))
 const databasePath = path.join(workspace, 'verify.db')
@@ -115,7 +126,7 @@ try {
 
 async function main() {
   console.log('=== 1/6 构建并启动真宿主（独立临时库）===')
-  await runProcess('dotnet', ['build', 'src/OpenClockTower.Server', '-c', 'Release'], repositoryRoot)
+  await ensureServerArtifacts({ repositoryRoot, buildMode: config.buildMode })
   const executableSuffix = process.platform === 'win32' ? '.exe' : ''
   const serverExecutable = path.join(
     repositoryRoot,
@@ -134,7 +145,7 @@ async function main() {
       ASPNETCORE_URLS: serverUrl,
       GameServer__DatabasePath: databasePath,
       GameServer__SeatCount: '3',
-      GameServer__SlotQuotaSeconds: String(options.quotaSeconds),
+      GameServer__SlotQuotaSeconds: String(config.quotaSeconds),
       GameServer__PacerIntervalMilliseconds: '200',
       DOTNET_ENVIRONMENT: 'Production',
     },
@@ -628,14 +639,6 @@ async function waitUntil(condition, timeoutMs) {
   return condition()
 }
 
-function runProcess(command, args, cwd) {
-  return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { cwd, stdio: 'inherit' })
-    child.on('exit', (code) => (code === 0 ? resolve() : reject(new Error(`${command} 退出码 ${code}`))))
-    child.on('error', reject)
-  })
-}
-
 async function waitForHttp(url, label, timeoutMs) {
   const deadline = Date.now() + timeoutMs
   let lastError = '未请求'
@@ -708,24 +711,17 @@ function seatNumberOf(raw) {
 }
 
 function parseArguments(argv) {
-  const parsed = { port: 5397, quotaSeconds: 0.5 }
+  const parsed = { port: 5397 }
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index]
     if (argument === '--port') {
       parsed.port = Number.parseInt(argv[index + 1] ?? '', 10)
-      index += 1
-    } else if (argument === '--quota') {
-      parsed.quotaSeconds = Number.parseFloat(argv[index + 1] ?? '')
       index += 1
     }
   }
 
   if (!Number.isFinite(parsed.port) || parsed.port <= 0) {
     throw new Error(`--port 非法：${parsed.port}`)
-  }
-
-  if (!Number.isFinite(parsed.quotaSeconds) || parsed.quotaSeconds <= 0) {
-    throw new Error(`--quota 非法：${parsed.quotaSeconds}`)
   }
 
   return parsed

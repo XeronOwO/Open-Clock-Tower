@@ -49,7 +49,7 @@ node tools/verify-storyteller-panel.mjs        # 退出码 0 = 全部断言通�
 真宿主 + 真 Vite + 真 Chromium，按 `--seats` 每席开**独立浏览器上下文**（同一 SPA 的 `#player`）；
 **场景与断言以脚本头部注释为准**（加入 → 分配 → 首夜 → 白天 → 后续夜晚 → 重建 → 重连补齐），
 含公开生死面断言（R-0022）；截图与日志进 `artifacts/web/`（gitignored，可重生成）。
-场景固定三角色（clockmaker / dreamer / no-dashii），节拍配额默认 `--quota 2` 秒。
+默认五席；默认迭代档（0.3s/槽、不落盘截图），取证用 `--quota 2 --screenshots-all`。
 
 零信任：`node tools/verify-zero-trust.mjs`——真宿主 + Node SignalR 客户端扮演
 **篡改前端**：伪造 / 冒用 / 旧连接凭据直调 Hub、白天越权提交、收包与审计扫描。补充装置。

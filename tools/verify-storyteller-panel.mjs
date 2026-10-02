@@ -4,12 +4,12 @@
  * 它回答：**用真服务端 + 真浏览器 + 真 SQLite 做一次多客户端会话，
  * 说书人面板与玩家端能不能真的玩通夜晚与白天？**（验收规程：docs/acceptance/AGENTS.md §3）
  *
- * 场景（花名册固定为 clockmaker / dreamer / no-dashii——当前已实现契约的三名角色）：
+ * 场景（花名册默认五席：clockmaker / dreamer / no-dashii / mutant / klutz）：
  *   1) 起真宿主（独立临时库）→ 读说书人票据与各席位票据 → 起 Vite → 起 Chromium；
  *   2) 说书人 + 每席一个玩家各自加入（独立浏览器上下文 = 各自设备）→ 断言加入时页头阶段是中文；
  *   3) 说书人分配三角色 → 诺-达鲺常驻中毒落在最近的两名镇民（带归因与效果链接）；
  *   4) 说书人上报 1 号醉酒 → 与中毒并存、互不抵消；
- *   5) 开夜 → 阶段推送让三席玩家页头变「首夜」（行 3）→ 钟表匠槽位没有玩家选项，直接进说书人
+ *   5) 开夜 → 阶段推送让各席玩家页头变「首夜」（行 3）→ 钟表匠槽位没有玩家选项，直接进说书人
  *      裁定点 → 每步摘要断言行 2（中毒 + 醉酒 + 未生效 R-0004 + 无选项行为）→ 信息只到 1 号玩家；
  *   5b) 补齐并发窗口（票据 player-information-resync-race 行 1）：扣住 1 号的补齐响应 → 钟表匠信息
  *      推送先到 → 放行响应；断言推送不丢、不重复、无坏包诊断（截图 05b）；
@@ -32,17 +32,29 @@
  *      修复载荷后重建成功 → 降级清除；玩家端全程没有健康位文案 / 锚点；
  *  13) 重连补齐（快照权威）：隐藏事件不报假缺口、watermark 随快照序号前进；非零 watermark 跨掉线窗口
  *      重连（窗口内有其他席位的隐藏状态变化）仍无假告警；
- *  14) 全程截图（34 张）；断言只落在真正渲染数据的面板 / 牌面内（`data-testid` 锚点 + 单调计数）。
+ *  14) 全程截图（取证档 34 张，用 --screenshots-all 落盘）；断言只落在真正渲染数据的面板 / 牌面内（`data-testid` 锚点 + 单调计数）。
  *
  * 前置：Node >= 22.5（node:sqlite）、web/node_modules 已安装、本机已装 Chromium：
  *   cd web
  *   npm install
  *   npx playwright install chromium
  *
- * 用法（在仓库根运行；默认三席全分配）：
- *   node tools/verify-storyteller-panel.mjs
- *   node tools/verify-storyteller-panel.mjs --port 5399 --vite-port 5398 --quota 2 \
- *     --screenshots artifacts/web
+ * 用法（在仓库根运行；默认五席全分配）：
+ *   node tools/verify-storyteller-panel.mjs                    # 迭代档（默认）：快节拍 + 不落盘截图 + 复用产物
+ *   node tools/verify-storyteller-panel.mjs --list-sections     # 列出可用段落名
+ *   node tools/verify-storyteller-panel.mjs --only day1         # 只跑到白天段，且只有该段计入判定
+ *   node tools/verify-storyteller-panel.mjs --from rebuild      # 全程执行，但从重建段起才计入判定
+ *   node tools/verify-storyteller-panel.mjs --quota 2 --screenshots-all --build   # 取证档（一批一次）
+ *
+ * 档位（详见 tools/lib/verify-profile.mjs；取证档必须显式，默认是快档）：
+ *   --quota <秒>         每槽节拍（默认 0.3；取证档用 2 秒）
+ *   --screenshots-all    落盘全部截图（默认不落盘；"证据截图都已落盘"断言只在落盘档判定）
+ *   --no-screenshots     显式不落盘（默认行为）
+ *   --build / --skip-build   强制重建 / 显式复用（默认自动：产物缺失或 src/ 源码更新时重建）
+ *
+ * 段落（按序执行；--only 与 --from 互斥；前面段作为必要前置照跑，但只有选中段计入判定）：
+ *   boot · tickets · join · assign · opening · night1-clockmaker · night1-dreamer-request
+ *   · night1-dreamer-resolution · night1-finish · day1 · night2-3 · rebuild · reconnect · final
  *
  * 外部耦合（换机器前先核对，见 web/AGENTS.md §3.1）：
  *   - 宿主编译产物路径 src/OpenClockTower.Server/bin/Release/net10.0/OpenClockTower.Server[.exe]；
@@ -60,6 +72,8 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { DatabaseSync } from 'node:sqlite'
+import { describeProfile, ensureServerArtifacts, extractProfileFlags, resolveProfile } from './lib/verify-profile.mjs'
+import { createChecker, createSectionRunner } from './lib/verify-sections.mjs'
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const webRoot = path.join(repositoryRoot, 'web')
@@ -68,10 +82,48 @@ const webRoot = path.join(repositoryRoot, 'web')
 const CLOCKMAKER_INFO = '批次取证-钟表匠信息：本夜最小距离 2（说书人自由裁定）'
 const DREAMER_INFO = '批次取证-筑梦师信息：由说书人自由裁定、可能错误'
 
-const options = parseArguments(process.argv.slice(2))
-const results = []
-let playwright = null
+const { flags, rest } = extractProfileFlags(process.argv.slice(2))
+const options = parseArguments(rest)
+const config = resolveProfile(flags, { quotaSeconds: 0.3 })
 
+/** 段落清单：顺序即执行顺序，也是用法头里那份清单的唯一事实来源。 */
+const SECTIONS = [
+  { id: 'boot', title: '构建并启动真宿主（独立临时库）' },
+  { id: 'tickets', title: '取票据（说书人 + 各席位）并起 Vite' },
+  { id: 'join', title: '说书人与各玩家加入（每席一个独立浏览器上下文）' },
+  { id: 'assign', title: '说书人分配角色（席位全分配）' },
+  { id: 'opening', title: '开局状态：诺-达鲺常驻中毒 + 说书人上报醉酒' },
+  { id: 'night1-clockmaker', title: '开夜 → 钟表匠裁定点（无玩家选项）→ 1 号玩家收信息' },
+  { id: 'night1-dreamer-request', title: '筑梦师槽位：2 号玩家收到定向请求（无关玩家零活动）' },
+  { id: 'night1-dreamer-resolution', title: '2 号玩家作答 → 说书人自由裁定（能力未生效）→ 信息单播' },
+  { id: 'night1-finish', title: '说书人结算归因（第一夜）→ 等第一夜走完' },
+  { id: 'day1', title: '白天阶段：开白天 → 提名 → 投票 → 计票 → 处决' },
+  { id: 'night2-3', title: '第二夜与第三夜：代填 / 强制作废 / 阶段推送 → 依赖变化' },
+  { id: 'rebuild', title: '恢复与重建：状态账对比 + 降级位' },
+  { id: 'reconnect', title: '重连补齐与日志面：快照权威 watermark + 隐藏事件' },
+  { id: 'final', title: '整场收尾：控制台零错误 + 截图落盘' },
+]
+
+const runner = createSectionRunner(SECTIONS, { only: config.only, from: config.from })
+const checker = createChecker({
+  sections: SECTIONS,
+  isJudged: (id) => runner.isJudged(id),
+  currentSection: () => runner.currentId,
+  slowPacer: config.slowPacer,
+  screenshots: config.screenshots,
+})
+const check = checker.check
+
+if (config.listSections) {
+  console.log('可用段落（按执行顺序；--only 与 --from 互斥）：')
+  for (const section of SECTIONS) {
+    console.log(`  ${section.id.padEnd(26)} ${section.title}`)
+  }
+
+  process.exit(0)
+}
+
+let playwright = null
 try {
   // 依赖装在 web/node_modules：脚本住在 tools/，所以要显式按 web/ 解析（Node 的默认查找不会跨目录）。
   const requireFromWeb = createRequire(path.join(webRoot, 'package.json'))
@@ -82,14 +134,21 @@ try {
   process.exit(2)
 }
 
+console.log(`档位：${describeProfile(config)}`)
+console.log(`段落选择：${runner.selectionSummary()}`)
+
 const workspace = mkdtempSync(path.join(tmpdir(), 'oct-batch-verify-'))
 const databasePath = path.join(workspace, 'verify.db')
 const screenshotsDir = path.resolve(repositoryRoot, options.screenshots)
-mkdirSync(screenshotsDir, { recursive: true })
+if (config.screenshots) {
+  mkdirSync(screenshotsDir, { recursive: true })
+}
 
 const serverUrl = `http://localhost:${options.port}`
 const viteUrl = `http://localhost:${options.vitePort}`
 const children = []
+/** 浏览器实例（模块级：正常收尾与 --only 早退路径都要关掉，避免留下孤儿 Chromium）。 */
+let browser = null
 /** 宿主日志累加（重启后继续累加同一份）：末尾要检查"故意损坏"有 Critical 记录、没有未处理异常。 */
 const serverLog = []
 
@@ -97,25 +156,26 @@ process.on('exit', () => killChildren())
 
 try {
   await main()
+  runner.reportTimings()
   await cleanup()
-  report()
-  process.exit(results.some((result) => !result.pass) ? 1 : 0)
+  checker.report()
+  process.exit(checker.results.some((result) => result.outcome === 'fail') ? 1 : 0)
 } catch (error) {
   console.error(`\n[FAIL] 批次脚本异常终止：${error instanceof Error ? error.stack : String(error)}`)
-  results.push({ label: '脚本执行到底', pass: false, detail: '见上方异常' })
+  checker.results.push({ section: runner.currentId, label: '脚本执行到底', outcome: 'fail', detail: '见上方异常' })
   await cleanup()
-  report()
+  checker.report()
   process.exit(1)
 }
 
 async function main() {
-  console.log('=== 1/11 构建并启动真宿主（独立临时库）===')
+  if (!runner.begin('boot')) return
   // 刻意直接跑编译产物而不是 `dotnet run`：宿主是**单个**进程，
   // 收尾时一次结束即可，不留需要树杀的子进程（与"禁止递归删除"同一姿态）。
-  await runProcess('dotnet', ['build', 'src/OpenClockTower.Server', '-c', 'Release'], repositoryRoot)
+  await ensureServerArtifacts({ repositoryRoot, buildMode: config.buildMode })
   let server = await startServer()
 
-  console.log('=== 2/11 取票据（说书人 + 各席位）并起 Vite ===')
+  if (!runner.begin('tickets')) return
   const ticket = readStorytellerTicket(databasePath)
   console.log(`说书人票据：${ticket.slice(0, 12)}…`)
   const seatTickets = readSeatTickets(databasePath)
@@ -140,8 +200,8 @@ async function main() {
   vite.stderr.on('data', (chunk) => process.stderr.write(`[vite] ${String(chunk)}`))
   await waitForHttp(viteUrl, 'Vite 开发服务器', 60_000)
 
-  console.log('=== 3/11 说书人与各玩家加入（每席一个独立浏览器上下文）===')
-  const browser = await playwright.chromium.launch()
+  if (!runner.begin('join')) return
+  browser = await playwright.chromium.launch()
   const consoleErrors = []
 
   const storyteller = await newClient(browser, { width: 1600, height: 1100 }, consoleErrors)
@@ -163,39 +223,50 @@ async function main() {
   // Playwright 只拦截安装之后新建的 WebSocket。
   const raceSeat = options.assign.indexOf('clockmaker') + 1
   const raceHolds = new Map()
-  for (const seatTicket of seatTickets) {
-    const client = await newClient(browser, { width: 900, height: 900 }, consoleErrors)
-    if (seatTicket.seat === raceSeat) {
-      raceHolds.set(seatTicket.seat, await installJoinResponseHold(client.page))
+  // 各席并行创建 / 加入：每席是独立设备（独立浏览器上下文），服务端本就按多客户端并发加入设计；
+  // 串行加入会白等 5 次页面往返，并行后总耗时由最慢的一席决定。
+  const joined = await Promise.all(
+    seatTickets.map(async (seatTicket) => {
+      const client = await newClient(browser, { width: 900, height: 900 }, consoleErrors)
+      let hold = null
+      if (seatTicket.seat === raceSeat) {
+        hold = await installJoinResponseHold(client.page)
+      }
+
+      await client.page.goto(`${viteUrl}/#player`)
+      await client.page.getByPlaceholder('席位票据').fill(seatTicket.ticket)
+      await client.page.getByRole('button', { name: '加入' }).click()
+      const seatBadge = client.page.locator('[data-testid="player-seat"]')
+      await seatBadge.waitFor({ timeout: 30_000 })
+      const badgeText = (await seatBadge.innerText()).trim()
+      check(`玩家 ${seatTicket.seat} 号加入成功`, badgeText.includes(`${seatTicket.seat} 号`), badgeText)
+
+      const initialPhase = (await client.page.locator('[data-testid="player-phase"]').innerText()).trim()
+      check(
+        `玩家 ${seatTicket.seat} 号加入时阶段显示中文「未开始」`,
+        initialPhase === '未开始',
+        initialPhase,
+      )
+
+      const shellText = await client.page.locator('.shell').innerText()
+      const storytellerLeak = ['状态账', '效果归因链', '账本与结算结论', '裁定点与卡点', '席位操作台'].filter(
+        (heading) => shellText.includes(heading),
+      )
+      check(
+        `玩家 ${seatTicket.seat} 号界面不含说书人面板`,
+        storytellerLeak.length === 0
+          && (await client.page.locator('[data-testid="grimoire"]').count()) === 0
+          && (await client.page.locator('[data-testid="seat-console"]').count()) === 0,
+        storytellerLeak.join(',') || shellText.replace(/\s+/g, ' ').slice(0, 120),
+      )
+      return { seat: seatTicket.seat, client, hold }
+    }),
+  )
+  for (const entry of joined) {
+    players.set(entry.seat, entry.client)
+    if (entry.hold !== null) {
+      raceHolds.set(entry.seat, entry.hold)
     }
-
-    await client.page.goto(`${viteUrl}/#player`)
-    await client.page.getByPlaceholder('席位票据').fill(seatTicket.ticket)
-    await client.page.getByRole('button', { name: '加入' }).click()
-    const seatBadge = client.page.locator('[data-testid="player-seat"]')
-    await seatBadge.waitFor({ timeout: 30_000 })
-    const badgeText = (await seatBadge.innerText()).trim()
-    check(`玩家 ${seatTicket.seat} 号加入成功`, badgeText.includes(`${seatTicket.seat} 号`), badgeText)
-
-    const initialPhase = (await client.page.locator('[data-testid="player-phase"]').innerText()).trim()
-    check(
-      `玩家 ${seatTicket.seat} 号加入时阶段显示中文「未开始」`,
-      initialPhase === '未开始',
-      initialPhase,
-    )
-
-    const shellText = await client.page.locator('.shell').innerText()
-    const storytellerLeak = ['状态账', '效果归因链', '账本与结算结论', '裁定点与卡点', '席位操作台'].filter(
-      (heading) => shellText.includes(heading),
-    )
-    check(
-      `玩家 ${seatTicket.seat} 号界面不含说书人面板`,
-      storytellerLeak.length === 0
-        && (await client.page.locator('[data-testid="grimoire"]').count()) === 0
-        && (await client.page.locator('[data-testid="seat-console"]').count()) === 0,
-      storytellerLeak.join(',') || shellText.replace(/\s+/g, ' ').slice(0, 120),
-    )
-    players.set(seatTicket.seat, client)
   }
 
   // 场景席位：由 --assign 的顺序派生（默认 1=钟表匠 / 2=筑梦师 / 3=诺-达鲺）。
@@ -203,7 +274,7 @@ async function main() {
   const dreamerSeat = options.assign.indexOf('dreamer') + 1
   const demonSeat = options.assign.indexOf('no-dashii') + 1
 
-  console.log('=== 4/11 说书人分配角色（席位全分配）===')
+  if (!runner.begin('assign')) return
   const seatCount = await readSeatCount(storyteller.page)
   check(
     '分配表覆盖服务端全部席位，且席位数量与分配清单一致',
@@ -228,7 +299,7 @@ async function main() {
     )
   }
 
-  console.log('=== 5/11 开局状态：诺-达鲺常驻中毒 + 说书人上报醉酒 ===')
+  if (!runner.begin('opening')) return
   // 视图是推送更新的：先等效果链 / 状态账把分配后的对账结果渲染出来，再断言。
   // 判据用**两条不同的效果标识**（来源：诺-达鲺所在席位；目标：最近的两名镇民），
   // 而不是"某个字符串出现两次"——后者在同一条效果被重复渲染时也会成立（独立复核 2026-10-02）。
@@ -331,21 +402,20 @@ async function main() {
   await setDataDrawer(storyteller.page, true)
   await screenshot(storyteller.page, '02-pre-night')
 
-  console.log('=== 6/11 开夜 → 钟表匠裁定点（无玩家选项）→ 1 号玩家收信息 ===')
+  if (!runner.begin('night1-clockmaker')) return
   const nightStarted = await runCommand(storyteller.page, '开夜', () =>
     storyteller.page.getByRole('button', { name: /开夜/ }).click(),
   )
   check('开夜被受理（真实顺序表建表）', nightStarted.kind === 'Accepted', nightStarted.raw)
 
   // 行 3 / 行 5：此前实测玩家页头停在 NotStarted（英文）——必须靠推送变成中文阶段，不用点「补齐」。
-  const phaseAfterNightOne = []
-  for (const [seat, client] of players) {
-    phaseAfterNightOne.push(
+  const phaseAfterNightOne = await Promise.all(
+    [...players.entries()].map(async ([seat, client]) =>
       `${seat}:${await waitForText(client.page.locator('[data-testid="player-phase"]'), '首夜', 20_000)}`,
-    )
-  }
+    ),
+  )
   check(
-    '行 3：开夜推送让三席玩家页头变「首夜」（未点补齐、未刷新）',
+    `行 3：开夜推送让 ${options.seatCount} 席玩家页头变「首夜」（未点补齐、未刷新）`,
     phaseAfterNightOne.every((entry) => entry.endsWith(':首夜')),
     phaseAfterNightOne.join(', '),
   )
@@ -379,7 +449,7 @@ async function main() {
     )
   }
   check(
-    '钟表匠槽位（该能力没有玩家选项）期间三席玩家均无请求',
+    `钟表匠槽位（该能力没有玩家选项）期间 ${options.seatCount} 席玩家均无请求`,
     statesAtClockmaker.every((entry) => entry.endsWith(':idle')),
     statesAtClockmaker.join(', '),
   )
@@ -482,7 +552,7 @@ async function main() {
   )
   await screenshot(players.get(clockmakerSeat).page, '05-player-clockmaker-info')
 
-  console.log('=== 7/11 筑梦师槽位：2 号玩家收到定向请求（无关玩家零活动）===')
+  if (!runner.begin('night1-dreamer-request')) return
   const dreamerPlayer = players.get(dreamerSeat)
   const dreamerRequestPanel = dreamerPlayer.page.locator('[data-testid="player-request-panel"]')
   const requestState = await waitForAttribute(dreamerRequestPanel, 'data-request-state', 'pending', 180_000)
@@ -591,7 +661,7 @@ async function main() {
   )
   await screenshot(players.get(demonSeat).page, '08-unrelated-player-idle')
 
-  console.log('=== 8/11 2 号玩家作答 → 说书人自由裁定（能力未生效）→ 信息单播 ===')
+  if (!runner.begin('night1-dreamer-resolution')) return
   await dreamerPlayer.page
     .locator('[data-testid="player-request-options"] label', { hasText: `${demonSeat} 号玩家` })
     .locator('input[type=radio]')
@@ -644,7 +714,7 @@ async function main() {
   )
   await screenshot(dreamerPlayer.page, '09-player-dreamer-info')
 
-  console.log('=== 9/11 说书人结算归因（第一夜）→ 等第一夜走完 ===')
+  if (!runner.begin('night1-finish')) return
   await waitForPanelContains(storyteller.page, '账本与结算结论', 'dreamer', 15_000)
   const resolutionPanel = await panelText(storyteller.page, '账本与结算结论')
   check(
@@ -668,10 +738,16 @@ async function main() {
   )
   await screenshot(storyteller.page, '10-storyteller-resolutions')
 
-  const nightOneClosed = await waitForPlanCompleted(storyteller.page, 120_000)
-  check('第一夜 13 个槽位自行走完（服务端推送，无刷新）', nightOneClosed)
+  const nightOneClose = await finishNightQuickly(storyteller.page, '第一夜')
+  check(
+    '第一夜剩余槽位走完：自然推进窗口 + 强推空槽位（服务端推送，无刷新）',
+    nightOneClose.completed === true,
+    nightOneClose.natural
+      ? '自然窗口内走完'
+      : `强推 ${nightOneClose.forced} 步${nightOneClose.note ? `（${nightOneClose.note}）` : ''}`,
+  )
 
-  console.log('=== 9.5/11 白天阶段：开白天 → 提名 → 投票 → 计票 → 处决 ===')
+  if (!runner.begin('day1')) return
   // 白天是公开信息（百科《规则概要》三；在线口径 R-0017）：提名 / 票面 / 处决各端都能看到；
   // 能不能动由服务端算好的权限位决定，前端只做使能提示。
   const startDayOutcome = await runCommand(storyteller.page, '开白天', () =>
@@ -774,7 +850,7 @@ async function main() {
   )
   await screenshot(players.get(clockmakerSeat).page, '34-player-self-dead')
 
-  console.log('=== 10/11 第二夜与第三夜：代填 / 强制作废 / 阶段推送（行 1–4）→ 依赖变化（行 5 / 6）===')
+  if (!runner.begin('night2-3')) return
   const nightTwo = await runCommand(storyteller.page, '开夜2', async () => {
     await storyteller.page
       .locator('section', { hasText: '兜底与推进' })
@@ -785,14 +861,13 @@ async function main() {
   check('第二夜（Recommended）开夜被受理', nightTwo.kind === 'Accepted', nightTwo.raw)
 
   // 行 3 / 行 5：第二次阶段变化同样靠推送抵达（OtherNight → 中文「夜晚」，不用点「补齐」）。
-  const phaseAfterNightTwo = []
-  for (const [seat, client] of players) {
-    phaseAfterNightTwo.push(
+  const phaseAfterNightTwo = await Promise.all(
+    [...players.entries()].map(async ([seat, client]) =>
       `${seat}:${await waitForText(client.page.locator('[data-testid="player-phase"]'), '夜晚', 20_000)}`,
-    )
-  }
+    ),
+  )
   check(
-    '行 3：第二夜推送让三席玩家页头变「夜晚」（未点补齐、未刷新）',
+    `行 3：第二夜推送让 ${options.seatCount} 席玩家页头变「夜晚」（未点补齐、未刷新）`,
     phaseAfterNightTwo.every((entry) => entry.endsWith(':夜晚')),
     phaseAfterNightTwo.join(', '),
   )
@@ -801,6 +876,15 @@ async function main() {
   // 行 2：第二夜诺-达鲺击杀请求 → 说书人代填 → 3 号玩家不刷新就回空态，并注明由谁了结。
   const demonPlayer = players.get(demonSeat)
   const demonRequestPanel = demonPlayer.page.locator('[data-testid="player-request-panel"]')
+  const demonAdvance = await advanceSlotsUntil(
+    storyteller.page,
+    async () => (await demonRequestPanel.getAttribute('data-request-state').catch(() => null)) === 'pending',
+    '第二夜推进到恶魔槽位',
+  )
+  if (demonAdvance.blockedBy !== undefined) {
+    throw new Error(`第二夜推进受阻：${demonAdvance.blockedBy}（已强推 ${demonAdvance.steps} 步）`)
+  }
+
   const demonRequestState = await waitForAttribute(demonRequestPanel, 'data-request-state', 'pending', 180_000)
   check(
     '第二夜 3 号玩家收到诺-达鲺击杀请求',
@@ -868,10 +952,70 @@ async function main() {
   // 行 4：作废窗口里 1 号与 3 号必须持续零活动（这是筑梦师槽位之后的最后一个行动槽）。
   await sampleUnrelatedIdle(players, [clockmakerSeat, demonSeat], '强制作废窗口', 2)
 
-  const nightTwoClosed = await waitForPlanCompleted(storyteller.page, 120_000)
-  check('第二夜按配额自行走完（服务端推送，无刷新）', nightTwoClosed)
+  const nightTwoClose = await finishNightQuickly(storyteller.page, '第二夜')
+  check(
+    '第二夜剩余槽位走完：自然推进窗口 + 强推空槽位（服务端推送，无刷新）',
+    nightTwoClose.completed === true,
+    nightTwoClose.natural ? '自然窗口内走完' : `强推 ${nightTwoClose.forced} 步`,
+  )
 
-  // 行 5 / 6 的依赖变化放在第三夜：三席都还活着，槽位与依赖都按正常路径生效。
+  // —— 夜间死亡"黎明前不公开" + 帷幕往返（R-0022 行 1 反向 / 矩阵行 3）——
+  // 用未席（默认 5 号，外来者，不影响恶魔与结束条件）；复活后状态复原，后续段不受影响。
+  // 这两条语义原先只在第三夜块里，整块降级为取证档专属后会缺席——这里补一次独立往返（对抗自检 P2）。
+  const probeLifeSeat = options.assign.length
+  const probeLifePlayer = players.get(probeLifeSeat)
+  const probeDeathOutcome = await reportSeatState(storyteller.page, {
+    seat: probeLifeSeat,
+    dimensionLabel: '生死',
+    value: 'Dead',
+    reason: '批次取证：夜里上报死亡，验证公开面未公告与帷幕',
+  })
+  check(`夜里上报 ${probeLifeSeat} 号死亡被受理`, probeDeathOutcome.kind === 'Accepted', probeDeathOutcome.raw)
+  await setDataDrawer(storyteller.page, false)
+  const deadProbeCard = (await cardOf(probeLifeSeat).innerText()).replace(/\s+/g, ' ')
+  check(
+    `行 3：${probeLifeSeat} 号死亡后牌面盖上帷幕（data-life=Dead）`,
+    (await cardOf(probeLifeSeat).getAttribute('data-life')) === 'Dead' && deadProbeCard.includes('帷幕'),
+    deadProbeCard.slice(0, 160),
+  )
+  const probePublicLife = await readPlayerLifeOf(probeLifePlayer.page, probeLifeSeat)
+  check(
+    `行 1：夜里上报的死亡在黎明前不进公开面（${probeLifeSeat} 号本人仍显示 Alive）`,
+    probePublicLife === 'Alive',
+    `data-life=${probePublicLife}`,
+  )
+
+  const probeReviveOutcome = await reportSeatState(storyteller.page, {
+    seat: probeLifeSeat,
+    dimensionLabel: '生死',
+    value: 'Alive',
+    reason: '批次取证：复活，验证帷幕解除与公开面恢复',
+  })
+  check(`上报 ${probeLifeSeat} 号复活被受理`, probeReviveOutcome.kind === 'Accepted', probeReviveOutcome.raw)
+  await waitForAttribute(cardOf(probeLifeSeat), 'data-life', 'Alive', 15_000)
+  const revivedProbeCard = (await cardOf(probeLifeSeat).innerText()).replace(/\s+/g, ' ')
+  check(
+    `行 3：复活后帷幕解除、牌面回到存活（${probeLifeSeat} 号）`,
+    (await cardOf(probeLifeSeat).getAttribute('data-life')) === 'Alive' && !revivedProbeCard.includes('帷幕'),
+    revivedProbeCard.slice(0, 160),
+  )
+
+  // —— 第三夜：依赖变化深度场景（取证档专属）——
+  // 依据（P0-5 结构性裁剪）：自动作废的判定、依赖说明与中毒解除摘要已由真宿主集成测试等价覆盖
+  // （SeatDependencyVoidTests / StepMachineHostTests 行 8 / StepDigestHostTests 行 5–6）；
+  // 作废推送到玩家页与第二夜的强制作废**共用同一条前端推送链路**，触发差异（自动 vs 强制作废）
+  // 由上述集成测试覆盖。迭代档跳过整个第三夜以省槽位推进时间，但显式记一条聚合 SKIP。
+  // 夜间死亡"黎明前不公开"与"复活解除帷幕"两条真机语义不在此块缺席——
+  // 第二夜结束后用 5 号（外来者）做独立的死亡 → 复活往返来覆盖（见上方）。
+  if (!config.slowPacer) {
+    check(
+      '第三夜依赖变化深度场景（自动作废 / 中毒解除摘要 / 玩家侧作废推送 / 复活）',
+      true,
+      '取证档专属：需要 ≥1s/槽节拍；等价语义由集成测试覆盖',
+      { slowPacer: true },
+    )
+  } else {
+  // 行 5 / 6 的依赖变化放在第三夜：各席都还活着，槽位与依赖都按正常路径生效。
   const nightThree = await runCommand(storyteller.page, '开夜3', async () => {
     await storyteller.page
       .locator('section', { hasText: '兜底与推进' })
@@ -882,6 +1026,15 @@ async function main() {
   check('第三夜（Recommended）开夜被受理', nightThree.kind === 'Accepted', nightThree.raw)
 
   // 第三夜诺-达鲺击杀请求由 3 号玩家本人作答：保留玩家提交链路的真机覆盖。
+  const demonThirdAdvance = await advanceSlotsUntil(
+    storyteller.page,
+    async () => (await demonRequestPanel.getAttribute('data-request-state').catch(() => null)) === 'pending',
+    '第三夜推进到恶魔槽位',
+  )
+  if (demonThirdAdvance.blockedBy !== undefined) {
+    throw new Error(`第三夜推进受阻：${demonThirdAdvance.blockedBy}（已强推 ${demonThirdAdvance.steps} 步）`)
+  }
+
   const demonNightThree = await waitForAttribute(demonRequestPanel, 'data-request-state', 'pending', 180_000)
   check(
     '第三夜 3 号玩家收到诺-达鲺击杀请求',
@@ -986,16 +1139,7 @@ async function main() {
     notYetAnnounced.join(', '),
   )
 
-  // —— 矩阵行 3：死亡 → 帷幕；复活 → 帷幕解除（真实状态上报，同一份视图推送）——
-  await setDataDrawer(storyteller.page, false)
-  const deadCardText = (await cardOf(dreamerSeat).innerText()).replace(/\s+/g, ' ')
-  check(
-    '行 3：2 号死亡后牌面盖上帷幕（data-life=Dead）',
-    (await cardOf(dreamerSeat).getAttribute('data-life')) === 'Dead' && deadCardText.includes('帷幕'),
-    deadCardText.slice(0, 160),
-  )
-  await screenshot(storyteller.page, '20-grimoire-death')
-
+  // —— 矩阵行 3：复活 → 帷幕解除（真实状态上报，同一份视图推送；死亡帷幕已用白天处决的 1 号覆盖）——
   const reviveOutcome = await reportSeatState(storyteller.page, {
     seat: dreamerSeat,
     dimensionLabel: '生死',
@@ -1012,6 +1156,17 @@ async function main() {
     revivedCardText.slice(0, 160),
   )
   await screenshot(storyteller.page, '21-grimoire-revive')
+  }
+
+  // —— 矩阵行 3：死亡 → 帷幕（1 号在白天已被处决；不依赖第三夜，迭代档同样要跑）——
+  await setDataDrawer(storyteller.page, false)
+  const executedCardText = (await cardOf(clockmakerSeat).innerText()).replace(/\s+/g, ' ')
+  check(
+    `行 3：白天处决的 ${clockmakerSeat} 号牌面盖上帷幕（data-life=Dead）`,
+    (await cardOf(clockmakerSeat).getAttribute('data-life')) === 'Dead' && executedCardText.includes('帷幕'),
+    executedCardText.slice(0, 160),
+  )
+  await screenshot(storyteller.page, '20-grimoire-death')
 
   // —— 矩阵行 6：主视图与下钻表格同源（同一份视图推送）——
   await setDataDrawer(storyteller.page, true)
@@ -1088,7 +1243,7 @@ async function main() {
   // —— 第 11 步：恢复与重建（重建票行 1–3 / 健康票行 1–5）——
   // 真宿主 + 真 SQLite + 真浏览器：先判干净重建，再故意制造"内存账与事件流分叉"，
   // 最后停宿主、改库、重启，判降级位的置位 / 保持 / 清除与玩家侧不下发。
-  console.log('=== 11/11 恢复与重建：状态账对比 + 降级位 ===')
+  if (!runner.begin('rebuild')) return
   const healthBanner = storyteller.page.locator('[data-testid="room-health-degraded"]')
   check('健康票行 1：正常房间不显示降级位', (await healthBanner.count()) === 0)
 
@@ -1133,7 +1288,8 @@ async function main() {
   server = await startServer()
   // 宿主回来之前在途的重连请求会撞上 Vite 代理（宿主不可用 → 代理回 500）：这是装置的预期噪音。
   // 取一个窄窗口基线把它圈进来，窗口外的任何错误仍然算失败。
-  await sleep(1500)
+  // 重启噪音窗口：迭代档（快节拍）800ms 已覆盖"在途重连撞代理"的窗口；取证档保留 1500ms。
+  await sleep(config.slowPacer ? 1500 : 800)
   const consoleErrorsAfterRestartWindow = consoleErrors.length
   await storyteller.page.reload()
   await healthBanner.waitFor({ state: 'visible', timeout: 30_000 })
@@ -1222,6 +1378,8 @@ async function main() {
       && recoveredPlayerLeaks.length === 0,
     recoveredPlayerText.replace(/\s+/g, ' ').slice(0, 200),
   )
+
+  if (!runner.begin('reconnect')) return
 
   // —— 重连票行 1：隐藏事件不是"缺口"，快照序号才是权威 watermark ——
   // 旧判据要求"事件条数 = 快照序号 - 本地已知"，在白名单投影下必然误报（E7 实测：应补 198 / 实际 4），
@@ -1343,7 +1501,7 @@ async function main() {
     serverLogText.slice(-400),
   )
 
-  await browser.close()
+  if (!runner.begin('final')) return
 
   const serverCrash = /Unhandled exception|Application is shutting down/i.test(serverLog.join(''))
   check('宿主日志没有未处理异常', !serverCrash, serverLog.join('').slice(-400))
@@ -1400,7 +1558,12 @@ async function main() {
     '34-player-self-dead',
   ]
   const missingShots = expectedShots.filter((name) => !existsSync(path.join(screenshotsDir, `${name}.png`)))
-  check(`证据截图都已落盘（${expectedShots.length} 张）`, missingShots.length === 0, missingShots.join(',') || screenshotsDir)
+  check(
+    `证据截图都已落盘（${expectedShots.length} 张）`,
+    missingShots.length === 0,
+    missingShots.join(',') || screenshotsDir,
+    { screenshots: true },
+  )
 }
 
 /** 起一个独立浏览器上下文（= 一台设备）：页面级 console 错误统一收集。 */
@@ -1537,24 +1700,96 @@ async function waitForPanelContains(page, heading, needle, timeoutMs) {
       return true
     }
 
-    await sleep(150)
+    await sleep(100)
   }
 
   return (await panelText(page, heading)).includes(needle)
 }
 
-/** 等"当前步骤"面板显示本计划已走完（第一夜 13 个槽位全部按配额走完）。 */
-async function waitForPlanCompleted(page, timeoutMs) {
-  const deadline = Date.now() + timeoutMs
-  while (Date.now() < deadline) {
-    if ((await panelText(page, '当前步骤')).includes('本计划已走完')) {
-      return true
+/** 当前步骤面板是否显示"本计划已走完"。 */
+async function planCompleted(page) {
+  return (await panelText(page, '当前步骤')).includes('本计划已走完')
+}
+
+/** 当前槽位是否有挂起请求：有就不能强推（强推会把它按 Override 了结）。 */
+async function pendingRequestVisible(page) {
+  const pending = page.locator('[data-testid="console-pending"]')
+  return (await pending.count()) > 0 && (await pending.first().isVisible().catch(() => false))
+}
+
+/** 说书人兜底：强推当前槽位（D-0014）；每次带原因（会随事件流记录）。 */
+async function forceAdvanceSlot(page, label) {
+  const box = page.locator('section', { hasText: '兜底与推进' })
+  await box.locator('input[placeholder^="原因"]').fill(`批次取证：${label}`)
+  return runCommand(page, label, () => box.getByRole('button', { name: '强推当前槽位' }).click())
+}
+
+/**
+ * 用"强推当前槽位"把目标之前的空槽位推走，直到条件满足（例如目标角色的请求出现）。
+ *
+ * 依据：槽位的"配额自行推进 / 空槽位照样走配额 / 秒回不提前推进"由真宿主集成测试
+ * PacingIsolationTests 覆盖（其用例注释里的行 13/14/18）；真机这里要证的是"推进一步 → 视图/推送更新"；
+ * 集成测试 StepDigestHostTests 也是"给足配额 + ForceAdvance 精确推进"的同款做法。
+ * 一旦看到**任何**挂起请求就停手——不强推，避免把随后要用到的请求越权了结。
+ */
+async function advanceSlotsUntil(page, predicate, label, maxSteps = 30) {
+  for (let step = 0; step <= maxSteps; step += 1) {
+    if (await predicate()) {
+      return { reached: true, steps: step }
     }
 
-    await sleep(300)
+    if (await pendingRequestVisible(page)) {
+      return { reached: false, steps: step, blockedBy: '遇到挂起请求（不强推）' }
+    }
+
+    if (await planCompleted(page)) {
+      return { reached: false, steps: step, blockedBy: '本计划已走完' }
+    }
+
+    const outcome = await forceAdvanceSlot(page, `${label} 第 ${step + 1} 步`)
+    if (outcome.kind !== 'Accepted') {
+      return { reached: false, steps: step, blockedBy: `强推回执 ${outcome.kind}` }
+    }
   }
 
-  return (await panelText(page, '当前步骤')).includes('本计划已走完')
+  return { reached: await predicate(), steps: maxSteps, blockedBy: '达到强推步数上限' }
+}
+
+/**
+ * 收尾一个夜晚：先给自然推进一个短窗口（保留"槽位确实会按配额自行前进"的真机观察，
+ * 完整节奏语义在集成测试），再用强推把剩余空槽位推完——不再白等 N × 配额。
+ */
+async function finishNightQuickly(page, label) {
+  const naturalWindowMs = config.slowPacer ? 2500 : 1500
+  const deadline = Date.now() + naturalWindowMs
+  while (Date.now() < deadline) {
+    if (await planCompleted(page)) {
+      return { natural: true, forced: 0, completed: true }
+    }
+
+    await sleep(150)
+  }
+
+  let forced = 0
+  while (forced < 40) {
+    if (await planCompleted(page)) {
+      return { natural: false, forced, completed: true }
+    }
+
+    // 与 advanceSlotsUntil 同一口径：看到挂起请求就停手，绝不越权了结（对抗自检 P2）。
+    if (await pendingRequestVisible(page)) {
+      return { natural: false, forced, completed: false, note: '仍有挂起请求（不越权强推）' }
+    }
+
+    const outcome = await forceAdvanceSlot(page, `${label} 收尾第 ${forced + 1} 步`)
+    if (outcome.kind !== 'Accepted') {
+      return { natural: false, forced, completed: false, note: outcome.raw }
+    }
+
+    forced += 1
+  }
+
+  return { natural: false, forced, completed: await planCompleted(page) }
 }
 
 /** 等某个定位器上的属性变成期望值；超时返回最后一次读到的值。 */
@@ -1698,7 +1933,9 @@ async function readPlayerActivity(page) {
  * 单点读取只能证明"那一刻恰好空闲"，证明不了"整个窗口里没有活动"（独立复核 2026-10-02 指出）。
  */
 async function sampleUnrelatedIdle(players, seats, label, seconds) {
-  const samples = Math.max(4, Math.round(seconds * 4))
+  // 窗口长度按档位缩放：迭代档 1 秒已覆盖数个槽位；取证档（慢节拍）保留 2 秒完整窗口。
+  const windowSeconds = config.slowPacer ? seconds : Math.min(seconds, 1)
+  const samples = Math.max(4, Math.round(windowSeconds * 4))
   const baseline = new Map()
   for (const seat of seats) {
     baseline.set(seat, await readPlayerActivity(players.get(seat).page))
@@ -1773,7 +2010,7 @@ async function waitForDecision(page, predicate, timeoutMs) {
       return text
     }
 
-    await sleep(200)
+    await sleep(100)
   }
 
   return text
@@ -1866,21 +2103,26 @@ async function waitForSlotAdvance(page, before, timeoutMs) {
       return current
     }
 
-    await sleep(300)
+    await sleep(150)
   }
 
   return await readSlotIndex(page)
 }
 
-async function screenshot(page, name) {
+/**
+ * 截图：只有落盘档（--screenshots-all）才真正截；迭代档跳过（省每次截图的秒级开销），
+ * 但失败诊断截图（overrides.force）始终落盘——调试不能没有它。
+ */
+async function screenshot(page, name, overrides = {}) {
+  if (!config.screenshots && overrides.force !== true) {
+    console.log(`  截图（迭代档跳过落盘）：${name}`)
+    return
+  }
+
+  mkdirSync(screenshotsDir, { recursive: true })
   const target = path.join(screenshotsDir, `${name}.png`)
   await page.screenshot({ path: target, fullPage: true })
   console.log(`  截图：${target}`)
-}
-
-function check(label, pass, detail = '') {
-  results.push({ label, pass: Boolean(pass), detail })
-  console.log(`  ${pass ? '[PASS]' : '[FAIL]'} ${label}${detail ? ` → ${detail}` : ''}`)
 }
 
 /**
@@ -1943,22 +2185,12 @@ async function dumpOutcomeDiagnostics(page, label, error) {
     .catch(() => '（回执区不存在）')
   console.log(`  [诊断] ${label} 回执未出现：${error.message}`)
   console.log(`  [诊断] 回执区 HTML：${html.replace(/\s+/g, ' ').slice(0, 400)}`)
-  await screenshot(page, `diag-${label}-outcome`).catch(() => {})
+  await screenshot(page, `diag-${label}-outcome`, { force: true }).catch(() => {})
 }
 
 /** 分配表的席位数量（UI 由 VITE_SEAT_COUNT 决定，与宿主 GameServer__SeatCount 对齐）。 */
 async function readSeatCount(page) {
   return page.locator('section', { hasText: '开局分配' }).locator('tbody tr').count()
-}
-
-function report() {
-  const failed = results.filter((result) => !result.pass)
-  console.log('\n=== 结果 ===')
-  for (const result of results) {
-    console.log(`${result.pass ? 'PASS' : 'FAIL'}  ${result.label}${result.detail ? ` → ${result.detail}` : ''}`)
-  }
-
-  console.log(failed.length === 0 ? `全部通过（${results.length} 项）` : `失败 ${failed.length} / ${results.length}`)
 }
 
 /** 打开本批次 SQLite 库（写用途）；调用方负责 close。 */
@@ -2080,7 +2312,7 @@ async function waitForHttp(url, label, timeoutMs) {
       lastError = error instanceof Error ? error.message : String(error)
     }
 
-    await sleep(500)
+    await sleep(100)
   }
 
   throw new Error(`${label} 在 ${timeoutMs}ms 内没有就绪：${lastError}`)
@@ -2105,7 +2337,7 @@ async function startServer() {
       ASPNETCORE_URLS: serverUrl,
       GameServer__DatabasePath: databasePath,
       GameServer__SeatCount: String(options.seatCount),
-      GameServer__SlotQuotaSeconds: options.quotaSeconds,
+      GameServer__SlotQuotaSeconds: String(config.quotaSeconds),
       GameServer__PacerIntervalMilliseconds: '200',
       DOTNET_ENVIRONMENT: 'Production',
     },
@@ -2180,8 +2412,6 @@ function parseArguments(argv) {
     // （规则正确行为），第二夜就再也开不起来。两名外来者（畸形秀演员 / 呆瓜）不在夜晚顺序表上、
     // 也不会被诺-达鲺毒到（它只毒邻近镇民），所以首夜 13 个槽位与中毒归因面都不变。
     seatCount: undefined,
-    // 节拍器槽位配额：默认 2 秒，让 13 个槽位能在一次批次里走完；节奏规则本身由内核用例锁死。
-    quotaSeconds: '2',
     assign: ['clockmaker', 'dreamer', 'no-dashii', 'mutant', 'klutz'],
     screenshots: 'artifacts/web',
   }
@@ -2202,10 +2432,6 @@ function parseArguments(argv) {
         parsed.seatCount = Number.parseInt(value ?? '', 10)
         index += 1
         break
-      case '--quota':
-        parsed.quotaSeconds = value ?? parsed.quotaSeconds
-        index += 1
-        break
       case '--assign':
         parsed.assign = (value ?? '')
           .split(',')
@@ -2223,7 +2449,7 @@ function parseArguments(argv) {
   }
 
   if (!['clockmaker', 'dreamer', 'no-dashii'].every((slug) => parsed.assign.includes(slug))) {
-    throw new Error('本批次场景需要 --assign 同时含 clockmaker / dreamer / no-dashii（当前已实现契约的三名角色）')
+    throw new Error('本批次场景需要 --assign 同时含 clockmaker / dreamer / no-dashii（这三个角色的能力链路是场景主干）')
   }
 
   if (Number.isFinite(parsed.seatCount) && parsed.seatCount !== parsed.assign.length) {
@@ -2239,8 +2465,11 @@ function parseArguments(argv) {
  * （2026-10-02 实测留下 oct-batch-verify-* 残骸，所以这里等退出 + 重试）。
  */
 async function cleanup() {
+  // 浏览器关闭与子进程退出互不依赖：并行等，省下一次串行等待。
+  const closeBrowser = browser !== null ? browser.close().catch(() => {}) : Promise.resolve()
+  browser = null
   killChildren()
-  await waitForChildrenExit(5_000)
+  await Promise.all([closeBrowser, waitForChildrenExit(5_000)])
   for (let attempt = 0; attempt < 5; attempt += 1) {
     try {
       rmSync(workspace, { recursive: true, force: true })
@@ -2276,26 +2505,10 @@ async function waitForChildrenExit(timeoutMs) {
       return
     }
 
-    await sleep(100)
+    await sleep(50)
   }
 }
 
 function sleep(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds))
-}
-
-/** 跑一个前置命令（构建等），失败即抛。 */
-function runProcess(command, args, cwd) {
-  return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { cwd, stdio: 'inherit' })
-    child.on('error', reject)
-    child.on('exit', (code) => {
-      if (code === 0) {
-        resolve()
-        return
-      }
-
-      reject(new Error(`${command} ${args.join(' ')} 退出码 ${code}`))
-    })
-  })
 }
