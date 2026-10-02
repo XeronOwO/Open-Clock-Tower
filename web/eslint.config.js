@@ -1,5 +1,6 @@
 import js from '@eslint/js'
 import pluginVue from 'eslint-plugin-vue'
+import globals from 'globals'
 import tseslint from 'typescript-eslint'
 
 /**
@@ -15,6 +16,9 @@ export default tseslint.config(
   {
     files: ['**/*.{ts,vue}'],
     languageOptions: {
+      // 浏览器端源码（`src/`）与构建配置（`*.config.ts`）都会走这条：
+      // 声明标准运行时全局，避免 `no-undef` 对 `window` / `process` 之类的假红。
+      globals: { ...globals.browser, ...globals.node },
       parserOptions: {
         parser: tseslint.parser,
         ecmaVersion: 'latest',
