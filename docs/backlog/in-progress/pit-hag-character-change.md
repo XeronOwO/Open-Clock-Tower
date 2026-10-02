@@ -108,11 +108,25 @@
 | `8dda020` | **Kernel 槽位动态**：槽位记住自己对应哪个角色（`StepSlot.Character`）；进入槽位时按当前账确认行动者（已死亡 / 角色被换走 → 跳过，配额照走）；空槽位却已有存活持有者 → 显式阻塞；新事件 `SlotActivatedEvent`（只许激活尚未进入的槽位，越界 / 错位 / 重复一律抛错）；`NightSlotActivation`（Rules，**结算时**调用，时机早于推进）；`AbilityResolutionContext` 增加 `Plan` / `SlotIndex` | 内核回归 7 条（先红后绿 1 条）+ 规则 4 条；442 项测试全绿 |
 | `62c2a03` | **麻脸巫婆契约**：两维原子选择（席位 × 角色，角色表不标注在场与否）；在场即无事发生（能力仍记生效）；不在场则只写角色维度（阵营不变）并带归因与变化前角色；创造出的角色今夜还有位置时激活其槽位；注册进 `NightActions` | 规则回归 7 条；449 项测试全绿，`dotnet format` 干净 |
 | `ae65e88` | **死亡裁量窗口**：`PitHagNight` / `DeferredDeath` + 四个事件 + 两条说书人输入（追加死亡 / 裁定待定死亡）；收口时未裁定的按恶魔攻击的自然结果生效并**显式**记录，关闭后两条命令都被拒；`NightKill` 统一恶魔击杀出口（涡流 / 诺-达鲺 已切换）；`PitHagNightAction` 创造恶魔时开窗（关闭点 = 计划里最后一个恶魔槽位）；拆出 `PitHagNightMachine`（`StepMachine` 一度 692 行、被 600 行门禁拦下） | 内核回归 7 条 + 规则 2 条；458 项测试全绿，format 干净 |
+| `557a1f7` | **命令面与说书人视图字段**：`PitHagCasualtyCommand` / `ResolveDeferredDeathCommand` + 四道闸 + 两个 Hub 方法；`StorytellerView.PitHagNight` → `StorytellerViewDto`（新契约 `PitHagNightDto` / `DeferredDeathDto`，登记为说书人专属）；前端契约镜像 + 防御性归一 | 458 项 .NET 测试全绿 + `npm run gate` 全绿（89 项） |
+| `edd0273` | **缺陷② 修复**：`HandleVoid` 补上非槽位旁路（触发来源请求在计划走完后仍可作废） | 回归先红后绿；460 项测试全绿，format 干净 |
+
+### 缺陷②（`HandleVoid` 的非槽位旁路）复核结论：**可达，已修**
+
+胜负票的独立复核（其 F-4）曾把它记为低 / 存疑并自判「当前不可达」。本票复核判定**可达**：
+
+1. 呆瓜的公开选择是**触发来源**的请求（`OperationRequestOriginKind.Trigger`），R-0027 明确它
+   「常常正好开在白天关闭（计划走完）之后、下一夜开始之前」；
+2. 作答路径（代填走 `HandleResponse`）有非槽位旁路，**作废路径没有**——`HandleVoid` 把
+   `IsPlanCompleted` 检查放在取挂起请求**之前**；强推 `HandleForceAdvance` 同样被它挡住；
+3. 后果：那种请求**答得了、撤不掉**，违反 D-0011 / D-0014「兜底入口永远开着」。
+
+修复（提交 `edd0273`）：把 `IsPlanCompleted` 检查移到触发来源旁路之后，与作答路径对称；
+回归 `TriggerRequestVoidTests` 先红后绿——触发来源 + 计划走完 → 作废成功；槽位来源 + 计划走完 → 仍被拒（不放松原有约束）。
 
 **尚未落地（本票剩余）**：
 
-1. **命令面与投影**：`PitHagCasualty` / `ResolveDeferredDeath` 两条说书人命令（Application 四道闸 + Hub + 契约镜像）、
-   说书人视图里的窗口状态与待定死亡列表、面板控件；
+1. **说书人面板控件**：把窗口与待定死亡列表画出来、接上两条命令（数据面与命令面已完成）；
 2. 集成测试（真宿主：造出恶魔 → 当夜行动 → 待定死亡 → 说书人裁定 → 收口）；
 3. 真机装置段落与取证；
 4. **登记残余**：说书人手工上报换角（`ApplySeatStateCommand`）路径暂不触发槽位激活——目前只有角色契约在结算时激活；
