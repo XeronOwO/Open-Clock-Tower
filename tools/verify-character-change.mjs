@@ -387,7 +387,7 @@ async function main() {
 
   // 换手后尚未进入的筑梦师格重绑给新持有者（1 号）：它在真界面上拿到筑梦师的请求（R-0032）。
   // 记录「有没有收到」而不是把没收到当成脚本异常：这是要被 E17 逐行判定的行为证据。
-  // 注意：本装置的 `waitUntil` 是**同步**断言（不 await 返回值），页面读取必须自己轮询。
+  // 注意：本装置的 `waitUntil` 只接受同步谓词（传 Promise 会抛错），页面读取必须自己轮询。
   let reboundValues = []
   let reboundArrived = false
   const reboundDeadline = Date.now() + 45_000
@@ -830,14 +830,26 @@ async function waitForHttp(url, label, timeoutMs) {
 async function waitUntil(condition, timeoutMs) {
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
-    if (condition()) {
+    if (await syncCondition(condition)) {
       return true
     }
 
     await sleep(25)
   }
 
-  return condition()
+  return syncCondition(condition)
+}
+
+// 同步谓词守卫：waitUntil 不 await 谓词，Promise 恒真会让旧实现静默假绿（agent-reference.md §8）。
+function syncCondition(condition) {
+  const result = condition()
+  if (result !== null && typeof result === 'object' && typeof result.then === 'function') {
+    throw new Error(
+      'waitUntil 只接受同步谓词：返回 Promise 会恒真（假绿）。请自己写轮询，或改用 locator.waitFor / waitForAttribute / waitForLocatorContains。',
+    )
+  }
+
+  return result
 }
 
 async function cleanup() {

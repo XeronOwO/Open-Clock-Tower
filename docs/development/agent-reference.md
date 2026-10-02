@@ -84,6 +84,15 @@ dotnet format OpenClockTower.slnx
   禁止任何形式的阻塞等待（`sleep`、轮询、反复 `ls` 看文件出现没有）。
 - 上下文接近耗尽时，在阶段边界停下交接，不要在耗尽的上下文里硬写。
 
+## 8. 装置与工具陷阱
+
+- **`tools/verify-*.mjs` 的 `waitUntil(condition, timeoutMs)` 只接受同步谓词。**
+  谓词返回 Promise 时助手**直接抛错**：助手不 await 谓词，Promise 恒真会让第一次检查立刻通过——
+  断言假绿、红绿看运气。要等异步条件就自己写轮询，或改用 `locator.waitFor` /
+  `waitForAttribute` / `waitForLocatorContains`。
+- 装置报告红时，先分辨是**产品缺陷**还是**夹具节拍假设**：迭代档下靠近节拍窗口的断言会时有时无，
+  先看 `--quota` 与分段重跑，再下结论（口径见 `AGENTS.local.md`「验证成本纪律」）。
+
 ## 相关阅读
 
 - 交付清单：`docs/evidence/delivery-checklist.md`

@@ -681,14 +681,26 @@ async function waitForHttp(url, label, timeoutMs) {
 async function waitUntil(condition, timeoutMs) {
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
-    if (condition()) {
+    if (await syncCondition(condition)) {
       return true
     }
 
     await sleep(25)
   }
 
-  return condition()
+  return syncCondition(condition)
+}
+
+// 同步谓词守卫：waitUntil 不 await 谓词，Promise 恒真会让旧实现静默假绿（agent-reference.md §8）。
+function syncCondition(condition) {
+  const result = condition()
+  if (result !== null && typeof result === 'object' && typeof result.then === 'function') {
+    throw new Error(
+      'waitUntil 只接受同步谓词：返回 Promise 会恒真（假绿）。请自己写轮询，或改用 locator.waitFor / waitForAttribute / waitForLocatorContains。',
+    )
+  }
+
+  return result
 }
 
 async function cleanup() {
