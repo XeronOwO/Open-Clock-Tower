@@ -146,7 +146,7 @@
 | 13 | `Slots_ConsumeQuota_AndInstantResponseDoesNotShorten`（4 个槽位逐一 ≥ 配额） | 通过 |
 | 14 | 同上（秒回后仍等满配额才推进） | 通过 |
 | 15 | `Void_DoesNotShortenSlot`（作废后间隔 ≥ 配额） | 通过 |
-| 16 | 协议层：`Row16_ReconnectBundle_IsPlayerScoped`（重连补齐按接收者投影 + JSON 反方向断言）+ 扩展后的 `PlayerProjectionLeakGateTests`；但"玩家端界面"本身不存在 | **无法判定**（缺 `web/`） |
+| 16 | 协议层：`Row16_ReconnectBundle_IsPlayerScoped`（重连补齐按接收者投影 + JSON 反方向断言）+ 扩展后的 `PlayerProjectionLeakGateTests`；玩家界面**已有骨架**（`web/src/features/player/PlayerPanel.vue`：#player 入口、收请求、提交、看自己的信息类结果），但尚未进验收批次 | **无法判定**（缺"玩家端 UI 的一次真实会话"） |
 | 17 | `Row1`（旁观者对"操作请求 / 作废 / 说书人视图"三类推送均零消息）+ 节奏用例内断言 | 通过 |
 | 18 | `Slots_ConsumeQuota…` 内"各槽位节奏差 < 500ms"；第二夜节奏对比由内核确定性迁移与统一配额保证 | 通过 |
 | 19 | 黎明槽位在计划内、与其余槽位同配额（`Slots_ConsumeQuota…` 第 4 个槽位即黎明） | 通过 |
@@ -168,9 +168,11 @@ Kestrel 真实进程 + 真实 TCP SignalR 客户端（完整输出在 `artifacts
 
 ### 残余事项（不消失）
 
-1. **行 16** 需要 `web/` 玩家端界面才有载体；本票据在协议层已锁死"玩家投影无轮次 / 进度"。
-   按验收规程：含一行无法判定的票据**留在 `review/`** 等待验收批次，不推进 `done/`。
-2. 开新阶段目前是**宿主动作**（引导 / 测试）；说书人端开阶段入口随 web / 说书人面板票据提供。
+1. **行 16** 需要"玩家端 UI 的一次真实会话"才有载体（界面骨架已随 `web/` 落地）：
+   本票据在协议层已锁死"玩家投影无轮次 / 进度"，剩余的是**界面这一侧**的验收。
+   按验收规程：含一行无法判定的票据**留在 `review/`** 等待验收批次。
+2. 开新阶段 / 开夜入口：说书人面板已提供（`web/src/features/storyteller/OperationsControl.vue`：
+   开夜 / 强推 / 接管 / 交还 / 重建），真机验证里已实际点到并通过；验收批次开始后即可判这一条。
 3. 回退 / 撤销到任意序号（截断重放）按 D-0010 属后续能力；本票据只交付"按事件重建"。
 4. EF Core 目前用 `EnsureCreated`；首个可部署版本前补迁移。
 5. ~~演示步骤表是显式占位~~ **已解决**：`DemoStepPlan` 已从生产代码删除，宿主不再自动开阶段；

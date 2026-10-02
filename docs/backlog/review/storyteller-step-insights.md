@@ -1,6 +1,6 @@
 # 说书人上帝视角：每步状态信息、归因与最终计算结论
 
-- Status: InProgress
+- Status: Review
 - Priority: High
 - Depends on: 自动步骤机与操作请求（review 中）；**结算引擎与游戏状态（已落地，
   `review/settlement-engine.md`）**——它既是状态账的写入方，也是"能力是否生效 / 信息真假"的输入来源
