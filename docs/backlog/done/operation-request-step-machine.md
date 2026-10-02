@@ -1,6 +1,6 @@
 # 自动步骤机与操作请求
 
-- Status: Review
+- Status: Done
 - Priority: High
 - Depends on: 建解决方案、项目骨架与门禁工程；内核领域模型与六状态不变量
 
@@ -146,7 +146,7 @@
 | 13 | `Slots_ConsumeQuota_AndInstantResponseDoesNotShorten`（4 个槽位逐一 ≥ 配额） | 通过 |
 | 14 | 同上（秒回后仍等满配额才推进） | 通过 |
 | 15 | `Void_DoesNotShortenSlot`（作废后间隔 ≥ 配额） | 通过 |
-| 16 | 协议层：`Row16_ReconnectBundle_IsPlayerScoped`（重连补齐按接收者投影 + JSON 反方向断言）+ 扩展后的 `PlayerProjectionLeakGateTests`；玩家界面**已有骨架**（`web/src/features/player/PlayerPanel.vue`：#player 入口、收请求、提交、看自己的信息类结果），但尚未进验收批次 | **无法判定**（缺"玩家端 UI 的一次真实会话"） |
+| 16 | 协议层：`Row16_ReconnectBundle_IsPlayerScoped`（重连补齐按接收者投影 + JSON 反方向断言）+ 扩展后的 `PlayerProjectionLeakGateTests`；**真机玩家端 UI（2026-10-02 批次 E2）**：请求态与空态两个窗口都无进度语义（无槽位 / 进度 / 轮次 / 计数 / "谁在思考"），见下方批次结论与截图 06 / 08 | **通过** |
 | 17 | `Row1`（旁观者对"操作请求 / 作废 / 说书人视图"三类推送均零消息）+ 节奏用例内断言 | 通过 |
 | 18 | `Slots_ConsumeQuota…` 内"各槽位节奏差 < 500ms"；第二夜节奏对比由内核确定性迁移与统一配额保证 | 通过 |
 | 19 | 黎明槽位在计划内、与其余槽位同配额（`Slots_ConsumeQuota…` 第 4 个槽位即黎明） | 通过 |
@@ -166,26 +166,39 @@ Kestrel 真实进程 + 真实 TCP SignalR 客户端（完整输出在 `artifacts
 2. **强杀进程**后用同一 SQLite 库重启进程 2：1 号重连（序号 3 → 4）后**重新收到同一请求**（标识逐字一致）。
 3. 1 号响应 → `Accepted`（序号 7）→ 槽位按配额推进；2 号全程零消息。
 
+### 验收批次 E2（2026-10-02，真机多客户端会话）
+
+装置：`tools/verify-storyteller-panel.mjs`（说书人 + 每席一个玩家，各自独立浏览器上下文；真宿主 + 真 Vite + 真 SQLite；
+**57 项断言全过**，退出码 0；截图 `artifacts/web/01…10`、运行日志 `artifacts/web/batch-run.log`）。
+本批次只补判此前悬着的两行，其余行的既有证据不变：
+
+| 行 | 本批次证据 | 结论 |
+|---|---|---|
+| 16 | 2 号玩家在夜里收到定向请求时，界面只有：席位 + 大阶段 + 请求（上下文与合法选项）+ 自己的信息；请求态与空态两个窗口都无进度语义；钟表匠槽位（没有玩家选项）期间三席玩家均无请求 | **通过** |
+| 17 | 请求窗口内 8 次采样：1 / 3 号玩家页面持续 `data-request-state=idle`、零信息、零诊断；纯旁观玩家 3 号全程没有收到任何信息 | **通过**（宿主侧原证据保留；这是真机 UI 侧的补充） |
+
+**本批次发现（另立票，不阻塞本票矩阵）**：玩家端对"请求作废 / 代填"没有推送处理、阶段变化不刷新、
+阶段枚举未本地化——见 `docs/backlog/todo/player-view-freshness.md`。
+
 ### 残余事项（不消失）
 
-1. **行 16** 需要"玩家端 UI 的一次真实会话"才有载体（界面骨架已随 `web/` 落地）：
-   本票据在协议层已锁死"玩家投影无轮次 / 进度"，剩余的是**界面这一侧**的验收。
-   按验收规程：含一行无法判定的票据**留在 `review/`** 等待验收批次。
+1. ~~**行 16** 需要"玩家端 UI 的一次真实会话"才有载体~~ **已闭环（2026-10-02 批次 E2）**：
+   协议层仍由 `Row16…` 与 `PlayerProjectionLeakGateTests` 锁死；界面侧由批次 E2 在请求态 / 空态两个窗口判过（见下）。
 2. 开新阶段 / 开夜入口：说书人面板已提供（`web/src/features/storyteller/OperationsControl.vue`：
    开夜 / 强推 / 接管 / 交还 / 重建），真机验证里已实际点到并通过；验收批次开始后即可判这一条。
 3. 回退 / 撤销到任意序号（截断重放）按 D-0010 属后续能力；本票据只交付"按事件重建"。
 4. EF Core 目前用 `EnsureCreated`；首个可部署版本前补迁移。
 5. ~~演示步骤表是显式占位~~ **已解决**：`DemoStepPlan` 已从生产代码删除，宿主不再自动开阶段；
    集成测试改用测试夹具 `TestNightPlan`（`tests/` 内、非规则数据）。
-   真实顺序表见 `src/OpenClockTower.Rules`（两套口径，R-0014）；建表属 `review/settlement-engine.md`。
+   真实顺序表见 `src/OpenClockTower.Rules`（两套口径，R-0014）；建表属 `done/settlement-engine.md`。
 6. **说书人上帝视角**（每步状态归因 + 最终计算结论）已单独立票
-   `docs/backlog/in-progress/storyteller-step-insights.md`；本票据只落了数据面
+   `docs/backlog/todo/storyteller-step-insights.md`；本票据只落了数据面
    （`SeatStateChangedEvent` + `RecentSeatChanges` / `CurrentSlotActor` / `CurrentSlotContext`）。
    该票的**第二片**（状态账 + 效果归因链）已落地，事件模型由 16 种扩到 20 种，
    `SeatStateChangedEvent` 由 2 个观测维度扩到 5 个。
 7. 事件载荷损坏时房间以**空状态**启动（记 Critical、保留序号连续性），续屋需宿主显式重开阶段：
    这是明示的数据损失，不是静默继续；"从损坏事件流里抢救部分状态"不在本票据范围。
 8. 说书人视图的"能力是否生效 / 信息是否可能错误"已由结算引擎算出来并进视图
-   （`LastResolution` / 账本 / 裁定点的上下文与合法选项，见 `review/settlement-engine.md`）；
+   （`LastResolution` / 账本 / 裁定点的上下文与合法选项，见 `done/settlement-engine.md`）；
    每步摘要（StepDigest）的面板呈现仍属
-   `docs/backlog/in-progress/storyteller-step-insights.md`。
+   `docs/backlog/todo/storyteller-step-insights.md`。

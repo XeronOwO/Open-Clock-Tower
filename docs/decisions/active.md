@@ -256,7 +256,7 @@
 - **可测性**（不可测的防泄漏等于没做）：
   构造两个夜晚——「全部夜间角色死亡」与「全部夜间角色存活」——记录两条**客户端可观测时间线**，
   必须**观察不到可区分的差异**。验收行见
-  `docs/backlog/review/operation-request-step-machine.md`。
+  `docs/backlog/done/operation-request-step-machine.md`。
 
 ---
 
@@ -296,7 +296,7 @@
   多写一条事件，换来的是：平台不臆造事实（D-0002）、六维度各只有一个写入方、
   重放结果不依赖"推导规则怎么实现"。
 - **推论**：结算引擎落地时必须实现两件事（2026-10-02 已实现，见
-  `docs/backlog/review/settlement-engine.md`）——
+  `docs/backlog/done/settlement-engine.md`）——
   1. "按仍生效的效果重算目标维度并产出变化事件"（账本只报告效果终止，不替它翻转维度）；
   2. 施加效果时一并给出**施加时的来源角色**（`PersistentEffect.SourceCharacter`），
      否则"来源换角色即失去原能力"（二-7）无从判定。

@@ -1,8 +1,8 @@
 # 结算引擎与能力生效判定
 
-- Status: Review
+- Status: Done
 - Priority: High
-- Depends on: 自动步骤机与操作请求（`review/operation-request-step-machine.md`）；说书人上帝视角·第二片（`in-progress/storyteller-step-insights.md`）；《梦殒春宵》夜晚顺序表（已在 `OpenClockTower.Rules` 落地）
+- Depends on: 自动步骤机与操作请求（`done/operation-request-step-machine.md`）；说书人上帝视角·第二片（`todo/storyteller-step-insights.md`）；《梦殒春宵》夜晚顺序表（已在 `OpenClockTower.Rules` 落地，票在 `done/`）
 
 ## 要解决的问题
 
@@ -93,13 +93,32 @@
 派生事件与业务事件同批提交、无时间 / 随机 / 哈希序依赖、`StepSlot.Owner` 只存值类型、
 三处生产契约都守「未生效不产效果」。
 
+## 验收批次 E2（2026-10-02，真机多客户端会话）
+
+`tools/verify-storyteller-panel.mjs`（说书人 + 三席玩家；57 项断言全过）在真宿主 + 真浏览器 + 真 SQLite 上
+补上了**面板与玩家端**这一面的证据：
+
+| 行 | 本批次证据 | 结论 |
+|---|---|---|
+| 1 | 2 号常驻中毒（归因 3 号、带 `EffectId`）→ 筑梦师结算 `未正常生效 / 原因：中毒`；能力使用账本与失效账本各记一条 | **通过** |
+| 2 | 1 号"中毒 + 醉酒"两格并存；钟表匠结算 `未正常生效`，失效账本记 `未定（R-0004）` | **通过** |
+| 3 | 筑梦师（未生效）裁定点上下文："能力未生效：信息由你说书人裁定，可以是错的"；说书人自由文本 → 只有 2 号玩家收到内容 + 页面提示"信息可能是错的"；引擎没有自动生成真假 | **通过** |
+| 4 | 沿用宿主用例（`SettlementHostTests.HealthyDreamerTargetingPoisonedDemon_IsEffective`）；本批次场景两名镇民都被常驻中毒，未复跑该行 | **通过**（证据沿用） |
+| 5 | 上报诺-达鲺死亡 → 两条常驻中毒 `已终止 / 来源死亡`；1 / 2 号状态账由"中毒"变"健康"（带解除说明与同一 `EffectId`） | **通过** |
+| 6 | 真机开夜用 `FirstNightRecommended` 建出 13 槽位并自行推进（空槽位照走配额）；口径是面板默认值 | **通过** |
+| 7 | 状态账 / 最近状态变化两处都带 `EffectId`（中毒与解除各一次） | **通过** |
+| 8 | 面板两本账可见（能力使用 / 失效）；重启后仍在由 `SettlementHostTests` 覆盖 | **通过** |
+
+残余 2 的"每步摘要（StepDigest）"仍由 `docs/backlog/todo/storyteller-step-insights.md` 收口
+（批次 E2 已把该票的行 1 / 2 / 5 判为不通过）。
+
 ## 残余事项（随票，不许消失）
 
 1. **25 个角色的逐角色实现**（选项生成 + 能力结算 + 相克数据）：按角色分批另立票；
    未实现契约的角色在场时开夜继续显式拒绝（架构 §2.6）。
 2. **说书人面板呈现**（口径选择入口、裁定点选项与后果、每步摘要 StepDigest、`MalfunctionKind` 等
-   枚举值的中文文案）：属 `web/` 与 `in-progress/storyteller-step-insights.md`；
-   本轮只保证视图与事件里有数据（含裁定点的上下文与合法选项、账本、结算结论、效果链接）。
+   枚举值的中文文案）：批次 E2 已判过口径入口、裁定点上下文、账本与结算结论、效果链接；
+   **每步摘要（StepDigest）仍在 `docs/backlog/todo/storyteller-step-insights.md` 收口**（该票行 1 / 2 / 5 因它被拒）。
 3. **玩家端的角色 / 信息展示**：信息结果已按收件人下发（含重连补齐），但玩家投影仍无角色出口；
    随玩家端票据。
 4. **疯狂要求的产生方**（洗脑师等角色）：`MadnessRequirementIssuedEvent` 与折叠已就位，

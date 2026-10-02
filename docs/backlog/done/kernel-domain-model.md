@@ -122,9 +122,9 @@ dotnet format OpenClockTower.slnx --verify-no-changes           # 期望 exit 0
 ## 遗留
 
 - 本票据不做结算、不实现角色；两本账与裁定点的**真实写入方**（结算引擎）已落地——
-  见 `docs/backlog/review/settlement-engine.md`；本票据只交付契约与不变量。
+  见 `docs/backlog/done/settlement-engine.md`；本票据只交付契约与不变量。
 - `MadnessRequirement` 不携带真实时间（D-0008）：它以产生它的裁定点溯源，
-  逻辑时刻将随步骤机进事件流（见 `docs/backlog/review/operation-request-step-machine.md`）。
+  逻辑时刻将随步骤机进事件流（见 `docs/backlog/done/operation-request-step-machine.md`）。
 - `MalfunctionKind.Open` 的待核对清单由 R-0004 收口；`Barista`（咖啡师）是否可用，取决于 R-0007 对旅行者的范围决策。
 - 架构页门禁清单未列「机器绝对路径」门禁（`RepositoryGateTests` 确实存在），其见红记录亦未见档——
   属既有欠账，本轮未补做，已在此登记。

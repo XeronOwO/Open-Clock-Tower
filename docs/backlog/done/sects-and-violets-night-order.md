@@ -1,6 +1,6 @@
 # 《梦殒春宵》夜晚顺序表（结算引擎的输入）
 
-- Status: Review
+- Status: Done
 - Priority: High
 - Depends on: 建解决方案、项目骨架与门禁工程；百科知识基线与引用索引
 
@@ -51,6 +51,16 @@ SignalR 请求标识由 `demo:night-1:demo-seat-1` 变为 `test:night-1:test-sea
 相关断言（单播 / 重连 / 重投 / 节奏 / 重启）全部保持通过；引导层另有 `BootstrapBehaviorTests`
 断言"不自动开阶段、但显式开阶段仍成功"，使这条行为变化有**直接**的运行时证据。
 
+## 验收批次 E2（2026-10-02，真机多客户端会话）
+
+- 真机建表走的是**面板默认 Recommended 口径**：`开夜` 受理后说书人条显示 `1 / 13`，与
+  `FirstNightRecommended` 的 13 个条目一致；钟表匠槽位（该能力没有玩家选项）先出现、其裁定期间
+  三席玩家均无请求，随后才轮到筑梦师的玩家请求——与表中 `clockmaker` 在 `dreamer` 之前一致。
+- 表本身仍由 `NightOrderOriginalTests` / `NightOrderRecommendedTests` / `NightOrderVariantDiffTests` /
+  `NightOrderTableTests` 与 `tools/check-night-order.ps1` 逐条锁死（见上一节）。
+- 证据：`tools/verify-storyteller-panel.mjs` 断言「首夜真实建表：13 个槽位」「钟表匠槽位…三席玩家均无请求」；
+  截图 `artifacts/web/03-night-started.png`；运行日志 `artifacts/web/batch-run.log`。
+
 ## 独立对抗性复核（只读，冻结工作树）
 
 第一棒复核超时未返回、被中止；改派窄范围第二棒（4 项聚焦）后取得结论：
@@ -75,11 +85,12 @@ SignalR 请求标识由 `demo:night-1:demo-seat-1` 变为 `test:night-1:test-sea
 - 剧本范围与两套口径：`docs/standard/rulings.md` R-0014
 - 步骤表按剧本完整顺序表展开、空槽位照样走配额：`docs/decisions/active.md` D-0013
 - 规则断言必须有来源：`docs/standard/sources.md` §5
-- 建表与后续消费（含说书人选择口径的入口）：`docs/backlog/review/settlement-engine.md`
+- 建表与后续消费（含说书人选择口径的入口）：`docs/backlog/done/settlement-engine.md`
 
 ## 残余
 
 - **建表**（顺序表 + 角色分配 → `StepPlan`）与角色契约（钟表匠 / 筑梦师 / 诺-达鲺）：已在
-  `docs/backlog/review/settlement-engine.md` 落地（2026-10-02）；
-  说书人选择口径的入口仍随说书人面板。
+  `docs/backlog/done/settlement-engine.md` 落地（2026-10-02）；
+  说书人选择口径的入口已在面板（`web/src/features/storyteller/OperationsControl.vue` 的「口径」下拉），
+  批次 E2 用默认 `Recommended` 跑通。
 - 规则层其余数据（角色类型元数据、相克表）仍未开始，属后续票据。

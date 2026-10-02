@@ -60,6 +60,8 @@ todo/  →  in-progress/  →  review/  →  done/
 
 ### Todo
 
+- [说书人上帝视角：每步状态信息、归因与最终计算结论](todo/storyteller-step-insights.md) — **High** — 每步摘要 + 状态变化归因 + 能力生效结论；批次 E2 判行 1 / 2 / 5 被拒（`StepDigest` 未收口），收口后重跑
+- [玩家端视图新鲜度：请求了结与阶段变化的推送 / 呈现](todo/player-view-freshness.md) — **Medium** — 作废 / 代填 / 阶段变化没有到达玩家界面，玩家会停在旧请求与旧阶段
 - [零信任安全模型](todo/zero-trust-security-model.md) — **High** — 鉴权两级凭据 + 操作四道闸 + 服务端强制投影，负向测试为主
 - [重建报告对比状态账](todo/rebuild-state-ledger-comparison.md) — **Medium** — 重建报告补上状态账等价对比，半个结论变完整
 - [恢复失败后的房间健康位](todo/room-health-degradation-flag.md) — **Medium** — 区分「空账」与「数据丢了」，降级标记显式重建才清除
@@ -68,13 +70,11 @@ todo/  →  in-progress/  →  review/  →  done/
 
 ### Review
 
-- [说书人上帝视角：每步状态信息、归因与最终计算结论](review/storyteller-step-insights.md) — **High** — 每步摘要 + 状态变化归因 + 能力生效结论；面板与真机取证已落地，等验收批次
-- [自动步骤机与操作请求](review/operation-request-step-machine.md) — **High** — 轮到你时服务端主动推送请求；无超时，说书人可接管/强推/重建；行 16 待 web 前端验收
-- [《梦殒春宵》夜晚顺序表（结算引擎的输入）](review/sects-and-violets-night-order.md) — **High** — 规则层第一块数据：两套口径 + 逐条来源 + 占位移除；建表属结算引擎
-- [结算引擎与能力生效判定](review/settlement-engine.md) — **High** — 逐步结算 + 能力生效判定 + 信息结果 + 维度 → 效果链接与解除；逐角色实现另立
-
 ### Done
 
+- [自动步骤机与操作请求](done/operation-request-step-machine.md) — 轮到你时服务端主动推送请求；无超时，说书人可接管/强推/重建；批次 E2 判行 16 / 17 通过
+- [《梦殒春宵》夜晚顺序表（结算引擎的输入）](done/sects-and-violets-night-order.md) — 规则层第一块数据：两套口径 + 逐条来源 + 占位移除；批次 E2 真机建表 13 槽位
+- [结算引擎与能力生效判定](done/settlement-engine.md) — 逐步结算 + 能力生效判定 + 信息结果 + 维度 → 效果链接与解除；批次 E2 补呈现面证据
 - [建解决方案、项目骨架与门禁工程](done/solution-and-gates-bootstrap.md) — 7 个项目 + 4 条规范门禁，三条提交门禁全绿且逐条见红验证
 - [百科知识基线与引用索引](done/wiki-knowledge-baseline.md) — 显式 79 页抓取脚本与 SHA256 索引，25 角色类型与 slug 核对完毕，规则细节与范例清单落库
 - [内核领域模型与六状态不变量](done/kernel-domain-model.md) — 六状态正交数据模型 + 效果生命周期 + 两本账 + 裁定点契约；10 行验收矩阵逐行留证

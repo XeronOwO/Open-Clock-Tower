@@ -13,7 +13,7 @@
   `resolution.Effective`、`effect.IsTerminated` / `false`），所以今天不存在"未知"；
 - 但契约本身允许"漏字段"这种坏载荷存在，而前端拿到它只能退化成 `false`——
   于是面板会把"服务端没说"渲染成"未正常生效"。这正是
-  `web/src/display/format.ts` 与 `in-progress/storyteller-step-insights.md` 反复强调的
+  `web/src/display/format.ts` 与 `todo/storyteller-step-insights.md` 反复强调的
   「未观测 ≠ 默认值」在**呈现层唯一还没落实**的一格。
 
 ## 验收矩阵

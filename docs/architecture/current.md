@@ -161,7 +161,7 @@ DecisionPoint
 也不静默跳过"。不在夜晚顺序表上的角色（艺术家 / 呆瓜 / 畸形秀演员 / 博学者）不受影响。
 
 逐角色实现（25 个角色）仍按票分批补，残余事项见
-`docs/backlog/review/settlement-engine.md`。
+`docs/backlog/done/settlement-engine.md`。
 
 ### 2.7 步骤机与操作请求（D-0011）
 

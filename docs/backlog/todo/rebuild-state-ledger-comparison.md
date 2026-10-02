@@ -2,7 +2,7 @@
 
 - Status: Todo
 - Priority: Medium
-- Depends on: 自动步骤机与操作请求（`review/operation-request-step-machine.md`）；说书人上帝视角·第二片（`in-progress/storyteller-step-insights.md`）
+- Depends on: 自动步骤机与操作请求（`done/operation-request-step-machine.md`）；说书人上帝视角·第二片（`todo/storyteller-step-insights.md`）
 
 ## 要解决的问题
 
@@ -31,4 +31,4 @@
 
 - 事件是唯一事实来源、当前状态是可重建的派生结果：D-0009 / D-0010
 - 重建失败显式报错、不静默继续：D-0014 能力 3
-- 票据来源：`in-progress/storyteller-step-insights.md` 残余第 5 条
+- 票据来源：`todo/storyteller-step-insights.md` 残余第 5 条

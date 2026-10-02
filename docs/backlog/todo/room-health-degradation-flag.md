@@ -2,7 +2,7 @@
 
 - Status: Todo
 - Priority: Medium
-- Depends on: 自动步骤机与操作请求（`review/operation-request-step-machine.md`）
+- Depends on: 自动步骤机与操作请求（`done/operation-request-step-machine.md`）
 
 ## 要解决的问题
 
@@ -32,4 +32,4 @@
 
 - 恢复失败显式、不静默继续：D-0014 能力 3
 - 信息只在服务端下发方向校验：D-0012 §4.3
-- 票据来源：`in-progress/storyteller-step-insights.md` 残余第 9 条（复核 M11）
+- 票据来源：`todo/storyteller-step-insights.md` 残余第 9 条（复核 M11）

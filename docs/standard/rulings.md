@@ -220,7 +220,7 @@
      `NightOrderVariant.Original` / `Recommended`；差异由 `NightOrderVariantDiffTests` 锁死。
   2. 平台**默认取 `Original`**（剧本页顺序，归属明确、可核验）；「本局实际口径」的记录
      自 2026-10-02 起随 `StartNightCommand` 的口径参数写进 `StepPlan.Variant` 并进事件流；
-     说书人选择入口（面板）仍随 `docs/backlog/review/settlement-engine.md` 的残余事项 2（面板）交付。
+     说书人选择入口（面板）仍随 `docs/backlog/done/settlement-engine.md` 的残余事项 2（面板）交付。
   3. 对局前须告知玩家本局实际使用的口径（本表维护规则）。
 - **影响面**：`OpenClockTower.Rules` 顺序表数据；结算引擎建表；说书人面板；术语 night-order。
 
