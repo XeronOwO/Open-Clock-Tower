@@ -60,6 +60,7 @@ todo/  →  in-progress/  →  review/  →  done/
 
 ### Todo
 
+- [装置验证快通道：分段选择器 + 断言从花名册派生](todo/device-verification-fast-lane.md) — **Medium** — 装置是验收工具不是调试工具：加 `--only/--from` 分段、主装置快通道、断言不再硬编码席位假设，把"改一行跑 3 分钟"的回路压到 60 秒内
 - [说书人注记：魔典上的自由文本提示标记](todo/storyteller-annotation.md) — **Low** — 魔典上的自由文本 token；首版刻意不做，待定归属 / 持久化 / 审计边界
 
 ### In progress
