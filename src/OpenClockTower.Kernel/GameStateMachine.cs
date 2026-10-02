@@ -79,6 +79,15 @@ public static class GameStateMachine
             KlutzChoiceMadeEvent => current,
             KlutzChoiceSkippedEvent => current,
 
+            // 槽位激活与麻脸巫婆之夜的死亡裁量：它们改的都是**步骤机状态**
+            // （计划里的那一格、窗口与待定死亡表），不改六维度与效果。
+            // 待定死亡落成死亡事实时另有配套的 SeatStateChangedEvent 折进账里。
+            SlotActivatedEvent => current,
+            PitHagNightOpenedEvent => current,
+            DeferredDeathRecordedEvent => current,
+            DeferredDeathResolvedEvent => current,
+            PitHagNightClosedEvent => current,
+
             // 白天流程事件：它们改变的是步骤机状态里的白天账（StepMachineFolder），不改六维度与效果；
             // 处决产生的死亡由配套的 SeatStateChangedEvent 折进账里（处决 ≠ 死亡，百科《处决》）。
             DayStartedEvent => current,
