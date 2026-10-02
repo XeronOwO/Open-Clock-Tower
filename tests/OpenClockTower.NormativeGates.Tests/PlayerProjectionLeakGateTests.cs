@@ -30,6 +30,10 @@ public sealed partial class PlayerProjectionLeakGateTests
         Path.Combine("src", "OpenClockTower.Contracts", "PlayerEventDto.cs"),
         Path.Combine("src", "OpenClockTower.Contracts", "OperationRequestAnsweredDto.cs"),
         Path.Combine("src", "OpenClockTower.Contracts", "PhaseStartedDto.cs"),
+
+        // 胜负结论与呆瓜的公开选择：对局结束后 / 公告后对全体玩家一致可见（R-0024 / R-0027）。
+        Path.Combine("src", "OpenClockTower.Contracts", "GameOutcomeDto.cs"),
+        Path.Combine("src", "OpenClockTower.Contracts", "KlutzChoiceDto.cs"),
     ];
 
     /// <summary>说书人专属契约（只在说书人视图 / 说书人命令里出现）；新增项必须人工复核。</summary>

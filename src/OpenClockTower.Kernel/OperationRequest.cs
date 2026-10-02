@@ -22,14 +22,11 @@ public sealed record OperationRequest
     /// <summary>这条请求是给谁的。</summary>
     public required SeatId Addressee { get; init; }
 
-    /// <summary>来自哪个槽位。</summary>
-    public required StepSlotId SlotId { get; init; }
-
-    /// <summary>来自哪个计划（说书人视角用；不随玩家投影下发）。</summary>
-    public required string PlanLabel { get; init; }
-
-    /// <summary>计划里的第几个槽位（说书人视角用；不随玩家投影下发）。</summary>
-    public required int IssuedAtSlotIndex { get; init; }
+    /// <summary>
+    /// 请求的来源：槽位（计划里的步骤槽位）或触发（能力在事件发生时开出）。
+    /// 槽位来源随槽位推进了结、消耗夜晚配额；触发来源不占槽位、不消耗配额（R-0027）。
+    /// </summary>
+    public required OperationRequestOrigin Origin { get; init; }
 
     /// <summary>同源选择契约：上下文、合法选项、无合法选项时的行为。</summary>
     public required ChoicePrompt Prompt { get; init; }

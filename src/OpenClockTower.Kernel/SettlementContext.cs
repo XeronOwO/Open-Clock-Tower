@@ -35,6 +35,18 @@ public sealed record SettlementContext
     /// <summary>处罚处决依据契约（规则层实现）；没有时任何处罚处决都会被显式拒绝。</summary>
     public IReadOnlyList<IAdjudicatedExecutionSource> AdjudicatedExecutions { get; init; } = [];
 
+    /// <summary>
+    /// 步骤机状态（可选）：给"需要读游戏流程状态"的触发器用（例如呆瓜选择的幂等判断，R-0027）。
+    /// 触发管线只读它、不写它；派生事件折回步骤机由应用层完成。
+    /// </summary>
+    public StepMachineState? Machine { get; init; }
+
+    /// <summary>
+    /// 本批命令**之前**白天是否开着（R-0027 判断"白天死亡即时公告"的输入）：
+    /// 白天开着 → 本批的死亡随提交即时公开；否则要等下一个黎明（R-0022 第 2 条）。
+    /// </summary>
+    public bool DayWasOpen { get; init; }
+
     /// <summary>没有规则层契约的上下文（内核夹具 / 只推进不结算）。</summary>
     public static SettlementContext Empty { get; } = new()
     {

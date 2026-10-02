@@ -24,7 +24,9 @@
  * 事件流回退（数据丢失 / 从旧备份恢复）——那要显式重建合并态，见 `reset()`。
  */
 import type {
+  GameOutcomeDto,
   InformationResultDto,
+  KlutzChoiceDto,
   OperationRequestAnsweredDto,
   OperationRequestDto,
   OperationRequestVoidedDto,
@@ -40,6 +42,8 @@ export type PlayerPush =
   | { kind: 'Voided'; sequence: number; voided: OperationRequestVoidedDto }
   | { kind: 'Answered'; sequence: number; answered: OperationRequestAnsweredDto }
   | { kind: 'Day'; sequence: number; day: PlayerDayDto | null }
+  | { kind: 'Outcome'; sequence: number; outcome: GameOutcomeDto }
+  | { kind: 'KlutzChoice'; sequence: number; choice: KlutzChoiceDto }
 
 /** 单席位玩家视图的合并态（一个 `PlayerGateway` 一个实例）。 */
 export class PlayerViewMerge {
@@ -51,6 +55,10 @@ export class PlayerViewMerge {
   private pendingSequence = -1
   private day: PlayerDayDto | null = null
   private daySequence = -1
+  private outcome: GameOutcomeDto | null = null
+  private outcomeSequence = -1
+  private klutzChoices: KlutzChoiceDto[] = []
+  private klutzChoicesSequence = -1
   /** 已收到的信息结果：序号 → 条目（同一序号只可能有一条事实，天然去重）。 */
   private readonly information = new Map<number, InformationResultDto>()
   /** 事件窗口水位：只由快照推进（见文件头"两个水位"）。 */
@@ -89,6 +97,18 @@ export class PlayerViewMerge {
       changed = true
     }
 
+    if (sequence > this.outcomeSequence) {
+      this.outcome = view.outcome
+      this.outcomeSequence = sequence
+      changed = true
+    }
+
+    if (sequence > this.klutzChoicesSequence) {
+      this.klutzChoices = [...view.klutzChoices]
+      this.klutzChoicesSequence = sequence
+      changed = true
+    }
+
     for (const item of view.informationResults) {
       if (!this.information.has(item.sequence)) {
         this.information.set(item.sequence, item)
@@ -112,6 +132,10 @@ export class PlayerViewMerge {
     this.pendingSequence = -1
     this.day = null
     this.daySequence = -1
+    this.outcome = null
+    this.outcomeSequence = -1
+    this.klutzChoices = []
+    this.klutzChoicesSequence = -1
     this.information.clear()
     this.eventSequence = 0
   }
@@ -167,6 +191,25 @@ export class PlayerViewMerge {
         }
 
         break
+
+      case 'Outcome':
+        if (push.sequence > this.outcomeSequence) {
+          this.outcome = push.outcome
+          this.outcomeSequence = push.sequence
+          changed = true
+        }
+
+        break
+
+      // 呆瓜的公开选择是"追加型"事实：按序号去重后追加；序号更大的快照会整份替换（见 applySnapshot）。
+      case 'KlutzChoice':
+        if (push.sequence > this.klutzChoicesSequence && !this.klutzChoices.some((item) => item.seat === push.choice.seat)) {
+          this.klutzChoices = [...this.klutzChoices, push.choice]
+          this.klutzChoicesSequence = push.sequence
+          changed = true
+        }
+
+        break
     }
 
     // 刻意不推进 eventSequence：推送的序号可能领先于本席真实的事件位置（见文件头"两个水位"）。
@@ -183,6 +226,8 @@ export class PlayerViewMerge {
         (left, right) => left.sequence - right.sequence,
       ),
       day: this.day,
+      outcome: this.outcome,
+      klutzChoices: [...this.klutzChoices].sort((left, right) => left.sequence - right.sequence),
     }
   }
 }

@@ -252,14 +252,16 @@ internal static class GameCommandDispatcher
         }
 
         // 初始生死 = 存活（R-0015）；初始醉酒 = 清醒、中毒 = 健康（R-0016，依据《重要细节》三-3：
-        // 任意时间点玩家必居二者之一，而开局没有任何醉酒 / 中毒来源）。这是补全初始条件，
-        // 不是运行期把维度耦合在一起：运行期的状态观测仍是一次只报本次观测到的维度。
+        // 任意时间点玩家必居二者之一，而开局没有任何醉酒 / 中毒来源）；初始阵营 = 角色类型对应阵营（R-0023，
+        // 依据《术语汇总》：镇民 / 外来者初始为善良，爪牙 / 恶魔初始为邪恶）。
+        // 这是补全初始条件，不是运行期把维度耦合在一起：运行期的状态观测仍是一次只报本次观测到的维度。
         var events = command.Assignments
             .OrderBy(assignment => assignment.Seat.Value)
             .Select(assignment => (GameEvent)new SeatStateChangedEvent
             {
                 Seat = assignment.Seat,
                 Character = assignment.Character,
+                Alignment = InitialAlignmentOf(assignment.Character),
                 Life = LifeState.Alive,
                 Drunk = DrunkState.Sober,
                 Poison = PoisonState.Healthy,
@@ -269,6 +271,17 @@ internal static class GameCommandDispatcher
 
         return new CommandDispatchResult(null, events, null);
     }
+
+    /// <summary>初始阵营 = 角色类型对应阵营：镇民 / 外来者 → 善良，爪牙 / 恶魔 → 邪恶（R-0023）。</summary>
+    /// <exception cref="InvalidOperationException">角色不在首版花名册里（合法性闸本应拦下，不许静默）。</exception>
+    private static Alignment InitialAlignmentOf(CharacterId character) =>
+        SectsAndVioletsRoster.TypeOf(character) switch
+        {
+            CharacterType.Townsfolk or CharacterType.Outsider => Alignment.Good,
+            CharacterType.Minion or CharacterType.Demon => Alignment.Evil,
+            _ => throw new InvalidOperationException(
+                $"角色 {character.Value} 不在首版花名册里，无法给出初始阵营（合法性闸本应拦下）"),
+        };
 
     /// <summary>
     /// 预阶段观位状态观测：只写"本次观测到的维度"这一条账事件，不动步骤机（它还没有状态）。

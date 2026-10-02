@@ -35,13 +35,17 @@ public sealed class WitchCurseHostTests
 
     private const int CursedSeat = 4;
 
-    /// <summary>四席：1 号女巫 + 钟表匠 / 筑梦师 / 诺-达鲺（当前已实现契约的三名角色）。</summary>
+    /// <summary>
+    /// 四席：1 号女巫 + 诺-达鲺 / 钟表匠 / 筑梦师（当前已实现契约的角色）。
+    /// 被诅咒者固定是 4 号（筑梦师）——**不能让被诅咒者是唯一的恶魔**：咒杀会当场触发
+    /// 「所有恶魔均死亡 → 善良获胜」（规则正确行为），那不是本用例要覆盖的链路。
+    /// </summary>
     private static SeatCharacterAssignmentDto[] Assignments() =>
     [
         new() { Seat = 1, Character = "witch" },
-        new() { Seat = 2, Character = "clockmaker" },
-        new() { Seat = 3, Character = "dreamer" },
-        new() { Seat = 4, Character = "no-dashii" },
+        new() { Seat = 2, Character = "no-dashii" },
+        new() { Seat = 3, Character = "clockmaker" },
+        new() { Seat = 4, Character = "dreamer" },
     ];
 
     /// <summary>被诅咒者发起提名 → 他死、提名仍然成立；存活掉到 3 → 女巫当场失去能力、诅咒解除。</summary>

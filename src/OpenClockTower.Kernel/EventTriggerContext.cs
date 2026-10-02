@@ -15,4 +15,13 @@ public sealed record EventTriggerContext
 
     /// <summary>本轮**新产生**的事件（业务事件，或上一轮触发产出的事件）。</summary>
     public required IReadOnlyList<GameEvent> Events { get; init; }
+
+    /// <summary>
+    /// 步骤机状态（本批业务事件折完后的样子；可能为 null = 阶段还没开始）。
+    /// 需要读游戏流程状态的触发器用它（例如呆瓜选择的幂等判断与请求归属，R-0027）。
+    /// </summary>
+    public StepMachineState? Machine { get; init; }
+
+    /// <summary>本批命令之前白天是否开着（R-0027 判断"白天死亡即时公告"的输入）。</summary>
+    public bool DayWasOpen { get; init; }
 }

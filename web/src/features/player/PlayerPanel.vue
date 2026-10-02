@@ -5,7 +5,14 @@
  * 玩家只能看到服务端下发给他的东西：自己的席位、当前大阶段、发给自己的请求与信息类结果。
  * 看板 / 状态账 / 计划进度一概不下发——所以这里也不会有对应的代码路径（D-0013 §5）。
  */
-import type { InformationResultDto, OperationRequestDto, PlayerDayDto, PlayerViewDto } from '@/contracts/game'
+import type {
+  GameOutcomeDto,
+  InformationResultDto,
+  KlutzChoiceDto,
+  OperationRequestDto,
+  PlayerDayDto,
+  PlayerViewDto,
+} from '@/contracts/game'
 import { labelOf, voidReasonLabelOf } from '@/display/labels'
 import { seatLabelOf } from '@/display/format'
 import { PlayerGateway, type PlayerCallbacks } from '@/services/playerGateway'
@@ -22,6 +29,10 @@ const pending = ref<OperationRequestDto | null>(null)
 /** 白天投影（公开事实 + 自己的权限位）；服务端还没开过白天时为 null。 */
 const day = ref<PlayerDayDto | null>(null)
 const informationResults = ref<InformationResultDto[]>([])
+/** 胜负结论；null = 游戏仍在进行（R-0024：结束后对全体玩家一致可见）。 */
+const outcome = ref<GameOutcomeDto | null>(null)
+/** 呆瓜的公开选择记录（含跳过；R-0027）。 */
+const klutzChoices = ref<KlutzChoiceDto[]>([])
 const connectionState = ref<GatewayState>('disconnected')
 const diagnostics = ref<string[]>([])
 const joining = ref(false)
@@ -93,6 +104,8 @@ function applyView(next: PlayerViewDto): void {
   pending.value = next.pendingRequest
   day.value = next.day
   informationResults.value = [...next.informationResults]
+  outcome.value = next.outcome
+  klutzChoices.value = [...next.klutzChoices]
 
   if (next.pendingRequest === null) {
     selectedOption.value = ''
@@ -206,6 +219,21 @@ async function disconnect(): Promise<void> {
   view.value = null
   pending.value = null
   day.value = null
+  outcome.value = null
+  klutzChoices.value = []
+}
+
+/** 胜方文案：未知取值原样回显（服务端数据是不可信输入，不猜、不吞）。 */
+function winnerLabelOf(winner: string): string {
+  if (winner === 'Good') {
+    return '善良阵营获胜'
+  }
+
+  if (winner === 'Evil') {
+    return '邪恶阵营获胜'
+  }
+
+  return `未知胜方（${winner}）`
 }
 
 onMounted(() => {
@@ -250,6 +278,17 @@ onBeforeUnmount(() => {
           <span class="hint">连接：{{ stateText[connectionState] }}</span>
         </div>
       </header>
+
+      <section
+        v-if="outcome"
+        class="panel"
+        data-testid="player-outcome"
+        :data-outcome-winner="outcome.winner"
+      >
+        <h2>本局结束</h2>
+        <p class="winner">{{ winnerLabelOf(outcome.winner) }}</p>
+        <p class="hint" data-testid="player-outcome-detail">{{ outcome.detail }}</p>
+      </section>
 
       <section
         class="panel"
@@ -312,6 +351,13 @@ onBeforeUnmount(() => {
         :vote="voteOnNomination"
         @diagnostic="pushDiagnostic"
       />
+
+      <section v-if="klutzChoices.length > 0" class="panel" data-testid="player-klutz-choices">
+        <h2>呆瓜的公开选择</h2>
+        <ul class="information">
+          <li v-for="choice in klutzChoices" :key="choice.sequence">{{ choice.detail }}</li>
+        </ul>
+      </section>
 
       <section class="panel" data-testid="player-information" :data-information-count="informationResults.length">
         <h2>我收到的信息</h2>
@@ -410,5 +456,11 @@ h1 {
   margin: 6px 0 0;
   color: var(--ink-soft);
   font-size: 13px;
+}
+
+.winner {
+  margin: 0 0 6px;
+  font-size: 18px;
+  font-weight: 700;
 }
 </style>

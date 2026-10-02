@@ -37,6 +37,18 @@ public sealed record StepMachineState
     /// </summary>
     public DayState? Day { get; init; }
 
+    /// <summary>
+    /// 胜负结论；null = 游戏仍在进行。折进本状态：快照已持久化步骤机，
+    /// 结束后一切命令被拒（口径见 <c>docs/standard/rulings.md</c> R-0024）。
+    /// </summary>
+    public GameOutcome? Outcome { get; init; }
+
+    /// <summary>
+    /// 呆瓜选择的账目（含"没选"的跳过），按发生顺序。
+    /// 触发器的幂等依据——有记录之后不再为同一名呆瓜重复开选择（R-0027）。
+    /// </summary>
+    public IReadOnlyList<KlutzChoiceRecord> KlutzChoices { get; init; } = [];
+
     /// <summary>当前槽位；计划已走完时为 null。</summary>
     public StepSlot? CurrentSlot =>
         SlotIndex >= 0 && SlotIndex < Plan.Slots.Count ? Plan.Slots[SlotIndex] : null;

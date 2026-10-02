@@ -48,6 +48,8 @@ function viewOf(overrides: Partial<StorytellerViewDto> = {}): StorytellerViewDto
     stepDigest: null,
     lastVoidedRequest: null,
     day: null,
+    outcome: null,
+    klutzChoices: [],
     ...overrides,
   }
 }
@@ -248,7 +250,14 @@ describe('注意力归属（卡点 / 裁定 / 当前槽位）', () => {
     const view = viewOf({
       currentSlotActor: 2,
       awaitingDecisionId: 'dp-1',
-      pending: { seat: 3, requestId: 'r1', slotId: 's', slotIndex: 1, waitingSeconds: 12 },
+      pending: {
+        seat: 3,
+        requestId: 'r1',
+        slotId: 's',
+        slotIndex: 1,
+        triggerReason: null,
+        waitingSeconds: 12,
+      },
     })
 
     expect(decisionSeatOf(view)).toBe(2)

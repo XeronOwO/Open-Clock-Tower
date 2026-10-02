@@ -73,6 +73,12 @@ public static class GameStateMachine
             OperationRequestVoidedEvent => current,
             InformationResultIssuedEvent => current,
 
+            // 胜负结论与呆瓜选择：它们改变的是步骤机状态里的结束态 / 选择账（StepMachineFolder），
+            // 不改六维度与效果；胜负求值直接读本批事件 + 当前账（R-0024 / R-0027）。
+            GameEndedEvent => current,
+            KlutzChoiceMadeEvent => current,
+            KlutzChoiceSkippedEvent => current,
+
             // 白天流程事件：它们改变的是步骤机状态里的白天账（StepMachineFolder），不改六维度与效果；
             // 处决产生的死亡由配套的 SeatStateChangedEvent 折进账里（处决 ≠ 死亡，百科《处决》）。
             DayStartedEvent => current,

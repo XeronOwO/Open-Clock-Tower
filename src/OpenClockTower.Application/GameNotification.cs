@@ -43,4 +43,10 @@ public sealed record GameNotification
 
     /// <summary>信息类结果（InformationResultIssued 时非空）。</summary>
     public InformationResultIssuedEvent? Information { get; init; }
+
+    /// <summary>胜负结论（GameEnded 时非空；广播）。</summary>
+    public GameOutcome? Outcome { get; init; }
+
+    /// <summary>呆瓜的公开选择（KlutzChoiceMade 时非空；广播）。</summary>
+    public KlutzChoiceMadeEvent? KlutzChoice { get; init; }
 }

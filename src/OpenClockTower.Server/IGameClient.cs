@@ -25,4 +25,10 @@ public interface IGameClient
 
     /// <summary>服务端广播白天状态（公开信息；按席位投影，含"我现在能不能动"）。</summary>
     Task ReceiveDayChanged(PlayerDayDto day);
+
+    /// <summary>服务端广播"本局结束"（胜方 + 条件 + 说明；公开信息，R-0024）。</summary>
+    Task ReceiveGameEnded(GameOutcomeDto outcome);
+
+    /// <summary>服务端广播呆瓜的公开选择（公开事实，R-0027）。</summary>
+    Task ReceiveKlutzChoiceMade(KlutzChoiceDto choice);
 }

@@ -122,10 +122,26 @@ internal static class DayStepMachine
                 "还有提名没有计票：先计票再结束白天（强推不替说书人拍板计票结论）");
         }
 
-        var events = new List<GameEvent>
+        var events = new List<GameEvent>();
+
+        // 挂起的请求必须**显式作废**（D-0014：每次越过都产出可审计事件；R-0027 第 4 条）。
+        // 槽位推进会把 PendingRequest 置空：不补这条事件，请求就是"无声消失"——
+        // 触发型能力（呆瓜死亡选择）看不出自己已被越过，会在下一个黎明**重复开选择**，
+        // 终局后果可以被反复重掷（独立对抗性复核 F-1）。
+        if (state.PendingRequest is { Status: OperationRequestStatus.Pending } pending)
         {
-            new DayClosedEvent { DayNumber = openDay.DayNumber },
-        };
+            events.Add(new OperationRequestVoidedEvent
+            {
+                RequestId = pending.Id,
+                Void = new OperationRequestVoid
+                {
+                    Reason = OperationRequestVoidReason.StorytellerForce,
+                    Note = input.Reason,
+                },
+            });
+        }
+
+        events.Add(new DayClosedEvent { DayNumber = openDay.DayNumber });
         var after = StepMachineFolder.ApplyAll(state, events)
             ?? throw new InvalidOperationException("事件流损坏：强推白天后丢失步骤机状态");
 

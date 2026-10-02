@@ -83,6 +83,19 @@ function equivalenceAttr(value: boolean | null): string {
   return value === null ? '' : String(value)
 }
 
+/** 胜方文案：未知取值原样回显（服务端数据是不可信输入，不猜、不吞）。 */
+function winnerLabelOf(winner: string): string {
+  if (winner === 'Good') {
+    return '善良阵营获胜'
+  }
+
+  if (winner === 'Evil') {
+    return '邪恶阵营获胜'
+  }
+
+  return `未知胜方（${winner}）`
+}
+
 const connected = computed(() => connectionState.value === 'connected' && view.value !== null)
 
 function ensureGateway(): StorytellerGateway {
@@ -185,6 +198,25 @@ onBeforeUnmount(() => {
 
     <template v-else>
       <StatusStrip :view="view!" />
+      <!-- 本局结束（R-0024）：胜方 + 条件 + 说明。结束后服务端拒绝一切新命令，
+           面板仍可查看状态与重建——D-0014 的兜底入口不因结束而关闭。 -->
+      <section
+        v-if="view!.outcome"
+        class="panel ended"
+        data-testid="storyteller-outcome"
+        :data-outcome-winner="view!.outcome.winner"
+      >
+        <strong>本局结束：{{ winnerLabelOf(view!.outcome.winner) }}</strong>
+        <span class="mono">{{ view!.outcome.condition }}</span>
+        <span>{{ view!.outcome.detail }}</span>
+      </section>
+      <!-- 呆瓜的公开选择（含"没选"的跳过）：公开事实，玩家端也看得到（R-0027）。 -->
+      <section v-if="view!.klutzChoices.length > 0" class="panel" data-testid="storyteller-klutz-choices">
+        <strong>呆瓜的公开选择</strong>
+        <ul>
+          <li v-for="choice in view!.klutzChoices" :key="choice.sequence">{{ choice.detail }}</li>
+        </ul>
+      </section>
       <!-- 降级位：恢复失败 = 数据可能已丢。它只说书人可见（玩家投影里没有此字段，D-0012 §4.3），
            且服务端在显式重建成功前不会清除——说书人必须先看见它，才谈得上兜底。 -->
       <section v-if="view!.health.degraded" class="health panel" data-testid="room-health-degraded">

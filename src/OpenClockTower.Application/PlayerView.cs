@@ -32,6 +32,12 @@ public sealed record PlayerView
     /// </summary>
     public PlayerDay? Day { get; init; }
 
+    /// <summary>胜负结论；null = 游戏仍在进行。对局结束后对全体玩家一致可见（R-0024）。</summary>
+    public GameOutcome? Outcome { get; init; }
+
+    /// <summary>呆瓜的公开选择（含"没选"的跳过），按发生顺序；公开事实（R-0027）。</summary>
+    public IReadOnlyList<KlutzChoiceRecord> KlutzChoices { get; init; } = [];
+
     /// <summary>投影对应的事件流序号（重连补齐用）。</summary>
     public required long Sequence { get; init; }
 }

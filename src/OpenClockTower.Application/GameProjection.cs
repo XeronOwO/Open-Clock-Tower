@@ -30,7 +30,11 @@ public static class GameProjection
         ArgumentNullException.ThrowIfNull(trackers);
 
         var pending = machine?.PendingRequest;
-        var deliverable = pending is { Status: OperationRequestStatus.Pending } && pending.Addressee == seat
+        var ended = machine?.Outcome is not null;
+
+        // 结束态不再下发任何请求：终局快照可能还留着最后一条请求（作废要重排结束批次的管线），
+        // 而它对玩家已经答不了（一切提交都被 phase.game_ended 拒）——推给他就是一条死信。
+        var deliverable = !ended && pending is { Status: OperationRequestStatus.Pending } && pending.Addressee == seat
             ? pending
             : null;
 
@@ -41,9 +45,22 @@ public static class GameProjection
             PendingRequest = deliverable,
             InformationResults = trackers.InformationResultsFor(seat),
             Day = DayProjection.ForSeat(machine?.Day, state, seats, seat, trackers.PublicLife),
+            Outcome = machine?.Outcome,
+            KlutzChoices = [.. (machine?.KlutzChoices ?? []).Select(PublicKlutzChoice)],
             Sequence = sequence,
         };
     }
+
+    /// <summary>
+    /// 玩家面的呆瓜选择记录：**只公开"选了什么"**。跳过记录的原因写的是能力为何没生效
+    /// （醉酒 / 中毒 / 被谁作废）——那是说书人专属维度，按 R-0012 与 D-0012 §4.3 不下发；
+    /// 说书人视图保留完整 <see cref="KlutzChoiceRecord.Detail"/>。
+    /// </summary>
+    private static KlutzChoiceRecord PublicKlutzChoice(KlutzChoiceRecord record) =>
+        record.IsMade ? record : record with { Detail = SkippedChoiceDetail };
+
+    /// <summary>跳过记录的公开文案：只说"没做出选择"，不解释为什么（原因只在说书人视图）。</summary>
+    private const string SkippedChoiceDetail = "呆瓜本次没有做出选择";
 
     /// <summary>说书人视图（含卡点时长、状态账、效果归因、能力结算结论、每步摘要与房间健康位；时长由应用层时钟算出）。</summary>
     public static StorytellerView ForStoryteller(
@@ -65,8 +82,9 @@ public static class GameProjection
             {
                 Seat = request.Addressee,
                 RequestId = request.Id,
-                SlotId = request.SlotId,
-                SlotIndex = request.IssuedAtSlotIndex,
+                SlotId = request.Origin.SlotId,
+                SlotIndex = request.Origin.SlotIndex,
+                TriggerReason = request.Origin.TriggerReason,
                 Waiting = pendingSince is { } since ? now - since : null,
             };
         }
@@ -96,6 +114,8 @@ public static class GameProjection
             StepDigest = stepDigest,
             LastVoidedRequest = lastVoidedRequest,
             Day = machine?.Day?.Days.LastOrDefault(),
+            Outcome = machine?.Outcome,
+            KlutzChoices = machine?.KlutzChoices ?? [],
         };
     }
 }

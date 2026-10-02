@@ -29,4 +29,10 @@ public enum GameNotificationKind
     /// 推送的是**状态投影**而不是事件载荷——重连时 <c>PlayerView.Day</c> 快照覆盖同一份事实。
     /// </summary>
     DayChanged,
+
+    /// <summary>本局结束（胜方 + 条件 + 说明）：广播给全部已绑定席位与说书人（R-0024）。</summary>
+    GameEnded,
+
+    /// <summary>呆瓜公开选择了某席位：公开事实，广播给全部已绑定席位（R-0027）。</summary>
+    KlutzChoiceMade,
 }

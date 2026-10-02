@@ -74,4 +74,10 @@ public sealed record StorytellerViewDto
 
     /// <summary>最新一天（进行中或最近结束）的白天账；还没有开过白天时为 null。</summary>
     public DayViewDto? Day { get; init; }
+
+    /// <summary>胜负结论；null = 游戏仍在进行。结束后一切命令被拒（R-0024）。</summary>
+    public GameOutcomeDto? Outcome { get; init; }
+
+    /// <summary>呆瓜的公开选择（含跳过），按发生顺序（R-0027）。</summary>
+    public required KlutzChoiceDto[] KlutzChoices { get; init; }
 }

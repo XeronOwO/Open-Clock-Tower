@@ -34,4 +34,7 @@ public enum StepMachineRejectionReason
     /// 结算拒绝整条输入，等说书人把状态补上（D-0015：不猜）。
     /// </summary>
     LedgerIncomplete,
+
+    /// <summary>本局已经结束：一切输入都被拒（R-0024）。</summary>
+    GameEnded,
 }

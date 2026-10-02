@@ -42,13 +42,15 @@ public sealed class DayActionsTests
     }
 
     /// <summary>
-    /// 已实现的白天契约：女巫（诅咒在下个白天触发）、洗脑师与畸形秀演员（处罚处决，R-0020 / R-0021）；
-    /// 其余白天相关角色仍不覆盖——在场时开白天显式拒绝，不许"白天照跑、能力静默不发生"。
+    /// 已实现的白天契约：女巫（诅咒在下个白天触发）、洗脑师与畸形秀演员（处罚处决，R-0020 / R-0021）、
+    /// 呆瓜（死亡公告后公开选择，R-0027）、镜像双子（善良方被处决即邪恶获胜，R-0025）、
+    /// 涡流（黄昏无人被处决即邪恶获胜，R-0026）；其余白天相关角色仍不覆盖——
+    /// 在场时开白天显式拒绝，不许"白天照跑、能力静默不发生"。
     /// </summary>
     [Fact]
     public void OnlyImplementedDayContractsAreCovered()
     {
-        var covered = new[] { "witch", "cerenovus", "mutant" };
+        var covered = new[] { "witch", "cerenovus", "mutant", "klutz", "evil-twin", "vortox" };
 
         foreach (var character in covered)
         {

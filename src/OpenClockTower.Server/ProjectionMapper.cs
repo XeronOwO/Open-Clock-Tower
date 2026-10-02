@@ -69,6 +69,37 @@ public static class ProjectionMapper
         PendingRequest = view.PendingRequest is { } pending ? ToDto(pending, view.Sequence) : null,
         InformationResults = [.. view.InformationResults.Select(ToDto)],
         Day = view.Day is { } day ? ToDto(day, view.Sequence) : null,
+        Outcome = view.Outcome is { } outcome ? ToDto(outcome, view.Sequence) : null,
+        KlutzChoices = [.. view.KlutzChoices.Select(record => ToDto(record, view.Sequence))],
+    };
+
+    /// <summary>胜负结论 → DTO（序号 = 这份结论被表达时的序号）。</summary>
+    public static GameOutcomeDto ToDto(GameOutcome outcome, long sequence) => new()
+    {
+        Sequence = sequence,
+        Winner = outcome.Winner.ToString(),
+        Condition = outcome.Condition.ToString(),
+        Detail = outcome.Detail,
+    };
+
+    /// <summary>呆瓜选择记录 → DTO（序号 = 这份记录被表达时的序号）。</summary>
+    public static KlutzChoiceDto ToDto(KlutzChoiceRecord record, long sequence) => new()
+    {
+        Sequence = sequence,
+        Seat = record.Klutz.Value,
+        Target = record.Target?.Value,
+        Made = record.IsMade,
+        Detail = record.Detail,
+    };
+
+    /// <summary>呆瓜选择事件 → DTO（公开广播用；序号 = 背书事件序号）。</summary>
+    public static KlutzChoiceDto ToDto(KlutzChoiceMadeEvent choice, long sequence) => new()
+    {
+        Sequence = sequence,
+        Seat = choice.Klutz.Value,
+        Target = choice.Target.Value,
+        Made = true,
+        Detail = $"呆瓜（{choice.Klutz.Value} 号）公开选择了 {choice.Target.Value} 号",
     };
 
     /// <summary>玩家白天投影 → DTO（公开事实 + 公开生死面 + 权限位 + 可提名目标）。</summary>
@@ -174,8 +205,9 @@ public static class ProjectionMapper
             {
                 Seat = pending.Seat.Value,
                 RequestId = pending.RequestId.Value,
-                SlotId = pending.SlotId.Value,
+                SlotId = pending.SlotId?.Value,
                 SlotIndex = pending.SlotIndex,
+                TriggerReason = pending.TriggerReason,
                 WaitingSeconds = pending.Waiting?.TotalSeconds,
             }
             : null,
@@ -258,6 +290,8 @@ public static class ProjectionMapper
             }
             : null,
         Day = view.Day is { } day ? ToDto(day) : null,
+        Outcome = view.Outcome is { } outcome ? ToDto(outcome, view.Sequence) : null,
+        KlutzChoices = [.. view.KlutzChoices.Select(record => ToDto(record, view.Sequence))],
     };
 
     /// <summary>房间健康位 → DTO。</summary>

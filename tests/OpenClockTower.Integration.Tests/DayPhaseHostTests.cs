@@ -23,6 +23,17 @@ public sealed class DayPhaseHostTests
         new() { Seat = 3, Character = "no-dashii" },
     ];
 
+    /// <summary>
+    /// 完整白天流程的席位（4 席）：处决 1 人后仍剩 3 人存活——3 席夹具在处决后会
+    /// **真实触发「仅剩两名存活 → 邪恶获胜」**，那是规则正确行为，不是测试想要覆盖的链路
+    /// （呆瓜只坐在第 4 席、本用例中不会死亡）。
+    /// </summary>
+    private static SeatCharacterAssignmentDto[] FullDayAssignments() =>
+    [
+        .. DayNeutralAssignments(),
+        new() { Seat = 4, Character = "klutz" },
+    ];
+
     /// <summary>用宿主身份开一个夹具夜晚，再逐槽强推到完成（把状态推进到"可以开白天"）。</summary>
     private static async Task CompleteFixtureNightAsync(TestServerHost host, GameClient storyteller)
     {
@@ -54,12 +65,12 @@ public sealed class DayPhaseHostTests
     [Fact]
     public async Task FullDayFlow_NominateVoteCountExecute_ThenNextNightCanStart()
     {
-        await using var host = new TestServerHost(slotQuotaSeconds: 3600, seatCount: 3, autoStartTestNight: false);
+        await using var host = new TestServerHost(slotQuotaSeconds: 3600, seatCount: 4, autoStartTestNight: false);
         await using var storyteller = await host.ConnectStorytellerAsync();
 
         var assigned = await storyteller.InvokeAsync<CommandResultDto>(
             "AssignCharacters",
-            DayNeutralAssignments(),
+            FullDayAssignments(),
             "test-day-assign");
         Assert.Equal("Accepted", assigned.Kind);
 

@@ -105,9 +105,37 @@ export interface SeatChangeDto {
 export interface PendingRequestDto {
   seat: number
   requestId: string
-  slotId: string
-  slotIndex: number
+  /** 槽位标识；触发来源的请求（如呆瓜选择）没有槽位，为 null。 */
+  slotId: string | null
+  /** 槽位下标；触发来源为 null。 */
+  slotIndex: number | null
+  /** 触发来源的说明（哪个能力、因何开出）；槽位来源为 null。 */
+  triggerReason: string | null
   waitingSeconds: number | null
+}
+
+/** 胜负结论：胜方 + 条件分类 + 说明（对局结束后对全体玩家一致可见，R-0024）。 */
+export interface GameOutcomeDto {
+  /** 这份结论被表达时的序号：推送 = 背书事件序号；快照 = 快照序号（客户端按它做字段取舍）。 */
+  sequence: number
+  /** Good / Evil。 */
+  winner: string
+  /** OutcomeCondition 的枚举名。 */
+  condition: string
+  detail: string
+}
+
+/** 呆瓜的公开选择记录（含"没有选择"的跳过；R-0027）。 */
+export interface KlutzChoiceDto {
+  /** 这份记录被表达时的序号（推送 = 背书事件序号；快照 = 快照序号）。 */
+  sequence: number
+  /** 呆瓜席位。 */
+  seat: number
+  /** 被选中的席位；没有做出选择时为 null。 */
+  target: number | null
+  /** 是否真的做出了选择。 */
+  made: boolean
+  detail: string
 }
 
 /** 房间健康位：恢复 / 重建失败后为降级态（原因 + 发生时间）；正常时 degraded=false。 */
@@ -230,6 +258,10 @@ export interface StorytellerViewDto {
   lastVoidedRequest: OperationRequestVoidedDto | null
   /** 最新一天（进行中或最近结束）的白天账；还没有开过白天时为 null。 */
   day: DayViewDto | null
+  /** 胜负结论；null = 游戏仍在进行。结束后一切命令被拒（R-0024）。 */
+  outcome: GameOutcomeDto | null
+  /** 呆瓜的公开选择（含跳过），按发生顺序（R-0027）。 */
+  klutzChoices: KlutzChoiceDto[]
 }
 
 /** 命令回执。 */
@@ -258,6 +290,10 @@ export interface PlayerViewDto {
   informationResults: InformationResultDto[]
   /** 白天投影（公开事实 + 自己能做什么）；还没有开过白天时为 null。 */
   day: PlayerDayDto | null
+  /** 胜负结论；null = 游戏仍在进行。结束后对全体玩家一致可见（R-0024）。 */
+  outcome: GameOutcomeDto | null
+  /** 呆瓜的公开选择（含跳过），按发生顺序（R-0027）。 */
+  klutzChoices: KlutzChoiceDto[]
 }
 
 /** 推给玩家的操作请求（刻意不含槽位 / 轮次 / 进度）。 */

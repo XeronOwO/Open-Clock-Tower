@@ -75,6 +75,19 @@ internal sealed class DreamerNightAction : INightAction, IAbilityResolution
             };
         }
 
+        if (VortoxInterference.IsActive(context.State))
+        {
+            // 涡流在场：这条信息必须为假——平台不生成也不校验真假（D-0002 / R-0028），
+            // 因此退回到"说书人自由填写"，而不是继续按"一真一假"的候选去拼（那会拼出一条真信息）。
+            return new ChoicePrompt
+            {
+                Context = $"涡流在场：筑梦师（{context.Actor.Value} 号）的信息必须为假（R-0028）。"
+                    + "请填写要传达的两名角色或整句信息（真角色不得出现在其中）。",
+                Options = [],
+                OnNoOption = NoOptionBehavior.StorytellerDecides,
+            };
+        }
+
         var character = context.State.Seat(target)?.CharacterValue
             ?? throw new InvalidOperationException(
                 $"席位 {target.Value} 的角色尚未观测，列不出筑梦师的合法候选");
@@ -118,9 +131,11 @@ internal sealed class DreamerNightAction : INightAction, IAbilityResolution
                 Ability = Ability,
                 Content = ComposeContent(context, target),
                 MayBeFalse = true,
-                Note = context.Outcome.Effective
-                    ? "筑梦师的信息按其能力设定本来就是一真一假；平台不判定哪一枚为真（D-0002）"
-                    : context.Outcome.Note,
+                Note = VortoxInterference.NoteFor(
+                    context.State,
+                    context.Outcome.Effective
+                        ? "筑梦师的信息按其能力设定本来就是一真一假；平台不判定哪一枚为真（D-0002）"
+                        : context.Outcome.Note),
             },
         ];
     }
@@ -132,6 +147,16 @@ internal sealed class DreamerNightAction : INightAction, IAbilityResolution
             if (string.IsNullOrWhiteSpace(context.Decision))
             {
                 throw new InvalidOperationException("筑梦师能力未生效时，说书人必须给出信息内容（可为假）");
+            }
+
+            return context.Decision;
+        }
+
+        if (VortoxInterference.IsActive(context.State))
+        {
+            if (string.IsNullOrWhiteSpace(context.Decision))
+            {
+                throw new InvalidOperationException("涡流在场时，筑梦师的信息必须为假，需要说书人给出内容");
             }
 
             return context.Decision;

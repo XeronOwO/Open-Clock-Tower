@@ -23,7 +23,7 @@ public sealed class MadnessPunishmentHostTests
     [Fact]
     public async Task CerenovusMadness_DayPunishment_ConsumesTheLimit_AndExpiresAtTheNextDawn()
     {
-        await using var host = new TestServerHost(slotQuotaSeconds: 0.05, seatCount: 4, autoStartTestNight: false);
+        await using var host = new TestServerHost(slotQuotaSeconds: 0.05, seatCount: 5, autoStartTestNight: false);
         await using var storyteller = await host.ConnectStorytellerAsync();
         await using var target = await OpenCerenovusDayAsync(host, storyteller);
 
@@ -98,7 +98,7 @@ public sealed class MadnessPunishmentHostTests
     [Fact]
     public async Task Mutant_NightPunishment_DoesNotConsumeTheNextDay()
     {
-        await using var host = new TestServerHost(slotQuotaSeconds: 0.05, seatCount: 4, autoStartTestNight: false);
+        await using var host = new TestServerHost(slotQuotaSeconds: 0.05, seatCount: 5, autoStartTestNight: false);
         await using var storyteller = await host.ConnectStorytellerAsync();
 
         var assigned = await storyteller.InvokeAsync<CommandResultDto>(
@@ -111,17 +111,19 @@ public sealed class MadnessPunishmentHostTests
         await using var two = await host.ConnectSeatAsync(new SeatId(2));
         await using var three = await host.ConnectSeatAsync(new SeatId(3));
         await using var four = await host.ConnectSeatAsync(new SeatId(4));
+        await using var five = await host.ConnectSeatAsync(new SeatId(5));
 
         var night = await storyteller.InvokeAsync<CommandResultDto>("StartNight", 1, "Original", "test-mutant-night-1");
         Assert.Equal("Accepted", night.Kind);
         await CompleteNightAsync(storyteller, "n1");
 
-        // 白天 1：2、3 号投票把 3 号处决（当天上限用掉）。
+        // 白天 1：2、3、5 号投票把 3 号处决（当天上限用掉；5 席需要 3 票才过半）。
         var day = await storyteller.InvokeAsync<CommandResultDto>("StartDay", "test-mutant-day-1");
         Assert.Equal("Accepted", day.Kind);
         Assert.Equal("Accepted", (await two.InvokeAsync<CommandResultDto>("Nominate", 3, "test-mutant-nominate")).Kind);
         Assert.Equal("Accepted", (await two.InvokeAsync<CommandResultDto>("CastVote", 1, true, "test-mutant-vote-2")).Kind);
         Assert.Equal("Accepted", (await three.InvokeAsync<CommandResultDto>("CastVote", 1, true, "test-mutant-vote-3")).Kind);
+        Assert.Equal("Accepted", (await five.InvokeAsync<CommandResultDto>("CastVote", 1, true, "test-mutant-vote-5")).Kind);
         Assert.Equal("Accepted", (await storyteller.InvokeAsync<CommandResultDto>("CountVotes", 1, "test-mutant-count")).Kind);
         Assert.Equal("Accepted", (await storyteller.InvokeAsync<CommandResultDto>("CloseDay", "test-mutant-close")).Kind);
 
@@ -183,6 +185,7 @@ public sealed class MadnessPunishmentHostTests
 
         Assert.Equal("Accepted", (await four.InvokeAsync<CommandResultDto>("Nominate", 2, "test-mutant-nominate-2")).Kind);
         Assert.Equal("Accepted", (await four.InvokeAsync<CommandResultDto>("CastVote", 1, true, "test-mutant-vote-4")).Kind);
+        Assert.Equal("Accepted", (await five.InvokeAsync<CommandResultDto>("CastVote", 1, true, "test-mutant-vote-5-2")).Kind);
         Assert.Equal("Accepted", (await storyteller.InvokeAsync<CommandResultDto>("CountVotes", 1, "test-mutant-count-2")).Kind);
         Assert.Equal("Accepted", (await storyteller.InvokeAsync<CommandResultDto>("CloseDay", "test-mutant-close-2")).Kind);
 
@@ -215,7 +218,7 @@ public sealed class MadnessPunishmentHostTests
         var databasePath = Path.Combine(Path.GetTempPath(), $"oct-test-madness-restart-{Guid.NewGuid():N}.db");
         await using (var host = new TestServerHost(
             slotQuotaSeconds: 0.05,
-            seatCount: 4,
+            seatCount: 5,
             databasePath: databasePath,
             deleteDatabaseOnDispose: false,
             autoStartTestNight: false))
@@ -226,7 +229,7 @@ public sealed class MadnessPunishmentHostTests
 
         await using (var restarted = new TestServerHost(
             slotQuotaSeconds: 0.05,
-            seatCount: 4,
+            seatCount: 5,
             databasePath: databasePath,
             deleteDatabaseOnDispose: true,
             autoStartTestNight: false))
@@ -276,7 +279,7 @@ public sealed class MadnessPunishmentHostTests
         var request = requests.First();
         Assert.Equal(1, request.Seat);
         Assert.Contains("洗脑师", request.Context, StringComparison.Ordinal);
-        Assert.Equal(4, request.Options.Length);
+        Assert.Equal(5, request.Options.Length);
         Assert.Equal(17, request.SecondaryOptions.Length);
 
         var answered = await cerenovus.InvokeAsync<CommandResultDto>(
@@ -307,22 +310,32 @@ public sealed class MadnessPunishmentHostTests
         return target;
     }
 
-    /// <summary>四席：1 号洗脑师 + 钟表匠 / 筑梦师 / 诺-达鲺（当前已实现契约的角色）。</summary>
+    /// <summary>
+    /// 五席：1 号洗脑师 + 钟表匠 / 诺-达鲺 / 筑梦师 / 呆瓜。
+    /// 被处罚目标固定是 4 号（筑梦师）——**不能让目标是唯一的恶魔**：处罚处决会当场触发
+    /// 「所有恶魔均死亡 → 善良获胜」（规则正确行为）；五席也让"处罚 → 第二夜 → 第二天"
+    /// 这条链路不会撞上「仅剩两名存活 → 邪恶获胜」。
+    /// </summary>
     private static SeatCharacterAssignmentDto[] CerenovusAssignments() =>
     [
         new() { Seat = 1, Character = "cerenovus" },
         new() { Seat = 2, Character = "clockmaker" },
-        new() { Seat = 3, Character = "dreamer" },
-        new() { Seat = 4, Character = "no-dashii" },
+        new() { Seat = 3, Character = "no-dashii" },
+        new() { Seat = 4, Character = "dreamer" },
+        new() { Seat = 5, Character = "klutz" },
     ];
 
-    /// <summary>四席：1 号畸形秀演员 + 钟表匠 / 筑梦师 / 诺-达鲺。</summary>
+    /// <summary>
+    /// 五席：1 号畸形秀演员 + 钟表匠 / 筑梦师 / 诺-达鲺 / 呆瓜。
+    /// 两处死亡（白天 1 处决 + 夜晚处罚）之后仍剩 3 人存活，才够走到"第二天仍可处决"。
+    /// </summary>
     private static SeatCharacterAssignmentDto[] MutantAssignments() =>
     [
         new() { Seat = 1, Character = "mutant" },
         new() { Seat = 2, Character = "clockmaker" },
         new() { Seat = 3, Character = "dreamer" },
         new() { Seat = 4, Character = "no-dashii" },
+        new() { Seat = 5, Character = "klutz" },
     ];
 
     /// <summary>说书人强推越过剩余槽位（D-0014 兜底）：本用例只真正结算与角色有关的那一步。</summary>

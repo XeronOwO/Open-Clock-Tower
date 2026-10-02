@@ -186,7 +186,15 @@ describe('白天投影规范化', () => {
 describe('重连补齐折叠（快照权威）', () => {
   const bundle = (sequence: number, events: ReconnectBundleDto['events']): ReconnectBundleDto => ({
     sequence,
-    view: { seat: 1, phase: 'FirstNight', pendingRequest: null, informationResults: [], day: null },
+    view: {
+      seat: 1,
+      phase: 'FirstNight',
+      pendingRequest: null,
+      informationResults: [],
+      day: null,
+      outcome: null,
+      klutzChoices: [],
+    },
     events,
   })
 

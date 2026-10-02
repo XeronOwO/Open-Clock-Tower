@@ -137,6 +137,15 @@ public sealed class NotificationDispatcher
                     await PushDayChangedAsync(cancellationToken);
                     break;
 
+                // 游戏结束与呆瓜的公开选择都是公开事实：广播给全部已绑定席位（R-0024 / R-0027）。
+                case GameNotificationKind.GameEnded when notification.Outcome is { } endedOutcome:
+                    await PushGameEndedAsync(endedOutcome, notification.Sequence, cancellationToken);
+                    break;
+
+                case GameNotificationKind.KlutzChoiceMade when notification.KlutzChoice is { } klutzChoice:
+                    await PushKlutzChoiceMadeAsync(klutzChoice, notification.Sequence, cancellationToken);
+                    break;
+
                 case GameNotificationKind.StorytellerViewChanged:
                 case GameNotificationKind.RoomRebuilt:
                     await PushStorytellerViewAsync(cancellationToken);
@@ -204,5 +213,56 @@ public sealed class NotificationDispatcher
             cancellationToken.ThrowIfCancellationRequested();
             await _hub.Clients.Client(connectionId).ReceiveStorytellerViewChanged(view);
         }
+    }
+
+    /// <summary>把"本局结束"广播给全部已绑定席位；未连接玩家重连时从快照取同一份结论（R-0024）。</summary>
+    private async Task PushGameEndedAsync(GameOutcome outcome, long sequence, CancellationToken cancellationToken)
+    {
+        var dto = ProjectionMapper.ToDto(outcome, sequence);
+        var seats = _registry.Seats;
+        var pushed = 0;
+        foreach (var seat in seats)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (_registry.TryGetSeatConnection(seat, out var connectionId))
+            {
+                await _hub.Clients.Client(connectionId).ReceiveGameEnded(dto);
+                pushed++;
+            }
+        }
+
+        _logger.LogInformation(
+            "已广播游戏结束：winner={Winner} condition={Condition} 推送={Pushed}/{Total}",
+            outcome.Winner,
+            outcome.Condition,
+            pushed,
+            seats.Count);
+    }
+
+    /// <summary>把呆瓜的公开选择广播给全部已绑定席位（选择本身就是公开事实，R-0027）。</summary>
+    private async Task PushKlutzChoiceMadeAsync(
+        KlutzChoiceMadeEvent choice,
+        long sequence,
+        CancellationToken cancellationToken)
+    {
+        var dto = ProjectionMapper.ToDto(choice, sequence);
+        var seats = _registry.Seats;
+        var pushed = 0;
+        foreach (var seat in seats)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (_registry.TryGetSeatConnection(seat, out var connectionId))
+            {
+                await _hub.Clients.Client(connectionId).ReceiveKlutzChoiceMade(dto);
+                pushed++;
+            }
+        }
+
+        _logger.LogInformation(
+            "已广播呆瓜选择：seat={Seat} target={Target} 推送={Pushed}/{Total}",
+            choice.Klutz.Value,
+            choice.Target.Value,
+            pushed,
+            seats.Count);
     }
 }

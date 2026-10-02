@@ -54,7 +54,7 @@ public static class StepMachine
             ?? throw new InvalidOperationException("事件流损坏：开启阶段没有产出步骤机状态");
         if (!state.IsPlanCompleted)
         {
-            EnterCurrentSlot(state, events);
+            StepSlotEntry.Enter(state, events);
         }
         else
         {
@@ -108,6 +108,16 @@ public static class StepMachine
         ArgumentNullException.ThrowIfNull(state);
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(input);
+
+        // 游戏已经结束：一切输入都被拒（R-0024）——包括说书人命令与状态观测，
+        // 撤销只能走截断重放（D-0010），不能继续往一条已经结束的流上追加操作。
+        if (state.Outcome is { } outcome)
+        {
+            return Reject(
+                state,
+                StepMachineRejectionReason.GameEnded,
+                $"本局已经结束（{outcome.Condition}：{outcome.Detail}），不能再接受输入");
+        }
 
         return input switch
         {
@@ -178,11 +188,6 @@ public static class StepMachine
         SettlementContext context,
         SubmitResponseInput input)
     {
-        if (state.IsPlanCompleted)
-        {
-            return Reject(state, StepMachineRejectionReason.PlanAlreadyCompleted, "本计划已走完");
-        }
-
         var pending = state.PendingRequest;
         if (pending is null)
         {
@@ -217,6 +222,19 @@ public static class StepMachine
                 },
             },
         };
+
+        // 触发来源的请求（如呆瓜死亡选择，R-0027）不落在任何槽位上：后果由事件触发管线
+        // 从这条"答了什么"的事件里产出；因此它也不受"计划是否走完"约束——
+        // 呆瓜的选择常常正好开在白天关闭（计划走完）之后、下一夜开始之前。
+        if (pending.Origin.Kind != OperationRequestOriginKind.Slot)
+        {
+            return Applied(state, events);
+        }
+
+        if (state.IsPlanCompleted)
+        {
+            return Reject(state, StepMachineRejectionReason.PlanAlreadyCompleted, "本计划已走完");
+        }
 
         // 玩家选完 → 结算：要么直接产出事件，要么再挂一次「信息类裁定」（D-0002）。
         if (state.CurrentSlot is { } slot)
@@ -324,7 +342,7 @@ public static class StepMachine
 
         var afterHolds = StepMachineFolder.ApplyAll(state, events)
             ?? throw new InvalidOperationException("事件流损坏：处理输入后丢失步骤机状态");
-        AppendForceAdvance(afterHolds, events, input.Reason);
+        StepSlotEntry.AppendForceAdvance(afterHolds, events, input.Reason);
         return Applied(state, events);
     }
 
@@ -431,7 +449,7 @@ public static class StepMachine
             {
                 Status: OperationRequestStatus.Answered,
                 Answer: { } answer,
-            } pending && pending.SlotId == slot.Id
+            } pending && pending.Origin.SlotId is { } originSlotId && originSlotId == slot.Id
                 ? answer.OptionValue
                 : null;
 
@@ -463,118 +481,13 @@ public static class StepMachine
     {
         var after = StepMachineFolder.ApplyAll(state, events)
             ?? throw new InvalidOperationException("事件流损坏：处理输入后丢失步骤机状态");
-        if (CanAutoAdvance(after))
+        if (StepSlotEntry.CanAutoAdvance(after))
         {
-            AppendAdvance(after, events);
+            StepSlotEntry.AppendAdvance(after, events);
         }
 
         return events;
     }
-
-    private static bool CanAutoAdvance(StepMachineState state) =>
-        !state.IsPlanCompleted
-        && state.CurrentSlot?.Kind != StepSlotKind.DayWindow
-        && state.Control == ControlMode.Automatic
-        && state.Quota == SlotQuotaState.Elapsed
-        && !state.IsHeld;
-
-    private static void AppendAdvance(StepMachineState state, List<GameEvent> events)
-    {
-        var from = state.SlotIndex;
-        var to = from + 1;
-        events.Add(new SlotAdvancedEvent { FromIndex = from, ToIndex = to });
-        if (to >= state.Plan.Slots.Count)
-        {
-            events.Add(new PhaseCompletedEvent { PlanLabel = state.Plan.Label });
-            return;
-        }
-
-        EnterCurrentSlot(
-            StepMachineFolder.Apply(state, events[^1])
-                ?? throw new InvalidOperationException("事件流损坏：推进后丢失步骤机状态"),
-            events);
-    }
-
-    private static void AppendForceAdvance(StepMachineState state, List<GameEvent> events, string reason)
-    {
-        var from = state.SlotIndex;
-        var to = from + 1;
-        events.Add(new SlotForceAdvancedEvent { FromIndex = from, ToIndex = to, Reason = reason });
-        if (to >= state.Plan.Slots.Count)
-        {
-            events.Add(new PhaseCompletedEvent { PlanLabel = state.Plan.Label });
-            return;
-        }
-
-        EnterCurrentSlot(
-            StepMachineFolder.Apply(state, events[^1])
-                ?? throw new InvalidOperationException("事件流损坏：推进后丢失步骤机状态"),
-            events);
-    }
-
-    private static void EnterCurrentSlot(StepMachineState state, List<GameEvent> events)
-    {
-        var slot = state.CurrentSlot
-            ?? throw new InvalidOperationException("进入槽位失败：计划已走完");
-
-        events.Add(new SlotEnteredEvent { SlotIndex = state.SlotIndex, SlotId = slot.Id });
-
-        if (slot.Kind != StepSlotKind.Action)
-        {
-            return;
-        }
-
-        if (slot.Actor is null || slot.Prompt is null)
-        {
-            events.Add(new SlotBlockedEvent
-            {
-                SlotId = slot.Id,
-                Reason = "行动槽位缺少行动者或选择契约（数据缺陷）——说书人可强推 / 接管 / 重建",
-            });
-            return;
-        }
-
-        switch (slot.Prompt.Evaluate())
-        {
-            case DecisionPointOutcome.AwaitingChoice:
-                events.Add(new OperationRequestIssuedEvent { Request = BuildRequest(state, slot) });
-                break;
-            case DecisionPointOutcome.Skipped:
-                events.Add(new PromptSkippedEvent
-                {
-                    SlotId = slot.Id,
-                    Reason = $"无合法选项：{slot.Prompt.Context}"
-                        + "（按声明的 Skip 走，R-0009；配额照走）",
-                });
-                break;
-            case DecisionPointOutcome.StorytellerDecides:
-                events.Add(new DecisionPointRaisedEvent
-                {
-                    SlotId = slot.Id,
-                    DecisionPoint = new DecisionPoint
-                    {
-                        Id = AbilitySettlement.DecisionPointIdOf(state, slot),
-                        Prompt = slot.Prompt,
-                    },
-                });
-                break;
-            default:
-                events.Add(new SlotBlockedEvent { SlotId = slot.Id, Reason = slot.Prompt.Context });
-                break;
-        }
-    }
-
-    private static OperationRequest BuildRequest(StepMachineState state, StepSlot slot) =>
-        new()
-        {
-            Id = new OperationRequestId($"{state.Plan.Label}:{slot.Id}"),
-            Addressee = slot.Actor!.Value,
-            SlotId = slot.Id,
-            PlanLabel = state.Plan.Label,
-            IssuedAtSlotIndex = state.SlotIndex,
-            Prompt = slot.Prompt!,
-            Dependencies = slot.Dependencies,
-        };
 
     private static StepMachineOutcome Applied(StepMachineState state, List<GameEvent> events) =>
         new()

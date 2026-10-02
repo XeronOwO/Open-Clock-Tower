@@ -526,7 +526,7 @@ async function main() {
   )
   check(
     '行 1：筑梦师摘要给出合法选项数量',
-    dreamerDigest.includes('合法选项 2 个'),
+    dreamerDigest.includes(`合法选项 ${options.assign.length - 1} 个`),
     dreamerDigest.replace(/\s+/g, ' ').slice(0, 240),
   )
   await screenshot(storyteller.page, '06-storyteller-dreamer-digest')
@@ -919,13 +919,16 @@ async function main() {
   )
 
   // 行 5：中毒来源死亡 → 维度解除进摘要（挂起请求还占着槽位，行动者就是 2 号）。
-  const demonDeath = await reportSeatState(storyteller.page, {
+  // 让中毒来源**失去能力**：把诺-达鲺换成另一名恶魔（角色变化 → 能力存续判定失效 → 常驻中毒终止）。
+  // 不直接上报它的死亡：唯一恶魔死亡 = 「所有恶魔均死亡 → 善良获胜」（R-0024），游戏会当场结束，
+  // 本装置后续步骤（依赖作废 / 重建 / 重连）就都跑不到了。
+  const demonSwap = await reportSeatState(storyteller.page, {
     seat: demonSeat,
-    dimensionLabel: '生死',
-    value: 'Dead',
-    reason: '批次取证：诺-达鲺死亡，验证中毒解除进摘要',
+    dimensionLabel: '角色',
+    value: 'vortox',
+    reason: '批次取证：诺-达鲺换成涡流，验证中毒解除进摘要',
   })
-  check('第三夜上报 3 号死亡被受理', demonDeath.kind === 'Accepted', demonDeath.raw)
+  check('第三夜上报 3 号换角被受理', demonSwap.kind === 'Accepted', demonSwap.raw)
   const releaseVisible = await waitForPanelContains(storyteller.page, '当前步骤', '解除', 30_000)
   const digestAfterRelease = await panelText(storyteller.page, '当前步骤')
   check(
@@ -2172,12 +2175,14 @@ function parseArguments(argv) {
     port: 5399,
     vitePort: 5398,
     // 席位数量默认跟着分配清单走：NightPlanBuilder 要求**每一席都有角色**（plan.seat_unassigned），
-    // 而"有角色"还要求该角色的夜间契约已实现（plan.contract_missing）——本轮只有三个契约，
-    // 因此默认 3 席全分配。要验证更多席位，用 --assign 传同样数量的角色。
+    // 而"有角色"还要求该角色的夜间契约已实现（plan.contract_missing）。默认五席：
+    // 白天处决 + 夜晚击杀各带走一人——**三席夹具会在第一次死亡后当场满足「仅剩两名存活 → 邪恶获胜」**
+    // （规则正确行为），第二夜就再也开不起来。两名外来者（畸形秀演员 / 呆瓜）不在夜晚顺序表上、
+    // 也不会被诺-达鲺毒到（它只毒邻近镇民），所以首夜 13 个槽位与中毒归因面都不变。
     seatCount: undefined,
     // 节拍器槽位配额：默认 2 秒，让 13 个槽位能在一次批次里走完；节奏规则本身由内核用例锁死。
     quotaSeconds: '2',
-    assign: ['clockmaker', 'dreamer', 'no-dashii'],
+    assign: ['clockmaker', 'dreamer', 'no-dashii', 'mutant', 'klutz'],
     screenshots: 'artifacts/web',
   }
 

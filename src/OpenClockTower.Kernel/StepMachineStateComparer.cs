@@ -29,8 +29,50 @@ public static class StepMachineStateComparer
                && RequestEquivalent(left.PendingRequest, right.PendingRequest)
                && DecisionEquivalent(left.AwaitingDecision, right.AwaitingDecision)
                && string.Equals(left.Block?.Reason, right.Block?.Reason, StringComparison.Ordinal)
-               && DayEquivalent(left.Day, right.Day);
+               && DayEquivalent(left.Day, right.Day)
+               && OutcomeEquivalent(left.Outcome, right.Outcome)
+               && KlutzChoicesEquivalent(left.KlutzChoices, right.KlutzChoices);
     }
+
+    private static bool OutcomeEquivalent(GameOutcome? left, GameOutcome? right) =>
+        (left, right) switch
+        {
+            (null, null) => true,
+            (not null, null) or (null, not null) => false,
+            ({ } a, { } b) => a.Winner == b.Winner
+                && a.Condition == b.Condition
+                && string.Equals(a.Detail, b.Detail, StringComparison.Ordinal),
+        };
+
+    private static bool KlutzChoicesEquivalent(
+        IReadOnlyList<KlutzChoiceRecord> left,
+        IReadOnlyList<KlutzChoiceRecord> right)
+    {
+        if (left.Count != right.Count)
+        {
+            return false;
+        }
+
+        for (var index = 0; index < left.Count; index++)
+        {
+            if (left[index].Klutz != right[index].Klutz
+                || left[index].Target != right[index].Target
+                || !string.Equals(left[index].Detail, right[index].Detail, StringComparison.Ordinal))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool OriginEquivalent(OperationRequestOrigin left, OperationRequestOrigin right) =>
+        left.Kind == right.Kind
+        && left.SlotId == right.SlotId
+        && string.Equals(left.PlanLabel, right.PlanLabel, StringComparison.Ordinal)
+        && left.SlotIndex == right.SlotIndex
+        && left.TriggerAbility == right.TriggerAbility
+        && string.Equals(left.TriggerReason, right.TriggerReason, StringComparison.Ordinal);
 
     private static bool DayEquivalent(DayState? left, DayState? right)
     {
@@ -145,9 +187,7 @@ public static class StepMachineStateComparer
 
         return left.Id == right.Id
                && left.Addressee == right.Addressee
-               && left.SlotId == right.SlotId
-               && string.Equals(left.PlanLabel, right.PlanLabel, StringComparison.Ordinal)
-               && left.IssuedAtSlotIndex == right.IssuedAtSlotIndex
+               && OriginEquivalent(left.Origin, right.Origin)
                && left.Status == right.Status
                && PromptEquivalent(left.Prompt, right.Prompt)
                && DependenciesEquivalent(left.Dependencies, right.Dependencies)

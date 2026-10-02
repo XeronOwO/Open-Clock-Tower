@@ -19,4 +19,10 @@ public sealed record PlayerViewDto
 
     /// <summary>白天投影（公开事实 + 自己能做什么）；还没有开过白天时为 null。</summary>
     public PlayerDayDto? Day { get; init; }
+
+    /// <summary>胜负结论；null = 游戏仍在进行。结束后对全体玩家一致可见（R-0024）。</summary>
+    public GameOutcomeDto? Outcome { get; init; }
+
+    /// <summary>呆瓜的公开选择（含跳过），按发生顺序（R-0027）。</summary>
+    public required KlutzChoiceDto[] KlutzChoices { get; init; }
 }

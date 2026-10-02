@@ -165,8 +165,9 @@ public sealed class GameSession
         try
         {
             var machine = _machine;
-            if (machine is null || machine.IsPlanCompleted)
+            if (machine is null || machine.IsPlanCompleted || machine.Outcome is not null)
             {
+                // 计划走完 / 本局已结束：节拍器没有可以推进的槽位（R-0024）。
                 return null;
             }
 
@@ -253,37 +254,17 @@ public sealed class GameSession
         await _gate.WaitAsync(cancellationToken);
         try
         {
-            var clamped = Math.Clamp(afterSequence, 0, _lastSequence);
-            var all = await _store.ReadEventsAsync(GameId, afterSequence: 0, cancellationToken);
-            var addressees = PlayerEventProjection.AddresseeLookup(all);
-
-            var events = new List<PlayerEvent>();
-            foreach (var stored in all)
-            {
-                if (stored.Sequence <= clamped)
-                {
-                    continue;
-                }
-
-                var playerEvent = PlayerEventProjection.ForSeat(stored, seat, addressees);
-                if (playerEvent is not null)
-                {
-                    events.Add(playerEvent);
-                }
-            }
-
-            return new ReconnectBundle
-            {
-                Sequence = _lastSequence,
-                View = GameProjection.ForSeat(
-                    _machine,
-                    _state,
-                    SeatList(),
-                    _lastSequence,
-                    seat,
-                    _trackers),
-                EventsSince = events,
-            };
+            return await SessionQueries.ReconnectBundleAsync(
+                _store,
+                GameId,
+                _machine,
+                _state,
+                SeatList(),
+                _lastSequence,
+                _trackers,
+                seat,
+                Math.Clamp(afterSequence, 0, _lastSequence),
+                cancellationToken);
         }
         finally
         {
@@ -304,7 +285,13 @@ public sealed class GameSession
                 case GateDecisionKind.Reject:
                     return Reject(envelope, decision.Rejection!);
                 case GateDecisionKind.Duplicate:
-                    return await ReplayAsync(envelope, decision.Receipt!, cancellationToken);
+                    return await SessionCommit.ReplayAsync(
+                        _store,
+                        GameId,
+                        _logger,
+                        envelope,
+                        decision.Receipt!,
+                        cancellationToken);
                 default:
                     break;
             }
@@ -314,7 +301,12 @@ public sealed class GameSession
                 return await RebuildAsync(envelope, rebuild, cancellationToken);
             }
 
-            var settlement = SessionSettlement.BuildContext(_setup, _state, _abilities, _standingEffects);
+            var settlement = SessionSettlement.BuildContext(
+                _setup,
+                _state,
+                _abilities,
+                _standingEffects,
+                _machine);
             var dispatch = GameCommandDispatcher.Dispatch(
                 envelope,
                 _machine,
@@ -329,45 +321,73 @@ public sealed class GameSession
 
             var recordedAt = _clock.UtcNow;
             var drafts = new List<StoredEventDraft>(dispatch.Events.Count);
-            var sequence = _lastSequence;
-            foreach (var gameEvent in dispatch.Events)
-            {
-                sequence++;
-                drafts.Add(new StoredEventDraft
-                {
-                    Sequence = sequence,
-                    Event = gameEvent,
-                    RecordedAt = recordedAt,
-                });
-            }
+            var sequence = SessionCommit.AppendDrafts(drafts, dispatch.Events, _lastSequence, recordedAt);
 
             // 先把这一步的账在内存里折出来：折不动就整条命令失败，绝不落库。
             // 否则会留下"事件已落库、账没折"的中间态，而重投会被当成 Duplicate —— 分叉永远暴露不出来。
             var nextState = FoldLedger(_state, drafts);
+            var nextMachine = dispatch.Machine;
+            var derivedEvents = new List<GameEvent>();
 
-            // 固定点对账：常驻效果（诺-达鲺的中毒等）与由效果压制的维度重算（D-0015 推论 1）。
-            // 派生事件与业务事件**同一次提交**落库；重放只折事件，恢复不重算。
-            var reconciliation = SessionSettlement.Reconcile(nextState, settlement, dispatch.Events);
-            foreach (var diagnostic in reconciliation.Diagnostics)
+            // ① 先判一次（《处决》一些相关效果的触发时机第 3 步先于第 4 步）：
+            //    处决这一批如果本身已经满足胜负条件，就不再结算死亡触发能力（呆瓜不需要再选择）。
+            var outcome = SessionCommit.EvaluateOutcome(setup, nextState, nextMachine, dispatch.Events);
+
+            if (outcome is null)
             {
-                _logger.LogDebug(
-                    "结算对账本次未重算：{Diagnostic} game={GameId}",
-                    diagnostic,
-                    GameId);
+                // 固定点对账：事件触发（女巫 / 呆瓜等）→ 常驻效果 / 能力存续 / 维度重算（D-0015 推论 1）。
+                // 派生事件与业务事件**同一次提交**落库；重放只折事件，恢复不重算。
+                var reconciliation = SessionSettlement.Reconcile(
+                    nextState,
+                    settlement with { Machine = nextMachine },
+                    dispatch.Events);
+                LogDiagnostics(reconciliation.Diagnostics);
+                (sequence, nextMachine) = SessionCommit.AppendDerived(
+                    drafts,
+                    derivedEvents,
+                    reconciliation.Events,
+                    sequence,
+                    recordedAt,
+                    nextMachine);
+                nextState = reconciliation.State;
+
+                // ② 事务提交后统一判定（R-0008）：触发产出的死亡同样可能满足胜负条件。
+                outcome = SessionCommit.EvaluateOutcome(setup, nextState, nextMachine, derivedEvents);
+            }
+            else
+            {
+                // 游戏已经结束：跳过事件触发（第 3 步先于第 4 步），但仍做完账实一致的收尾——
+                // 它不产生规则后果，只保证终局的账与效果链不自相矛盾。
+                var housekeeping = SessionSettlement.ReconcileHousekeeping(
+                    nextState,
+                    settlement with { Machine = nextMachine });
+                LogDiagnostics(housekeeping.Diagnostics);
+                (sequence, nextMachine) = SessionCommit.AppendDerived(
+                    drafts,
+                    derivedEvents,
+                    housekeeping.Events,
+                    sequence,
+                    recordedAt,
+                    nextMachine);
+                nextState = housekeeping.State;
             }
 
-            foreach (var derived in reconciliation.Events)
+            if (outcome is not null)
             {
-                sequence++;
-                drafts.Add(new StoredEventDraft
-                {
-                    Sequence = sequence,
-                    Event = derived,
-                    RecordedAt = recordedAt,
-                });
+                (sequence, nextState, nextMachine) = SessionCommit.AppendGameEnded(
+                    outcome,
+                    drafts,
+                    sequence,
+                    recordedAt,
+                    nextState,
+                    nextMachine);
+                _logger.LogInformation(
+                    "本局结束：game={GameId} winner={Winner} condition={Condition} detail={Detail}",
+                    GameId,
+                    outcome.Winner,
+                    outcome.Condition,
+                    outcome.Detail);
             }
-
-            nextState = reconciliation.State;
 
             await _store.CommitAsync(
                 new GameCommit
@@ -377,7 +397,7 @@ public sealed class GameSession
                     Snapshot = new StoredSnapshot
                     {
                         Sequence = sequence,
-                        Machine = dispatch.Machine,
+                        Machine = nextMachine,
                         RecordedAt = recordedAt,
                     },
                     Receipt = new CommandReceipt
@@ -390,7 +410,7 @@ public sealed class GameSession
                 cancellationToken);
 
             var previousMachine = _machine;
-            _machine = dispatch.Machine;
+            _machine = nextMachine;
             _state = nextState;
             _lastSequence = sequence;
             var publicSurfaceChanged = _trackers.Update(drafts, recordedAt);
@@ -401,7 +421,7 @@ public sealed class GameSession
                 envelope.Actor.Kind,
                 envelope.Command.GetType().Name,
                 dispatch.Events.Count,
-                reconciliation.Events.Count,
+                derivedEvents.Count,
                 _lastSequence,
                 _machine?.IsHeld,
                 envelope.ClientSequence);
@@ -433,37 +453,6 @@ public sealed class GameSession
                 Failure = exception.Message,
             };
         }
-    }
-
-    private async Task<CommandResult> ReplayAsync(
-        CommandEnvelope envelope,
-        CommandReceipt receipt,
-        CancellationToken cancellationToken)
-    {
-        var events = new List<GameEvent>();
-        if (!receipt.IsEmpty)
-        {
-            var stored = await _store.ReadEventsAsync(GameId, receipt.FirstSequence - 1, cancellationToken);
-            events.AddRange(
-                stored.Where(item => item.Sequence <= receipt.LastSequence).Select(item => item.Event));
-        }
-
-        _logger.LogInformation(
-            "重复投递按回执重放：game={GameId} key={Key} command={Command} 序号={First}..{Last} clientSequence={ClientSequence}",
-            GameId,
-            receipt.IdempotencyKey,
-            envelope.Command.GetType().Name,
-            receipt.FirstSequence,
-            receipt.LastSequence,
-            envelope.ClientSequence);
-
-        return new CommandResult
-        {
-            Kind = CommandResultKind.Duplicate,
-            Sequence = receipt.LastSequence,
-            Events = events,
-            Notifications = [],
-        };
     }
 
     private async Task<CommandResult> RebuildAsync(
@@ -596,4 +585,7 @@ public sealed class GameSession
         return next;
     }
 
+    /// <summary>对账诊断落调试日志："本次没有重算"是输入不全时的诚实结论，不是错误。</summary>
+    private void LogDiagnostics(IReadOnlyList<string> diagnostics) =>
+        SessionCommit.LogDiagnostics(diagnostics, _logger, GameId);
 }

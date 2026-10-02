@@ -114,6 +114,30 @@ public static class GameNotificationBuilder
                         Phase = started.Plan.Phase,
                     });
                     break;
+
+                // 游戏结束与呆瓜的公开选择都是公开事实：不带席位 → 广播（R-0024 / R-0027）。
+                case GameEndedEvent ended:
+                    notifications.Add(new GameNotification
+                    {
+                        Kind = GameNotificationKind.GameEnded,
+                        Sequence = draft.Sequence,
+                        Outcome = new GameOutcome
+                        {
+                            Winner = ended.Winner,
+                            Condition = ended.Condition,
+                            Detail = ended.Detail,
+                        },
+                    });
+                    break;
+
+                case KlutzChoiceMadeEvent choice:
+                    notifications.Add(new GameNotification
+                    {
+                        Kind = GameNotificationKind.KlutzChoiceMade,
+                        Sequence = draft.Sequence,
+                        KlutzChoice = choice,
+                    });
+                    break;
             }
         }
 

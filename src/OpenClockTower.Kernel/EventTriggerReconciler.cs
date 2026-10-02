@@ -60,6 +60,8 @@ public static class EventTriggerReconciler
                 State = state,
                 Seats = context.Seats,
                 Events = pending,
+                Machine = context.Machine,
+                DayWasOpen = context.DayWasOpen,
             };
 
             var produced = new List<GameEvent>();

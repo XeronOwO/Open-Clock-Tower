@@ -37,8 +37,10 @@ public static class NightActions
             [new CharacterId("clockmaker")] = new ClockmakerNightAction(),
             [new CharacterId("dreamer")] = new DreamerNightAction(),
             [new CharacterId("no-dashii")] = new NoDashiiNightAction(),
+            [new CharacterId("vortox")] = new VortoxNightAction(),
             [new CharacterId("witch")] = new WitchNightAction(),
             [new CharacterId("cerenovus")] = new CerenovusNightAction(),
+            [new CharacterId("evil-twin")] = new EvilTwinNightAction(),
         };
 
         public INightAction? Find(CharacterId character) =>

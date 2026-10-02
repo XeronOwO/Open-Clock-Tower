@@ -39,6 +39,16 @@ public static class CommandGatePipeline
             return GateDecision.Duplicate(receipt);
         }
 
+        // 游戏已经结束：一切新命令都被拒（R-0024）；重复投递仍按上面的回执重放。
+        if (machine?.Outcome is { } outcome)
+        {
+            return GateDecision.Reject(Reject(
+                "phase.game_ended",
+                $"本局已经结束（{(outcome.Winner == Alignment.Good ? "善良" : "邪恶")}阵营获胜）："
+                    + "不能再提交操作",
+                "phase"));
+        }
+
         var phase = CheckPhase(envelope, machine);
         if (phase is not null)
         {
@@ -144,6 +154,28 @@ public static class CommandGatePipeline
 
     private static CommandRejection? CheckPhase(CommandEnvelope envelope, StepMachineState? machine)
     {
+        // 触发来源的请求（如呆瓜的死亡选择，R-0027）未了结时，推进类命令一律被拒：
+        // 选择必须尽快做出；说书人的代填 / 作废是永远开着的兜底（D-0011 / D-0014）。
+        if (machine?.PendingRequest is
+            {
+                Status: OperationRequestStatus.Pending,
+            } triggerPending
+            && triggerPending.Origin.Kind == OperationRequestOriginKind.Trigger
+            && envelope.Command is StartPhaseCommand
+                or StartDayCommand
+                or StartNightCommand
+                or NominateCommand
+                or CastVoteCommand
+                or CountVotesCommand
+                or CloseDayCommand
+                or PunishExecutionCommand)
+        {
+            return Reject(
+                "phase.trigger_choice_pending",
+                $"还有一条未了结的选择（{triggerPending.Addressee.Value} 号）：先作答，或由说书人代填 / 作废",
+                "phase");
+        }
+
         switch (envelope.Command)
         {
             case SubmitResponseCommand:

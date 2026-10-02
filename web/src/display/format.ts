@@ -11,6 +11,8 @@ import type {
   DayViewDto,
   DecisionOptionDto,
   EffectDto,
+  GameOutcomeDto,
+  KlutzChoiceDto,
   OperationRequestVoidedDto,
   PlayerLifeDto,
   RoomHealthDto,
@@ -394,8 +396,12 @@ export function normalizeStorytellerView(raw: unknown): StorytellerViewDto {
         : {
             seat: asCount((pending as Record<string, unknown>)['seat']) ?? 0,
             requestId: asText((pending as Record<string, unknown>)['requestId']) ?? '',
-            slotId: asText((pending as Record<string, unknown>)['slotId']) ?? '',
-            slotIndex: asCount((pending as Record<string, unknown>)['slotIndex']) ?? 0,
+            slotId: asText((pending as Record<string, unknown>)['slotId']),
+            slotIndex: asCount((pending as Record<string, unknown>)['slotIndex']),
+            triggerReason: asSizedText(
+              (pending as Record<string, unknown>)['triggerReason'],
+              512,
+            ),
             waitingSeconds: asNumber((pending as Record<string, unknown>)['waitingSeconds']),
           },
     awaitingDecisionId: asText(view['awaitingDecisionId']),
@@ -466,5 +472,49 @@ export function normalizeStorytellerView(raw: unknown): StorytellerViewDto {
     stepDigest: normalizeStepDigest(view['stepDigest']),
     lastVoidedRequest: normalizeVoidedRequest(view['lastVoidedRequest']),
     day: normalizeDayView(view['day']),
+    outcome: normalizeGameOutcome(view['outcome']),
+    klutzChoices: asArray<unknown>(view['klutzChoices'])
+      .map(normalizeKlutzChoice)
+      .filter((choice): choice is KlutzChoiceDto => choice !== null),
+  }
+}
+
+/** 归一化胜负结论；缺序号 / 胜方 / 条件时返回 null（宁可少显示，不编一个结论）。 */
+export function normalizeGameOutcome(raw: unknown): GameOutcomeDto | null {
+  if (raw === null || typeof raw !== 'object') {
+    return null
+  }
+
+  const outcome = raw as Record<string, unknown>
+  const sequence = asCount(outcome['sequence'])
+  const winner = asText(outcome['winner'])
+  const condition = asText(outcome['condition'])
+  if (sequence === null || winner === null || condition === null) {
+    return null
+  }
+
+  return { sequence, winner, condition, detail: asSizedText(outcome['detail'], 512) ?? '' }
+}
+
+/** 归一化呆瓜的公开选择记录；缺序号或席位时返回 null。 */
+export function normalizeKlutzChoice(raw: unknown): KlutzChoiceDto | null {
+  if (raw === null || typeof raw !== 'object') {
+    return null
+  }
+
+  const choice = raw as Record<string, unknown>
+  const sequence = asCount(choice['sequence'])
+  const seat = asCount(choice['seat'])
+  if (sequence === null || seat === null) {
+    return null
+  }
+
+  const target = asCount(choice['target'])
+  return {
+    sequence,
+    seat,
+    target,
+    made: asBoolean(choice['made']) ?? target !== null,
+    detail: asSizedText(choice['detail'], 512) ?? '',
   }
 }

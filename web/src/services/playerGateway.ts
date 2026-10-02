@@ -19,6 +19,7 @@ import {
 import type {
   DecisionOptionDto,
   InformationResultDto,
+  KlutzChoiceDto,
   OperationRequestAnsweredDto,
   OperationRequestDto,
   OperationRequestVoidedDto,
@@ -38,6 +39,8 @@ import {
   asText,
   MAX_PUBLIC_LIFE_ENTRIES,
   normalizeDayView,
+  normalizeGameOutcome,
+  normalizeKlutzChoice,
   normalizeOption,
   normalizePlayerLife,
 } from '@/display/format'
@@ -117,6 +120,19 @@ export class PlayerGateway {
       const information = normalizeInformation(payload)
       if (information !== null) {
         this.dispatchPush({ kind: 'Information', sequence: information.sequence, information })
+      }
+    })
+    // 游戏结束与呆瓜的公开选择都是公开广播（R-0024 / R-0027）：坏载荷不覆盖当前视图。
+    this.connection.on('ReceiveGameEnded', (payload: unknown) => {
+      const outcome = normalizeGameOutcome(payload)
+      if (outcome !== null) {
+        this.dispatchPush({ kind: 'Outcome', sequence: outcome.sequence, outcome })
+      }
+    })
+    this.connection.on('ReceiveKlutzChoiceMade', (payload: unknown) => {
+      const choice = normalizeKlutzChoice(payload)
+      if (choice !== null) {
+        this.dispatchPush({ kind: 'KlutzChoice', sequence: choice.sequence, choice })
       }
     })
     this.connection.onreconnecting(() => callbacks.onState('reconnecting'))
@@ -447,6 +463,10 @@ export function normalizeBundle(raw: unknown): NormalizedReconnectBundle {
         .map(normalizeInformation)
         .filter((information): information is InformationResultDto => information !== null),
       day: normalizePlayerDay(view['day']),
+      outcome: normalizeGameOutcome(view['outcome']),
+      klutzChoices: asArray<unknown>(view['klutzChoices'])
+        .map(normalizeKlutzChoice)
+        .filter((choice): choice is KlutzChoiceDto => choice !== null),
     },
     events,
     // 被丢掉的条目不静默：加入路径据此显式失败（无序号 / 无类型的条目无法参与序号校验）。

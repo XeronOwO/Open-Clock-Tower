@@ -294,6 +294,17 @@ StepMachine（步骤机）
 | 房间健康位 | `RoomHealth`（会话态，不进事件流）：恢复 / 重建失败置位（原因 + 首次发生时间），显式重建成功清除；只说书人视图（`StorytellerView.Health`），玩家侧由门禁与投影锁死 |
 | 说书人视图 | `StorytellerView.Seats` / `PersistentEffects` / `InstantaneousEffects` / `StepDigest`（每步摘要）；玩家投影里**没有**它（D-0012） |
 
+### 2.9 胜负判定与结束态（R-0024）
+
+| 关注点 | 落点 |
+|---|---|
+| 求值 | `OutcomeEvaluator.Evaluate(OutcomeContext)`：**纯函数**，读状态 + 角色事实端口（`IWinConditionFacts`，内核不依赖 Rules）+ 本批事件；观测不齐一律"不判"（不猜，D-0015） |
+| 条件 | `OutcomeCondition`：常规两条（恶魔全死 → 善良；仅剩两名存活 → 邪恶）+ 特殊三条（镜像双子善良方被处决 → 邪恶；涡流黄昏无人被处决 → 邪恶；呆瓜选择使阵营落败）；特殊优先于常规，同层**善良获胜**；「没有任何恶魔角色」不算善良获胜 |
+| 时机 | 一次原子提交的业务事件折完后**先判**（《处决》第 3 步先于第 4 步）；未结束才跑事件触发与常驻对账，随后**复判**（`SessionCommit.EvaluateOutcome` 在 `GameSession` 提交管线里的两处调用） |
+| 已结束的批次 | 不再跑事件触发（死亡触发能力不结算），但保留账实一致的收尾 `SessionSettlement.ReconcileHousekeeping`（常驻效果终止 / 维度解除）——它不产生规则后果 |
+| 冻结 | 唯一一条 `GameEndedEvent` → `StepMachineState.Outcome`；此后一切输入（含说书人接管）被 `StepMachineRejectionReason.GameEnded` 拒绝，命令面由 `CommandGatePipeline` 的 `phase.game_ended` 闸拦下 |
+| 触发型请求 | `OperationRequestOrigin`（`Slot` / `Trigger` 两种来源）：呆瓜的公开选择挂在**事件**上而不是槽位上，因此不受"计划是否走完"约束（它常开在白天关闭之后、下一夜之前）；`phase.trigger_choice_pending` 闸在它未了结时挡住白天动作与开夜 |
+
 ## 3. 数据流：命令 → 事件 → 投影
 
 ```text

@@ -35,6 +35,7 @@ defineProps<{ view: StorytellerViewDto }>()
     <div v-if="view.pending" class="cell alert">
       <span class="caption">卡点</span>
       <strong>{{ seatLabelOf(view.pending.seat) }} 尚未作答</strong>
+      <span v-if="view.pending.triggerReason" class="mono">{{ view.pending.triggerReason }}</span>
       <span v-if="waitingSecondsTextOf(view.pending.waitingSeconds)" class="mono">
         已等待 {{ waitingSecondsTextOf(view.pending.waitingSeconds) }}
       </span>

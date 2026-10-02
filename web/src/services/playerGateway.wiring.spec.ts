@@ -71,6 +71,8 @@ const view = (overrides: Partial<PlayerViewDto> = {}): PlayerViewDto => ({
   pendingRequest: null,
   informationResults: [],
   day: null,
+  outcome: null,
+  klutzChoices: [],
   ...overrides,
 })
 

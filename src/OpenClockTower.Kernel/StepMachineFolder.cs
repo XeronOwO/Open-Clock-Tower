@@ -27,6 +27,11 @@ internal static class StepMachineFolder
                 // 白天账跨阶段保留：死亡玩家的「死后仅一次投票」与逐日事实（卖花女孩 / 城镇公告员要读）
                 // 不随夜晚开始清零。
                 Day = state?.Day,
+
+                // 胜负结论与呆瓜选择账同样跨阶段保留：结束后不允许再开新阶段（R-0024），
+                // 呆瓜选择的幂等依据也不能随阶段遗忘（R-0027）。
+                Outcome = state?.Outcome,
+                KlutzChoices = state?.KlutzChoices ?? [],
             },
             SlotEnteredEvent entered => Require(state, entered) with
             {
@@ -86,6 +91,11 @@ internal static class StepMachineFolder
             ExecutedEvent { DayNumber: null } => Require(state, gameEvent),
             ExecutedEvent => ApplyDay(state, gameEvent),
             DayClosedEvent => ApplyDay(state, gameEvent),
+
+            // 胜负结论与呆瓜选择账：两条都是步骤机自己的账（R-0024 / R-0027）。
+            GameEndedEvent ended => ApplyGameEnded(state, ended),
+            KlutzChoiceMadeEvent choice => ApplyKlutzChoice(state, choice),
+            KlutzChoiceSkippedEvent skipped => ApplyKlutzChoiceSkipped(state, skipped),
 
             // 状态账的事件：进同一条事件流，但步骤机状态不由它们改变
             // （座位状态变化对步骤机的影响是"作废依赖失效的挂起请求"，在 Handle 阶段已经处理完）。
@@ -190,5 +200,77 @@ internal static class StepMachineFolder
     {
         var current = Require(state, gameEvent);
         return current with { Day = DayLedgerFolder.Apply(current.Day, gameEvent) };
+    }
+
+    /// <summary>写入胜负结论；一局只能结束一次，重复即事件流损坏（R-0024）。</summary>
+    private static StepMachineState ApplyGameEnded(StepMachineState? state, GameEndedEvent ended)
+    {
+        var current = Require(state, ended);
+        if (current.Outcome is not null)
+        {
+            throw new InvalidOperationException(
+                $"事件流顺序损坏：本局已经以「{current.Outcome.Condition}」结束，不能再次结束");
+        }
+
+        return current with
+        {
+            Outcome = new GameOutcome
+            {
+                Winner = ended.Winner,
+                Condition = ended.Condition,
+                Detail = ended.Detail,
+            },
+        };
+    }
+
+    /// <summary>记录呆瓜的选择；同一名呆瓜只能有一条记录。</summary>
+    private static StepMachineState ApplyKlutzChoice(StepMachineState? state, KlutzChoiceMadeEvent choice)
+    {
+        var current = Require(state, choice);
+        if (current.KlutzChoices.Any(record => record.Klutz == choice.Klutz))
+        {
+            throw new InvalidOperationException(
+                $"事件流顺序损坏：席位 {choice.Klutz.Value} 的呆瓜选择已经记录过");
+        }
+
+        return current with
+        {
+            KlutzChoices =
+            [
+                .. current.KlutzChoices,
+                new KlutzChoiceRecord
+                {
+                    Klutz = choice.Klutz,
+                    Target = choice.Target,
+                    Detail = $"呆瓜（{choice.Klutz.Value} 号）公开选择了 {choice.Target.Value} 号",
+                },
+            ],
+        };
+    }
+
+    /// <summary>记录呆瓜"没有选择"（能力未生效 / 被作废）；同一名呆瓜只能有一条记录。</summary>
+    private static StepMachineState ApplyKlutzChoiceSkipped(
+        StepMachineState? state,
+        KlutzChoiceSkippedEvent skipped)
+    {
+        var current = Require(state, skipped);
+        if (current.KlutzChoices.Any(record => record.Klutz == skipped.Klutz))
+        {
+            throw new InvalidOperationException(
+                $"事件流顺序损坏：席位 {skipped.Klutz.Value} 的呆瓜选择已经记录过");
+        }
+
+        return current with
+        {
+            KlutzChoices =
+            [
+                .. current.KlutzChoices,
+                new KlutzChoiceRecord
+                {
+                    Klutz = skipped.Klutz,
+                    Detail = skipped.Reason,
+                },
+            ],
+        };
     }
 }
