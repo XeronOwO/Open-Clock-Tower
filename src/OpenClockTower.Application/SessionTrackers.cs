@@ -20,6 +20,7 @@ public sealed class SessionTrackers
 
     private readonly List<SeatChangeSnapshot> _recentSeatChanges = [];
     private readonly List<(SeatId Recipient, InformationResultSnapshot Result)> _informationResults = [];
+    private readonly Dictionary<StepSlotId, AbilityResolutionSnapshot> _slotResolutions = [];
 
     /// <summary>当前槽位的起算时刻；没有起点信息（异常数据）时为 null，此时宁可不动。</summary>
     public DateTimeOffset? SlotStartedAt { get; private set; }
@@ -32,6 +33,13 @@ public sealed class SessionTrackers
 
     /// <summary>最近一次能力结算的结论；还没有结算过时为 null。</summary>
     public AbilityResolutionSnapshot? LastResolution { get; private set; }
+
+    /// <summary>最近一次被作废的操作请求；还没有作废过时为 null。</summary>
+    public VoidedRequestSnapshot? LastVoidedRequest { get; private set; }
+
+    /// <summary>取**本计划内**某个槽位已结算的能力结论；还没结算为 null。</summary>
+    public AbilityResolutionSnapshot? ResolutionFor(StepSlotId slotId) =>
+        _slotResolutions.GetValueOrDefault(slotId);
 
     /// <summary>取某个席位收到的全部信息结果（按发生顺序）；投影时只把它给收件人。</summary>
     public IReadOnlyList<InformationResultSnapshot> InformationResultsFor(SeatId seat) =>
@@ -48,6 +56,10 @@ public sealed class SessionTrackers
         {
             switch (draft.Event)
             {
+                case PhaseStartedEvent:
+                    // 新计划开启：槽位标识跨夜复用（如 clockmaker），逐槽位结算只在本计划内有意义。
+                    _slotResolutions.Clear();
+                    break;
                 case SlotEnteredEvent:
                     SlotStartedAt = recordedAt;
                     PendingRequestSince = null;
@@ -56,9 +68,12 @@ public sealed class SessionTrackers
                     PendingRequestSince = recordedAt;
                     break;
                 case OperationRequestAnsweredEvent:
-                case OperationRequestVoidedEvent:
                 case SlotAdvancedEvent:
                 case SlotForceAdvancedEvent:
+                    PendingRequestSince = null;
+                    break;
+                case OperationRequestVoidedEvent voided:
+                    LastVoidedRequest = ToVoidSnapshot(voided, draft.Sequence);
                     PendingRequestSince = null;
                     break;
                 case SeatStateChangedEvent seatChanged:
@@ -66,6 +81,7 @@ public sealed class SessionTrackers
                     break;
                 case AbilityResolvedEvent resolved:
                     LastResolution = ToSnapshot(resolved, draft.Sequence);
+                    _slotResolutions[resolved.SlotId] = LastResolution;
                     break;
                 case InformationResultIssuedEvent information:
                     AppendInformationResult(information, draft.Sequence);
@@ -83,7 +99,9 @@ public sealed class SessionTrackers
 
         _recentSeatChanges.Clear();
         _informationResults.Clear();
+        _slotResolutions.Clear();
         LastResolution = null;
+        LastVoidedRequest = null;
         SlotStartedAt = null;
         PendingRequestSince = null;
 
@@ -95,6 +113,9 @@ public sealed class SessionTrackers
         {
             switch (stored.Event)
             {
+                case PhaseStartedEvent:
+                    _slotResolutions.Clear();
+                    break;
                 case SlotEnteredEvent:
                     lastSlotEnteredAt = stored.RecordedAt;
                     break;
@@ -102,11 +123,15 @@ public sealed class SessionTrackers
                     lastIssuedRequestId = issued.Request.Id;
                     lastIssuedAt = stored.RecordedAt;
                     break;
+                case OperationRequestVoidedEvent voided:
+                    LastVoidedRequest = ToVoidSnapshot(voided, stored.Sequence);
+                    break;
                 case SeatStateChangedEvent seatChanged:
                     AppendSeatChange(seatChanged, stored.Sequence, stored.RecordedAt);
                     break;
                 case AbilityResolvedEvent resolved:
                     LastResolution = ToSnapshot(resolved, stored.Sequence);
+                    _slotResolutions[resolved.SlotId] = LastResolution;
                     break;
                 case InformationResultIssuedEvent information:
                     AppendInformationResult(information, stored.Sequence);
@@ -128,7 +153,9 @@ public sealed class SessionTrackers
     {
         _recentSeatChanges.Clear();
         _informationResults.Clear();
+        _slotResolutions.Clear();
         LastResolution = null;
+        LastVoidedRequest = null;
         SlotStartedAt = null;
         PendingRequestSince = null;
     }
@@ -141,6 +168,15 @@ public sealed class SessionTrackers
             Effective = resolved.Effective,
             Malfunction = resolved.Malfunction,
             Note = resolved.Note,
+            Sequence = sequence,
+        };
+
+    private static VoidedRequestSnapshot ToVoidSnapshot(OperationRequestVoidedEvent voided, long sequence) =>
+        new()
+        {
+            Id = voided.RequestId,
+            Reason = voided.Void.Reason,
+            Note = voided.Void.Note,
             Sequence = sequence,
         };
 

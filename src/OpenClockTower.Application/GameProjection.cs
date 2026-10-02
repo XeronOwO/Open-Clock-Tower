@@ -38,7 +38,7 @@ public static class GameProjection
         };
     }
 
-    /// <summary>说书人视图（含卡点时长、状态账、效果归因与能力结算结论；时长由应用层时钟算出）。</summary>
+    /// <summary>说书人视图（含卡点时长、状态账、效果归因、能力结算结论与每步摘要；时长由应用层时钟算出）。</summary>
     public static StorytellerView ForStoryteller(
         StepMachineState? machine,
         GameState state,
@@ -46,7 +46,9 @@ public static class GameProjection
         DateTimeOffset? pendingSince,
         DateTimeOffset now,
         IReadOnlyList<SeatChangeSnapshot> recentSeatChanges,
-        AbilityResolutionSnapshot? lastResolution = null)
+        AbilityResolutionSnapshot? lastResolution = null,
+        StepDigest? stepDigest = null,
+        VoidedRequestSnapshot? lastVoidedRequest = null)
     {
         PendingRequestSummary? pendingSummary = null;
         if (machine?.PendingRequest is { Status: OperationRequestStatus.Pending } request)
@@ -82,6 +84,8 @@ public static class GameProjection
             AbilityUses = state.AbilityUses.Entries,
             Malfunctions = state.Malfunctions.Entries,
             LastResolution = lastResolution,
+            StepDigest = stepDigest,
+            LastVoidedRequest = lastVoidedRequest,
         };
     }
 }

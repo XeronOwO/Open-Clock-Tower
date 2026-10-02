@@ -75,6 +75,17 @@ export interface AbilityResolutionDto {
   sequence: number
 }
 
+/** 本槽位能力判定：已结算结论或按当前账的预览（说书人每步摘要用）。 */
+export interface SlotAbilityDto {
+  /** Settled（已结算）/ Preview（按当前账预览）/ Unknown（账不全，无法判定）。 */
+  basis: string
+  ability: string | null
+  effective: boolean | null
+  malfunction: string | null
+  note: string | null
+  sequence: number | null
+}
+
 /** 一条座位状态变化（谁因为什么原因变成了什么样）。 */
 export interface SeatChangeDto {
   seat: number
@@ -99,6 +110,23 @@ export interface PendingRequestDto {
   waitingSeconds: number | null
 }
 
+/** 每步摘要（票据「说书人上帝视角」第 3 条）：当前槽位的行动者、状态及归因、能力判定与无选项行为。 */
+export interface StepDigestDto {
+  seat: number
+  character: string | null
+  state: SeatStateDto | null
+  ability: SlotAbilityDto | null
+  optionCount: number | null
+  onNoOption: string | null
+}
+
+/** 推给玩家的「请求已作废」及其原因（后端同名契约）。 */
+export interface OperationRequestVoidedDto {
+  requestId: string
+  reason: string
+  note: string | null
+}
+
 /** 说书人视图：完整看板 + 兜底所需的一切（D-0014）。 */
 export interface StorytellerViewDto {
   sequence: number
@@ -121,6 +149,8 @@ export interface StorytellerViewDto {
   abilityUses: AbilityUseDto[]
   malfunctions: MalfunctionDto[]
   lastResolution: AbilityResolutionDto | null
+  stepDigest: StepDigestDto | null
+  lastVoidedRequest: OperationRequestVoidedDto | null
 }
 
 /** 命令回执。 */

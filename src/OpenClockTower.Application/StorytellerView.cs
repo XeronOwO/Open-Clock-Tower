@@ -69,4 +69,10 @@ public sealed record StorytellerView
 
     /// <summary>最近一次能力结算的结论（是否生效、为什么没生效）；还没有结算过时为 null。</summary>
     public AbilityResolutionSnapshot? LastResolution { get; init; }
+
+    /// <summary>每步摘要（当前槽位的行动者状态、能力判定与选项行为）；非行动槽位 / 已走完为 null。</summary>
+    public StepDigest? StepDigest { get; init; }
+
+    /// <summary>最近一次被作废的操作请求（含「哪条依赖不满足」的说明）；还没有作废过时为 null。</summary>
+    public VoidedRequestSnapshot? LastVoidedRequest { get; init; }
 }

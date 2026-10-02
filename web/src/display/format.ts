@@ -9,9 +9,12 @@
 import type {
   DecisionOptionDto,
   EffectDto,
+  OperationRequestVoidedDto,
   SeatChangeDto,
   SeatStateDto,
   SeatStateFactDto,
+  SlotAbilityDto,
+  StepDigestDto,
   StorytellerViewDto,
 } from '@/contracts/game'
 
@@ -109,6 +112,69 @@ export function normalizeSeatState(raw: unknown): SeatStateDto | null {
       .map(asText)
       .filter((text): text is string => text !== null),
   }
+}
+
+/** 归一化本槽位能力判定；缺 basis 视为坏载荷（表达不了"依据"就不编结论）。 */
+export function normalizeSlotAbility(raw: unknown): SlotAbilityDto | null {
+  if (raw === null || typeof raw !== 'object') {
+    return null
+  }
+
+  const ability = raw as Record<string, unknown>
+  const basis = asText(ability['basis'])
+  if (basis === null) {
+    return null
+  }
+
+  return {
+    basis,
+    ability: asText(ability['ability']),
+    effective: asBoolean(ability['effective']),
+    malfunction: asText(ability['malfunction']),
+    note: asText(ability['note']),
+    sequence: asNumber(ability['sequence']),
+  }
+}
+
+/** 归一化每步摘要；缺席位号视为坏载荷。 */
+export function normalizeStepDigest(raw: unknown): StepDigestDto | null {
+  if (raw === null || typeof raw !== 'object') {
+    return null
+  }
+
+  const digest = raw as Record<string, unknown>
+  const seat = asNumber(digest['seat'])
+  if (seat === null) {
+    return null
+  }
+
+  return {
+    seat,
+    character: asText(digest['character']),
+    state:
+      digest['state'] === null || typeof digest['state'] !== 'object'
+        ? null
+        : normalizeSeatState(digest['state']),
+    ability: normalizeSlotAbility(digest['ability']),
+    optionCount: asNumber(digest['optionCount']),
+    onNoOption: asText(digest['onNoOption']),
+  }
+}
+
+/** 归一化最近一次请求作废；缺请求标识或原因视为坏载荷。 */
+export function normalizeVoidedRequest(raw: unknown): OperationRequestVoidedDto | null {
+  if (raw === null || typeof raw !== 'object') {
+    return null
+  }
+
+  const voided = raw as Record<string, unknown>
+  const requestId = asText(voided['requestId'])
+  const reason = asText(voided['reason'])
+  if (requestId === null || reason === null) {
+    return null
+  }
+
+  return { requestId, reason, note: asText(voided['note']) }
 }
 
 /** 归一化一条效果归因。 */
@@ -274,5 +340,7 @@ export function normalizeStorytellerView(raw: unknown): StorytellerViewDto {
             note: asText((view['lastResolution'] as Record<string, unknown>)['note']),
             sequence: asNumber((view['lastResolution'] as Record<string, unknown>)['sequence']) ?? 0,
           },
+    stepDigest: normalizeStepDigest(view['stepDigest']),
+    lastVoidedRequest: normalizeVoidedRequest(view['lastVoidedRequest']),
   }
 }

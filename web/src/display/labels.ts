@@ -90,6 +90,14 @@ const VALUE_LABELS: Readonly<Record<string, string>> = {
   // 大阶段
   Night: '夜晚',
   Day: '白天',
+  // 每步摘要：能力判定依据（SlotAbilityBasis）
+  Settled: '已结算',
+  Preview: '按当前账预览',
+  Unknown: '无法判定',
+  // 无合法选项时的行为（Kernel NoOptionBehavior ↔ R-0009）
+  Skip: '跳过这一步（配额照走）',
+  StorytellerDecides: '由说书人自由决定',
+  BlockAndAlert: '阻塞并报警，等说书人处理',
   // 命令回执
   Accepted: '已受理',
   Rejected: '被拒绝',
@@ -110,6 +118,28 @@ export function labelOf(raw: string | null | undefined): string {
   }
 
   return VALUE_LABELS[raw] ?? raw
+}
+
+/**
+ * 请求作废原因（Kernel OperationRequestVoidReason）→ 中文。
+ * 与 ControlMode 的同名枚举值分开映射：`StorytellerTakeover` 在"控制模式"里是接管，
+ * 在"作废原因"里是强推/接管切步了结，不能共用一张表。
+ */
+const VOID_REASON_LABELS: Readonly<Record<string, string>> = {
+  StorytellerForce: '说书人强制作废',
+  StorytellerTakeover: '强推 / 接管切步了结',
+  DependencyViolated: '座位依赖不再满足',
+  PhaseAdvanced: '阶段已推进',
+  Superseded: '被上游新请求取代',
+}
+
+/** 作废原因 → 中文；未知原因原样回显。 */
+export function voidReasonLabelOf(raw: string | null | undefined): string {
+  if (raw === null || raw === undefined || raw === '') {
+    return '—'
+  }
+
+  return VOID_REASON_LABELS[raw] ?? raw
 }
 
 /** 维度名 → 中文；未知维度原样回显。 */

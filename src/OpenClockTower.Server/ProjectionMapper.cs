@@ -151,6 +151,35 @@ public static class ProjectionMapper
                 Sequence = resolution.Sequence,
             }
             : null,
+        StepDigest = view.StepDigest is { } digest
+            ? new StepDigestDto
+            {
+                Seat = digest.Seat.Value,
+                Character = digest.Character?.Value,
+                State = digest.State is null ? null : ToDto(digest.State),
+                Ability = digest.Ability is { } ability
+                    ? new SlotAbilityDto
+                    {
+                        Basis = ability.Basis.ToString(),
+                        Ability = ability.Ability?.Value,
+                        Effective = ability.Effective,
+                        Malfunction = ability.Malfunction?.ToString(),
+                        Note = ability.Note,
+                        Sequence = ability.Sequence,
+                    }
+                    : null,
+                OptionCount = digest.OptionCount,
+                OnNoOption = digest.OnNoOption?.ToString(),
+            }
+            : null,
+        LastVoidedRequest = view.LastVoidedRequest is { } voided
+            ? new OperationRequestVoidedDto
+            {
+                RequestId = voided.Id.Value,
+                Reason = voided.Reason.ToString(),
+                Note = voided.Note,
+            }
+            : null,
     };
 
     /// <summary>状态账一行 → DTO：只列已观测的维度，未观测的维度不出现。</summary>

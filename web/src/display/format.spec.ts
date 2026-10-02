@@ -42,6 +42,8 @@ describe('说书人视图规范化', () => {
     expect(view.effects).toEqual([])
     expect(view.pending).toBeNull()
     expect(view.lastResolution).toBeNull()
+    expect(view.stepDigest).toBeNull()
+    expect(view.lastVoidedRequest).toBeNull()
     expect(view.awaitingDecisionOptions).toEqual([])
   })
 
@@ -73,5 +75,53 @@ describe('说书人视图规范化', () => {
     expect(view.malfunctions[0]?.kind).toBe('Poisoned')
     expect(view.lastResolution?.effective).toBe(false)
     expect(view.awaitingDecisionOptions).toEqual([{ value: 'a', preview: '选它' }])
+  })
+
+  it('每步摘要与最近作废按形状归一化，枚举/数字类型不猜', () => {
+    const view = normalizeStorytellerView({
+      stepDigest: {
+        seat: 5,
+        character: 'clockmaker',
+        state: {
+          seat: 5,
+          facts: [{ dimension: 'Poison', value: 'Poisoned', reason: '常驻效果', causedBy: 1, effectId: 'e1' }],
+          madnesses: [],
+        },
+        ability: {
+          basis: 'Preview',
+          ability: 'clockmaker',
+          effective: false,
+          malfunction: 'Poisoned',
+          note: '来源中毒：能力未生效',
+          sequence: null,
+        },
+        optionCount: 0,
+        onNoOption: 'StorytellerDecides',
+      },
+      lastVoidedRequest: {
+        requestId: 'r1',
+        reason: 'DependencyViolated',
+        note: '座位 2 的状态变化使请求失去意义',
+      },
+    })
+
+    expect(view.stepDigest?.seat).toBe(5)
+    expect(view.stepDigest?.character).toBe('clockmaker')
+    expect(view.stepDigest?.state?.facts[0]?.causedBy).toBe(1)
+    expect(view.stepDigest?.ability?.basis).toBe('Preview')
+    expect(view.stepDigest?.ability?.effective).toBe(false)
+    expect(view.stepDigest?.optionCount).toBe(0)
+    expect(view.stepDigest?.onNoOption).toBe('StorytellerDecides')
+    expect(view.lastVoidedRequest?.reason).toBe('DependencyViolated')
+  })
+
+  it('坏掉的新字段不编结论（缺席位号 / 缺作废原因都退化为 null）', () => {
+    const view = normalizeStorytellerView({
+      stepDigest: { seat: '五号' },
+      lastVoidedRequest: { reason: 'DependencyViolated' },
+    })
+
+    expect(view.stepDigest).toBeNull()
+    expect(view.lastVoidedRequest).toBeNull()
   })
 })

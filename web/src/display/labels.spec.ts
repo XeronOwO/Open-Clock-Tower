@@ -6,6 +6,7 @@ import {
   characterTypeOf,
   dimensionLabelOf,
   labelOf,
+  voidReasonLabelOf,
 } from '@/display/labels'
 
 describe('花名册（docs/standard/terminology.md §9）', () => {
@@ -33,6 +34,22 @@ describe('文案映射', () => {
     expect(labelOf('Evil')).toBe('邪恶')
     expect(labelOf('SourceDied')).toBe('来源死亡')
     expect(labelOf('Open')).toBe('未定（R-0004）')
+  })
+
+  it('每步摘要依据与无选项行为有中文', () => {
+    expect(labelOf('Settled')).toBe('已结算')
+    expect(labelOf('Preview')).toBe('按当前账预览')
+    expect(labelOf('Unknown')).toBe('无法判定')
+    expect(labelOf('StorytellerDecides')).toBe('由说书人自由决定')
+    expect(labelOf('BlockAndAlert')).toBe('阻塞并报警，等说书人处理')
+  })
+
+  it('作废原因与同名控制模式分开映射，未知原因原样回显', () => {
+    expect(voidReasonLabelOf('DependencyViolated')).toBe('座位依赖不再满足')
+    expect(voidReasonLabelOf('StorytellerTakeover')).toBe('强推 / 接管切步了结')
+    expect(labelOf('StorytellerTakeover')).toBe('说书人接管')
+    expect(voidReasonLabelOf('SomethingNew')).toBe('SomethingNew')
+    expect(voidReasonLabelOf(null)).toBe('—')
   })
 
   it('未知值原样回显，不吞成空白', () => {

@@ -202,20 +202,19 @@ public sealed class GameSession
         }
     }
 
-    /// <summary>取说书人视图（含卡点、状态变化归因与兜底所需的一切）。</summary>
+    /// <summary>取说书人视图（含卡点、状态变化归因、每步摘要与兜底所需的一切）。</summary>
     public StorytellerView GetStorytellerView()
     {
         _gate.Wait();
         try
         {
-            return GameProjection.ForStoryteller(
+            return StorytellerViewBuilder.Build(
                 _machine,
                 _state,
                 _lastSequence,
-                _trackers.PendingRequestSince,
+                _trackers,
                 _clock.UtcNow,
-                _trackers.RecentSeatChanges,
-                _trackers.LastResolution);
+                _abilities);
         }
         finally
         {

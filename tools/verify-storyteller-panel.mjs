@@ -9,10 +9,13 @@
  *   2) 说书人 + 每席一个玩家各自加入（独立浏览器上下文 = 各自设备）；
  *   3) 说书人分配三角色 → 诺-达鲺常驻中毒落在最近的两名镇民（带归因与效果链接）；
  *   4) 说书人上报 1 号醉酒 → 与中毒并存、互不抵消；
- *   5) 开夜 → 钟表匠槽位没有玩家选项，直接进说书人裁定点 → 信息只到 1 号玩家；
- *   6) 筑梦师槽位：2 号玩家收到定向请求 → 作答 → 说书人自由裁定（能力未生效）→
- *      信息只到 2 号玩家；期间其余玩家必须零请求、零进度；
- *   7) 说书人上报 3 号（诺-达鲺）死亡 → 常驻中毒终止、维度解除并归因；
+ *   5) 开夜 → 钟表匠槽位没有玩家选项，直接进说书人裁定点 →
+ *      每步摘要断言行 2（中毒 + 醉酒 + 未生效 R-0004 + 无选项行为）→ 信息只到 1 号玩家；
+ *   6) 筑梦师槽位：2 号玩家收到定向请求（摘要断言行 1：中毒 + 归因 + 未生效）→ 作答 →
+ *      说书人自由裁定（能力未生效）→ 信息只到 2 号玩家；期间其余玩家必须零请求、零进度；
+ *   7) 第一夜 13 个槽位走完 → 开第二夜（Recommended）：诺-达鲺击杀请求由 3 号玩家作答 →
+ *      等筑梦师请求挂起后，先报 3 号死亡（2 号中毒解除进摘要——行 5），再报 2 号死亡
+ *      （请求依赖失效自动作废、作废说明进摘要——行 6）；
  *   8) 全程截图；断言只落在真正渲染数据的面板内（`data-testid` 锚点 + 单调计数）。
  *
  * 前置：Node >= 22.5（node:sqlite）、web/node_modules 已安装、本机已装 Chromium：
@@ -88,7 +91,7 @@ try {
 }
 
 async function main() {
-  console.log('=== 1/9 构建并启动真宿主（独立临时库）===')
+  console.log('=== 1/10 构建并启动真宿主（独立临时库）===')
   // 刻意直接跑编译产物而不是 `dotnet run`：宿主是**单个**进程，
   // 收尾时一次结束即可，不留需要树杀的子进程（与"禁止递归删除"同一姿态）。
   await runProcess('dotnet', ['build', 'src/OpenClockTower.Server', '-c', 'Release'], repositoryRoot)
@@ -121,7 +124,7 @@ async function main() {
   server.stderr.on('data', (chunk) => serverLog.push(String(chunk)))
   await waitForHttp(`${serverUrl}/healthz`, '宿主 /healthz', 90_000)
 
-  console.log('=== 2/9 取票据（说书人 + 各席位）并起 Vite ===')
+  console.log('=== 2/10 取票据（说书人 + 各席位）并起 Vite ===')
   const ticket = readStorytellerTicket(databasePath)
   console.log(`说书人票据：${ticket.slice(0, 12)}…`)
   const seatTickets = readSeatTickets(databasePath)
@@ -146,7 +149,7 @@ async function main() {
   vite.stderr.on('data', (chunk) => process.stderr.write(`[vite] ${String(chunk)}`))
   await waitForHttp(viteUrl, 'Vite 开发服务器', 60_000)
 
-  console.log('=== 3/9 说书人与各玩家加入（每席一个独立浏览器上下文）===')
+  console.log('=== 3/10 说书人与各玩家加入（每席一个独立浏览器上下文）===')
   const browser = await playwright.chromium.launch()
   const consoleErrors = []
 
@@ -183,7 +186,7 @@ async function main() {
   const dreamerSeat = options.assign.indexOf('dreamer') + 1
   const demonSeat = options.assign.indexOf('no-dashii') + 1
 
-  console.log('=== 4/9 说书人分配角色（席位全分配）===')
+  console.log('=== 4/10 说书人分配角色（席位全分配）===')
   const seatCount = await readSeatCount(storyteller.page)
   check(
     '分配表覆盖服务端全部席位，且席位数量与分配清单一致',
@@ -205,7 +208,7 @@ async function main() {
     )
   }
 
-  console.log('=== 5/9 开局状态：诺-达鲺常驻中毒 + 说书人上报醉酒 ===')
+  console.log('=== 5/10 开局状态：诺-达鲺常驻中毒 + 说书人上报醉酒 ===')
   // 视图是推送更新的：先等效果链 / 状态账把分配后的对账结果渲染出来，再断言。
   // 判据用**两条不同的效果标识**（来源：诺-达鲺所在席位；目标：最近的两名镇民），
   // 而不是"某个字符串出现两次"——后者在同一条效果被重复渲染时也会成立（独立复核 2026-10-02）。
@@ -258,7 +261,7 @@ async function main() {
   )
   await screenshot(storyteller.page, '02-pre-night')
 
-  console.log('=== 6/9 开夜 → 钟表匠裁定点（无玩家选项）→ 1 号玩家收信息 ===')
+  console.log('=== 6/10 开夜 → 钟表匠裁定点（无玩家选项）→ 1 号玩家收信息 ===')
   const nightStarted = await runCommand(storyteller.page, '开夜', () =>
     storyteller.page.getByRole('button', { name: /开夜/ }).click(),
   )
@@ -306,6 +309,30 @@ async function main() {
     '钟表匠裁定点没有候选选项（自由决定）',
     await storyteller.page.getByText('引擎没有给出候选选项').isVisible().catch(() => false),
   )
+  // 行 2：每步摘要必须给出「行动者全部生效状态及来源 + 能力是否生效 + 无合法选项时的行为」。
+  const clockmakerDigest = await panelText(storyteller.page, '当前步骤')
+  check(
+    '行 2：钟表匠摘要同时显示中毒与醉酒（互不抵消）',
+    clockmakerDigest.includes('中毒') && clockmakerDigest.includes('醉酒'),
+    clockmakerDigest.replace(/\s+/g, ' ').slice(0, 240),
+  )
+  check(
+    '行 2：钟表匠摘要把中毒归因到 3 号并带效果链接',
+    clockmakerDigest.includes(`${demonSeat} 号`) && clockmakerDigest.includes(poisonLinkFor(clockmakerSeat)),
+    clockmakerDigest.replace(/\s+/g, ' ').slice(0, 240),
+  )
+  check(
+    '行 2：钟表匠摘要显示能力未生效（按当前账预览，R-0004 未定）',
+    clockmakerDigest.includes('未正常生效')
+      && clockmakerDigest.includes('按当前账预览')
+      && clockmakerDigest.includes('未定（R-0004）'),
+    clockmakerDigest.replace(/\s+/g, ' ').slice(0, 240),
+  )
+  check(
+    '行 2：钟表匠摘要写明无合法选项时的行为（由说书人自由决定）',
+    clockmakerDigest.includes('由说书人自由决定'),
+    clockmakerDigest.replace(/\s+/g, ' ').slice(0, 240),
+  )
   await screenshot(storyteller.page, '04-clockmaker-decision')
 
   const clockmakerOutcome = await settleFreeDecision(storyteller.page, CLOCKMAKER_INFO)
@@ -320,7 +347,7 @@ async function main() {
   )
   await screenshot(players.get(clockmakerSeat).page, '05-player-clockmaker-info')
 
-  console.log('=== 7/9 筑梦师槽位：2 号玩家收到定向请求（无关玩家零活动）===')
+  console.log('=== 7/10 筑梦师槽位：2 号玩家收到定向请求（无关玩家零活动）===')
   const dreamerPlayer = players.get(dreamerSeat)
   const dreamerRequestPanel = dreamerPlayer.page.locator('[data-testid="player-request-panel"]')
   const requestState = await waitForAttribute(dreamerRequestPanel, 'data-request-state', 'pending', 180_000)
@@ -346,7 +373,29 @@ async function main() {
     pendingLeak.hits.length === 0,
     pendingLeak.hits.join(',') || pendingLeak.text.replace(/\s+/g, ' ').slice(0, 200),
   )
-  await screenshot(dreamerPlayer.page, '06-player-dreamer-request')
+  // 行 1：请求窗口里的每步摘要（说书人视角）。
+  const dreamerDigest = await panelText(storyteller.page, '当前步骤')
+  check(
+    '行 1：筑梦师摘要显示中毒、归因 3 号与效果链接',
+    dreamerDigest.includes('中毒')
+      && dreamerDigest.includes(`${demonSeat} 号`)
+      && dreamerDigest.includes(poisonLinkFor(dreamerSeat)),
+    dreamerDigest.replace(/\s+/g, ' ').slice(0, 240),
+  )
+  check(
+    '行 1：筑梦师摘要显示能力未生效（按当前账预览，原因：中毒）',
+    dreamerDigest.includes('未正常生效')
+      && dreamerDigest.includes('按当前账预览')
+      && dreamerDigest.includes('原因：中毒'),
+    dreamerDigest.replace(/\s+/g, ' ').slice(0, 240),
+  )
+  check(
+    '行 1：筑梦师摘要给出合法选项数量',
+    dreamerDigest.includes('合法选项 2 个'),
+    dreamerDigest.replace(/\s+/g, ' ').slice(0, 240),
+  )
+  await screenshot(storyteller.page, '06-storyteller-dreamer-digest')
+  await screenshot(dreamerPlayer.page, '07-player-dreamer-request')
 
   // 反方向证据要做成"有宽度的观测"：在请求窗口内连续采样其余玩家的请求状态。
   // 单点读取只能证明"那一刻恰好空闲"，证明不了"整个窗口里没有活动"（独立复核 2026-10-02 指出）。
@@ -398,9 +447,9 @@ async function main() {
     '纯旁观玩家 3 号信息列表为空（信息单播）',
     (await infoText(players.get(demonSeat).page)).includes('还没有收到信息'),
   )
-  await screenshot(players.get(demonSeat).page, '07-unrelated-player-idle')
+  await screenshot(players.get(demonSeat).page, '08-unrelated-player-idle')
 
-  console.log('=== 8/9 2 号玩家作答 → 说书人自由裁定（能力未生效）→ 信息单播 ===')
+  console.log('=== 8/10 2 号玩家作答 → 说书人自由裁定（能力未生效）→ 信息单播 ===')
   await dreamerPlayer.page
     .locator('[data-testid="player-request-options"] label', { hasText: `${demonSeat} 号玩家` })
     .locator('input[type=radio]')
@@ -451,9 +500,9 @@ async function main() {
     '2 号玩家没有收到 1 号的裁定内容',
     !(await infoText(dreamerPlayer.page)).includes(CLOCKMAKER_INFO),
   )
-  await screenshot(dreamerPlayer.page, '08-player-dreamer-info')
+  await screenshot(dreamerPlayer.page, '09-player-dreamer-info')
 
-  console.log('=== 9/9 说书人结算归因 → 上报 3 号死亡 → 常驻中毒解除 ===')
+  console.log('=== 9/10 说书人结算归因（第一夜）→ 等第一夜走完 ===')
   await waitForPanelContains(storyteller.page, '账本与结算结论', 'dreamer', 15_000)
   const resolutionPanel = await panelText(storyteller.page, '账本与结算结论')
   check(
@@ -475,30 +524,99 @@ async function main() {
       && linesOf(seatLedgerAfter, `${dreamerSeat} 号`).includes('standing:no-dashii.poison'),
     linesOf(seatLedgerAfter, `${dreamerSeat} 号`).slice(0, 240),
   )
-  await screenshot(storyteller.page, '09-storyteller-resolutions')
+  await screenshot(storyteller.page, '10-storyteller-resolutions')
 
-  const deathOutcome = await reportSeatState(storyteller.page, {
+  const nightOneClosed = await waitForPlanCompleted(storyteller.page, 120_000)
+  check('第一夜 13 个槽位自行走完（服务端推送，无刷新）', nightOneClosed)
+
+  console.log('=== 10/10 第二夜：挂起请求 + 上游依赖变化（行 5 / 6）===')
+  const nightTwo = await runCommand(storyteller.page, '开夜2', async () => {
+    await storyteller.page
+      .locator('section', { hasText: '兜底与推进' })
+      .locator('input[type=number]')
+      .fill('2')
+    await storyteller.page.getByRole('button', { name: /开夜/ }).click()
+  })
+  check('第二夜（Recommended）开夜被受理', nightTwo.kind === 'Accepted', nightTwo.raw)
+
+  // 第二夜诺-达鲺有击杀请求（首夜不行动）：用它把夜晚推进到筑梦师槽位。
+  const demonPlayer = players.get(demonSeat)
+  const demonRequestPanel = demonPlayer.page.locator('[data-testid="player-request-panel"]')
+  const demonRequestState = await waitForAttribute(demonRequestPanel, 'data-request-state', 'pending', 180_000)
+  check(
+    '第二夜 3 号玩家收到诺-达鲺击杀请求',
+    demonRequestState === 'pending',
+    `data-request-state=${demonRequestState}`,
+  )
+  await screenshot(demonPlayer.page, '11-night2-demon-request')
+
+  await demonPlayer.page
+    .locator('[data-testid="player-request-options"] label', { hasText: `${clockmakerSeat} 号玩家` })
+    .locator('input[type=radio]')
+    .check()
+  await demonPlayer.page.locator('[data-testid="player-submit"]').click()
+  const demonBackToIdle = await waitForAttribute(demonRequestPanel, 'data-request-state', 'idle', 30_000)
+  check(
+    '3 号玩家提交击杀目标被受理、请求区回到空态',
+    demonBackToIdle === 'idle',
+    `data-request-state=${demonBackToIdle}`,
+  )
+
+  const dreamerNightTwo = await waitForAttribute(dreamerRequestPanel, 'data-request-state', 'pending', 180_000)
+  check(
+    '第二夜 2 号玩家收到筑梦师请求（中毒仍在）',
+    dreamerNightTwo === 'pending',
+    `data-request-state=${dreamerNightTwo}`,
+  )
+  const nightTwoDigestVisible = await waitForPanelContains(
+    storyteller.page,
+    '当前步骤',
+    poisonLinkFor(dreamerSeat),
+    30_000,
+  )
+  check(
+    '第二夜筑梦师摘要仍显示中毒与效果链接',
+    nightTwoDigestVisible,
+    (await panelText(storyteller.page, '当前步骤')).replace(/\s+/g, ' ').slice(0, 240),
+  )
+
+  // 行 5：中毒来源死亡 → 维度解除进摘要（挂起请求还占着槽位，行动者就是 2 号）。
+  const demonDeath = await reportSeatState(storyteller.page, {
     seat: demonSeat,
     dimensionLabel: '生死',
     value: 'Dead',
-    reason: '批次取证：诺-达鲺死亡，验证常驻中毒解除',
+    reason: '批次取证：诺-达鲺死亡，验证中毒解除进摘要',
   })
-  check('上报 3 号死亡被受理', deathOutcome.kind === 'Accepted', deathOutcome.raw)
+  check('第二夜上报 3 号死亡被受理', demonDeath.kind === 'Accepted', demonDeath.raw)
+  const releaseVisible = await waitForPanelContains(storyteller.page, '当前步骤', '解除', 30_000)
+  const digestAfterRelease = await panelText(storyteller.page, '当前步骤')
   check(
-    '效果链显示常驻中毒已终止（来源死亡）',
-    await waitForPanelContains(storyteller.page, '效果归因链', '已终止', 30_000)
-      && await waitForPanelContains(storyteller.page, '效果归因链', '来源死亡', 30_000),
-    (await panelText(storyteller.page, '效果归因链')).replace(/\s+/g, ' ').slice(0, 300),
+    '行 5：摘要显示 2 号中毒解除（原因 / 归因 3 号 / 同一效果链接）',
+    releaseVisible
+      && digestAfterRelease.includes('健康')
+      && digestAfterRelease.includes(`${demonSeat} 号`)
+      && digestAfterRelease.includes(poisonLinkFor(dreamerSeat)),
+    digestAfterRelease.replace(/\s+/g, ' ').slice(0, 300),
   )
-  await waitForPanelContains(storyteller.page, '状态账', '健康', 15_000)
-  const ledgerAfterRelease = await panelText(storyteller.page, '状态账')
+  await screenshot(storyteller.page, '12-digest-poison-released')
+
+  // 行 6：挂起请求的行动者死亡 → 依赖失效自动作废，摘要写明是哪一条依赖不满足。
+  const dreamerDeath = await reportSeatState(storyteller.page, {
+    seat: dreamerSeat,
+    dimensionLabel: '生死',
+    value: 'Dead',
+    reason: '批次取证：筑梦师死亡，验证挂起请求依赖失效自动作废',
+  })
+  check('第二夜上报 2 号死亡被受理', dreamerDeath.kind === 'Accepted', dreamerDeath.raw)
+  const voidNote = `座位 ${dreamerSeat} 的状态变化使请求失去意义`
+  const voidVisible = await waitForPanelContains(storyteller.page, '当前步骤', voidNote, 30_000)
+  const digestAfterVoid = await panelText(storyteller.page, '当前步骤')
   check(
-    '1 / 2 号中毒解除为健康（维度解除事件）',
-    linesOf(ledgerAfterRelease, `${clockmakerSeat} 号`).includes('健康')
-      && linesOf(ledgerAfterRelease, `${dreamerSeat} 号`).includes('健康'),
-    linesOf(ledgerAfterRelease, `${dreamerSeat} 号`).slice(0, 240),
+    '行 6：摘要写明哪条依赖不满足（生死 Dead ≠ 要求 Alive）',
+    voidVisible && digestAfterVoid.includes('生死 Dead ≠ 要求 Alive'),
+    digestAfterVoid.replace(/\s+/g, ' ').slice(0, 300),
   )
-  await screenshot(storyteller.page, '10-poison-released')
+  await screenshot(storyteller.page, '13-digest-request-voided')
 
   await browser.close()
 
@@ -512,14 +630,17 @@ async function main() {
     '03-night-started',
     '04-clockmaker-decision',
     '05-player-clockmaker-info',
-    '06-player-dreamer-request',
-    '07-unrelated-player-idle',
-    '08-player-dreamer-info',
-    '09-storyteller-resolutions',
-    '10-poison-released',
+    '06-storyteller-dreamer-digest',
+    '07-player-dreamer-request',
+    '08-unrelated-player-idle',
+    '09-player-dreamer-info',
+    '10-storyteller-resolutions',
+    '11-night2-demon-request',
+    '12-digest-poison-released',
+    '13-digest-request-voided',
   ]
   const missingShots = expectedShots.filter((name) => !existsSync(path.join(screenshotsDir, `${name}.png`)))
-  check('十张证据截图都已落盘', missingShots.length === 0, missingShots.join(',') || screenshotsDir)
+  check('十三张证据截图都已落盘', missingShots.length === 0, missingShots.join(',') || screenshotsDir)
 }
 
 /** 起一个独立浏览器上下文（= 一台设备）：页面级 console 错误统一收集。 */
@@ -580,6 +701,20 @@ async function waitForPanelContains(page, heading, needle, timeoutMs) {
   }
 
   return (await panelText(page, heading)).includes(needle)
+}
+
+/** 等"当前步骤"面板显示本计划已走完（第一夜 13 个槽位全部按配额走完）。 */
+async function waitForPlanCompleted(page, timeoutMs) {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    if ((await panelText(page, '当前步骤')).includes('本计划已走完')) {
+      return true
+    }
+
+    await sleep(300)
+  }
+
+  return (await panelText(page, '当前步骤')).includes('本计划已走完')
 }
 
 /** 等某个定位器上的属性变成期望值；超时返回最后一次读到的值。 */
