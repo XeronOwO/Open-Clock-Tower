@@ -109,7 +109,63 @@ internal static class GameCommandDispatcher
             });
         }
 
-        return Translate(StepMachine.Handle(machine, settlement, input));
+        var handled = StepMachine.Handle(machine, settlement, input);
+
+        // 说书人手工上报「角色变化」也走同一套槽位绑定（R-0032）：新角色今夜尚未进入的槽位
+        // 跟随它激活 / 换手重绑，已经进入过的槽位不动。角色契约（结算时）之外，这是唯一的另一条入口。
+        if (envelope.Command is ApplySeatStateCommand seatChange)
+        {
+            handled = WithManualCharacterSlotBinding(handled, machine, settlement, seatChange);
+        }
+
+        return Translate(handled);
+    }
+
+    /// <summary>
+    /// 说书人手工上报角色变化 → 把新角色今夜尚未进入的槽位接到同一套绑定上（R-0032）：
+    /// 空槽位激活、行动槽位换手重绑；已经进入过的槽位不处理（过时不候）。
+    /// 与角色契约（麻脸巫婆 / 舞蛇人）共用 <see cref="NightSlotActivation"/>，避免两条入口两套口径。
+    /// </summary>
+    private static StepMachineOutcome WithManualCharacterSlotBinding(
+        StepMachineOutcome outcome,
+        StepMachineState machine,
+        SettlementContext settlement,
+        ApplySeatStateCommand command)
+    {
+        if (outcome.Kind != StepMachineOutcomeKind.Applied || command.Character is not { } character)
+        {
+            return outcome;
+        }
+
+        // 折出上报后的账：槽位提示按新账构建（与「结算时按当前账求值」同一姿态）。
+        var after = settlement.State;
+        foreach (var gameEvent in outcome.Events)
+        {
+            after = GameStateMachine.Apply(after, gameEvent);
+        }
+
+        var binding = NightSlotActivation.Plan(
+            machine.Plan,
+            machine.SlotIndex,
+            command.Seat,
+            character,
+            after,
+            settlement.Seats,
+            NightActions.Default);
+        if (binding is null)
+        {
+            return outcome;
+        }
+
+        // 绑定事件要折进步骤机状态（与 StepMachine.Applied 的折法一致）：它改的是计划里那一格。
+        var bound = StepMachine.Apply(outcome.State, binding)
+            ?? throw new InvalidOperationException("事件流损坏：槽位绑定后丢失步骤机状态");
+
+        return outcome with
+        {
+            State = bound,
+            Events = [.. outcome.Events, binding],
+        };
     }
 
     /// <summary>把内核结果翻译成命令结果：拒绝码优先用内核给出的（白天规则的机器可读码），否则按枚举生成。</summary>
