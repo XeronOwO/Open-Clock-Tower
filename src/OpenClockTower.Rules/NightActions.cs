@@ -42,6 +42,7 @@ public static class NightActions
             [new CharacterId("cerenovus")] = new CerenovusNightAction(),
             [new CharacterId("evil-twin")] = new EvilTwinNightAction(),
             [new CharacterId("pit-hag")] = new PitHagNightAction(),
+            [new CharacterId("snake-charmer")] = new SnakeCharmerNightAction(),
         };
 
         public INightAction? Find(CharacterId character) =>

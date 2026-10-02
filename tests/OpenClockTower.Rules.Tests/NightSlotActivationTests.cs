@@ -93,6 +93,66 @@ public sealed class NightSlotActivationTests
         Assert.Null(activation);
     }
 
+    /// <summary>角色换手：行动槽位还绑着旧持有者 → 重绑给此刻的持有者（R-0032）。</summary>
+    [Fact]
+    public void ActionSlotBoundToAnotherActor_IsRebound()
+    {
+        var plan = Plan(
+            "sv:night-2",
+            StepSlot.Action(
+                new StepSlotId("vortox"),
+                new SeatId(1),
+                Prompt(),
+                owner: new CharacterId("vortox")));
+
+        var activation = NightSlotActivation.Plan(
+            plan,
+            slotIndex: -1,
+            actor: new SeatId(2),
+            character: new CharacterId("vortox"),
+            state: GameState.Empty,
+            seats: [new SeatId(1), new SeatId(2)],
+            catalog: NightActions.Default);
+
+        Assert.NotNull(activation);
+        Assert.Equal(0, activation!.SlotIndex);
+        Assert.Equal(new SeatId(2), activation.Actor);
+        Assert.Contains(
+            activation.Dependencies,
+            dependency => dependency.Seat == new SeatId(2) && dependency.RequiredCharacter == new CharacterId("vortox"));
+    }
+
+    /// <summary>行动槽位本来绑的就是此刻的持有者 → 不重绑（返回 null）。</summary>
+    [Fact]
+    public void ActionSlotBoundToSameActor_IsNotRebound()
+    {
+        var plan = Plan(
+            "sv:night-2",
+            StepSlot.Action(
+                new StepSlotId("vortox"),
+                new SeatId(2),
+                Prompt(),
+                owner: new CharacterId("vortox")));
+
+        var activation = NightSlotActivation.Plan(
+            plan,
+            slotIndex: -1,
+            actor: new SeatId(2),
+            character: new CharacterId("vortox"),
+            state: GameState.Empty,
+            seats: [new SeatId(1), new SeatId(2)],
+            catalog: NightActions.Default);
+
+        Assert.Null(activation);
+    }
+
+    private static ChoicePrompt Prompt() => new()
+    {
+        Context = "测试用选择",
+        Options = [new DecisionOption { Value = "seat:1", Preview = "1 号玩家" }],
+        OnNoOption = NoOptionBehavior.BlockAndAlert,
+    };
+
     private static StepPlan Plan(string label, params StepSlot[] slots) => new()
     {
         Label = label,
