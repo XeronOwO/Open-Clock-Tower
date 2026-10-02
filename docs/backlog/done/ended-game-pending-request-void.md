@@ -1,7 +1,8 @@
 # 结束批次作废挂起请求：终局事件流不留死信
 
-- Status: Review
+- Status: Done
 - Priority: Medium
+- 验收：批次 E15（2026-10-05）矩阵 1–8 全过（`docs/acceptance/batches.md`；逐行证据见「E15 验收判定」）。
 - Depends on: 胜败判定与游戏结束（`done/win-loss-and-game-end.md`）；操作请求与四道兜底闸（`done/operation-request-step-machine.md`）
 - 来源：胜负票独立对抗性复核 F-3 的残余（`done/win-loss-and-game-end.md`）
 
@@ -111,6 +112,23 @@
 复核同时确认（未发现问题的面）：收口点唯一且覆盖①/②；与 `SeatDependencyCheck` / 强推既有作废**不会**重复；
 `[作废, 结束]` 折叠与重启恢复自洽；作废通知的收件人解析在「同批新开」与「此前挂起」两条路径上都成立；
 ② 不可达论证的前提核实成立；新增枚举对 DTO / 前端标签 / 规范门禁无越权或镜像缺口。
+
+## E15 验收判定（2026-10-05）
+
+冻结版本 `main` @ `3cd6d2d`；批次记录见 `docs/acceptance/batches.md`。本批运行：`EndedGamePendingRequestVoidTests` 四条 + `WinLossHostTests` 两条（真宿主 + 真 SignalR + 真 SQLite）6/6 通过；六个装置取证档全绿（主装置含结束态 / 重连面）。
+
+| # | 结论 | 本次运行的证据 |
+|---|---|---|
+| 1 | 通过 | `FirstEvaluationEnd_VoidsPendingSlotRequest_InTheEndingBatch`：同批作废、快照折成 `Voided` + `IsHeld == false`、玩家推送包无死信 |
+| 2 | 通过（当前不可达） | ② 场景按票据论证在当前规则面不可达；由唯一收口点覆盖，两个端点本批均有运行：`SecondEvaluationEnd_ClosesTheBatchThroughTheSameEndingPath`（② 复判结束走同一路径）+ `TriggerRequestPendingAtEnd_IsVoided_WhenTheEndComesFromAnotherDeath`（触发型请求在结束态被作废） |
+| 3 | 通过 | `WinLossHostTests` 行 3 断言：请求已作答而结束的那一批，答题序号之后没有多余作废事件 |
+| 4 | 通过 | `FirstEvaluationEnd...` 重启段：同库重启只折事件重放；终局无死信、结论同源 |
+| 5 | 通过 | `FirstEvaluationEnd...`：作废事件序号 < `GameEndedEvent` 序号 |
+| 6 | 通过 | `FirstEvaluationEnd...`：日志断言「结束批次作废挂起请求」+ 请求标识 + `GameEnded`（游戏局 / 收件席由同一行日志承载） |
+| 7 | 通过 | `PendingDecisionPointAtEnd_IsResolvedInTheEndingBatch`：同批以「本局已结束」收口，快照 `AwaitingDecision == null` |
+| 8 | 通过 | `FirstEvaluationEnd...`：手动传 `GameEnded` 被拒（`legality.reason_invalid`），请求不被改动 |
+
+**界面级取证（E15 一并判）**：无需单独用例。本票 Web 改动只有 `GameEnded → 本局已结束` 文案与注释；作废展示链路已由主装置 `16-player-forced-void` / `13-digest-request-voided` 覆盖，文案映射由 `labels.spec.ts`（本批 9 项）锁定。
 
 ## 边界与同类检查
 

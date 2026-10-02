@@ -2,13 +2,13 @@
 
 - Status: Todo
 - Priority: Low
-- Depends on: 结束批次作废挂起请求（`review/ended-game-pending-request-void.md`）；操作请求与四道兜底闸（`done/operation-request-step-machine.md`）
+- Depends on: 结束批次作废挂起请求（`done/ended-game-pending-request-void.md`）；操作请求与四道兜底闸（`done/operation-request-step-machine.md`）
 - 来源：结束批次票实现期的同族检查 + 该票独立对抗性复核
 
 ## 要解决的问题
 
 同类挂起有三件：挂起操作请求、等待说书人的裁定点、阻塞报警（`StepMachineState.Block`）。
-前两类已由 `review/ended-game-pending-request-void.md` 在结束批次收口；**`Block` 仍会随终局快照残留**：
+前两类已由 `done/ended-game-pending-request-void.md` 在结束批次收口；**`Block` 仍会随终局快照残留**：
 
 1. `IsHeld` 保持 `true`——"结束后一切输入被拒"（R-0024）与"状态仍自称挂起"自相矛盾；
 2. 说书人视图显示一条永远处理不了的阻塞原因（`BlockedReason`），终局面板上是一块死控件；

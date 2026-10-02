@@ -2,7 +2,7 @@
 
 - Status: Todo
 - Priority: High
-- Depends on: 麻脸巫婆票的机制地基（`review/pit-hag-character-change.md`：槽位进入时按当前账求值 / `SeatStateChangedEvent.PreviousCharacter` / R-0029）
+- Depends on: 麻脸巫婆票的机制地基（`todo/pit-hag-character-change.md`：槽位进入时按当前账求值 / `SeatStateChangedEvent.PreviousCharacter` / R-0029）
 - 来源：麻脸巫婆票「本票不做」与「尚未落地（本票剩余）」；`docs/standard/rulings.md` R-0029 的影响面
 
 ## 要解决的问题
@@ -34,6 +34,6 @@
 
 ## 决定与依据
 
-- 机制地基与口径继承麻脸巫婆票（`review/pit-hag-character-change.md`）；本票只补各角色自己的规则；
+- 机制地基与口径继承麻脸巫婆票（`todo/pit-hag-character-change.md`）；本票只补各角色自己的规则；
 - 规则细节**开工时**按钟楼百科逐页核对并登记来源，不许凭记忆（`AGENTS.md` 第一原则）；
 - 六维独立、角色唯一等硬约束照旧。

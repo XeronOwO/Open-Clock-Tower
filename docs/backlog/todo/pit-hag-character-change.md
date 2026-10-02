@@ -1,7 +1,8 @@
 # 麻脸巫婆：角色变更与「创造恶魔」之夜的死亡裁量
 
-- Status: Review
+- Status: Todo
 - Priority: High
+- 验收：批次 E15（2026-10-05）判定不通过——行 12（创造镜像双子）未实现；行 3 / 4 / 13 / 15 缺运行证据；其余 11 行通过（详见「E15 验收判定」与 `docs/acceptance/batches.md`）。
 - Depends on: 胜负判定与游戏结束（`done/win-loss-and-game-end.md`）；结算引擎（`done/settlement-engine.md`）；镜像双子配对（同胜负票）；处罚处决命令面（`done/madness-and-adjudicated-execution.md`）
 - 来源口径：`references/wiki/麻脸巫婆.wiki`、`夜晚行动顺序一览.wiki`、`重要细节.wiki`、`术语汇总.wiki`、`规则概要.wiki`、`镜像双子.wiki`、`诺-达鲺.wiki`、`贤者.wiki`、`免死.wiki`、`额外死亡.wiki`、`设计师总结的国内玩家对染的错误理解.wiki`（均为 2026-10-01 抓取）
 
@@ -133,7 +134,44 @@
    处罚处决 / 零信任；`web/AGENTS.md` §3.1 只留运行入口与外部耦合，体积不再随装置增长）；
 2. **登记残余（上报换角槽位激活）**：已移交 `todo/character-change-family.md`，与该族其余角色一起收口。
 
-本票转入 `review/`：代码与装置证据已齐（见上表），等待下一验收批次（E15）按验收矩阵逐行判定。
+## E15 验收判定（2026-10-05）
+
+冻结版本 `main` @ `3cd6d2d`；批次记录见 `docs/acceptance/batches.md`（六装置取证档全绿 + 冻结版门禁 465 / 90 全绿 + 真宿主用例复跑）。
+判据：**通过** = 本次运行有与该行期望直接对应的断言；**无法判定** = 该行关键面本次没有运行覆盖（写明缺什么）；**不通过** = 运行证据显示行为与期望不符。
+
+| # | 结论 | 本次运行的证据 |
+|---|---|---|
+| 1 | 通过 | 装置：开首夜 / 第二夜被受理（麻脸巫婆不在首夜表）；主装置「首夜真实建表 13 槽位」 |
+| 2 | 通过 | 装置：「3 号牌面变成涡流（角色变更，阵营不变）」（截图 `pithag-02`）；规则用例 `TransformToAbsentCharacter_ChangesCharacterOnly`（`Character` / `PreviousCharacter` / `CausedBy`，`Alignment` 为 null） |
+| 3 | 无法判定 | 「无状态变化」有规则用例 `TransformToCharacterInPlay_DoesNothing`；但「能力仍记『已使用且生效』」本次没有运行断言——缺一条把「选在场角色」走完结算并断言 `AbilityResolvedEvent{Effective:true}` / 使用账的用例 |
+| 4 | 无法判定 | 「选自己」有规则用例 `TransformSelf_IsAllowed`；「选已死亡玩家」与「来源自变后窗口仍有效」本次无运行覆盖——缺对应真机 / 集成用例 |
+| 5 | 通过 | 装置：「当夜被创造的涡流真的被唤醒（3 号拿到请求）」「新恶魔的击杀同样记为待定死亡」；真宿主用例 `PitHagCreatesDemon_AdjudicatesDeaths_AndClosesWindow`；规则 / 内核用例 `TransformToDemon_ActivatesPendingSlot`、`SlotActivated_PendingSlot_BecomesActionAndIssuesRequest` |
+| 6 | 通过 | 内核用例 `SlotEntryLedgerTests.ActorDeadBeforeEntry_SkipsWithoutRequest`（进入前已死亡 → 跳过、不产请求，配额照走） |
+| 7 | 通过 | 装置：「窗口内记为待定死亡（不直接致死）」「待定期间仍存活」「面板列出待定」；真宿主用例同 5 |
+| 8 | 通过 | 装置：「阻止被受理 → 待定清零、仍存活」；内核用例 `ResolveDeferred_Prevented_LeavesTargetAlive`；真宿主用例同 5 |
+| 9 | 通过 | 内核用例 `Casualty_KillsWithPitHagAttribution`（`CausedBy` = 麻脸巫婆席）；装置「追加死亡生效」（牌面带 `pit-hag-casualty` 标记）；真宿主用例同 5 |
+| 10 | 通过 | 内核用例 `WindowClose_UnresolvedDeathsTakeEffect_AndWindowCloses`（默认生效 + 显式说明）、`AfterClose_BothCommandsAreRejected`；装置「越过最后一个恶魔行动后窗口收口」；真宿主用例（收口后 `kernel.NoPitHagNight`） |
+| 11 | 通过 | 内核用例 `DemonChangedIntoNonDemon_GoodWins` / `DemonChangedIntoAnotherDemon_DoesNotEnd` / `DemonChangedIntoNonDemon_WhileAnotherDemonAlive_DoesNotEnd` / `NoDemonConfigured_WithUnrelatedCharacterChange_DoesNotEnd`。注：R-0029 仍为 `Open`（平台口径已定 + 代码注释引用 + 回归齐）；**提交管线补全 `PreviousCharacter` 缺直接运行断言**，列入残余 |
+| 12 | **不通过** | 探针（临时用例，未入库）运行：`AwaitingDecision=null`、机器照常越过槽位、事件流无 `evil-twin.pair`——「选择对立双子」裁定与配对效果均未实现。代码侧：`PitHagNightAction.BuildPostChoiceDecision` 返回 `null`；配对效果唯一来源是首夜 `EvilTwinNightAction`（其注释自述「麻脸巫婆造成的新建 / 重配对不在本票」） |
+| 13 | 无法判定 | 来源规则有 `NoDashiiPoisonSourceTests.CharacterChangeMovesThePoison` 等、对账机制有 `SettlementReconcilerTests`；但「创造诺-达鲺 → 邻近镇民中毒、旧中毒解除」这条组合本次没有运行覆盖 |
+| 14 | 通过 | 装置：「无关玩家（5 号）全部推送里没有窗口 / 待定死亡字段」；规范门禁 `PlayerProjectionLeakGateTests`（`PitHagNightDto` / `DeferredDeathDto` 为说书人专属） |
+| 15 | 无法判定 | 折叠器已支持窗口事件族（`StepMachineFolder`），内核用例用 `Apply` 折出窗口状态；但「含窗口 + 待定死亡的重启 / 重连重建、重放不重算」本次没有运行覆盖——缺从事件流重建（或真宿主重启）后的等价断言 |
+| 16 | 通过 | 本票「缺陷②复核结论」可达、已修（`edd0273`）；回归 `TriggerRequestVoidTests` 两条本次全绿；结论已写进票据 |
+
+**行 12 的先红（修复时先复现；临时用例内容：5 席 `pit-hag` / `clockmaker` / `artist` / `no-dashii` / `klutz` → 走完首夜 → 第二夜选 `seat:3|evil-twin` → 期望 `AwaitingDecision != null` 且事件流出现 `evil-twin.pair`）**：
+
+```text
+dotnet test tests/OpenClockTower.Integration.Tests --filter FullyQualifiedName~TempE15ProbeTests
+→ 失败 1：期望：创造镜像双子后出现「选择对立双子」裁定；实际 AwaitingDecision=null。
+  事件流末段：SlotQuotaElapsedEvent, SlotAdvancedEvent, SlotEnteredEvent, …（机器照常推进）
+```
+
+**残余（回 `todo/` 时一并处理）**：
+
+- 行 12：实现「创造镜像双子 → 开选择对立双子裁定（`BuildPostChoiceDecision`）+ 落 `evil-twin.pair`（含双方互认，与首夜同源）」；把先红用例转正。
+- 行 3 / 4 / 13 / 15：补运行证据——结算账「已使用且生效」、已死亡目标与来源自变下窗口仍有效、创造诺-达鲺的组合、含窗口的重启 / 重连重建。
+- 行 11：补提交管线补全 `PreviousCharacter` 的运行断言。
+- 补齐后回 `review/`，由下一批次（E16）重判以上行；其余 11 行结论累计有效。
 
 ## 决定与依据
 
