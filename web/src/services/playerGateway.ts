@@ -21,7 +21,6 @@ import type {
   PlayerEventDto,
   ReconnectBundleDto,
   PlayerViewDto,
-  SeatJoinDto,
 } from '@/contracts/game'
 import {
   asArray,
@@ -104,11 +103,13 @@ export class PlayerGateway {
   }
 
   /**
-   * 加入席位并取重连包（快照 + 从本客户端已知序号起的全部事件）。
+   * 加入席位并取重连包（快照 + 从本客户端已知序号起的全部**可见**事件）。
    *
-   * 同步口径（架构 §5、D-0010）：**快照 + 缺口事件一起用**，不许只取快照把事件丢掉。
-   * 事件的作用是证明"从我的序号到快照序号之间没有缺口"：序号不连续就说明补齐不完整，
-   * 那时**不装作没事**——报诊断并停在当前视图，由人决定重连还是重建（禁止本地先跑再说）。
+   * 同步口径（架构 §5、D-0010）：**快照序号就是权威 watermark**——服务端在锁内读全量事件后
+   * 按接收者投影，快照与序号同源，连续性由服务端保证。可见事件只用于带出窗口内的定向变化
+   * （白名单投影，D-0012 §4.3），**不能**也用不着用条数证明序号区间完整（D-0013 §5）。
+   * 但事件必须是好数据：条目不可识别或序号越界 / 倒退 / 重复就**不装作没事**——显式失败并停在
+   * 当前视图，绝不采纳这份包（禁止本地先跑再说）。
    * 零信任口径（D-0012）：加入结果里的连接级凭据是后续发命令的唯一凭据；拿不到就显式失败。
    */
   async joinSeat(ticket: string): Promise<PlayerViewDto> {
@@ -125,17 +126,23 @@ export class PlayerGateway {
       throw new Error('服务端没有下发连接凭据：加入结果不可识别（D-0012）')
     }
 
-    this.credentialValue = joined.credential
+    if (joined.bundle.droppedEvents > 0) {
+      // 归一化就丢过条目 = 这份包不可信：显式失败、停在当前视图，绝不静默前进（宁可报错）。
+      throw new Error(`重连包有 ${joined.bundle.droppedEvents} 条事件条目不可识别，已停在当前视图`)
+    }
+
     const bundle = joined.bundle
     const applied = applyBundle(bundle, this.lastSequence)
-    this.lastSequence = applied.sequence
-    // 空诊断 = "补齐完整"，不是一条消息：原样转发会让界面多出一个空条目（2026-10-02 批次实机发现）。
     if (applied.diagnostic.length > 0) {
-      this.callbacks.onDiagnostic(applied.diagnostic)
+      // 坏数据不采纳：显式失败并停在当前视图（watermark 不前进），由人决定重连还是重建。
+      throw new Error(applied.diagnostic)
     }
+
+    this.credentialValue = joined.credential
+    this.lastSequence = applied.sequence
     this.callbacks.onRequest(bundle.view.pendingRequest)
 
-    // 快照里的信息类结果按顺序重放；缺口事件里的新信息随后接上（按序号去重）。
+    // 快照视图由调用方按 `bundle.view` 呈现；窗口内可见事件里的新信息随后接上。
     for (const information of applied.informationResults) {
       this.callbacks.onInformation(information)
     }
@@ -188,8 +195,19 @@ export class PlayerGateway {
   }
 }
 
+/** 归一化后的重连包：在 wire 形状上补"被丢弃的事件条目数"（> 0 = 包不可信，加入必须显式失败）。 */
+export interface NormalizedReconnectBundle extends ReconnectBundleDto {
+  droppedEvents: number
+}
+
+/** 归一化后的加入结果（客户端内部形状，不是 wire 契约）。 */
+export interface NormalizedSeatJoin {
+  credential: string
+  bundle: NormalizedReconnectBundle
+}
+
 /** 未知载荷 → 加入结果；凭据缺失 / 越界或重连包不可识别时返回 null（宁可加入失败，不带坏凭据继续）。 */
-export function normalizeSeatJoin(raw: unknown): SeatJoinDto | null {
+export function normalizeSeatJoin(raw: unknown): NormalizedSeatJoin | null {
   if (raw === null || typeof raw !== 'object') {
     return null
   }
@@ -284,10 +302,14 @@ export function normalizePhaseStarted(raw: unknown): PhaseStartedDto | null {
   return phase === null ? null : { phase }
 }
 
-/** 未知载荷 → 重连包；缺序号按 0 处理（那会让缺口校验显式失败，而不是静默放行）。 */
-export function normalizeBundle(raw: unknown): ReconnectBundleDto {
+/** 未知载荷 → 重连包；缺序号按 0 处理（与本地序号 / 事件序号对不上时会在 applyBundle 显式诊断，而不是静默通过）。 */
+export function normalizeBundle(raw: unknown): NormalizedReconnectBundle {
   const bundle = (raw ?? {}) as Record<string, unknown>
   const view = (bundle['view'] ?? {}) as Record<string, unknown>
+  const rawEvents = asArray<unknown>(bundle['events'])
+  const events = rawEvents
+    .map(normalizePlayerEvent)
+    .filter((event): event is PlayerEventDto => event !== null)
 
   return {
     sequence: asCount(bundle['sequence']) ?? 0,
@@ -299,13 +321,13 @@ export function normalizeBundle(raw: unknown): ReconnectBundleDto {
         .map(normalizeInformation)
         .filter((information): information is InformationResultDto => information !== null),
     },
-    events: asArray<unknown>(bundle['events'])
-      .map(normalizePlayerEvent)
-      .filter((event): event is PlayerEventDto => event !== null),
+    events,
+    // 被丢掉的条目不静默：加入路径据此显式失败（无序号 / 无类型的条目无法参与序号校验）。
+    droppedEvents: rawEvents.length - events.length,
   }
 }
 
-/** 未知载荷 → 玩家可见事件；缺序号的条目被丢掉（无序号就无法证明补齐完整）。 */
+/** 未知载荷 → 玩家可见事件；缺序号 / 缺类型的条目返回 null（由 normalizeBundle 计数，加入路径显式失败）。 */
 export function normalizePlayerEvent(raw: unknown): PlayerEventDto | null {
   if (raw === null || typeof raw !== 'object') {
     return null
@@ -342,14 +364,15 @@ export interface AppliedBundle {
 /**
  * 把重连包折叠成"客户端现在认哪个序号、新收到了什么"。
  *
- * 规则（架构 §5）：
- * - 快照序号是新的起点；事件必须**恰好**覆盖 `已知序号+1 … 快照序号` 这一段；
- * - 序号出现缺口或倒退 → 不更新序号、报诊断（宁可报错，也不许"本地先按旧状态继续跑"）；
+ * 规则（架构 §5、D-0010；白名单投影见 D-0012 §4.3 / D-0013 §5）：
+ * - **快照序号是新的 watermark**：服务端已读全量事件后按接收者投影，连续性由它保证；
+ *   可见事件条数天然小于序号区间长度（他人事件根本不下发），所以**不校验条数**；
+ * - 可见事件只要**严格递增**且落在 `(本地已知, 快照序号]` 就合法；越界 / 倒退 / 重复是坏数据
+ *   → 不更新序号、报诊断（宁可报错，也不许"本地先按旧状态继续跑"）；
  * - 事件里的信息类结果按序号顺序接在快照之后。
  */
 export function applyBundle(bundle: ReconnectBundleDto, knownSequence: number): AppliedBundle {
-  const expected = bundle.sequence - knownSequence
-  if (expected < 0) {
+  if (bundle.sequence < knownSequence) {
     return {
       sequence: knownSequence,
       informationResults: [],
@@ -357,25 +380,27 @@ export function applyBundle(bundle: ReconnectBundleDto, knownSequence: number): 
     }
   }
 
-  if (bundle.events.length !== expected) {
-    return {
-      sequence: knownSequence,
-      informationResults: [],
-      diagnostic:
-        `重连补齐有缺口：本地已知 ${knownSequence}，快照 ${bundle.sequence} `
-        + `应补 ${expected} 条事件，实际收到 ${bundle.events.length} 条`,
-    }
-  }
-
   const ordered = [...bundle.events].sort((left, right) => left.sequence - right.sequence)
+  let previous = knownSequence
   for (const [index, event] of ordered.entries()) {
-    if (event.sequence !== knownSequence + index + 1) {
+    if (event.sequence > bundle.sequence) {
       return {
         sequence: knownSequence,
         informationResults: [],
-        diagnostic: `重连补齐序号不连续：第 ${index + 1} 条是 ${event.sequence}，应为 ${knownSequence + index + 1}`,
+        diagnostic: `重连补齐序号越界：第 ${index + 1} 条是 ${event.sequence}，超出快照 ${bundle.sequence}`,
       }
     }
+
+    if (event.sequence <= previous) {
+      const kind = event.sequence === previous ? '重复' : '倒退'
+      return {
+        sequence: knownSequence,
+        informationResults: [],
+        diagnostic: `重连补齐序号${kind}：第 ${index + 1} 条是 ${event.sequence}，应严格大于 ${previous}`,
+      }
+    }
+
+    previous = event.sequence
   }
 
   return {

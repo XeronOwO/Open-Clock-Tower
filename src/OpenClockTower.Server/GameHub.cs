@@ -76,10 +76,11 @@ public sealed class GameHub : Hub<IGameClient>
             }
 
             _logger.LogInformation(
-                "玩家已加入：seat={Seat} connection={ConnectionId} 序号={Sequence} 重投请求={Redelivered}",
+                "玩家已加入：seat={Seat} connection={ConnectionId} 快照序号={Sequence} 本地已知={KnownSequence} 重投请求={Redelivered}",
                 seatTicket.Seat,
                 Context.ConnectionId,
                 bundle.Sequence,
+                lastSequence,
                 bundle.View.PendingRequest is not null);
 
             return new SeatJoinDto

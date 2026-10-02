@@ -61,7 +61,7 @@ todo/  →  in-progress/  →  review/  →  done/
 ### Todo
 
 - [说书人注记：魔典上的自由文本提示标记](todo/storyteller-annotation.md) — **Low** — 魔典上的自由文本 token；首版刻意不做，待定归属 / 持久化 / 审计边界
-- [玩家重连「补齐缺口」判据与白名单投影不一致](todo/player-reconnect-gap-semantics.md) — **Medium** — 可见事件条数不可能覆盖全局序号区间，重连会报假缺口并把 watermark 卡住
+- [补齐期间到达的信息推送会被快照覆盖丢弃](todo/player-information-resync-race.md) — **Low** — 快照整体覆盖与在线推送追加双写，补齐往返窗口里到达的推送会短暂丢失
 
 ### In progress
 
@@ -71,6 +71,7 @@ todo/  →  in-progress/  →  review/  →  done/
 
 ### Done
 
+- [玩家重连「补齐缺口」判据与白名单投影不一致](done/player-reconnect-gap-semantics.md) — 可见事件条数不可能覆盖全局序号区间；改为快照权威判据，坏包不采纳、不前进 watermark
 - [重建报告对比状态账](done/rebuild-state-ledger-comparison.md) — 重建报告对状态账五账做等价对比，与步骤机 / 快照并列成三项结论
 - [恢复失败后的房间健康位](done/room-health-degradation-flag.md) — 区分「空账」与「数据丢了」；降级位置位后显式重建才清除，玩家侧不下发
 - [界面游戏化：魔典式小镇视图](done/grimoire-view.md) — 说书人看板改为以席位为中心的魔典（圆环 / 帷幕 / 标记 / 就近操作 / 数据下钻）；批次 E6 行 1–8 全通过

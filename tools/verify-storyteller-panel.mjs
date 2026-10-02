@@ -26,7 +26,9 @@
  *  10) 恢复与重建：干净流重建 → 三项等价；改脏事件流里的原因文本 → 状态账报"不一致"并由重建修回；
  *      停宿主 + 弄坏事件载荷 + 重启 → 说书人视图出现降级位与原因；重建仍失败 → 保持降级、原因更新；
  *      修复载荷后重建成功 → 降级清除；玩家端全程没有健康位文案 / 锚点；
- *  11) 全程截图（28 张）；断言只落在真正渲染数据的面板 / 牌面内（`data-testid` 锚点 + 单调计数）。
+ *  11) 重连补齐（快照权威）：隐藏事件不报假缺口、watermark 随快照序号前进；非零 watermark 跨掉线窗口
+ *      重连（窗口内有其他席位的隐藏状态变化）仍无假告警；
+ *  12) 全程截图（29 张）；断言只落在真正渲染数据的面板 / 牌面内（`data-testid` 锚点 + 单调计数）。
  *
  * 前置：Node >= 22.5（node:sqlite）、web/node_modules 已安装、本机已装 Chromium：
  *   cd web
@@ -1022,11 +1024,14 @@ async function main() {
   )
 
   // 行 5（健康票）另一面：房间恢复后同一玩家页重载能正常加入，且仍然看不到任何健康位。
+  const joinsBeforeReload = seatJoinLogLines(probeSeat).length
   await probePlayer.page.reload()
   await probePlayer.page
     .locator('[data-testid="player-seat"]')
     .waitFor({ state: 'visible', timeout: 20_000 })
     .catch(() => {})
+  const reloadJoin = await waitForNextSeatJoin(probeSeat, joinsBeforeReload, 20_000)
+  const reloadSnapshot = joinLogNumber(reloadJoin, '快照序号')
   const recoveredPlayerText = await probePlayer.page.locator('.shell').innerText()
   const recoveredPlayerLeaks = ['降级', '健康位', '数据丢失', '事件载荷'].filter((word) =>
     recoveredPlayerText.includes(word),
@@ -1036,6 +1041,85 @@ async function main() {
     (await probePlayer.page.locator('[data-testid="player-seat"]').count()) > 0
       && recoveredPlayerLeaks.length === 0,
     recoveredPlayerText.replace(/\s+/g, ' ').slice(0, 200),
+  )
+
+  // —— 重连票行 1：隐藏事件不是"缺口"，快照序号才是权威 watermark ——
+  // 旧判据要求"事件条数 = 快照序号 - 本地已知"，在白名单投影下必然误报（E7 实测：应补 198 / 实际 4），
+  // 并把 watermark 卡在 0。这里用宿主日志核对每次加入时客户端带回来的"本地已知"。
+  const reloadDiagnostics = await readPlayerDiagnostics(probePlayer.page)
+  check(
+    `重连票行 1：玩家 ${probeSeat} 号全新加入（窗口内多数事件对该席不可见）无"应补 N 实际 M"假告警`,
+    reloadJoin !== null && reloadSnapshot !== null && reloadSnapshot > 0
+      && reconnectDiagnosticIn(reloadDiagnostics).length === 0,
+    `${reloadJoin ?? '未等到加入日志'}；诊断=${reloadDiagnostics || '（无）'}`,
+  )
+
+  // 票面"可见事件与信息结果仍按快照正确呈现"：重连后自己的信息结果必须在列。
+  const reconnectedInfoText = await infoText(probePlayer.page)
+  check(
+    `重连票行 1：重连后信息结果仍按快照呈现（${probeSeat} 号的钟表匠信息在列）`,
+    reconnectedInfoText.includes(CLOCKMAKER_INFO),
+    reconnectedInfoText.replace(/\s+/g, ' ').slice(0, 200),
+  )
+  await screenshot(probePlayer.page, '29-player-reconnect-no-gap')
+
+  // 补齐一次：本地已知 0 → 快照序号，证明新 watermark 真的落下去（卡 0 的话这里会再次带回 0）。
+  const joinsBeforeFirstResync = seatJoinLogLines(probeSeat).length
+  await probePlayer.page.getByRole('button', { name: '补齐' }).click()
+  const firstResyncJoin = await waitForNextSeatJoin(probeSeat, joinsBeforeFirstResync, 20_000)
+  const firstResyncKnown = joinLogNumber(firstResyncJoin, '本地已知')
+  const firstResyncSnapshot = joinLogNumber(firstResyncJoin, '快照序号')
+  check(
+    `重连票行 1：补齐把快照序号带回服务端（本地已知 ${firstResyncKnown}，快照 ${firstResyncSnapshot}）`,
+    reloadSnapshot !== null && firstResyncKnown === reloadSnapshot && firstResyncSnapshot !== null,
+    firstResyncJoin ?? '未等到补齐后的加入日志',
+  )
+
+  // 非零 watermark + 掉线窗口里的隐藏事件：断开 → 说书人上报其他席位（玩家白名单外）→ 重新加入。
+  await probePlayer.page.getByRole('button', { name: '断开' }).click()
+  await probePlayer.page.getByRole('button', { name: '加入' }).waitFor({ state: 'visible', timeout: 10_000 })
+  const hiddenSeatChange = await reportSeatState(storyteller.page, {
+    seat: dreamerSeat,
+    dimensionLabel: '醉酒',
+    value: 'Drunk',
+    reason: '批次取证：重连窗口内的隐藏状态变化（其他席位，玩家白名单外）',
+  })
+  check(
+    '重连票行 1：掉线窗口内制造隐藏事件（其他席位的状态变化）被受理',
+    hiddenSeatChange.kind === 'Accepted',
+    hiddenSeatChange.raw,
+  )
+
+  const joinsBeforeRejoin = seatJoinLogLines(probeSeat).length
+  await probePlayer.page.getByRole('button', { name: '加入' }).click()
+  await probePlayer.page
+    .locator('[data-testid="player-seat"]')
+    .waitFor({ state: 'visible', timeout: 20_000 })
+    .catch(() => {})
+  const rejoinLog = await waitForNextSeatJoin(probeSeat, joinsBeforeRejoin, 20_000)
+  const rejoinKnown = joinLogNumber(rejoinLog, '本地已知')
+  const rejoinSnapshot = joinLogNumber(rejoinLog, '快照序号')
+  const rejoinDiagnostics = await readPlayerDiagnostics(probePlayer.page)
+  check(
+    `重连票行 1：本地已知 ${rejoinKnown} 跨掉线窗口重连 → 隐藏事件不报缺口、快照前进到 ${rejoinSnapshot}`,
+    rejoinLog !== null
+      && firstResyncSnapshot !== null
+      && rejoinKnown === firstResyncSnapshot
+      && rejoinSnapshot !== null
+      && rejoinSnapshot > firstResyncSnapshot
+      && reconnectDiagnosticIn(rejoinDiagnostics).length === 0,
+    `${rejoinLog ?? '未等到重连日志'}；诊断=${rejoinDiagnostics || '（无）'}`,
+  )
+
+  // 再补齐：确认这轮重连后的 watermark 停在最新快照，而不是又卡回旧值。
+  const joinsBeforeSecondResync = seatJoinLogLines(probeSeat).length
+  await probePlayer.page.getByRole('button', { name: '补齐' }).click()
+  const secondResyncJoin = await waitForNextSeatJoin(probeSeat, joinsBeforeSecondResync, 20_000)
+  const secondResyncKnown = joinLogNumber(secondResyncJoin, '本地已知')
+  check(
+    `重连票行 1：重连后的 watermark 已到快照 ${rejoinSnapshot}（再次补齐带回 ${secondResyncKnown}）`,
+    rejoinSnapshot !== null && secondResyncKnown === rejoinSnapshot,
+    secondResyncJoin ?? '未等到再次补齐的加入日志',
   )
 
   // 行 5（健康票）：玩家侧没有健康位——既无锚点 / 文案，重连包契约里也没有该字段（门禁 + 集成测试）。
@@ -1118,6 +1202,7 @@ async function main() {
     '26-room-health-degraded',
     '27-room-health-rebuild-failed',
     '28-room-health-cleared',
+    '29-player-reconnect-no-gap',
   ]
   const missingShots = expectedShots.filter((name) => !existsSync(path.join(screenshotsDir, `${name}.png`)))
   check(`证据截图都已落盘（${expectedShots.length} 张）`, missingShots.length === 0, missingShots.join(',') || screenshotsDir)
@@ -1276,6 +1361,51 @@ async function waitForLocatorContains(locator, needle, timeoutMs) {
   }
 
   return text
+}
+
+/** 宿主日志里"玩家已加入"的行（serverLog 是 stdout 块，先拼回文本再按行过滤）。 */
+function seatJoinLogLines(seat) {
+  return serverLog
+    .join('')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.includes(`玩家已加入：seat=${seat} `))
+}
+
+/** 等该席第 `afterCount` 条之后的下一条"玩家已加入"日志（重连的输入在服务端日志里可核对）。 */
+async function waitForNextSeatJoin(seat, afterCount, timeoutMs) {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    const lines = seatJoinLogLines(seat)
+    if (lines.length > afterCount) {
+      return lines[lines.length - 1]
+    }
+
+    await sleep(100)
+  }
+
+  return seatJoinLogLines(seat).length > afterCount ? seatJoinLogLines(seat).at(-1) : null
+}
+
+/** 从"玩家已加入"日志行取数字字段（快照序号 / 本地已知）；取不到返回 null。 */
+function joinLogNumber(line, field) {
+  const matched = new RegExp(`${field}=(\\d+)`).exec(line ?? '')
+  return matched === null ? null : Number(matched[1])
+}
+
+/** 玩家端诊断文本；没有诊断面板（或没有诊断）时返回空串。 */
+async function readPlayerDiagnostics(page) {
+  const panel = page.locator('[data-testid="player-diagnostics"]')
+  if ((await panel.count()) === 0) {
+    return ''
+  }
+
+  return (await panel.innerText()).replace(/\s+/g, ' ').trim()
+}
+
+/** 重连补包坏数据的指纹：applyBundle 的诊断都以"重连补齐"开头（成功提示"重新补齐"不匹配）。 */
+function reconnectDiagnosticIn(text) {
+  return ['重连补齐'].filter((word) => text.includes(word))
 }
 
 /** 玩家端"上一次请求怎么结束"的说明文本；没有这条说明时返回空串。 */

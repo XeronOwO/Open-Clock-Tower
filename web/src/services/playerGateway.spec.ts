@@ -12,8 +12,9 @@ import {
 } from '@/services/playerGateway'
 
 /**
- * 重连补齐（架构 §5、D-0010）：快照 + 从本客户端已知序号起的**全部事件**，两者一起用。
- * 这里的用例是 2026-10-02 复核实测到的一次真实缺陷的回归：前端把 `events` 写死成空数组整体丢弃。
+ * 重连补齐（架构 §5、D-0010）：快照 + 从本客户端已知序号起的**全部可见事件**（白名单投影，
+ * D-0012 §4.3），快照序号才是权威 watermark。这里的用例是 2026-10-02 复核实测到的一次真实缺陷
+ * 的回归：前端把 `events` 写死成空数组整体丢弃。
  */
 describe('重连包规范化', () => {
   it('真的读 events，而不是丢掉', () => {
@@ -32,12 +33,29 @@ describe('重连包规范化', () => {
 
     expect(bundle.events).toHaveLength(2)
     expect(bundle.events[1]?.information?.ability).toBe('dreamer')
+    expect(bundle.droppedEvents).toBe(0)
   })
 
   it('缺序号的条目被丢掉（无序号就无法证明补齐完整）', () => {
     expect(normalizePlayerEvent({ kind: 'PhaseStarted' })).toBeNull()
     expect(normalizePlayerEvent({ sequence: 3 })).toBeNull()
     expect(normalizePlayerEvent(null)).toBeNull()
+  })
+
+  it('归一化丢条目不静默：droppedEvents 计数交给加入路径显式失败', () => {
+    const bundle = normalizeBundle({
+      sequence: 7,
+      view: { seat: 1, phase: 'FirstNight', pendingRequest: null, informationResults: [] },
+      events: [
+        { sequence: 6, kind: 'PhaseStarted' },
+        { kind: 'PhaseStarted' },
+        { sequence: 8 },
+        null,
+      ],
+    })
+
+    expect(bundle.events).toHaveLength(1)
+    expect(bundle.droppedEvents).toBe(3)
   })
 
   it('信息类结果只有内容，没有"可能为假"标记', () => {
@@ -66,7 +84,7 @@ describe('重连包规范化', () => {
   })
 })
 
-describe('重连补齐折叠', () => {
+describe('重连补齐折叠（快照权威）', () => {
   const bundle = (sequence: number, events: ReconnectBundleDto['events']): ReconnectBundleDto => ({
     sequence,
     view: { seat: 1, phase: 'FirstNight', pendingRequest: null, informationResults: [] },
@@ -85,7 +103,29 @@ describe('重连补齐折叠', () => {
     information: null,
   })
 
-  it('事件恰好覆盖缺口时前进序号，并接上事件里的信息', () => {
+  it('可见事件是白名单子集：条数不可能覆盖序号区间，快照序号照常成为新 watermark', () => {
+    // 批次 E7 实测：本地已知 0、快照 198，但掉线期间的 194 条事件对这名玩家不可见（白名单投影）。
+    const applied = applyBundle(bundle(198, [phaseEvent(7), phaseEvent(42)]), 0)
+
+    expect(applied.sequence).toBe(198)
+    expect(applied.diagnostic).toBe('')
+  })
+
+  it('掉线期间没有任何可见事件：照快照前进，不报假缺口', () => {
+    const applied = applyBundle(bundle(5, []), 3)
+
+    expect(applied.sequence).toBe(5)
+    expect(applied.diagnostic).toBe('')
+  })
+
+  it('可见事件之间可以有隐藏事件：序号严格递增即可，不要求逐条连续', () => {
+    const applied = applyBundle(bundle(9, [phaseEvent(5), phaseEvent(9)]), 3)
+
+    expect(applied.sequence).toBe(9)
+    expect(applied.diagnostic).toBe('')
+  })
+
+  it('事件恰好覆盖窗口时前进序号，并接上事件里的信息', () => {
     const applied = applyBundle(
       bundle(5, [
         phaseEvent(4),
@@ -103,22 +143,49 @@ describe('重连补齐折叠', () => {
     expect(applied.informationResults.map((item) => item.ability)).toEqual(['dreamer'])
   })
 
-  it('事件条数不足 = 有缺口：不前进序号，并报出缺口', () => {
-    const applied = applyBundle(bundle(5, []), 3)
+  it('乱序到达的可见事件按序号重排后再校验', () => {
+    const applied = applyBundle(bundle(5, [phaseEvent(5), phaseEvent(4)]), 3)
+
+    expect(applied.sequence).toBe(5)
+    expect(applied.diagnostic).toBe('')
+  })
+
+  it('事件序号等于本地已知（重复投递）→ 显式诊断，不前进 watermark', () => {
+    const applied = applyBundle(bundle(5, [phaseEvent(3)]), 3)
+
     expect(applied.sequence).toBe(3)
-    expect(applied.diagnostic).toContain('缺口')
+    expect(applied.diagnostic).toContain('重复')
   })
 
-  it('序号不连续（重复 / 跳号）同样报诊断，不装作没事', () => {
-    const duplicated = applyBundle(bundle(5, [phaseEvent(4), phaseEvent(4)]), 3)
-    expect(duplicated.sequence).toBe(3)
-    expect(duplicated.diagnostic).toContain('不连续')
+  it('事件序号早于本地已知、或落后于前一条 → 显式诊断，不前进 watermark', () => {
+    const stale = applyBundle(bundle(5, [phaseEvent(2)]), 3)
+    expect(stale.sequence).toBe(3)
+    expect(stale.diagnostic).toContain('倒退')
+
+    const regressed = applyBundle(bundle(9, [phaseEvent(6), phaseEvent(4)]), 5)
+    expect(regressed.sequence).toBe(5)
+    expect(regressed.diagnostic).toContain('倒退')
   })
 
-  it('序号倒退（服务端快照比本地还旧）也报诊断', () => {
+  it('事件序号越界（超出快照）→ 显式诊断，不前进 watermark', () => {
+    const applied = applyBundle(bundle(5, [phaseEvent(6)]), 3)
+
+    expect(applied.sequence).toBe(3)
+    expect(applied.diagnostic).toContain('越界')
+  })
+
+  it('快照序号倒退（服务端比本地还旧）→ 显式诊断，不前进 watermark', () => {
     const applied = applyBundle(bundle(2, []), 9)
+
     expect(applied.sequence).toBe(9)
     expect(applied.diagnostic).toContain('倒退')
+  })
+
+  it('快照序号不变且没有可见事件 = 幂等补齐，既不前进也不报诊断', () => {
+    const applied = applyBundle(bundle(7, []), 7)
+
+    expect(applied.sequence).toBe(7)
+    expect(applied.diagnostic).toBe('')
   })
 })
 
