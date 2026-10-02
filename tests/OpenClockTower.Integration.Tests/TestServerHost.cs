@@ -92,7 +92,9 @@ public sealed class TestServerHost : IAsyncDisposable
         Action<OperationRequestVoidedDto>? onVoided = null,
         long lastSequence = 0,
         Action<StorytellerViewDto>? onStorytellerView = null,
-        Action<InformationResultDto>? onInformation = null)
+        Action<InformationResultDto>? onInformation = null,
+        Action<OperationRequestAnsweredDto>? onAnswered = null,
+        Action<PhaseStartedDto>? onPhaseStarted = null)
     {
         var setup = await GetSetupAsync();
         var ticket = setup.Seats.Single(item => item.Seat == seat).Ticket;
@@ -110,6 +112,16 @@ public sealed class TestServerHost : IAsyncDisposable
         if (onVoided is not null)
         {
             connection.On<OperationRequestVoidedDto>("ReceiveOperationRequestVoided", onVoided);
+        }
+
+        if (onAnswered is not null)
+        {
+            connection.On<OperationRequestAnsweredDto>("ReceiveOperationRequestAnswered", onAnswered);
+        }
+
+        if (onPhaseStarted is not null)
+        {
+            connection.On<PhaseStartedDto>("ReceivePhaseStarted", onPhaseStarted);
         }
 
         if (onStorytellerView is not null)

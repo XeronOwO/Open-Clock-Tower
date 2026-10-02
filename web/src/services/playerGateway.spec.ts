@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import type { ReconnectBundleDto } from '@/contracts/game'
-import { applyBundle, normalizeBundle, normalizePlayerEvent, normalizeRequest } from '@/services/playerGateway'
+import {
+  applyBundle,
+  normalizeAnswered,
+  normalizeBundle,
+  normalizePhaseStarted,
+  normalizePlayerEvent,
+  normalizeRequest,
+  normalizeVoided,
+} from '@/services/playerGateway'
 
 /**
  * 重连补齐（架构 §5、D-0010）：快照 + 从本客户端已知序号起的**全部事件**，两者一起用。
@@ -110,5 +118,38 @@ describe('重连补齐折叠', () => {
     const applied = applyBundle(bundle(2, []), 9)
     expect(applied.sequence).toBe(9)
     expect(applied.diagnostic).toContain('倒退')
+  })
+})
+
+describe('在线推送载荷规范化', () => {
+  it('请求作废：缺请求标识或原因视为坏载荷（不编造原因）', () => {
+    expect(normalizeVoided({ requestId: 'r1', reason: 'StorytellerForce', note: '测试' })).toEqual({
+      requestId: 'r1',
+      reason: 'StorytellerForce',
+      note: '测试',
+    })
+    expect(normalizeVoided({ requestId: 'r1', reason: 'StorytellerForce' })).toEqual({
+      requestId: 'r1',
+      reason: 'StorytellerForce',
+      note: null,
+    })
+    expect(normalizeVoided({ reason: 'StorytellerForce' })).toBeNull()
+    expect(normalizeVoided({ requestId: 'r1' })).toBeNull()
+    expect(normalizeVoided(null)).toBeNull()
+  })
+
+  it('请求响应：请求标识 / 选项 / 来源三者缺一不可', () => {
+    expect(
+      normalizeAnswered({ requestId: 'r1', optionValue: 'seat:2', source: 'StorytellerProxy', note: '代填' }),
+    ).toEqual({ requestId: 'r1', optionValue: 'seat:2', source: 'StorytellerProxy', note: '代填' })
+    expect(normalizeAnswered({ requestId: 'r1', optionValue: 'seat:2' })).toBeNull()
+    expect(normalizeAnswered({ requestId: 'r1', source: 'Player' })).toBeNull()
+    expect(normalizeAnswered('garbage')).toBeNull()
+  })
+
+  it('阶段开始：缺阶段名视为坏载荷（不知道阶段就不动页头）', () => {
+    expect(normalizePhaseStarted({ phase: 'FirstNight' })).toEqual({ phase: 'FirstNight' })
+    expect(normalizePhaseStarted({ phase: 42 })).toBeNull()
+    expect(normalizePhaseStarted(undefined)).toBeNull()
   })
 })

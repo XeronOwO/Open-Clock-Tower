@@ -20,6 +20,8 @@ public sealed partial class PlayerProjectionLeakGateTests
         Path.Combine("src", "OpenClockTower.Contracts", "OperationRequestDto.cs"),
         Path.Combine("src", "OpenClockTower.Contracts", "ReconnectBundleDto.cs"),
         Path.Combine("src", "OpenClockTower.Contracts", "PlayerEventDto.cs"),
+        Path.Combine("src", "OpenClockTower.Contracts", "OperationRequestAnsweredDto.cs"),
+        Path.Combine("src", "OpenClockTower.Contracts", "PhaseStartedDto.cs"),
     ];
 
     private static readonly string[] ForbiddenTokens =

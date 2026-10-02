@@ -6,17 +6,21 @@
  *
  * 场景（花名册固定为 clockmaker / dreamer / no-dashii——当前已实现契约的三名角色）：
  *   1) 起真宿主（独立临时库）→ 读说书人票据与各席位票据 → 起 Vite → 起 Chromium；
- *   2) 说书人 + 每席一个玩家各自加入（独立浏览器上下文 = 各自设备）；
+ *   2) 说书人 + 每席一个玩家各自加入（独立浏览器上下文 = 各自设备）→ 断言加入时页头阶段是中文；
  *   3) 说书人分配三角色 → 诺-达鲺常驻中毒落在最近的两名镇民（带归因与效果链接）；
  *   4) 说书人上报 1 号醉酒 → 与中毒并存、互不抵消；
- *   5) 开夜 → 钟表匠槽位没有玩家选项，直接进说书人裁定点 →
- *      每步摘要断言行 2（中毒 + 醉酒 + 未生效 R-0004 + 无选项行为）→ 信息只到 1 号玩家；
+ *   5) 开夜 → 阶段推送让三席玩家页头变「首夜」（行 3）→ 钟表匠槽位没有玩家选项，直接进说书人
+ *      裁定点 → 每步摘要断言行 2（中毒 + 醉酒 + 未生效 R-0004 + 无选项行为）→ 信息只到 1 号玩家；
  *   6) 筑梦师槽位：2 号玩家收到定向请求（摘要断言行 1：中毒 + 归因 + 未生效）→ 作答 →
  *      说书人自由裁定（能力未生效）→ 信息只到 2 号玩家；期间其余玩家必须零请求、零进度；
- *   7) 第一夜 13 个槽位走完 → 开第二夜（Recommended）：诺-达鲺击杀请求由 3 号玩家作答 →
+ *   7) 第一夜 13 个槽位走完 → 第二夜（Recommended）：阶段推送让页头变「夜晚」（行 3）→
+ *      诺-达鲺击杀请求由说书人**代填**（行 2：3 号玩家不刷新就回空态并注明代填）→
+ *      筑梦师请求由说书人**强制作废**（行 1：2 号玩家不刷新就看到请求消失与原因）；
+ *      两个窗口都对无关玩家做窗口采样（行 4：持续零请求、零了结说明）；
+ *   8) 第二夜走完 → 第三夜：诺-达鲺击杀请求由 3 号玩家本人作答（保留提交链路覆盖）→
  *      等筑梦师请求挂起后，先报 3 号死亡（2 号中毒解除进摘要——行 5），再报 2 号死亡
- *      （请求依赖失效自动作废、作废说明进摘要——行 6）；
- *   8) 全程截图；断言只落在真正渲染数据的面板内（`data-testid` 锚点 + 单调计数）。
+ *      （请求依赖失效自动作废、作废说明进摘要——行 6；玩家侧同样收到作废推送）；
+ *   9) 全程截图；断言只落在真正渲染数据的面板内（`data-testid` 锚点 + 单调计数）。
  *
  * 前置：Node >= 22.5（node:sqlite）、web/node_modules 已安装、本机已装 Chromium：
  *   cd web
@@ -172,6 +176,13 @@ async function main() {
     const badgeText = (await seatBadge.innerText()).trim()
     check(`玩家 ${seatTicket.seat} 号加入成功`, badgeText.includes(`${seatTicket.seat} 号`), badgeText)
 
+    const initialPhase = (await client.page.locator('[data-testid="player-phase"]').innerText()).trim()
+    check(
+      `玩家 ${seatTicket.seat} 号加入时阶段显示中文「未开始」`,
+      initialPhase === '未开始',
+      initialPhase,
+    )
+
     const shellText = await client.page.locator('.shell').innerText()
     check(
       `玩家 ${seatTicket.seat} 号界面不含说书人面板`,
@@ -266,6 +277,19 @@ async function main() {
     storyteller.page.getByRole('button', { name: /开夜/ }).click(),
   )
   check('开夜被受理（真实顺序表建表）', nightStarted.kind === 'Accepted', nightStarted.raw)
+
+  // 行 3 / 行 5：此前实测玩家页头停在 NotStarted（英文）——必须靠推送变成中文阶段，不用点「补齐」。
+  const phaseAfterNightOne = []
+  for (const [seat, client] of players) {
+    phaseAfterNightOne.push(
+      `${seat}:${await waitForText(client.page.locator('[data-testid="player-phase"]'), '首夜', 20_000)}`,
+    )
+  }
+  check(
+    '行 3：开夜推送让三席玩家页头变「首夜」（未点补齐、未刷新）',
+    phaseAfterNightOne.every((entry) => entry.endsWith(':首夜')),
+    phaseAfterNightOne.join(', '),
+  )
 
   const slotAfterStart = await waitForSlotIndex(storyteller.page, 15_000)
   const slotCounter = await readSlotCounter(storyteller.page)
@@ -529,7 +553,7 @@ async function main() {
   const nightOneClosed = await waitForPlanCompleted(storyteller.page, 120_000)
   check('第一夜 13 个槽位自行走完（服务端推送，无刷新）', nightOneClosed)
 
-  console.log('=== 10/10 第二夜：挂起请求 + 上游依赖变化（行 5 / 6）===')
+  console.log('=== 10/10 第二夜与第三夜：代填 / 强制作废 / 阶段推送（行 1–4）→ 依赖变化（行 5 / 6）===')
   const nightTwo = await runCommand(storyteller.page, '开夜2', async () => {
     await storyteller.page
       .locator('section', { hasText: '兜底与推进' })
@@ -539,7 +563,21 @@ async function main() {
   })
   check('第二夜（Recommended）开夜被受理', nightTwo.kind === 'Accepted', nightTwo.raw)
 
-  // 第二夜诺-达鲺有击杀请求（首夜不行动）：用它把夜晚推进到筑梦师槽位。
+  // 行 3 / 行 5：第二次阶段变化同样靠推送抵达（OtherNight → 中文「夜晚」，不用点「补齐」）。
+  const phaseAfterNightTwo = []
+  for (const [seat, client] of players) {
+    phaseAfterNightTwo.push(
+      `${seat}:${await waitForText(client.page.locator('[data-testid="player-phase"]'), '夜晚', 20_000)}`,
+    )
+  }
+  check(
+    '行 3：第二夜推送让三席玩家页头变「夜晚」（未点补齐、未刷新）',
+    phaseAfterNightTwo.every((entry) => entry.endsWith(':夜晚')),
+    phaseAfterNightTwo.join(', '),
+  )
+  await screenshot(players.get(clockmakerSeat).page, '14-player-phase-night-two')
+
+  // 行 2：第二夜诺-达鲺击杀请求 → 说书人代填 → 3 号玩家不刷新就回空态，并注明由谁了结。
   const demonPlayer = players.get(demonSeat)
   const demonRequestPanel = demonPlayer.page.locator('[data-testid="player-request-panel"]')
   const demonRequestState = await waitForAttribute(demonRequestPanel, 'data-request-state', 'pending', 180_000)
@@ -550,17 +588,27 @@ async function main() {
   )
   await screenshot(demonPlayer.page, '11-night2-demon-request')
 
-  await demonPlayer.page
-    .locator('[data-testid="player-request-options"] label', { hasText: `${clockmakerSeat} 号玩家` })
-    .locator('input[type=radio]')
-    .check()
-  await demonPlayer.page.locator('[data-testid="player-submit"]').click()
+  const proxyOutcome = await proxyFillPending(
+    storyteller.page,
+    `seat:${clockmakerSeat}`,
+    '批次取证：说书人代填',
+  )
+  check('说书人代填被受理', proxyOutcome.kind === 'Accepted', proxyOutcome.raw)
   const demonBackToIdle = await waitForAttribute(demonRequestPanel, 'data-request-state', 'idle', 30_000)
   check(
-    '3 号玩家提交击杀目标被受理、请求区回到空态',
+    '行 2：代填后 3 号玩家请求区回到空态（未点补齐）',
     demonBackToIdle === 'idle',
     `data-request-state=${demonBackToIdle}`,
   )
+  const demonSettledNote = await readSettledNote(demonPlayer.page)
+  check(
+    '行 2：3 号玩家看到「由说书人代填」（请求消失有交代）',
+    demonSettledNote.includes('由说书人代填'),
+    demonSettledNote || '（无了结说明）',
+  )
+  await screenshot(demonPlayer.page, '15-player-proxy-filled')
+  // 行 4：代填窗口里与这条请求无关的 1 号玩家必须持续零活动（钟表匠首夜之后不再有槽位）。
+  await sampleUnrelatedIdle(players, [clockmakerSeat], '代填窗口', 2)
 
   const dreamerNightTwo = await waitForAttribute(dreamerRequestPanel, 'data-request-state', 'pending', 180_000)
   check(
@@ -580,6 +628,75 @@ async function main() {
     (await panelText(storyteller.page, '当前步骤')).replace(/\s+/g, ' ').slice(0, 240),
   )
 
+  // 行 1：说书人强制作废 → 2 号玩家不刷新就看到请求消失，并读到作废原因。
+  const voidOutcome = await forceVoidPending(storyteller.page, 'StorytellerForce', '批次取证：强制作废')
+  check('说书人强制作废被受理', voidOutcome.kind === 'Accepted', voidOutcome.raw)
+  const dreamerBackToIdle = await waitForAttribute(dreamerRequestPanel, 'data-request-state', 'idle', 30_000)
+  check(
+    '行 1：强制作废后 2 号玩家请求区回到空态（未点补齐）',
+    dreamerBackToIdle === 'idle',
+    `data-request-state=${dreamerBackToIdle}`,
+  )
+  const dreamerSettledNote = await readSettledNote(dreamerPlayer.page)
+  check(
+    '行 1：2 号玩家看到作废原因（说书人强制作废）',
+    dreamerSettledNote.includes('请求已作废') && dreamerSettledNote.includes('说书人强制作废'),
+    dreamerSettledNote || '（无了结说明）',
+  )
+  await screenshot(dreamerPlayer.page, '16-player-forced-void')
+  // 行 4：作废窗口里 1 号与 3 号必须持续零活动（这是筑梦师槽位之后的最后一个行动槽）。
+  await sampleUnrelatedIdle(players, [clockmakerSeat, demonSeat], '强制作废窗口', 2)
+
+  const nightTwoClosed = await waitForPlanCompleted(storyteller.page, 120_000)
+  check('第二夜按配额自行走完（服务端推送，无刷新）', nightTwoClosed)
+
+  // 行 5 / 6 的依赖变化放在第三夜：三席都还活着，槽位与依赖都按正常路径生效。
+  const nightThree = await runCommand(storyteller.page, '开夜3', async () => {
+    await storyteller.page
+      .locator('section', { hasText: '兜底与推进' })
+      .locator('input[type=number]')
+      .fill('3')
+    await storyteller.page.getByRole('button', { name: /开夜/ }).click()
+  })
+  check('第三夜（Recommended）开夜被受理', nightThree.kind === 'Accepted', nightThree.raw)
+
+  // 第三夜诺-达鲺击杀请求由 3 号玩家本人作答：保留玩家提交链路的真机覆盖。
+  const demonNightThree = await waitForAttribute(demonRequestPanel, 'data-request-state', 'pending', 180_000)
+  check(
+    '第三夜 3 号玩家收到诺-达鲺击杀请求',
+    demonNightThree === 'pending',
+    `data-request-state=${demonNightThree}`,
+  )
+  await demonPlayer.page
+    .locator('[data-testid="player-request-options"] label', { hasText: `${clockmakerSeat} 号玩家` })
+    .locator('input[type=radio]')
+    .check()
+  await demonPlayer.page.locator('[data-testid="player-submit"]').click()
+  const demonSubmitted = await waitForAttribute(demonRequestPanel, 'data-request-state', 'idle', 30_000)
+  check(
+    '第三夜 3 号玩家提交击杀目标被受理、请求区回到空态',
+    demonSubmitted === 'idle',
+    `data-request-state=${demonSubmitted}`,
+  )
+
+  const dreamerNightThree = await waitForAttribute(dreamerRequestPanel, 'data-request-state', 'pending', 180_000)
+  check(
+    '第三夜 2 号玩家收到筑梦师请求（中毒仍在）',
+    dreamerNightThree === 'pending',
+    `data-request-state=${dreamerNightThree}`,
+  )
+  const nightThreeDigestVisible = await waitForPanelContains(
+    storyteller.page,
+    '当前步骤',
+    poisonLinkFor(dreamerSeat),
+    30_000,
+  )
+  check(
+    '第三夜筑梦师摘要仍显示中毒与效果链接',
+    nightThreeDigestVisible,
+    (await panelText(storyteller.page, '当前步骤')).replace(/\s+/g, ' ').slice(0, 240),
+  )
+
   // 行 5：中毒来源死亡 → 维度解除进摘要（挂起请求还占着槽位，行动者就是 2 号）。
   const demonDeath = await reportSeatState(storyteller.page, {
     seat: demonSeat,
@@ -587,7 +704,7 @@ async function main() {
     value: 'Dead',
     reason: '批次取证：诺-达鲺死亡，验证中毒解除进摘要',
   })
-  check('第二夜上报 3 号死亡被受理', demonDeath.kind === 'Accepted', demonDeath.raw)
+  check('第三夜上报 3 号死亡被受理', demonDeath.kind === 'Accepted', demonDeath.raw)
   const releaseVisible = await waitForPanelContains(storyteller.page, '当前步骤', '解除', 30_000)
   const digestAfterRelease = await panelText(storyteller.page, '当前步骤')
   check(
@@ -600,14 +717,15 @@ async function main() {
   )
   await screenshot(storyteller.page, '12-digest-poison-released')
 
-  // 行 6：挂起请求的行动者死亡 → 依赖失效自动作废，摘要写明是哪一条依赖不满足。
+  // 行 6：挂起请求的行动者死亡 → 依赖失效自动作废，摘要写明是哪一条依赖不满足；
+  // 同时检查玩家侧：自动作废也必须以推送抵达 2 号（空态 + 原因），不靠"补齐"。
   const dreamerDeath = await reportSeatState(storyteller.page, {
     seat: dreamerSeat,
     dimensionLabel: '生死',
     value: 'Dead',
     reason: '批次取证：筑梦师死亡，验证挂起请求依赖失效自动作废',
   })
-  check('第二夜上报 2 号死亡被受理', dreamerDeath.kind === 'Accepted', dreamerDeath.raw)
+  check('第三夜上报 2 号死亡被受理', dreamerDeath.kind === 'Accepted', dreamerDeath.raw)
   const voidNote = `座位 ${dreamerSeat} 的状态变化使请求失去意义`
   const voidVisible = await waitForPanelContains(storyteller.page, '当前步骤', voidNote, 30_000)
   const digestAfterVoid = await panelText(storyteller.page, '当前步骤')
@@ -615,6 +733,15 @@ async function main() {
     '行 6：摘要写明哪条依赖不满足（生死 Dead ≠ 要求 Alive）',
     voidVisible && digestAfterVoid.includes('生死 Dead ≠ 要求 Alive'),
     digestAfterVoid.replace(/\s+/g, ' ').slice(0, 300),
+  )
+  const autoVoided = await waitForAttribute(dreamerRequestPanel, 'data-request-state', 'idle', 30_000)
+  const autoVoidNote = await readSettledNote(dreamerPlayer.page)
+  check(
+    '行 6：自动作废同样以推送到达 2 号玩家（空态 + 原因「座位依赖不再满足」）',
+    autoVoided === 'idle'
+      && autoVoidNote.includes('请求已作废')
+      && autoVoidNote.includes('座位依赖不再满足'),
+    `${autoVoided} / ${autoVoidNote || '（无了结说明）'}`,
   )
   await screenshot(storyteller.page, '13-digest-request-voided')
 
@@ -638,9 +765,12 @@ async function main() {
     '11-night2-demon-request',
     '12-digest-poison-released',
     '13-digest-request-voided',
+    '14-player-phase-night-two',
+    '15-player-proxy-filled',
+    '16-player-forced-void',
   ]
   const missingShots = expectedShots.filter((name) => !existsSync(path.join(screenshotsDir, `${name}.png`)))
-  check('十三张证据截图都已落盘', missingShots.length === 0, missingShots.join(',') || screenshotsDir)
+  check('十六张证据截图都已落盘', missingShots.length === 0, missingShots.join(',') || screenshotsDir)
 }
 
 /** 起一个独立浏览器上下文（= 一台设备）：页面级 console 错误统一收集。 */
@@ -731,6 +861,105 @@ async function waitForAttribute(locator, name, expected, timeoutMs) {
   }
 
   return value
+}
+
+/** 等某个定位器的可见文本变成期望值；超时返回最后一次读到的文本。 */
+async function waitForText(locator, expected, timeoutMs) {
+  const deadline = Date.now() + timeoutMs
+  let text = ''
+  while (Date.now() < deadline) {
+    text = (await locator.innerText().catch(() => '')).trim()
+    if (text === expected) {
+      return text
+    }
+
+    await sleep(100)
+  }
+
+  return text
+}
+
+/** 玩家端"上一次请求怎么结束"的说明文本；没有这条说明时返回空串。 */
+async function readSettledNote(page) {
+  const note = page.locator('[data-testid="player-settled-note"]')
+  if ((await note.count()) === 0) {
+    return ''
+  }
+
+  return (await note.first().innerText()).trim()
+}
+
+/** 玩家端"活动快照"：请求区状态 + 了结说明。窗口内它必须保持不变。 */
+async function readPlayerActivity(page) {
+  const state = await page
+    .locator('[data-testid="player-request-panel"]')
+    .getAttribute('data-request-state')
+  const note = await readSettledNote(page)
+  return `${state ?? '（无）'}${note.length > 0 ? ` + 说明:${note}` : ''}`
+}
+
+/**
+ * 窗口采样：这些与本次推送无关的玩家，在窗口内的**活动快照必须相对基线不变**——
+ * 请求区状态与了结说明都不许动，更不许出现新的活动。
+ *
+ * 判据是"相对基线不变"而不是"必须为空态"：玩家面板会保留**自己**上一次请求是怎么结束的
+ * （例如 3 号自己那次被代填），那是他自己的信息，不是这次推送造成的活动（E4 首跑实测踩到）。
+ * 单点读取只能证明"那一刻恰好空闲"，证明不了"整个窗口里没有活动"（独立复核 2026-10-02 指出）。
+ */
+async function sampleUnrelatedIdle(players, seats, label, seconds) {
+  const samples = Math.max(4, Math.round(seconds * 4))
+  const baseline = new Map()
+  for (const seat of seats) {
+    baseline.set(seat, await readPlayerActivity(players.get(seat).page))
+  }
+
+  const observed = new Map(seats.map((seat) => [seat, new Set()]))
+  for (let sample = 0; sample < samples; sample += 1) {
+    for (const seat of seats) {
+      observed.get(seat)?.add(await readPlayerActivity(players.get(seat).page))
+    }
+
+    await sleep(250)
+  }
+
+  for (const seat of seats) {
+    const states = observed.get(seat)
+    const expected = baseline.get(seat)
+    check(
+      `行 4：${label}内无关玩家 ${seat} 号活动快照保持不变（${samples} 次采样）`,
+      states.size === 1 && states.has(expected),
+      `基线=${expected}，观察到：${[...states].join(' | ') || '（无）'}`,
+    )
+  }
+}
+
+/** 说书人代填当前挂起的请求（值必须来自该请求的合法选项集合）。 */
+async function proxyFillPending(page, optionValue, note) {
+  const pending = page.locator('section.panel', { hasText: '裁定点与卡点' }).locator('.block.pending')
+  await pending.waitFor({ state: 'visible', timeout: 30_000 })
+  await pending.locator('input[placeholder="代填的值（与合法选项一致）"]').fill(optionValue)
+  if (note) {
+    await pending.locator('input[placeholder="代填备注（可选）"]').fill(note)
+  }
+
+  return runCommand(page, '代填', () => pending.getByRole('button', { name: '代填', exact: true }).click())
+}
+
+/** 说书人强制作废当前挂起的请求。 */
+async function forceVoidPending(page, reason, note) {
+  const pending = page.locator('section.panel', { hasText: '裁定点与卡点' }).locator('.block.pending')
+  await pending.waitFor({ state: 'visible', timeout: 30_000 })
+  if (reason) {
+    await pending.locator('select').selectOption(reason)
+  }
+
+  if (note) {
+    await pending.locator('input[placeholder="作废说明（可选）"]').fill(note)
+  }
+
+  return runCommand(page, '强制作废', () =>
+    pending.getByRole('button', { name: '强制作废', exact: true }).click(),
+  )
 }
 
 /** 裁定点区块的可见文本（没有等待中的裁定点时为空串）。 */

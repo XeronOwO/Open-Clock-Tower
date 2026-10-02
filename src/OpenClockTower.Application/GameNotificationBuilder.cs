@@ -47,6 +47,32 @@ public static class GameNotificationBuilder
                     }
 
                     break;
+
+                // 玩家本人作答与说书人代填走同一条通知：收件人始终是请求的行动者，
+                // 「谁做出的决定」留在 Answer.Source 里（票据行 6 的可审计口径）。
+                case OperationRequestAnsweredEvent answered:
+                    var answeredAddressee = FindAddressee(events, previousMachine, answered.RequestId);
+                    if (answeredAddressee is { } answeredSeat)
+                    {
+                        notifications.Add(new GameNotification
+                        {
+                            Kind = GameNotificationKind.OperationRequestAnswered,
+                            Seat = answeredSeat,
+                            RequestId = answered.RequestId,
+                            Answer = answered.Answer,
+                        });
+                    }
+
+                    break;
+
+                // 阶段开始是公开信息：不带席位 → 分发器广播给全部已绑定席位。
+                case PhaseStartedEvent started:
+                    notifications.Add(new GameNotification
+                    {
+                        Kind = GameNotificationKind.PhaseStarted,
+                        Phase = started.Plan.Phase,
+                    });
+                    break;
             }
         }
 

@@ -127,6 +127,21 @@ export interface OperationRequestVoidedDto {
   note: string | null
 }
 
+/** 推给玩家的「请求已被响应」（玩家本人作答或说书人代填；后端同名契约）。 */
+export interface OperationRequestAnsweredDto {
+  requestId: string
+  /** 被选中的选项值（与重连事件里的同一事实保持一致）。 */
+  optionValue: string
+  /** ResponseSource：Player / StorytellerProxy。 */
+  source: string
+  note: string | null
+}
+
+/** 推给玩家的阶段开始（公开信息：昼夜；后端同名契约）。 */
+export interface PhaseStartedDto {
+  phase: string
+}
+
 /** 说书人视图：完整看板 + 兜底所需的一切（D-0014）。 */
 export interface StorytellerViewDto {
   sequence: number

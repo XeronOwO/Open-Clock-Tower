@@ -1,11 +1,16 @@
 using Microsoft.AspNetCore.SignalR;
 using OpenClockTower.Application;
+using OpenClockTower.Kernel;
 
 namespace OpenClockTower.Server;
 
 /// <summary>
 /// 推送分发：按通知类型**定向单播**到正确的连接（D-0013 §5：其他人没有任何活动指示）。
 /// </summary>
+/// <remarks>
+/// 两种广播面：说书人视图变更推给全部说书人连接；阶段开始是公开信息，推给全部已绑定席位。
+/// 其余通知（请求 / 响应 / 作废 / 信息）一律只到当事玩家的连接。
+/// </remarks>
 public sealed class NotificationDispatcher
 {
     private readonly IHubContext<GameHub, IGameClient> _hub;
@@ -26,7 +31,7 @@ public sealed class NotificationDispatcher
         _logger = logger;
     }
 
-    /// <summary>把提交后的通知推出去；没有在线连接时静默跳过（重连时补齐 / 重投）。</summary>
+    /// <summary>把提交后的通知推出去；没有在线连接时记日志（重连时补齐 / 重投）。</summary>
     public async Task DispatchAsync(CommandResult result, CancellationToken cancellationToken)
     {
         foreach (var notification in result.Notifications)
@@ -67,6 +72,37 @@ public sealed class NotificationDispatcher
                             requestId,
                             voided.Reason);
                     }
+                    else
+                    {
+                        _logger.LogWarning(
+                            "请求作废无在线连接（重连时按事件补齐）：seat={Seat} request={RequestId}",
+                            voidedSeat,
+                            requestId);
+                    }
+
+                    break;
+
+                case GameNotificationKind.OperationRequestAnswered
+                    when notification.Seat is { } answeredSeat
+                         && notification.RequestId is { } answeredRequestId
+                         && notification.Answer is { } answer:
+                    if (_registry.TryGetSeatConnection(answeredSeat, out var answeredConnectionId))
+                    {
+                        await _hub.Clients.Client(answeredConnectionId)
+                            .ReceiveOperationRequestAnswered(ProjectionMapper.ToDto(answeredRequestId, answer));
+                        _logger.LogInformation(
+                            "已推送请求响应：seat={Seat} request={RequestId} source={Source}",
+                            answeredSeat,
+                            answeredRequestId,
+                            answer.Source);
+                    }
+                    else
+                    {
+                        _logger.LogWarning(
+                            "请求响应无在线连接（重连时按事件补齐）：seat={Seat} request={RequestId}",
+                            answeredSeat,
+                            answeredRequestId);
+                    }
 
                     break;
 
@@ -92,12 +128,39 @@ public sealed class NotificationDispatcher
 
                     break;
 
+                case GameNotificationKind.PhaseStarted when notification.Phase is { } startedPhase:
+                    await PushPhaseStartedAsync(startedPhase, cancellationToken);
+                    break;
+
                 case GameNotificationKind.StorytellerViewChanged:
                 case GameNotificationKind.RoomRebuilt:
                     await PushStorytellerViewAsync(cancellationToken);
                     break;
             }
         }
+    }
+
+    /// <summary>把阶段开始广播给全部已绑定席位的连接；未连接玩家重连时从快照取（公开信息）。</summary>
+    private async Task PushPhaseStartedAsync(GamePhase phase, CancellationToken cancellationToken)
+    {
+        var dto = ProjectionMapper.ToDto(phase);
+        var seats = _registry.Seats;
+        var pushed = 0;
+        foreach (var seat in seats)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (_registry.TryGetSeatConnection(seat, out var connectionId))
+            {
+                await _hub.Clients.Client(connectionId).ReceivePhaseStarted(dto);
+                pushed++;
+            }
+        }
+
+        _logger.LogInformation(
+            "已广播阶段开始：phase={Phase} 推送={Pushed}/{Total}",
+            phase,
+            pushed,
+            seats.Count);
     }
 
     private async Task PushStorytellerViewAsync(CancellationToken cancellationToken)

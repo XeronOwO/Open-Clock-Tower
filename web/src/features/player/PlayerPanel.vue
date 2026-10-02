@@ -6,7 +6,7 @@
  * 看板 / 状态账 / 计划进度一概不下发——所以这里也不会有对应的代码路径（D-0013 §5）。
  */
 import type { InformationResultDto, OperationRequestDto, PlayerViewDto } from '@/contracts/game'
-import { labelOf } from '@/display/labels'
+import { labelOf, voidReasonLabelOf } from '@/display/labels'
 import { seatLabelOf } from '@/display/format'
 import { PlayerGateway, type PlayerCallbacks } from '@/services/playerGateway'
 import { TicketStore } from '@/services/ticketStore'
@@ -25,6 +25,8 @@ const joining = ref(false)
 const submitting = ref(false)
 const selectedOption = ref('')
 const note = ref('')
+/** 最近一次请求是怎么结束的（作废原因 / 说书人代填）；新请求到达即清空。 */
+const settledNote = ref('')
 
 let gateway: PlayerGateway | null = null
 let clientSequence = 0
@@ -49,6 +51,36 @@ function buildCallbacks(): PlayerCallbacks {
     onRequest: (request) => {
       pending.value = request
       selectedOption.value = request?.options[0]?.value ?? ''
+      // 重投同一请求也清空：这条说明只描述"上一次请求是怎么结束的"。
+      settledNote.value = ''
+    },
+    onRequestVoided: (voided) => {
+      // 只处理正挂在面板上的那一条：其他请求的作废与这名玩家无关（D-0013 §5）。
+      if (pending.value === null || pending.value.requestId !== voided.requestId) {
+        return
+      }
+
+      pending.value = null
+      selectedOption.value = ''
+      const detail = voided.note === null ? '' : `（${voided.note}）`
+      settledNote.value = `请求已作废：${voidReasonLabelOf(voided.reason)}${detail}`
+    },
+    onRequestAnswered: (answered) => {
+      if (pending.value === null || pending.value.requestId !== answered.requestId) {
+        return
+      }
+
+      pending.value = null
+      selectedOption.value = ''
+      // 玩家本人作答的面板在提交回执到达时就会清空；这里只给"被说书人代填"一个交代。
+      settledNote.value =
+        answered.source === 'StorytellerProxy' ? '请求已了结：由说书人代填' : ''
+    },
+    onPhaseStarted: (phase) => {
+      // 阶段是公开信息：服务端推什么就显示什么，前端不做任何推断 / 本地补齐（D-0010）。
+      if (view.value !== null) {
+        view.value = { ...view.value, phase }
+      }
     },
     onInformation: (information) => {
       if (information !== null) {
@@ -214,6 +246,13 @@ onBeforeUnmount(() => {
             提交
           </button>
         </template>
+        <p
+          v-if="pending === null && settledNote.length > 0"
+          class="settled-note"
+          data-testid="player-settled-note"
+        >
+          {{ settledNote }}
+        </p>
       </section>
 
       <section class="panel" data-testid="player-information" :data-information-count="informationResults.length">
@@ -307,5 +346,11 @@ h1 {
   padding-left: 18px;
   color: var(--warn);
   font-size: 12px;
+}
+
+.settled-note {
+  margin: 6px 0 0;
+  color: var(--ink-soft);
+  font-size: 13px;
 }
 </style>

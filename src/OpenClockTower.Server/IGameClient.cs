@@ -11,6 +11,12 @@ public interface IGameClient
     /// <summary>服务端告知"你的请求被作废了及原因"。</summary>
     Task ReceiveOperationRequestVoided(OperationRequestVoidedDto voided);
 
+    /// <summary>服务端告知"你的请求已被响应"（玩家本人作答或说书人代填）。</summary>
+    Task ReceiveOperationRequestAnswered(OperationRequestAnsweredDto answered);
+
+    /// <summary>服务端广播阶段开始（公开信息：昼夜；逐连接定向发送给每个已绑定席位）。</summary>
+    Task ReceivePhaseStarted(PhaseStartedDto phase);
+
     /// <summary>说书人视图发生变化（卡点 / 控制模式 / 阻塞等）。</summary>
     Task ReceiveStorytellerViewChanged(StorytellerViewDto view);
 

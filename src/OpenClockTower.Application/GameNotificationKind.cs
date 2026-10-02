@@ -17,4 +17,10 @@ public enum GameNotificationKind
 
     /// <summary>推给某个玩家的信息类结果（只有内容，「可能为假」不下发）。</summary>
     InformationResultIssued,
+
+    /// <summary>向被请求的玩家推送"你的请求已被响应"（玩家本人作答或说书人代填）。</summary>
+    OperationRequestAnswered,
+
+    /// <summary>向全部已绑定席位的玩家广播阶段开始（公开信息：昼夜）。</summary>
+    PhaseStarted,
 }

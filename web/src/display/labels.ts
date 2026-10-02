@@ -87,9 +87,13 @@ const VALUE_LABELS: Readonly<Record<string, string>> = {
   // 控制模式
   Automatic: '自动',
   StorytellerTakeover: '说书人接管',
-  // 大阶段
+  // 大阶段（GamePhase；尚未开夜时服务端下发占位串 NotStarted）
+  NotStarted: '未开始',
+  FirstNight: '首夜',
+  OtherNight: '夜晚',
   Night: '夜晚',
   Day: '白天',
+  Resolving: '结算中',
   // 每步摘要：能力判定依据（SlotAbilityBasis）
   Settled: '已结算',
   Preview: '按当前账预览',

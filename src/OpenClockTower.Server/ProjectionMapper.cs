@@ -38,6 +38,21 @@ public static class ProjectionMapper
         Note = voided.Note,
     };
 
+    /// <summary>响应内容 → DTO（请求标识 + 选项 + 来源 + 说明）。</summary>
+    public static OperationRequestAnsweredDto ToDto(OperationRequestId requestId, OperationRequestAnswer answer) => new()
+    {
+        RequestId = requestId.Value,
+        OptionValue = answer.OptionValue,
+        Source = answer.Source.ToString(),
+        Note = answer.Note,
+    };
+
+    /// <summary>阶段 → DTO（公开信息）。</summary>
+    public static PhaseStartedDto ToDto(GamePhase phase) => new()
+    {
+        Phase = phase.ToString(),
+    };
+
     /// <summary>玩家视图 → DTO。</summary>
     public static PlayerViewDto ToDto(PlayerView view) => new()
     {

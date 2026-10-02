@@ -44,6 +44,15 @@ describe('文案映射', () => {
     expect(labelOf('BlockAndAlert')).toBe('阻塞并报警，等说书人处理')
   })
 
+  it('游戏阶段（含未开夜占位）有中文，未知值仍原样回显', () => {
+    expect(labelOf('NotStarted')).toBe('未开始')
+    expect(labelOf('FirstNight')).toBe('首夜')
+    expect(labelOf('OtherNight')).toBe('夜晚')
+    expect(labelOf('Day')).toBe('白天')
+    expect(labelOf('Resolving')).toBe('结算中')
+    expect(labelOf('SomethingNew')).toBe('SomethingNew')
+  })
+
   it('作废原因与同名控制模式分开映射，未知原因原样回显', () => {
     expect(voidReasonLabelOf('DependencyViolated')).toBe('座位依赖不再满足')
     expect(voidReasonLabelOf('StorytellerTakeover')).toBe('强推 / 接管切步了结')

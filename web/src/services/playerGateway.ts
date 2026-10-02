@@ -12,7 +12,10 @@ import {
 import type {
   DecisionOptionDto,
   InformationResultDto,
+  OperationRequestAnsweredDto,
   OperationRequestDto,
+  OperationRequestVoidedDto,
+  PhaseStartedDto,
   PlayerEventDto,
   ReconnectBundleDto,
   PlayerViewDto,
@@ -23,6 +26,12 @@ import { HUB_PATH, type GatewayState } from '@/services/connectionState'
 /** 玩家侧回调。 */
 export interface PlayerCallbacks {
   onRequest: (request: OperationRequestDto | null) => void
+  /** 请求被作废（强制作废 / 依赖失效 / 阶段推进…）：界面据此清掉当前请求并说明原因。 */
+  onRequestVoided: (voided: OperationRequestVoidedDto) => void
+  /** 请求已被响应（玩家本人或说书人代填）：界面据此清掉当前请求。 */
+  onRequestAnswered: (answered: OperationRequestAnsweredDto) => void
+  /** 阶段开始（公开信息）：页头阶段随服务端更新，不需要手动补齐。 */
+  onPhaseStarted: (phase: string) => void
   onInformation: (information: InformationResultDto | null) => void
   onState: (state: GatewayState) => void
   onDiagnostic: (message: string) => void
@@ -43,6 +52,24 @@ export class PlayerGateway {
 
     this.connection.on('ReceiveOperationRequest', (payload: unknown) => {
       callbacks.onRequest(normalizeRequest(payload))
+    })
+    this.connection.on('ReceiveOperationRequestVoided', (payload: unknown) => {
+      const voided = normalizeVoided(payload)
+      if (voided !== null) {
+        callbacks.onRequestVoided(voided)
+      }
+    })
+    this.connection.on('ReceiveOperationRequestAnswered', (payload: unknown) => {
+      const answered = normalizeAnswered(payload)
+      if (answered !== null) {
+        callbacks.onRequestAnswered(answered)
+      }
+    })
+    this.connection.on('ReceivePhaseStarted', (payload: unknown) => {
+      const started = normalizePhaseStarted(payload)
+      if (started !== null) {
+        callbacks.onPhaseStarted(started.phase)
+      }
     })
     this.connection.on('ReceiveInformationResult', (payload: unknown) => {
       callbacks.onInformation(normalizeInformation(payload))
@@ -161,6 +188,49 @@ export function normalizeInformation(raw: unknown): InformationResultDto | null 
   }
 
   return { ability, content: asText(information['content']) ?? '' }
+}
+
+/** 未知载荷 → 请求作废；缺请求标识或原因时返回 null（宁可少显示，不编造原因）。 */
+export function normalizeVoided(raw: unknown): OperationRequestVoidedDto | null {
+  if (raw === null || typeof raw !== 'object') {
+    return null
+  }
+
+  const voided = raw as Record<string, unknown>
+  const requestId = asText(voided['requestId'])
+  const reason = asText(voided['reason'])
+  if (requestId === null || reason === null) {
+    return null
+  }
+
+  return { requestId, reason, note: asText(voided['note']) }
+}
+
+/** 未知载荷 → 请求响应；缺请求标识 / 选项 / 来源时返回 null（表达不了来源就不编）。 */
+export function normalizeAnswered(raw: unknown): OperationRequestAnsweredDto | null {
+  if (raw === null || typeof raw !== 'object') {
+    return null
+  }
+
+  const answered = raw as Record<string, unknown>
+  const requestId = asText(answered['requestId'])
+  const optionValue = asText(answered['optionValue'])
+  const source = asText(answered['source'])
+  if (requestId === null || optionValue === null || source === null) {
+    return null
+  }
+
+  return { requestId, optionValue, source, note: asText(answered['note']) }
+}
+
+/** 未知载荷 → 阶段开始；缺阶段名时返回 null（不知道阶段就不动页头）。 */
+export function normalizePhaseStarted(raw: unknown): PhaseStartedDto | null {
+  if (raw === null || typeof raw !== 'object') {
+    return null
+  }
+
+  const phase = asText((raw as Record<string, unknown>)['phase'])
+  return phase === null ? null : { phase }
 }
 
 /** 未知载荷 → 重连包；缺序号按 0 处理（那会让缺口校验显式失败，而不是静默放行）。 */
