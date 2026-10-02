@@ -66,9 +66,9 @@ todo/  →  in-progress/  →  review/  →  done/
 
 ### In progress
 
-- [角色变更族其余角色：舞蛇人 / 理发师 / 方古 / 哲学家（含上报路径槽位激活）](in-progress/character-change-family.md) — **High** — 麻脸巫婆票之后的同族四角色实现 + 说书人手工上报换角不触发槽位激活的残余收口
-
 ### Review
+
+- [角色变更族其余角色：舞蛇人 / 理发师 / 方古 / 哲学家（含上报路径槽位激活）](review/character-change-family.md) — **High** — 麻脸巫婆票之后的同族四角色实现 + 说书人手工上报换角不触发槽位激活的残余收口
 
 ### Done
 
