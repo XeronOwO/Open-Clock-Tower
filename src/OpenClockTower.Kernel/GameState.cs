@@ -71,6 +71,12 @@ public sealed record GameState
     {
         ArgumentNullException.ThrowIfNull(effect);
 
+        // 与来源状态无关的效果（R-0031）：只看终止与否——来源维度没观测齐也不影响这条判定。
+        if (effect.SourceStateIndependent)
+        {
+            return !effect.IsTerminated;
+        }
+
         var source = Seat(effect.Source);
         if (source is null)
         {

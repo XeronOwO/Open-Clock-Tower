@@ -107,6 +107,61 @@ public sealed class SlotEntryLedgerTests
         Assert.Contains(advanced.Events, gameEvent => gameEvent is OperationRequestIssuedEvent);
     }
 
+    /// <summary>
+    /// 角色在夜里换手（舞蛇人交换等）→ 尚未进入的行动槽位重绑到新持有者，
+    /// 轮到它时向新持有者发请求（rulings.md R-0032）。
+    /// </summary>
+    [Fact]
+    public void SlotRebound_ToNewHolder_IssuesRequestToNewActor()
+    {
+        var plan = StepFixture.Plan(
+            "sv:night-2",
+            StepFixture.Beat("dusk"),
+            StepFixture.Action("vortox", seat: 1, owner: "vortox"));
+
+        var started = StepMachine.StartPhase(plan, previous: null, GameState.Empty);
+        var rebound = StepMachine.Apply(
+            started.State,
+            new SlotActivatedEvent
+            {
+                SlotIndex = 1,
+                SlotId = new StepSlotId("vortox"),
+                Actor = new SeatId(2),
+                Prompt = StepFixture.Prompt("seat:2"),
+            });
+
+        Assert.NotNull(rebound);
+        Assert.Equal(StepSlotKind.Action, rebound!.Plan.Slots[1].Kind);
+        Assert.Equal(new SeatId(2), rebound.Plan.Slots[1].Actor);
+        Assert.Equal(new CharacterId("vortox"), rebound.Plan.Slots[1].Owner);
+
+        // 节拍槽位配额走完 → 推进到被重绑的那一格：请求发给新持有者。
+        var advanced = StepMachine.Handle(rebound, new SlotQuotaElapsedInput());
+        var issued = Assert.Single(advanced.Events.OfType<OperationRequestIssuedEvent>());
+        Assert.Equal(new SeatId(2), issued.Request.Addressee);
+    }
+
+    /// <summary>行动槽位重复绑定同一行动者 = 事件流损坏 → 显式抛错（严格性不放松）。</summary>
+    [Fact]
+    public void SlotRebound_ToSameActor_Throws()
+    {
+        var plan = StepFixture.Plan(
+            "sv:night-2",
+            StepFixture.Beat("dusk"),
+            StepFixture.Action("vortox", seat: 1, owner: "vortox"));
+        var started = StepMachine.StartPhase(plan, previous: null, GameState.Empty);
+
+        Assert.Throws<InvalidOperationException>(() => StepMachine.Apply(
+            started.State,
+            new SlotActivatedEvent
+            {
+                SlotIndex = 1,
+                SlotId = new StepSlotId("vortox"),
+                Actor = new SeatId(1),
+                Prompt = StepFixture.Prompt("seat:1"),
+            }));
+    }
+
     /// <summary>激活一个已经进入过的槽位 = 事件流损坏 → 显式抛错（恢复必须失败，不静默继续）。</summary>
     [Fact]
     public void SlotActivated_ForEnteredSlot_Throws()

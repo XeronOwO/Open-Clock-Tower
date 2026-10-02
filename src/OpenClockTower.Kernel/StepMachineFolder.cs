@@ -165,11 +165,13 @@ internal static class StepMachineFolder
     }
 
     /// <summary>
-    /// 把一次槽位激活折进计划：只有**尚未进入**的槽位可以被激活（过时不候，《隐性规则汇总》§6）。
+    /// 把一次槽位绑定折进计划：空槽位 → 激活成行动槽位；行动槽位 → 换手重绑（换行动者与提示）。
+    /// 只有**尚未进入**的槽位可以被处理（过时不候，《隐性规则汇总》§6）。
     /// </summary>
     /// <remarks>
-    /// 顺序损坏一律显式抛错：激活一个已经走过的槽位、下标越界、槽位标识对不上、
-    /// 或者重复激活已经激活过的行动槽位，都是事件流损坏（恢复必须失败，不许静默继续）。
+    /// 顺序损坏一律显式抛错：处理一个已经走过的槽位、下标越界、槽位标识对不上、
+    /// 行动槽位重复绑定到同一行动者、或者绑定的不是角色槽位，都是事件流损坏
+    /// （恢复必须失败，不许静默继续）。
     /// </remarks>
     private static StepMachineState ApplySlotActivation(StepMachineState? state, SlotActivatedEvent activated)
     {
@@ -192,18 +194,31 @@ internal static class StepMachineFolder
                 $"事件流顺序损坏：下标 {activated.SlotIndex} 是槽位 {slot.Id.Value}，不是 {activated.SlotId.Value}");
         }
 
-        if (slot.Kind == StepSlotKind.Action)
-        {
-            throw new InvalidOperationException($"事件流顺序损坏：槽位 {activated.SlotId.Value} 已经是行动槽位，不能重复激活");
-        }
-
         var slots = current.Plan.Slots.ToArray();
-        slots[activated.SlotIndex] = StepSlot.Action(
-            slot.Id,
-            activated.Actor,
-            activated.Prompt,
-            activated.Dependencies,
-            slot.Character);
+        slots[activated.SlotIndex] = slot.Kind switch
+        {
+            StepSlotKind.Action when slot.Actor == activated.Actor => throw new InvalidOperationException(
+                $"事件流顺序损坏：槽位 {activated.SlotId.Value} 的行动者没有变化，不能重复绑定"),
+
+            // 换手重绑：角色在夜里换了持有者（舞蛇人交换等），这一格跟随新持有者（R-0032）：
+            // 行动者与提示按新持有者重建，角色归属不变。
+            StepSlotKind.Action => StepSlot.Action(
+                slot.Id,
+                activated.Actor,
+                activated.Prompt,
+                activated.Dependencies,
+                slot.Character),
+
+            StepSlotKind.Empty => StepSlot.Action(
+                slot.Id,
+                activated.Actor,
+                activated.Prompt,
+                activated.Dependencies,
+                slot.Character),
+
+            _ => throw new InvalidOperationException(
+                $"事件流顺序损坏：槽位 {activated.SlotId.Value} 不是角色槽位，不能被激活"),
+        };
 
         return current with { Plan = current.Plan with { Slots = slots } };
     }

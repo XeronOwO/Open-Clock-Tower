@@ -113,6 +113,39 @@ public sealed class EffectLifecycleTests
         Assert.False(persistent.IsOperative(deadSource));
     }
 
+    /// <summary>
+    /// R-0031：来源状态无关的效果（舞蛇人交换后的永久中毒）只随终止结束——
+    /// 来源醉酒 / 中毒都不改变它的生效判定；显式终止后才失效（死亡 / 换角色由折叠链路的
+    /// 终止传播处理，不走这里）。
+    /// </summary>
+    /// <remarks>
+    /// 百科《舞蛇人》· 2026-10-01 抓取 · 提示标记「中毒」：移除时机「放置有此标记的角色死亡或离场时」；
+    /// 该效果的来源就是被标记的角色自己，因此不能让来源状态参与生效判定（否则自指震荡，
+    /// `DimensionEffectReconciler` 不能收敛）。
+    /// </remarks>
+    [Theory]
+    [InlineData(LifeState.Alive, DrunkState.Sober, PoisonState.Healthy)]
+    [InlineData(LifeState.Alive, DrunkState.Drunk, PoisonState.Healthy)]
+    [InlineData(LifeState.Alive, DrunkState.Sober, PoisonState.Poisoned)]
+    [InlineData(LifeState.Alive, DrunkState.Drunk, PoisonState.Poisoned)]
+    public void PersistentEffect_SourceStateIndependent_StaysOperativeUntilTerminated(
+        LifeState life,
+        DrunkState drunk,
+        PoisonState poison)
+    {
+        var effect = Persistent(SharedEffect) with { SourceStateIndependent = true };
+
+        Assert.True(effect.IsOperative(Seat(life: life, drunk: drunk, poison: poison)));
+
+        var terminated = effect.Terminate(new EffectTermination
+        {
+            Kind = EffectTerminationKind.SourceDied,
+            Reason = "来源死亡",
+        });
+
+        Assert.False(terminated.IsOperative(Seat(life: life, drunk: drunk, poison: poison)));
+    }
+
     private static PersistentEffect Persistent(EffectId id) => new()
     {
         Id = id,

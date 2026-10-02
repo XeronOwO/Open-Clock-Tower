@@ -167,6 +167,53 @@ public sealed class DimensionEffectReconcilerTests
         Assert.Equal(new EffectId("poison-2"), change.EffectId);
     }
 
+    /// <summary>
+    /// R-0031：来源 = 目标本人的「来源状态无关」中毒（舞蛇人交换后的永久中毒）——
+    /// 本人醉酒 / 中毒时效果照常生效，不会出现「挂起 → 解除 → 恢复」的自指震荡。
+    /// </summary>
+    [Theory]
+    [InlineData(DrunkState.Sober, PoisonState.Poisoned)]
+    [InlineData(DrunkState.Drunk, PoisonState.Healthy)]
+    [InlineData(DrunkState.Drunk, PoisonState.Poisoned)]
+    public void SelfSourcedSourceStateIndependentEffect_StaysOperative(DrunkState drunk, PoisonState poison)
+    {
+        var state = Ledger(
+            Seat(2, drunk: drunk) with { Poison = poison },
+            Applied("snake-charmer.poison", source: 2, target: 2, sourceStateIndependent: true));
+
+        var events = DimensionEffectReconciler.Reconcile(state);
+
+        var change = Assert.Single(events.OfType<SeatStateChangedEvent>());
+        Assert.Equal(PoisonState.Poisoned, change.Poison);
+        Assert.Equal(new EffectId("snake-charmer.poison"), change.EffectId);
+    }
+
+    /// <summary>
+    /// R-0031 第 3 条：来源状态无关的效果仍随「来源死亡 / 换角色」终止——本人死亡后中毒解除。
+    /// </summary>
+    [Fact]
+    public void SelfSourcedEffect_TerminatesWithHolderDeath_AndReleasesDimension()
+    {
+        var state = Ledger(
+            Seat(2),
+            Applied("snake-charmer.poison", 2, 2, sourceStateIndependent: true),
+            PoisonFact(2, "snake-charmer.poison"),
+            new SeatStateChangedEvent
+            {
+                Seat = new SeatId(2),
+                Life = LifeState.Dead,
+                Reason = "测试死亡",
+            });
+
+        Assert.True(Assert.Single(state.PersistentEffects).IsTerminated);
+
+        var events = DimensionEffectReconciler.Reconcile(state);
+
+        var change = Assert.Single(events.OfType<SeatStateChangedEvent>());
+        Assert.Equal(PoisonState.Healthy, change.Poison);
+        Assert.Equal(new EffectId("snake-charmer.poison"), change.EffectId);
+    }
+
     private static GameState Ledger(params GameEvent[] events) => GameStateMachine.Fold(events);
 
     private static SeatStateChangedEvent Seat(int seat, DrunkState drunk = DrunkState.Sober) => new()
@@ -179,18 +226,23 @@ public sealed class DimensionEffectReconcilerTests
         Reason = "test.setup",
     };
 
-    private static PersistentEffectAppliedEvent Applied(string id, int source, int target) => new()
-    {
-        Effect = new PersistentEffect
+    private static PersistentEffectAppliedEvent Applied(
+        string id,
+        int source,
+        int target,
+        bool sourceStateIndependent = false) => new()
         {
-            Id = new EffectId(id),
-            Source = new SeatId(source),
-            Ability = new AbilityId("test.poison"),
-            Target = new SeatId(target),
-            SourceCharacter = new CharacterId("test-poisoner"),
-            Dimension = EffectDimension.Poison,
-        },
-    };
+            Effect = new PersistentEffect
+            {
+                Id = new EffectId(id),
+                Source = new SeatId(source),
+                Ability = new AbilityId("test.poison"),
+                Target = new SeatId(target),
+                SourceCharacter = new CharacterId("test-poisoner"),
+                Dimension = EffectDimension.Poison,
+                SourceStateIndependent = sourceStateIndependent,
+            },
+        };
 
     private static SeatStateChangedEvent PoisonFact(int seat, string effectId) => new()
     {

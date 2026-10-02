@@ -52,6 +52,18 @@ public sealed record PersistentEffect
     public EffectDimension? Dimension { get; init; }
 
     /// <summary>
+    /// 生效判定是否与来源状态无关：true = 只看「是否已终止」，不看来源的生死 / 醉酒 / 中毒。
+    /// </summary>
+    /// <remarks>
+    /// 用于**既成事实类**效果：效果一旦落成就不再依赖来源持续施力。舞蛇人交换角色后施加给
+    /// 原恶魔（现舞蛇人）的永久中毒就是这种——百科给「中毒」提示标记的唯一移除时机是
+    /// 「放置有此标记的角色死亡或离场时」，而该效果的来源正是被标记的角色自己，若让来源状态
+    /// 参与生效判定会形成自指（本人中毒 → 效果挂起 → 中毒解除 → 效果恢复）而无法收敛。
+    /// 默认 false = 按 R-0012 的来源状态挂起。口径见 <c>docs/standard/rulings.md</c> R-0031。
+    /// </remarks>
+    public bool SourceStateIndependent { get; init; }
+
+    /// <summary>
     /// 终止事实（原因分类 + 说明 + 导致方）；null = 尚未终止。
     /// 由来源状态变化推导，或由说书人显式作废，**不可逆**。
     /// </summary>
@@ -62,6 +74,7 @@ public sealed record PersistentEffect
 
     /// <summary>
     /// 来源存活且未醉酒、未中毒时效果生效；从醉酒/中毒恢复后继续生效——同一效果，不是重新施加。
+    /// <see cref="SourceStateIndependent"/> 为 true 时不受来源状态影响，只随终止结束（R-0031）。
     /// </summary>
     /// <param name="sourceState">产生该效果的席位的**当前**状态。</param>
     public bool IsOperative(SeatState sourceState)
@@ -79,9 +92,10 @@ public sealed record PersistentEffect
     /// <param name="poison">来源的中毒状态。</param>
     public bool IsOperative(LifeState life, DrunkState drunk, PoisonState poison) =>
         !IsTerminated
-        && life == LifeState.Alive
-        && drunk == DrunkState.Sober
-        && poison == PoisonState.Healthy;
+        && (SourceStateIndependent
+            || (life == LifeState.Alive
+                && drunk == DrunkState.Sober
+                && poison == PoisonState.Healthy));
 
     /// <summary>终止本效果；终止必须带原因。</summary>
     /// <param name="termination">终止原因（分类 + 说明 + 导致方）。</param>
