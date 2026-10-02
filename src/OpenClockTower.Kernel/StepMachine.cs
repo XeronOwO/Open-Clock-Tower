@@ -296,11 +296,6 @@ public static class StepMachine
         SettlementContext context,
         VoidRequestInput input)
     {
-        if (state.IsPlanCompleted)
-        {
-            return Reject(state, StepMachineRejectionReason.PlanAlreadyCompleted, "本计划已走完");
-        }
-
         var pending = state.PendingRequest;
         if (pending is null)
         {
@@ -325,6 +320,21 @@ public static class StepMachine
                 Void = new OperationRequestVoid { Reason = input.Reason, Note = input.Note },
             },
         };
+
+        // 触发来源的请求（呆瓜的公开选择，R-0027）不落在任何槽位上：它可以在计划走完之后开出，
+        // 因此这里必须与 HandleResponse **同款旁路**——否则那种请求答得了（代填走 HandleResponse）、
+        // 却撤不掉（作废与强推都被 IsPlanCompleted 挡住），说书人的兜底入口就关死了
+        // （胜负票独立复核 F-4；D-0011 / D-0014 要求兜底入口永远开着）。
+        if (pending.Origin.Kind != OperationRequestOriginKind.Slot)
+        {
+            return Applied(state, events);
+        }
+
+        if (state.IsPlanCompleted)
+        {
+            return Reject(state, StepMachineRejectionReason.PlanAlreadyCompleted, "本计划已走完");
+        }
+
         return Applied(state, WithAutoAdvance(state, context, events));
     }
 
