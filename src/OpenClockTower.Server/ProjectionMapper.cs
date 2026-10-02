@@ -30,6 +30,9 @@ public static class ProjectionMapper
         Options = request.Prompt.Options
             .Select(option => new DecisionOptionDto { Value = option.Value, Preview = option.Preview })
             .ToArray(),
+        SecondaryOptions = request.Prompt.SecondaryOptions
+            .Select(option => new DecisionOptionDto { Value = option.Value, Preview = option.Preview })
+            .ToArray(),
     };
 
     /// <summary>作废内容 → DTO。</summary>
@@ -270,7 +273,12 @@ public static class ProjectionMapper
         {
             Seat = entry.Seat.Value,
             Facts = [.. facts],
-            Madnesses = [.. entry.Madnesses.Select(requirement => requirement.ProveToBe)],
+
+            // 只下发**未撤下**的要求：实体游戏里标记到期 / 来源失效就移除了（R-0021）；
+            // 已撤下的事实留在事件流与审计里，不在牌面上留幽灵标记。
+            Madnesses = [.. entry.Madnesses
+                .Where(requirement => !requirement.IsTerminated)
+                .Select(requirement => requirement.ProveToBe)],
         };
     }
 

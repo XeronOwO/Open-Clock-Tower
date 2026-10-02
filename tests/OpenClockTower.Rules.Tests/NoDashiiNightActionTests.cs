@@ -111,5 +111,6 @@ public sealed class NoDashiiNightActionTests
             Malfunction = effective ? null : MalfunctionKind.Poisoned,
         },
         Choice = choice,
+        DaysStarted = 0,
     };
 }

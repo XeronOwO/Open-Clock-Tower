@@ -152,5 +152,6 @@ public sealed class InfoResolutionTests
             Note = effective ? null : "来源中毒：能力未生效",
         },
         Choice = choice,
+        DaysStarted = 0,
     };
 }

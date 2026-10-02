@@ -121,6 +121,7 @@ public static class StepMachine
             ReleaseControlInput release => HandleControlChange(state, ControlMode.Automatic, release.Reason),
             SeatStateChangedInput seatChanged => HandleSeatStateChanged(state, seatChanged),
             ResolveDecisionPointInput resolve => HandleDecisionResolved(state, context, resolve),
+            PunishExecutionInput punish => AdjudicatedExecutionMachine.Handle(state, context, punish),
             NominateInput or CastVoteInput or CountVotesInput or CloseDayInput
                 => DayStepMachine.Handle(state, context, input),
             _ => Reject(state, StepMachineRejectionReason.UnexpectedInput, $"未知输入：{input.GetType().Name}"),
@@ -198,7 +199,7 @@ public static class StepMachine
             return Reject(state, StepMachineRejectionReason.RequestAlreadyResolved, "请求已经了结");
         }
 
-        if (!pending.Prompt.Options.Any(option => string.Equals(option.Value, input.OptionValue, StringComparison.Ordinal)))
+        if (!pending.Prompt.IsLegalAnswer(input.OptionValue))
         {
             return Reject(state, StepMachineRejectionReason.OptionNotLegal, $"选项不在合法集合里：{input.OptionValue}");
         }
@@ -596,5 +597,4 @@ public static class StepMachine
             RejectionReason = reason,
             RejectionNote = note,
         };
-
 }

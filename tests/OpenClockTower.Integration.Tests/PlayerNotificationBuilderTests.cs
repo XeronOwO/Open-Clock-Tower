@@ -133,7 +133,7 @@ public sealed class PlayerNotificationBuilderTests
                         Voter = new SeatId(1),
                         Voted = true,
                     }),
-                Draft(4, new ExecutedEvent { DayNumber = 1, Seat = new SeatId(2) }),
+                Draft(4, new ExecutedEvent { DayNumber = 1, Seat = new SeatId(2), Kind = ExecutionKind.Day }),
                 Draft(5, new DayClosedEvent { DayNumber = 1 }),
             ],
             previousMachine: null);

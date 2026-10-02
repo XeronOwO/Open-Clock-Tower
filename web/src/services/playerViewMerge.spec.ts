@@ -22,6 +22,7 @@ const request = (sequence: number): OperationRequestDto => ({
   seat: 1,
   context: '请选择目标',
   options: [{ value: 'a', preview: '甲' }],
+  secondaryOptions: [],
 })
 
 const day = (dayNumber: number, sequence: number): PlayerDayDto => ({

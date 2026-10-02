@@ -257,6 +257,11 @@ export interface OperationRequestDto {
   seat: number
   context: string
   options: DecisionOptionDto[]
+  /**
+   * 第二维合法选项（空数组 = 单维选择）。两维时提交值必须是 `{第一维}|{第二维}`
+   * （R-0021：洗脑师的一次行动是玩家 × 善良角色的原子选择，不可只完成一维）。
+   */
+  secondaryOptions: DecisionOptionDto[]
 }
 
 /** 玩家自己能力得到的信息类结果：**只有内容**，没有"可能为假"标记（服务端刻意不下发）。 */

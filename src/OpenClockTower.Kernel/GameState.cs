@@ -86,4 +86,44 @@ public sealed record GameState
 
         return effect.IsOperative(life, drunk, poison);
     }
+
+    /// <summary>作用在某席位上的疯狂要求（含已撤下的），按写入顺序。</summary>
+    public IReadOnlyList<MadnessRequirement> RequirementsOn(SeatId target) =>
+        Seat(target)?.Madnesses ?? Array.Empty<MadnessRequirement>();
+
+    /// <summary>作用在某席位上、尚未撤下的疯狂要求（R-0021 的存续窗口内）。</summary>
+    public IReadOnlyList<MadnessRequirement> LiveRequirementsOn(SeatId target) =>
+        [.. RequirementsOn(target).Where(requirement => !requirement.IsTerminated)];
+
+    /// <summary>账上尚未撤下的全部疯狂要求（到期 / 来源失效时的收口对象）。</summary>
+    public IReadOnlyList<MadnessRequirement> LiveRequirements =>
+        [.. Seats.SelectMany(entry => entry.Madnesses).Where(requirement => !requirement.IsTerminated)];
+
+    /// <summary>
+    /// 一条疯狂要求当前是否生效：来源存活、未醉酒、未中毒（R-0012 的挂起口径）。
+    /// 返回 null = 来源的生死 / 醉酒 / 中毒还没观测齐，**无法判定**——不做任何默认假设。
+    /// </summary>
+    /// <param name="requirement">待判定的要求。</param>
+    public bool? IsOperative(MadnessRequirement requirement)
+    {
+        ArgumentNullException.ThrowIfNull(requirement);
+
+        var source = Seat(requirement.Source);
+        if (source is null)
+        {
+            return null;
+        }
+
+        if (source.LifeValue is not { } life
+            || source.DrunkValue is not { } drunk
+            || source.PoisonValue is not { } poison)
+        {
+            return null;
+        }
+
+        return !requirement.IsTerminated
+            && life == LifeState.Alive
+            && drunk == DrunkState.Sober
+            && poison == PoisonState.Healthy;
+    }
 }

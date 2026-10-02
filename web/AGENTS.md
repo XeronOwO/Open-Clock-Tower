@@ -10,7 +10,7 @@ Vue 3 + TypeScript + Vite 的单页应用，**两套视图同一个构建**：
   可展开的数据与审计、局务（开夜 / **白天控制** / 接管 / 重建 / 开局分配）；
 - 玩家端（`/#player`）：只显示服务端下发给该玩家的席位、阶段、请求、信息结果与**白天公开事实 / 操作**。
 
-两者**从不共享视图数据**：玩家侧不出现、也不该出现说书人专属字段（有门禁扫）。
+两者**从不共享视图数据**：玩家侧不出现说书人专属字段（有门禁扫）。
 
 ## 2. 怎么跑
 
@@ -25,8 +25,7 @@ npm install
 npm run dev          # http://localhost:5273
 ```
 
-说书人票据由服务端引导生成，落在 `Games.StorytellerTicket`（SQLite）或启动日志里；
-面板只是**记住上次输入**，不会自己造票据（D-0018）。
+说书人票据由服务端生成（`Games.StorytellerTicket` 或启动日志）；面板只**记住上次输入**，不造票据（D-0018）。
 
 ## 3. 命令
 
@@ -47,29 +46,29 @@ npm run dev          # http://localhost:5273
 node tools/verify-storyteller-panel.mjs        # 退出码 0 = 全部断言通过
 ```
 
-真宿主 + 真 Vite + 真 Chromium，按 `--seats` 给每一席开一个**独立浏览器上下文**（同一 SPA 的
-`#player`）；**场景清单与逐步断言以脚本头部注释为准**（加入 → 分配 → 首夜 → 白天提名 / 计票 / 处决 →
-后续夜晚与强制作废 → 重建与降级位 → 重连补齐），
-截图写进 `artifacts/web/`（gitignored；日志由调用方重定向，
-如 `2>&1 | Tee-Object artifacts/web/batch-run.log`）。场景固定三角色
-（clockmaker / dreamer / no-dashii），节拍配额默认 `--quota 2` 秒。
+真宿主 + 真 Vite + 真 Chromium，按 `--seats` 每席开**独立浏览器上下文**（同一 SPA 的 `#player`）；
+**场景与断言以脚本头部注释为准**（加入 → 分配 → 首夜 → 白天 → 后续夜晚 → 重建 → 重连补齐）；
+截图写进 `artifacts/web/`（gitignored；日志自行重定向，如 `... | Tee-Object artifacts/web/batch-run.log`）。
+场景固定三角色（clockmaker / dreamer / no-dashii），节拍配额默认 `--quota 2` 秒。
 
-零信任负向取证：`node tools/verify-zero-trust.mjs`（退出码 0 = 全部断言通过）——真宿主 + Node SignalR
-客户端扮演**篡改前端**：伪造 / 冒用 / 旧连接凭据直调 Hub、白天提交夜间行动、扫描玩家收包与宿主
-日志（拒绝审计）。它是补充装置，不替代主批次。
+零信任：`node tools/verify-zero-trust.mjs`——真宿主 + Node SignalR 客户端扮演
+**篡改前端**：伪造 / 冒用 / 旧连接凭据直调 Hub、白天提交夜间行动、收包与审计扫描。补充装置，不替代主批次。
 
-女巫链路：`node tools/verify-witch.mjs`（固定 4 席，两个真浏览器 + 三席 Node SignalR 客户端）：
-夜晚诅咒 → 白天提名即死（提名仍生效）→ 存活 ≤3 时解除，含三席玩家收包扫描。
+女巫链路：`node tools/verify-witch.mjs`（固定 4 席，两真浏览器 + 三席 Node 客户端）：
+夜晚诅咒 → 白天提名即死（提名仍生效）→ 存活 ≤3 时解除，含三席收包扫描。
+
+处罚处决链路：`node tools/verify-madness.mjs`（固定 4 席，两真浏览器 + 三席 Node 客户端）：
+洗脑师两维选择 → 魔典疯狂要求 → 夜晚处罚（夜晚继续）→ 白天处罚（占上限 + 立即入夜）。
 
 **外部耦合（换机器前先核对）**：
 
 | 耦合 | 位置 | 失败时的表现 |
 |---|---|---|
-| 宿主编译产物路径 `src/OpenClockTower.Server/bin/Release/net10.0/OpenClockTower.Server[.exe]` | `tools/verify-*.mjs` | 进程启动失败，退出码 1（脚本自己也打印路径） |
+| 宿主编译产物路径 `src/OpenClockTower.Server/bin/Release/net10.0/OpenClockTower.Server[.exe]` | `tools/verify-*.mjs` | 进程启动失败，退出码 1（脚本会打印路径） |
 | SQLite 表 `Games`、列 `StorytellerTicket` / `SeatsJson`（`SeatId` 序列化为 `{ "value": N }`） | 同上 | 读票据抛错并退出（票据取不到就不测） |
 | 席位数量 | `--seats` 与 `--assign` 必须同数（建表要求每席都有角色） | 开夜被拒 `plan.seat_unassigned` |
 | 场景角色 | 主装置 `--assign` 含 clockmaker / dreamer / no-dashii | 参数校验直接报错退出 |
-| Node ≥ 22.5（`node:sqlite`）+ `npx playwright install chromium` | 本机环境 | 脚本以退出码 2 明确报"缺少 Playwright" |
+| Node ≥ 22.5（`node:sqlite`）+ `npx playwright install chromium` | 本机环境 | 退出码 2 = 缺 Playwright |
 
 ## 4. 边界
 

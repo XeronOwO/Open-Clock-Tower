@@ -51,6 +51,7 @@ public static class GameStateMachine
                 InstantaneousEffects = [.. current.InstantaneousEffects, applied.Effect],
             },
             MadnessRequirementIssuedEvent issued => ApplyMadnessRequirementIssued(current, issued),
+            MadnessRequirementTerminatedEvent terminated => ApplyMadnessRequirementTerminated(current, terminated),
             AbilityResolvedEvent resolved => ApplyAbilityResolved(current, resolved),
 
             // 与状态账无关的事件：步骤机推进、请求生命周期、控制模式、裁定点。
@@ -130,14 +131,13 @@ public static class GameStateMachine
             : previous;
 
     /// <summary>
-    /// 来源失效传播（《重要细节》二-3 / 二-7，口径见 <c>docs/standard/rulings.md</c> R-0012）：
-    /// 来源死亡 → 它施加的持续型效果**立即终止**；来源的角色已不是施加该效果时的角色
+    /// 来源失效传播（《重要细节》二-3 / 二-7，口径见 <c>docs/standard/rulings.md</c> R-0012 与 R-0021）：
+    /// 来源死亡 → 它施加的持续型效果与下达的疯狂要求**立即终止**；来源的角色已不是施加时的角色
     /// （= 失去了原角色能力）→ 同样终止。醉酒 / 中毒**不终止**，只是暂时不生效。
     /// </summary>
     /// <remarks>
-    /// "角色是不是变了"用**效果自己记录的 <see cref="PersistentEffect.SourceCharacter"/>** 判定，
-    /// 而不是"上一次观测到的角色"：后者在来源角色从未被观测过时会静默漏判，
-    /// 让一条早就该终止的效果继续被算成生效。
+    /// "角色是不是变了"用**效果 / 要求自己记录的施加时角色**判定，而不是"上一次观测到的角色"：
+    /// 后者在来源角色从未被观测过时会静默漏判，让一条早就该终止的效果继续被算成生效。
     /// </remarks>
     private static GameState TerminateEffectsLosingAbility(GameState state, SeatStateChangedEvent changed)
     {
@@ -151,7 +151,22 @@ public static class GameStateMachine
             .Select(effect => LosesAbility(effect, changed) ? effect.Terminate(termination) : effect)
             .ToArray();
 
-        return state with { PersistentEffects = effects };
+        // 疯狂要求与持续型效果同源同命运：来源死亡 / 换角色 → 立即撤下（R-0021）。
+        // 目标**自己**的死亡 / 换角不撤下要求——已死亡的目标仍可能因不够疯狂被处决（R-0021）。
+        var requirementTermination = BuildRequirementTermination(changed);
+        var seats = state.Seats
+            .Select(entry => entry.Madnesses.Any(requirement => LosesRequirementAbility(requirement, changed))
+                ? entry with
+                {
+                    Madnesses = [.. entry.Madnesses.Select(requirement =>
+                        LosesRequirementAbility(requirement, changed)
+                            ? requirement.Terminate(requirementTermination)
+                            : requirement)],
+                }
+                : entry)
+            .ToArray();
+
+        return state with { PersistentEffects = effects, Seats = seats };
     }
 
     /// <summary>来源死亡一律终止；来源角色与效果记录的施加时角色不同也终止。已终止的不重复处理。</summary>
@@ -160,6 +175,13 @@ public static class GameStateMachine
         && !effect.IsTerminated
         && (changed.Life == LifeState.Dead
             || (changed.Character is { } character && character != effect.SourceCharacter));
+
+    /// <summary>疯狂要求的同款判定：来源死亡或换角色即撤下。</summary>
+    private static bool LosesRequirementAbility(MadnessRequirement requirement, SeatStateChangedEvent changed) =>
+        requirement.Source == changed.Seat
+        && !requirement.IsTerminated
+        && (changed.Life == LifeState.Dead
+            || (changed.Character is { } character && character != requirement.SourceCharacter));
 
     private static EffectTermination? BuildTermination(SeatStateChangedEvent changed)
     {
@@ -186,6 +208,23 @@ public static class GameStateMachine
 
         return null;
     }
+
+    /// <summary>疯狂要求的撤下说明：与效果终止同一分类，措辞换成"要求"。</summary>
+    private static EffectTermination BuildRequirementTermination(SeatStateChangedEvent changed) =>
+        changed.Life == LifeState.Dead
+            ? new EffectTermination
+            {
+                Kind = EffectTerminationKind.SourceDied,
+                Reason = $"来源席位 {changed.Seat} 死亡，它下达的疯狂要求立即撤下（{changed.Reason}）",
+                CausedBy = changed.CausedBy,
+            }
+            : new EffectTermination
+            {
+                Kind = EffectTerminationKind.SourceLostAbility,
+                Reason = $"来源席位 {changed.Seat} 的角色已发生变化，原角色能力不再存在，"
+                    + $"它下达的疯狂要求立即撤下（{changed.Reason}）",
+                CausedBy = changed.CausedBy,
+            };
 
     private static GameState ApplyPersistentEffectApplied(GameState state, PersistentEffectAppliedEvent applied)
     {
@@ -234,18 +273,54 @@ public static class GameStateMachine
         var requirement = issued.Requirement;
         var existing = state.Seat(requirement.Seat) ?? new SeatStateEntry { Seat = requirement.Seat };
 
-        // 与效果路径同一失败姿态：同一个裁定点重复签发同一条要求属于事件流损坏，不许静默堆两条。
-        if (existing.Madnesses.Any(current =>
-                current.IssuedBy == requirement.IssuedBy
-                && current.Seat == requirement.Seat
-                && string.Equals(current.ProveToBe, requirement.ProveToBe, StringComparison.Ordinal)))
+        // 与效果路径同一失败姿态：同一个标识重复签发属于事件流损坏，不许静默堆两条。
+        if (existing.Madnesses.Any(current => current.Id == requirement.Id))
         {
             throw new InvalidOperationException(
-                $"事件流损坏：裁定点 {requirement.IssuedBy} 对座位 {requirement.Seat} 的疯狂要求已经存在，不能重复签发");
+                $"事件流损坏：疯狂要求 {requirement.Id} 已经存在，不能重复签发");
         }
 
         var entry = existing with { Madnesses = [.. existing.Madnesses, requirement] };
         return ReplaceSeat(state, entry);
+    }
+
+    /// <summary>
+    /// 撤下一条疯狂要求（到期 / 来源死亡 / 来源换角色 / 说书人作废，R-0021）。
+    /// 与效果终止同一姿态：找不到或重复终止一律显式失败，恢复不得静默继续（D-0014 能力 3）。
+    /// </summary>
+    private static GameState ApplyMadnessRequirementTerminated(
+        GameState state,
+        MadnessRequirementTerminatedEvent terminated)
+    {
+        foreach (var entry in state.Seats)
+        {
+            var index = -1;
+            for (var i = 0; i < entry.Madnesses.Count; i++)
+            {
+                if (entry.Madnesses[i].Id == terminated.Id)
+                {
+                    index = i;
+                    break;
+                }
+            }
+
+            if (index < 0)
+            {
+                continue;
+            }
+
+            if (entry.Madnesses[index].IsTerminated)
+            {
+                throw new InvalidOperationException(
+                    $"事件流损坏：疯狂要求 {terminated.Id} 已经撤下，不能重复撤下");
+            }
+
+            var requirements = entry.Madnesses.ToArray();
+            requirements[index] = requirements[index].Terminate(terminated.Termination);
+            return ReplaceSeat(state, entry with { Madnesses = requirements });
+        }
+
+        throw new InvalidOperationException($"事件流损坏：撤下了一条不存在的疯狂要求 {terminated.Id}");
     }
 
     /// <summary>

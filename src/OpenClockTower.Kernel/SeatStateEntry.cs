@@ -8,7 +8,7 @@ namespace OpenClockTower.Kernel;
 /// 六维度依据：百科《重要细节》三。五个维度各带自己的归因（值 / 原因 / 导致方），
 /// 因此"这个玩家现在中毒，是被谁害的"可以只查中毒那一格，不会被之后的角色变化冲掉。
 /// 「疯狂」刻意不在 <see cref="SeatState"/> 里（R-0003：引擎不判定疯狂），
-/// 它以 <see cref="MadnessRequirement"/> 的形式单独挂在本行上，只由裁定写入。
+/// 它以 <see cref="MadnessRequirement"/> 的形式单独挂在本行上（能力产生，R-0021；是否"疯狂"仍由说书人裁定）。
 /// </para>
 /// <para>
 /// 维度为 null = **该维度尚未被观测到**，不是"默认值"。六维度相互独立：
@@ -35,7 +35,9 @@ public sealed record SeatStateEntry
     /// <summary>已知的中毒状态及归因；null = 尚未观测。</summary>
     public StateFact<PoisonState>? Poison { get; init; }
 
-    /// <summary>当前挂在该席位上的疯狂要求（只由裁定写入；引擎不判定）。</summary>
+    /// <summary>
+    /// 当前挂在该席位上的疯狂要求（含已撤下的）：由能力产生（R-0021），引擎不判定是否疯狂（R-0003）。
+    /// </summary>
     public IReadOnlyList<MadnessRequirement> Madnesses { get; init; } = [];
 
     /// <summary>已知的生死值；null = 尚未观测。</summary>

@@ -93,29 +93,19 @@ public sealed class GameStateComparerTests
         Assert.True(EquivalentWith(observedLife, SeatEntry(SeatOne, life: Fact(LifeState.Alive, "开局分配"))));
     }
 
-    /// <summary>疯狂要求按多重集合比：内容与签发裁定点都要一致，重复次数也要一致。</summary>
+    /// <summary>疯狂要求按多重集合比：标识、来源与内容都要一致，重复次数也要一致。</summary>
     [Fact]
     public void Madnesses_AreComparedAsMultiset()
     {
-        var first = new MadnessRequirement
-        {
-            Seat = SeatOne,
-            ProveToBe = "clockmaker",
-            IssuedBy = new DecisionPointId("dp-1"),
-        };
-        var second = new MadnessRequirement
-        {
-            Seat = SeatOne,
-            ProveToBe = "dreamer",
-            IssuedBy = new DecisionPointId("dp-2"),
-        };
+        var first = Requirement("sv:night-1:cerenovus:madness", "钟表匠");
+        var second = Requirement("sv:night-2:cerenovus:madness", "筑梦师");
         var left = SeatEntry(SeatOne, life: Fact(LifeState.Alive), madnesses: [first, second]);
         var reordered = SeatEntry(SeatOne, life: Fact(LifeState.Alive), madnesses: [second, first]);
         var shorter = SeatEntry(SeatOne, life: Fact(LifeState.Alive), madnesses: [first]);
         var changed = SeatEntry(
             SeatOne,
             life: Fact(LifeState.Alive),
-            madnesses: [first, second with { ProveToBe = "barber" }]);
+            madnesses: [first, second with { ProveToBe = "理发师" }]);
 
         Assert.True(EquivalentWith(left, reordered));
         Assert.False(EquivalentWith(left, shorter));
@@ -279,4 +269,16 @@ public sealed class GameStateComparerTests
             SourceCharacter = new CharacterId("no-dashii"),
             Termination = termination,
         };
+
+    /// <summary>一条洗脑师开出的疯狂要求（R-0021）：身份 + 来源 + 到期日。</summary>
+    private static MadnessRequirement Requirement(string id, string proveToBe) => new()
+    {
+        Id = new MadnessRequirementId(id),
+        Seat = SeatOne,
+        ProveToBe = proveToBe,
+        Source = SeatTwo,
+        SourceCharacter = new CharacterId("cerenovus"),
+        Ability = new AbilityId("cerenovus.madness"),
+        ExpiresAtDay = 2,
+    };
 }

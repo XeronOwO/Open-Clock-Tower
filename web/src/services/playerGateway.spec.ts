@@ -88,6 +88,7 @@ describe('重连包规范化', () => {
       seat: 1,
       context: '',
       options: [{ value: 'a', preview: 'a' }],
+      secondaryOptions: [],
     })
   })
 })

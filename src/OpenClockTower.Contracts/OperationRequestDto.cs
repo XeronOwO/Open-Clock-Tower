@@ -25,4 +25,10 @@ public sealed record OperationRequestDto
 
     /// <summary>合法选项。</summary>
     public required DecisionOptionDto[] Options { get; init; }
+
+    /// <summary>
+    /// 第二维合法选项（为空 = 单维选择）。两维时答案编码为 <c>{第一维}|{第二维}</c>
+    /// （依据 <c>docs/standard/rulings.md</c> R-0021：洗脑师的一次行动是玩家 × 善良角色的原子选择）。
+    /// </summary>
+    public required DecisionOptionDto[] SecondaryOptions { get; init; }
 }

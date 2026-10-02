@@ -12,6 +12,10 @@ public sealed record SeatStateDto
     /// <summary>已观测的维度事实，按生死 / 角色 / 阵营 / 醉酒 / 中毒排列。</summary>
     public required SeatStateFactDto[] Facts { get; init; }
 
-    /// <summary>当前挂在该席位上的疯狂要求（只由裁定写入，引擎不判定）。</summary>
+    /// <summary>
+    /// 当前挂在该席位上的疯狂要求（**只含未撤下的**；由能力产生，R-0021；引擎不判定是否疯狂，R-0003）。
+    /// 这里只下发给说书人的「要证明的角色」：来源 / 期限 / 撤下事实留在账本与事件流里，
+    /// 说书人面板暂不单独呈现（见票据残余）。
+    /// </summary>
     public required string[] Madnesses { get; init; }
 }

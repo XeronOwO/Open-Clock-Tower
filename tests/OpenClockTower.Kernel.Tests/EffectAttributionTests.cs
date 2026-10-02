@@ -177,15 +177,19 @@ public sealed class EffectAttributionTests
         Assert.Single(state.EffectsOn(Victim));
     }
 
-    /// <summary>同一个裁定点重复签发同一条疯狂要求 = 事件流损坏，与效果路径同一失败姿态。</summary>
+    /// <summary>同一个标识重复签发同一条疯狂要求 = 事件流损坏，与效果路径同一失败姿态。</summary>
     [Fact]
     public void DuplicateMadnessRequirement_IsRejectedLoudly()
     {
         var requirement = new MadnessRequirement
         {
+            Id = new MadnessRequirementId("sv:night-1:cerenovus:madness"),
             Seat = Victim,
-            ProveToBe = "clockmaker",
-            IssuedBy = new DecisionPointId("sv:night-1:cerenovus:decision"),
+            ProveToBe = "钟表匠",
+            Source = Poisoner,
+            SourceCharacter = new CharacterId("cerenovus"),
+            Ability = new AbilityId("cerenovus.madness"),
+            ExpiresAtDay = 2,
         };
         var state = GameStateMachine.Fold([new MadnessRequirementIssuedEvent { Requirement = requirement }]);
 
@@ -349,7 +353,7 @@ public sealed class EffectAttributionTests
         Assert.Contains("不能重复施加", exception.Message);
     }
 
-    /// <summary>疯狂只由裁定写入（R-0003）：它挂在账上，但不由引擎判定，也不动任何其它维度。</summary>
+    /// <summary>疯狂要求由能力写入（R-0021）、引擎不判定（R-0003）：它挂在账上，不动任何其它维度。</summary>
     [Fact]
     public void MadnessRequirement_IsRecordedOnTheSeatOnly()
     {
@@ -359,16 +363,22 @@ public sealed class EffectAttributionTests
             {
                 Requirement = new MadnessRequirement
                 {
+                    Id = new MadnessRequirementId("sv:night-1:cerenovus:madness"),
                     Seat = Victim,
-                    ProveToBe = "clockmaker",
-                    IssuedBy = new DecisionPointId("sv:night-1:cerenovus:decision"),
+                    ProveToBe = "钟表匠",
+                    Source = Poisoner,
+                    SourceCharacter = new CharacterId("cerenovus"),
+                    Ability = new AbilityId("cerenovus.madness"),
+                    ExpiresAtDay = 2,
                 },
             },
         ]);
 
         var entry = Assert.IsType<SeatStateEntry>(state.Seat(Victim));
         var requirement = Assert.Single(entry.Madnesses);
-        Assert.Equal("clockmaker", requirement.ProveToBe);
+        Assert.Equal("钟表匠", requirement.ProveToBe);
+        Assert.Equal(Poisoner, requirement.Source);
+        Assert.Equal(2, requirement.ExpiresAtDay);
         Assert.Null(entry.Life);
         Assert.Null(entry.Character);
         Assert.Null(entry.Alignment);

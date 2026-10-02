@@ -1,7 +1,7 @@
 import { HubConnectionState, type HubConnection } from '@microsoft/signalr'
 import { describe, expect, it } from 'vitest'
 import type { InformationResultDto, PlayerViewDto, ReconnectBundleDto } from '@/contracts/game'
-import { PlayerGateway, type PlayerCallbacks } from '@/services/playerGateway'
+import { PlayerGateway, normalizeRequest, type PlayerCallbacks } from '@/services/playerGateway'
 
 /**
  * 网关接线（票据 `player-information-resync-race` 行 1 / 行 3 / 行 4）：
@@ -199,7 +199,7 @@ describe('玩家网关接线：补齐窗口', () => {
     fake.response = joinResult(
       5,
       view({
-        pendingRequest: { sequence: 5, requestId: 'r5', seat: 1, context: '请选择目标', options: [] },
+        pendingRequest: { sequence: 5, requestId: 'r5', seat: 1, context: '请选择目标', options: [], secondaryOptions: [] },
       }),
     )
     await gateway.joinSeat('ticket-1')
@@ -214,5 +214,38 @@ describe('玩家网关接线：补齐窗口', () => {
 
     expect(record.settled).toEqual(['voided', 'view'])
     expect(record.views.at(-1)?.pendingRequest).toBeNull()
+  })
+})
+
+describe('normalizeRequest 的两维选择（R-0021）', () => {
+  it('保留第二维；字段缺失或损坏时降级为空数组，不编造第二维', () => {
+    const twoDimensional = normalizeRequest({
+      sequence: 7,
+      requestId: 'r7',
+      seat: 1,
+      context: '洗脑师选择一名玩家和一个善良角色',
+      options: [{ value: 'seat:1', preview: '1 号玩家' }],
+      secondaryOptions: [{ value: 'clockmaker', preview: '钟表匠' }],
+    })
+    expect(twoDimensional?.secondaryOptions).toEqual([{ value: 'clockmaker', preview: '钟表匠' }])
+
+    const missing = normalizeRequest({
+      sequence: 8,
+      requestId: 'r8',
+      seat: 1,
+      context: '单维请求',
+      options: [],
+    })
+    expect(missing?.secondaryOptions).toEqual([])
+
+    const broken = normalizeRequest({
+      sequence: 9,
+      requestId: 'r9',
+      seat: 1,
+      context: '第二维损坏',
+      options: [],
+      secondaryOptions: [{ value: 42, preview: null }],
+    })
+    expect(broken?.secondaryOptions).toEqual([])
   })
 })

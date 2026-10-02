@@ -42,17 +42,24 @@ public sealed class DayActionsTests
     }
 
     /// <summary>
-    /// 已实现的白天契约只有女巫（诅咒在下个白天触发）；其余白天相关角色仍不覆盖——
-    /// 在场时开白天显式拒绝，不许"白天照跑、能力静默不发生"。
+    /// 已实现的白天契约：女巫（诅咒在下个白天触发）、洗脑师与畸形秀演员（处罚处决，R-0020 / R-0021）；
+    /// 其余白天相关角色仍不覆盖——在场时开白天显式拒绝，不许"白天照跑、能力静默不发生"。
     /// </summary>
     [Fact]
     public void OnlyImplementedDayContractsAreCovered()
     {
-        Assert.True(DayActions.IsCovered(new OpenClockTower.Kernel.CharacterId("witch")));
+        var covered = new[] { "witch", "cerenovus", "mutant" };
+
+        foreach (var character in covered)
+        {
+            Assert.True(
+                DayActions.IsCovered(new OpenClockTower.Kernel.CharacterId(character)),
+                $"{character} 的白天契约应已实现");
+        }
 
         foreach (var character in SectsAndVioletsRoster.All)
         {
-            if (character.Value == "witch")
+            if (covered.Contains(character.Value, StringComparer.Ordinal))
             {
                 continue;
             }

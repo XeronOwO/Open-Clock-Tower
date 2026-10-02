@@ -38,6 +38,7 @@ public static class NightActions
             [new CharacterId("dreamer")] = new DreamerNightAction(),
             [new CharacterId("no-dashii")] = new NoDashiiNightAction(),
             [new CharacterId("witch")] = new WitchNightAction(),
+            [new CharacterId("cerenovus")] = new CerenovusNightAction(),
         };
 
         public INightAction? Find(CharacterId character) =>

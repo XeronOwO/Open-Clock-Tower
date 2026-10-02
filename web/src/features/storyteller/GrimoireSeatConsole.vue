@@ -13,6 +13,7 @@ import { buildSeatCard, decisionSeatOf, seatNumbersOf, seatTitleOf } from '@/dis
 import { newIdempotencyKey } from '@/services/idempotency'
 import {
   proxyFill,
+  punishExecution,
   reportSeatState,
   resolveDecisionPoint,
   voidRequest,
@@ -57,6 +58,11 @@ const voidReasons = [
 // —— 裁定点 ——
 const decisionNote = ref('')
 const freeDecision = ref('')
+
+// —— 处罚处决（R-0020）——
+/** 服务端只认枚举名：Cerenovus（洗脑师）/ Mutant（畸形秀演员）。 */
+const punishSource = ref('Cerenovus')
+const punishNote = ref('')
 
 // —— 状态上报 ——
 const reason = ref('')
@@ -186,6 +192,25 @@ async function decide(decision: string | null): Promise<void> {
       decision,
       decisionNote.value.length > 0 ? decisionNote.value : null,
       newIdempotencyKey('decision'),
+    ),
+  )
+}
+
+/** 处罚处决选中席位：依据是否成立由内核按来源契约判定，前端只做参数拼装。 */
+async function punish(): Promise<void> {
+  const target = props.seat
+  if (target === null) {
+    reject('还没有选中席位')
+    return
+  }
+
+  await run(() =>
+    punishExecution(
+      props.sender,
+      target,
+      punishSource.value,
+      punishNote.value.length > 0 ? punishNote.value : null,
+      newIdempotencyKey('punish'),
     ),
   )
 }
@@ -371,6 +396,28 @@ async function submitReport(): Promise<void> {
           </div>
         </div>
 
+        <div v-if="model.madnesses.length > 0" class="line" data-testid="console-madnesses">
+          <span class="tag warn">疯狂要求</span>
+          <span v-for="requirement in model.madnesses" :key="requirement">{{ requirement }}</span>
+        </div>
+
+        <div class="punish">
+          <div class="line">
+            <span class="tag evil">处罚处决</span>
+            <select v-model="punishSource" data-testid="console-punish-source">
+              <option value="Cerenovus">洗脑师：未按疯狂要求行动</option>
+              <option value="Mutant">畸形秀演员：疯狂地证明自己是外来者</option>
+            </select>
+            <button type="button" :disabled="busy" data-testid="console-punish" @click="punish()">
+              处罚处决 {{ seatLabelOf(model.seat) }}
+            </button>
+          </div>
+          <input v-model="punishNote" placeholder="执行说明（可选，会记进事件流）" />
+          <p class="hint">
+            白天处罚会立即结束白天并占用当天处决上限；夜晚处罚不占次日上限（R-0020）。
+          </p>
+        </div>
+
         <div class="report" @focusin="engage()">
           <div class="line">
             <span class="tag">上报到</span>
@@ -515,6 +562,14 @@ async function submitReport(): Promise<void> {
 }
 
 .report {
+  border-top: 1px dashed var(--line);
+  padding-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.punish {
   border-top: 1px dashed var(--line);
   padding-top: 8px;
   display: flex;

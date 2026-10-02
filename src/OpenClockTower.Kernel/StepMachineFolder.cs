@@ -81,6 +81,9 @@ internal static class StepMachineFolder
             NominationMadeEvent => ApplyDay(state, gameEvent),
             VoteCastEvent => ApplyDay(state, gameEvent),
             VoteCountedEvent => ApplyDay(state, gameEvent),
+
+            // 夜晚处罚处决（DayNumber = null）不写白天账：不把"还没有白天"物化成空账（R-0020）。
+            ExecutedEvent { DayNumber: null } => Require(state, gameEvent),
             ExecutedEvent => ApplyDay(state, gameEvent),
             DayClosedEvent => ApplyDay(state, gameEvent),
 
@@ -92,6 +95,7 @@ internal static class StepMachineFolder
             PersistentEffectTerminatedEvent => state,
             InstantaneousEffectAppliedEvent => state,
             MadnessRequirementIssuedEvent => state,
+            MadnessRequirementTerminatedEvent => state,
             AbilityResolvedEvent => state,
             InformationResultIssuedEvent => state,
 

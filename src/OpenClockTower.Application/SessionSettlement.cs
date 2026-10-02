@@ -40,6 +40,7 @@ internal static class SessionSettlement
             StandingEffects = standingEffects,
             EventTriggers = RoleContracts.EventTriggers,
             AbilityPresences = RoleContracts.AbilityPresences,
+            AdjudicatedExecutions = RoleContracts.AdjudicatedExecutions,
         };
 
     /// <summary>

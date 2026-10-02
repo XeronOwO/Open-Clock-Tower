@@ -159,7 +159,13 @@ internal static class DayLedgerFolder
 
     private static DayState ApplyExecuted(DayState state, ExecutedEvent executed)
     {
-        return UpdateOpenDay(state, executed.DayNumber, day =>
+        if (executed.DayNumber is not { } dayNumber)
+        {
+            // 夜晚的处罚处决：不占任何白天的上限，也不写白天账——事实留在事件流（R-0020）。
+            return state;
+        }
+
+        return UpdateOpenDay(state, dayNumber, day =>
         {
             if (day.Executed is not null)
             {
@@ -167,7 +173,7 @@ internal static class DayLedgerFolder
                     $"事件流顺序损坏：白天 {day.DayNumber} 已经处决过 {day.Executed.Value.Value}，不能再次处决");
             }
 
-            return day with { Executed = executed.Seat };
+            return day with { Executed = executed.Seat, ExecutedKind = executed.Kind };
         });
     }
 

@@ -32,6 +32,9 @@ public sealed record SettlementContext
     /// <summary>能力存续契约（规则层实现）；没有就不解除任何「能力已失去」的效果。</summary>
     public IReadOnlyList<IAbilityPresence> AbilityPresences { get; init; } = [];
 
+    /// <summary>处罚处决依据契约（规则层实现）；没有时任何处罚处决都会被显式拒绝。</summary>
+    public IReadOnlyList<IAdjudicatedExecutionSource> AdjudicatedExecutions { get; init; } = [];
+
     /// <summary>没有规则层契约的上下文（内核夹具 / 只推进不结算）。</summary>
     public static SettlementContext Empty { get; } = new()
     {

@@ -131,6 +131,12 @@ public static class CommandGatePipeline
                 "只有说书人或宿主可以结束白天",
                 "identity"),
 
+            PunishExecutionCommand when actor.Kind is ActorKind.Host or ActorKind.Storyteller => null,
+            PunishExecutionCommand => Reject(
+                "identity.storyteller_only",
+                "只有说书人或宿主可以处罚处决",
+                "identity"),
+
             _ when actor.Kind == ActorKind.Storyteller => null,
             _ => Reject("identity.storyteller_only", "这条命令只有说书人可以发出", "identity"),
         };
@@ -207,6 +213,16 @@ public static class CommandGatePipeline
 
                 return null;
 
+            // 处罚处决可在任何已开始的阶段发生（含夜晚、含提名阶段之外：百科《畸形秀演员》；
+            // R-0020）：具体依据（要求是否生效 / 是不是畸形秀演员）在内核里判，这里只要求对局已开始。
+            case PunishExecutionCommand:
+                if (machine is null)
+                {
+                    return Reject("phase.not_started", "本局还没有开始任何阶段", "phase");
+                }
+
+                return null;
+
             case StartPhaseCommand:
                 if (machine is not null && !machine.IsPlanCompleted)
                 {
@@ -267,6 +283,7 @@ public static class CommandGatePipeline
             NominateCommand nominate => CheckSeatExists(nominate.Nominee, setup),
             CastVoteCommand castVote => CheckNominationIndex(castVote.NominationIndex),
             CountVotesCommand countVotes => CheckNominationIndex(countVotes.NominationIndex),
+            PunishExecutionCommand punish => CheckSeatExists(punish.Seat, setup),
             SubmitResponseCommand submit => CheckOption(machine, submit.RequestId, submit.OptionValue),
             ProxyFillCommand proxy => CheckOption(machine, proxy.RequestId, proxy.OptionValue),
             VoidRequestCommand voidRequest => Enum.IsDefined(voidRequest.Reason)
@@ -390,8 +407,8 @@ public static class CommandGatePipeline
             return Reject("legality.request_not_current", $"当前挂起的不是 {requestId}", "legality");
         }
 
-        return pending.Prompt.Options.Any(
-            option => string.Equals(option.Value, optionValue, StringComparison.Ordinal))
+        // 两维选择（R-0021）按 `{第一维}|{第二维}` 组合校验；单维仍是精确匹配。
+        return pending.Prompt.IsLegalAnswer(optionValue)
             ? null
             : Reject("legality.option_not_legal", $"选项不在合法集合里：{optionValue}", "legality");
     }

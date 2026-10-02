@@ -3,7 +3,7 @@ using OpenClockTower.Kernel;
 namespace OpenClockTower.Rules;
 
 /// <summary>
-/// 规则层的角色契约总目录：把「事件触发器」与「能力存续」两族契约的注册点收在一处。
+/// 规则层的角色契约总目录：把「事件触发器」「能力存续」「处罚处决依据」三族契约的注册点收在一处。
 /// </summary>
 /// <remarks>
 /// <para>
@@ -17,11 +17,15 @@ namespace OpenClockTower.Rules;
 /// </remarks>
 public static class RoleContracts
 {
-    /// <summary>事件触发器：按「本轮新事件 + 当前账」求后果（女巫的提名即死是首位消费者）。</summary>
+    /// <summary>事件触发器：按「本轮新事件 + 当前账」求后果（女巫的提名即死、洗脑师的到期撤下）。</summary>
     public static IReadOnlyList<IEventTrigger> EventTriggers { get; } =
-        [new WitchCurseTrigger()];
+        [new WitchCurseTrigger(), new CerenovusRequirementTrigger()];
 
     /// <summary>能力存续契约：会在特定局势下失去的能力，失去时它名下的持续型效果立即解除。</summary>
     public static IReadOnlyList<IAbilityPresence> AbilityPresences { get; } =
         [new WitchCursePresence()];
+
+    /// <summary>处罚处决依据契约：说书人主动处决是否成立、死亡怎么归因（R-0020）。</summary>
+    public static IReadOnlyList<IAdjudicatedExecutionSource> AdjudicatedExecutions { get; } =
+        [new CerenovusMadnessPunishment(), new MutantMadnessPunishment()];
 }

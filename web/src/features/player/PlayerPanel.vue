@@ -27,6 +27,8 @@ const diagnostics = ref<string[]>([])
 const joining = ref(false)
 const submitting = ref(false)
 const selectedOption = ref('')
+/** 两维选择（R-0021）的第二维取值；单维请求下保持空串。 */
+const selectedSecondary = ref('')
 const note = ref('')
 /** 最近一次请求是怎么结束的（作废原因 / 说书人代填）；新请求到达即清空。 */
 const settledNote = ref('')
@@ -61,6 +63,7 @@ function buildCallbacks(): PlayerCallbacks {
 
       pending.value = null
       selectedOption.value = ''
+      selectedSecondary.value = ''
       const detail = voided.note === null ? '' : `（${voided.note}）`
       settledNote.value = `请求已作废：${voidReasonLabelOf(voided.reason)}${detail}`
     },
@@ -71,6 +74,7 @@ function buildCallbacks(): PlayerCallbacks {
 
       pending.value = null
       selectedOption.value = ''
+      selectedSecondary.value = ''
       // 玩家本人作答的面板在提交回执到达时就会清空；这里只给"被说书人代填"一个交代。
       settledNote.value =
         answered.source === 'StorytellerProxy' ? '请求已了结：由说书人代填' : ''
@@ -92,11 +96,13 @@ function applyView(next: PlayerViewDto): void {
 
   if (next.pendingRequest === null) {
     selectedOption.value = ''
+    selectedSecondary.value = ''
     return
   }
 
   if (previous === null || previous.requestId !== next.pendingRequest.requestId) {
     selectedOption.value = next.pendingRequest.options[0]?.value ?? ''
+    selectedSecondary.value = next.pendingRequest.secondaryOptions[0]?.value ?? ''
   }
 
   // 新请求（含重投）到达即清空说明：这条说明只描述"上一次请求是怎么结束的"。
@@ -146,12 +152,22 @@ async function submit(): Promise<void> {
     return
   }
 
+  // 两维选择必须两维都给全（R-0021）：服务端按 `{第一维}|{第二维}` 组合校验，缺一维会被拒。
+  if (request.secondaryOptions.length > 0 && selectedSecondary.value.length === 0) {
+    pushDiagnostic('这次选择有两个维度：两项都要选')
+    return
+  }
+
   submitting.value = true
   try {
     clientSequence += 1
+    const answer =
+      request.secondaryOptions.length > 0
+        ? `${selectedOption.value}|${selectedSecondary.value}`
+        : selectedOption.value
     const raw = await ensureGateway().submitResponse(
       request.requestId,
-      selectedOption.value,
+      answer,
       newIdempotencyKey('response'),
       clientSequence,
     )
@@ -255,6 +271,22 @@ onBeforeUnmount(() => {
               :data-option-value="option.value"
             >
               <input v-model="selectedOption" type="radio" :value="option.value" />
+              {{ option.preview }}
+            </label>
+          </div>
+          <div
+            v-if="pending.secondaryOptions.length > 0"
+            class="options"
+            data-testid="player-request-secondary-options"
+          >
+            <p class="hint">这一步要同时选两项（第二项）：</p>
+            <label
+              v-for="option in pending.secondaryOptions"
+              :key="option.value"
+              class="option"
+              :data-option-value="option.value"
+            >
+              <input v-model="selectedSecondary" type="radio" :value="option.value" />
               {{ option.preview }}
             </label>
           </div>

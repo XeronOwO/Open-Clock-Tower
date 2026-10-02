@@ -46,13 +46,22 @@ public static class DayActions
     ];
 
     /// <summary>
-    /// 白天契约**已经实现**的角色（分批登记）：女巫的诅咒在夜晚施加、在下个白天提名时触发。
+    /// 白天契约**已经实现**的角色（分批登记）：
+    /// 女巫（夜晚诅咒 → 下个白天提名即死）；
+    /// 洗脑师（夜晚签发疯狂要求 → 处罚处决，R-0020 / R-0021）；
+    /// 畸形秀演员（说书人主动处罚处决，R-0020）。
     /// </summary>
     private static readonly CharacterId[] CoveredCharacters =
     [
         // 女巫：夜晚选择目标施加「被诅咒」，被诅咒者下个白天发起提名即死（提名仍生效）；
         // 诅咒的触发与存续见 RoleContracts。
         new("witch"),
+
+        // 洗脑师：夜晚选择玩家与善良角色（两维选择，R-0021），处罚处决走 AdjudicatedExecutionMachine。
+        new("cerenovus"),
+
+        // 畸形秀演员：没有夜晚行动、没有提示标记，处罚处决走同一条命令面（R-0020）。
+        new("mutant"),
     ];
 
     /// <summary>该角色是否与白天阶段相关（无论实现与否）。</summary>

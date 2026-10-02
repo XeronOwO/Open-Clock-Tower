@@ -27,6 +27,9 @@ public sealed record DayRecord
     /// <summary>本白天实际被处决的玩家；null = 还没有处决（或本白天以无人被处决收尾）。</summary>
     public SeatId? Executed { get; init; }
 
+    /// <summary>本白天处决的来源分类（常规 / 洗脑师处罚 / 畸形秀演员处罚）；null = 还没有处决。</summary>
+    public ExecutionKind? ExecutedKind { get; init; }
+
     /// <summary>当前投票窗口开着的提名（同一时间至多一项）；没有则为 null。</summary>
     public NominationRecord? OpenNomination =>
         Nominations.LastOrDefault(nomination => nomination.Status == NominationStatus.Voting);

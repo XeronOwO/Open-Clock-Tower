@@ -275,7 +275,12 @@ public static class DayMachine
                     $"席位 {seat.Value} 的生死还没有观测：无法判定处决是否产生死亡（不猜）");
             }
 
-            events.Add(new ExecutedEvent { DayNumber = day.DayNumber, Seat = seat });
+            events.Add(new ExecutedEvent
+            {
+                DayNumber = day.DayNumber,
+                Seat = seat,
+                Kind = ExecutionKind.Day,
+            });
 
             // 本票没有免死角色：存活者被处决即死亡；已经死亡者只记录"被处决"，不重复记死亡。
             if (life == LifeState.Alive)

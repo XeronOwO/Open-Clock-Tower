@@ -44,4 +44,11 @@ public sealed record AbilityResolutionContext
 
     /// <summary>说书人对裁定点的裁定原文；没有走过裁定点时为 null。</summary>
     public string? Decision { get; init; }
+
+    /// <summary>
+    /// 本次行动开始时，白天账里**已经开始的白天数**（夜晚 N 行动时为 N−1）。
+    /// 需要"跨夜存续窗口"的能力用它算绝对到期日——洗脑师的疯狂要求在施加夜的次日白天与其后夜晚有效，
+    /// 下一个黎明撤下（<c>docs/standard/rulings.md</c> R-0021）。
+    /// </summary>
+    public required int DaysStarted { get; init; }
 }

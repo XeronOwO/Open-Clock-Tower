@@ -57,6 +57,7 @@ public static class StepMachineStateComparer
                 || dayLeft.Status != dayRight.Status
                 || dayLeft.AboutToBeExecuted != dayRight.AboutToBeExecuted
                 || dayLeft.Executed != dayRight.Executed
+                || dayLeft.ExecutedKind != dayRight.ExecutedKind
                 || dayLeft.Nominations.Count != dayRight.Nominations.Count)
             {
                 return false;
@@ -186,7 +187,8 @@ public static class StepMachineStateComparer
 
         if (!string.Equals(left.Context, right.Context, StringComparison.Ordinal)
             || left.OnNoOption != right.OnNoOption
-            || left.Options.Count != right.Options.Count)
+            || left.Options.Count != right.Options.Count
+            || left.SecondaryOptions.Count != right.SecondaryOptions.Count)
         {
             return false;
         }
@@ -195,6 +197,21 @@ public static class StepMachineStateComparer
         {
             if (!string.Equals(left.Options[index].Value, right.Options[index].Value, StringComparison.Ordinal)
                 || !string.Equals(left.Options[index].Preview, right.Options[index].Preview, StringComparison.Ordinal))
+            {
+                return false;
+            }
+        }
+
+        for (var index = 0; index < left.SecondaryOptions.Count; index++)
+        {
+            if (!string.Equals(
+                    left.SecondaryOptions[index].Value,
+                    right.SecondaryOptions[index].Value,
+                    StringComparison.Ordinal)
+                || !string.Equals(
+                    left.SecondaryOptions[index].Preview,
+                    right.SecondaryOptions[index].Preview,
+                    StringComparison.Ordinal))
             {
                 return false;
             }

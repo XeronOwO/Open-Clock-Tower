@@ -342,14 +342,14 @@ public sealed class DayPhaseHostTests
             {
                 new() { Seat = 1, Character = "dreamer" },
                 new() { Seat = 2, Character = "clockmaker" },
-                new() { Seat = 3, Character = "mutant" },
+                new() { Seat = 3, Character = "savant" },
             },
-            "test-day-assign-mutant");
+            "test-day-assign-savant");
         Assert.Equal("Accepted", assigned.Kind);
 
         await CompleteFixtureNightAsync(host, storyteller);
 
-        var result = await storyteller.InvokeAsync<CommandResultDto>("StartDay", "test-day-mutant");
+        var result = await storyteller.InvokeAsync<CommandResultDto>("StartDay", "test-day-savant");
         Assert.Equal("Rejected", result.Kind);
         Assert.Equal("legality.day_contract_missing", result.RejectionCode);
     }

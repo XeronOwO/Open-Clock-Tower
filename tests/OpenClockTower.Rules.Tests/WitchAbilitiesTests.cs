@@ -22,7 +22,8 @@ public sealed class WitchAbilitiesTests
 
     private static IAbilityResolution Resolution => NightActions.Resolutions.Find(Witch)!;
 
-    private static IEventTrigger Trigger => Assert.Single(RoleContracts.EventTriggers);
+    private static IEventTrigger Trigger =>
+        RoleContracts.EventTriggers.Single(trigger => trigger.Ability == CurseAbility);
 
     private static IAbilityPresence Presence => Assert.Single(RoleContracts.AbilityPresences);
 
@@ -474,5 +475,6 @@ public sealed class WitchAbilitiesTests
             Malfunction = effective ? null : MalfunctionKind.Poisoned,
         },
         Choice = choice,
+        DaysStarted = 0,
     };
 }

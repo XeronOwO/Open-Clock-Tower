@@ -320,6 +320,11 @@ export function normalizeRequest(raw: unknown): OperationRequestDto | null {
     options: asArray<unknown>(request['options'])
       .map(normalizeOption)
       .filter((option): option is DecisionOptionDto => option !== null),
+    // 第二维是 R-0021 的两维选择（洗脑师）：缺失或损坏时降级为空数组 = 单维请求，
+    // 不编造第二维、也不让界面崩（服务端数据是输入，不是保证）。
+    secondaryOptions: asArray<unknown>(request['secondaryOptions'])
+      .map(normalizeOption)
+      .filter((option): option is DecisionOptionDto => option !== null),
   }
 }
 

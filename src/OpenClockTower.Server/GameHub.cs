@@ -350,6 +350,37 @@ public sealed class GameHub : Hub<IGameClient>
     public Task<CommandResultDto> CloseDay(string credential, string idempotencyKey) =>
         ExecuteAsync(ResolveActor(credential), new CloseDayCommand(), idempotencyKey);
 
+    /// <summary>
+    /// 说书人 / 宿主处罚处决：洗脑师 / 畸形秀演员的"疯狂"后果（R-0020）。
+    /// 白天形态占用当天处决上限并立即收口白天；夜晚形态不占任何白天的上限。
+    /// </summary>
+    public Task<CommandResultDto> PunishExecution(
+        string credential,
+        int seat,
+        string source,
+        string? note,
+        string idempotencyKey)
+    {
+        var actor = ResolveActor(credential);
+
+        // 只认名字不认数字：给 Enum.TryParse 传数字会把序号当来源（与零信任相悖，同 StartNight 的口径）。
+        if (!Enum.TryParse<MadnessPunishmentSource>(source, ignoreCase: false, out var parsed)
+            || !Enum.IsDefined(parsed))
+        {
+            throw InvalidPayload($"未知的处罚来源：{source}（只接受 Cerenovus / Mutant）");
+        }
+
+        return ExecuteAsync(
+            actor,
+            new PunishExecutionCommand
+            {
+                Seat = new SeatId(seat),
+                Source = parsed,
+                Note = note,
+            },
+            idempotencyKey);
+    }
+
     /// <summary>说书人 / 宿主按事件日志重建房间（D-0014 恢复）。</summary>
     public Task<CommandResultDto> RebuildRoom(string credential, string reason, string idempotencyKey) =>
         ExecuteAsync(ResolveActor(credential), new RebuildRoomCommand { Reason = reason }, idempotencyKey);

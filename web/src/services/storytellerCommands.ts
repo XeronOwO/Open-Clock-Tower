@@ -132,6 +132,21 @@ export function closeDay(sender: CommandSender, idempotencyKey: string): Promise
   return invokeCommand(sender, 'CloseDay', idempotencyKey)
 }
 
+/**
+ * 处罚处决（说书人主动处决）：洗脑师 / 畸形秀演员的"疯狂"后果（R-0020）。
+ * 白天形态占用当天处决上限并立即收口白天；夜晚形态不占任何白天的上限。
+ * `source` 只接受服务端枚举名（Cerenovus / Mutant），由说书人显式选择。
+ */
+export function punishExecution(
+  sender: CommandSender,
+  seat: number,
+  source: string,
+  note: string | null,
+  idempotencyKey: string,
+): Promise<CommandOutcome> {
+  return invokeCommand(sender, 'PunishExecution', seat, source, note, idempotencyKey)
+}
+
 /** 代填挂起请求。 */
 export function proxyFill(
   sender: CommandSender,
