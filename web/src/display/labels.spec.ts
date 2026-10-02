@@ -7,6 +7,7 @@ import {
   dimensionLabelOf,
   effectMarkNameOf,
   labelOf,
+  setupModifiersOf,
   voidReasonLabelOf,
 } from '@/display/labels'
 
@@ -84,5 +85,19 @@ describe('文案映射', () => {
     expect(characterLabelOf('not-a-character')).toBe('not-a-character')
     expect(characterNameOf(null)).toBe('—')
     expect(characterTypeOf('not-a-character')).toBe('')
+  })
+})
+
+describe('阵型修正提示（setup-modifier；rulings.md R-0035）', () => {
+  it('方古在已选分配里 → 提示 [+1 外来者]', () => {
+    const notes = setupModifiersOf(['fang-gu', 'clockmaker'])
+    expect(notes).toHaveLength(1)
+    expect(notes[0]?.slug).toBe('fang-gu')
+    expect(notes[0]?.setupModifier).toContain('[+1 外来者]')
+  })
+
+  it('没有带修正的角色（含未知 slug）→ 不编提示', () => {
+    expect(setupModifiersOf(['clockmaker', 'not-a-character'])).toEqual([])
+    expect(setupModifiersOf([])).toEqual([])
   })
 })

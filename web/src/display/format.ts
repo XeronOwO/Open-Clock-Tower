@@ -506,6 +506,8 @@ export function normalizeDeferredDeath(raw: unknown): DeferredDeathDto | null {
     source,
     ability: asText(entry['ability']) ?? '未知能力',
     note: asSizedText(entry['note'], 512) ?? '',
+    // 缺字段 = 普通死亡（服务端旧版本或坏数据都不猜成"转化"）。
+    transformation: entry['transformation'] === true,
   }
 }
 

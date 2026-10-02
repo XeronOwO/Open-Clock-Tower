@@ -96,6 +96,10 @@ function addCasualty(): Promise<void> {
         <span>{{ deferred.target }} 号</span>
         <span class="note">
           被 {{ deferred.source }} 号（{{ deferred.ability }}）攻击：{{ deferred.note }}
+          <template v-if="deferred.transformation">
+            ——「确认」= 按<strong>侵染</strong>结算：外来者变成新的邪恶方古、原方古死亡，
+            被攻击者本身<strong>不死亡</strong>（rulings.md R-0034）。
+          </template>
         </span>
         <button
           type="button"
@@ -103,7 +107,7 @@ function addCasualty(): Promise<void> {
           :disabled="busy"
           @click="resolve(deferred, true)"
         >
-          确认死亡
+          {{ deferred.transformation ? '确认侵染' : '确认死亡' }}
         </button>
         <button
           type="button"

@@ -8,11 +8,18 @@
  *   清清楚楚的英文名，而不是被吞掉的空白（与「未观测 ≠ 默认值」同一姿态）。
  */
 
-/** 角色档案：中文名 + 所属类型。 */
+/** 角色档案：中文名 + 所属类型 + 可选阵型修正（`[...]` 设置调整，仅初始设置生效）。 */
 export interface CharacterProfile {
   readonly slug: string
   readonly name: string
   readonly type: string
+  /**
+   * 阵型修正（`docs/standard/terminology.md` §7 `setup-modifier`）。
+   *
+   * 平台**不建盲抽袋**、也不做分布校验——建袋是线下的动作，服务端拿到的只是最终分配
+   * （D-0017）。这里只把修正摆给说书人看，避免"静默缺失"；口径见 `rulings.md` R-0035。
+   */
+  readonly setupModifier?: string
 }
 
 /**
@@ -41,7 +48,7 @@ export const ROSTER: readonly CharacterProfile[] = [
   { slug: 'witch', name: '女巫', type: '爪牙' },
   { slug: 'cerenovus', name: '洗脑师', type: '爪牙' },
   { slug: 'pit-hag', name: '麻脸巫婆', type: '爪牙' },
-  { slug: 'fang-gu', name: '方古', type: '恶魔' },
+  { slug: 'fang-gu', name: '方古', type: '恶魔', setupModifier: '[+1 外来者]：初始设置时用一个外来者角色标记替换一个镇民角色标记' },
   { slug: 'vigormortis', name: '亡骨魔', type: '恶魔' },
   { slug: 'no-dashii', name: '诺-达鲺', type: '恶魔' },
   { slug: 'vortox', name: '涡流', type: '恶魔' },
@@ -169,6 +176,17 @@ export function characterTypeOf(slug: string | null | undefined): string {
   }
 
   return ROSTER_BY_SLUG.get(slug)?.type ?? ''
+}
+
+/**
+ * 已选角色的阵型修正提示（`[...]` 设置调整）：按花名册顺序返回带修正的角色档案。
+ * 空数组 = 没有需要提示的修正——前端只显示，不替服务端判规则。
+ */
+export function setupModifiersOf(slugs: readonly string[]): readonly CharacterProfile[] {
+  const selected = new Set(slugs)
+  return ROSTER.filter(
+    (profile) => selected.has(profile.slug) && profile.setupModifier !== undefined,
+  )
 }
 
 /** 角色 slug → "中文名（英文 slug）"，说书人视图用它避免歧义。 */

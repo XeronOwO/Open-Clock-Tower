@@ -8,7 +8,7 @@
  */
 import type { StorytellerViewDto } from '@/contracts/game'
 import { seatNumbersOf } from '@/display/grimoire'
-import { ROSTER } from '@/display/labels'
+import { ROSTER, setupModifiersOf } from '@/display/labels'
 import { seatLabelOf } from '@/display/format'
 import { newIdempotencyKey } from '@/services/idempotency'
 import {
@@ -34,6 +34,14 @@ const selection = ref<Record<number, string>>({})
 
 /** 可分配席位 = 配置席位名单 ∪ 状态账里已观测到的席位（分配后就常驻在账里）；与魔典圆环同一份口径。 */
 const seatNumbers = computed(() => seatNumbersOf(props.view, props.seatCount))
+
+/**
+ * 已选角色触发的阵型修正（`[...]` 设置调整，如方古的 `[+1 外来者]`）。
+ *
+ * 平台不建盲抽袋、也不做分布校验：建袋是线下的动作，服务端拿到的只是最终分配（D-0017）。
+ * 这里把修正摆给说书人看，避免"静默缺失"；口径见 `rulings.md` R-0035。
+ */
+const setupNotes = computed(() => setupModifiersOf(Object.values(selection.value)))
 
 async function submit(): Promise<void> {
   const assignments = Object.entries(selection.value)
@@ -84,6 +92,11 @@ async function submit(): Promise<void> {
         </tbody>
       </table>
       <input v-model="note" placeholder="分配备注（可选）" />
+      <ul v-if="setupNotes.length > 0" class="setup-notes" data-testid="st-assignment-setup-notes">
+        <li v-for="profile in setupNotes" :key="profile.slug" :data-slug="profile.slug">
+          <strong>{{ profile.name }}：</strong>{{ profile.setupModifier }}
+        </li>
+      </ul>
       <div class="actions">
         <button type="button" class="primary" :disabled="busy" @click="submit()">提交分配</button>
         <span class="hint">
