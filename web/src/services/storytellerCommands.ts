@@ -147,6 +147,33 @@ export function punishExecution(
   return invokeCommand(sender, 'PunishExecution', seat, source, note, idempotencyKey)
 }
 
+/**
+ * 麻脸巫婆之夜的**追加死亡**（R-0030 第 4 条）：说书人让某名玩家死亡，归因为麻脸巫婆。
+ * 窗口是否存在、目标是否已死由服务端判定（`kernel.NoPitHagNight` / `kernel.UnexpectedInput`）。
+ */
+export function pitHagCasualty(
+  sender: CommandSender,
+  seat: number,
+  note: string | null,
+  idempotencyKey: string,
+): Promise<CommandOutcome> {
+  return invokeCommand(sender, 'PitHagCasualty', seat, note, idempotencyKey)
+}
+
+/**
+ * 裁定一条**待定死亡**（R-0030 第 2 条）：`killed` = true 确认死亡（归因为发起击杀的恶魔），
+ * false 阻止死亡（免死）——「说书人能让原本被恶魔攻击且会死亡的玩家免死」（百科《免死》）。
+ */
+export function resolveDeferredDeath(
+  sender: CommandSender,
+  seat: number,
+  killed: boolean,
+  note: string | null,
+  idempotencyKey: string,
+): Promise<CommandOutcome> {
+  return invokeCommand(sender, 'ResolveDeferredDeath', seat, killed, note, idempotencyKey)
+}
+
 /** 代填挂起请求。 */
 export function proxyFill(
   sender: CommandSender,

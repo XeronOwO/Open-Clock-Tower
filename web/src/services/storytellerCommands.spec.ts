@@ -7,6 +7,8 @@ import {
   forceAdvance,
   invokeCommand,
   normalizeOutcome,
+  pitHagCasualty,
+  resolveDeferredDeath,
   startDay,
   type CommandSender,
 } from '@/services/storytellerCommands'
@@ -113,5 +115,16 @@ describe('命令必须出示连接凭据（D-0012）', () => {
 
     await closeDay(sender, 'key-close')
     expect(invoke).toHaveBeenCalledWith('CloseDay', credential, 'key-close')
+  })
+
+  it('麻脸巫婆之夜的两条命令按 Hub 方法名与参数顺序发出（R-0030）', async () => {
+    const invoke = vi.fn(async () => ({ kind: 'Accepted', sequence: 11 }))
+    const sender: CommandSender = { connection: { invoke } as unknown as HubConnection, credential }
+
+    await pitHagCasualty(sender, 3, '平衡局面', 'key-casualty')
+    expect(invoke).toHaveBeenCalledWith('PitHagCasualty', credential, 3, '平衡局面', 'key-casualty')
+
+    await resolveDeferredDeath(sender, 4, false, null, 'key-resolve')
+    expect(invoke).toHaveBeenCalledWith('ResolveDeferredDeath', credential, 4, false, null, 'key-resolve')
   })
 })
