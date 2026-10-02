@@ -339,6 +339,16 @@ public sealed class PitHagResidueHostTests
                 // 让被创造的涡流槽位挂起：窗口的关闭点在它之后，机器停住、事件流冻结。
                 var vortox = await WaitForRequestAsync(first, new SeatId(3));
                 Assert.False(string.IsNullOrWhiteSpace(vortox.Prompt.Context));
+
+                // 冻结节拍再计数：自动推进会在任意一侧宿主里追加配额事件（0.05s 档下先后不定），
+                // 让「恢复不追加事件」的计数比较变成竞态。接管模式停掉自动推进后，本用例
+                // 只验证重启恢复本身不重算、不追加。
+                var freeze = await storyteller.InvokeAsync<CommandResultDto>(
+                    "TakeOver",
+                    "冻结配额：本用例只验证重启恢复不重算",
+                    "test-pithag-residue-restart-freeze");
+                Assert.Equal("Accepted", freeze.Kind);
+
                 eventsBefore = (await first.Store.ReadEventsAsync(
                     TestServerHost.GameId,
                     0,
@@ -412,6 +422,13 @@ public sealed class PitHagResidueHostTests
                 "ForceAdvance",
                 "测试：越过无关槽位",
                 $"test-pithag-residue-force-{tag}-{attempt}");
+            if (forced.Kind == "Rejected" && forced.RejectionCode == "kernel.PlanAlreadyCompleted")
+            {
+                // 计划在「查视图」与「强推」之间被自动推进走完（0.05s 配额档下的固有竞态）：
+                // 目标已经达成，不算失败。
+                return;
+            }
+
             Assert.Equal("Accepted", forced.Kind);
         }
 

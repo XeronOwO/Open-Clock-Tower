@@ -341,6 +341,13 @@ public sealed class WitchCurseHostTests
                 "ForceAdvance",
                 "测试：越过与女巫无关的槽位",
                 $"test-witch-force-{attempt}");
+            if (forced.Kind == "Rejected" && forced.RejectionCode == "kernel.PlanAlreadyCompleted")
+            {
+                // 计划在「查视图」与「强推」之间被自动推进走完（0.05s 配额档下的固有竞态）：
+                // 目标已经达成，不算失败。
+                return;
+            }
+
             Assert.Equal("Accepted", forced.Kind);
         }
 
