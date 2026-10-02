@@ -275,12 +275,14 @@ async function main() {
   await browser.close()
 }
 
-/** 点「开夜」直到被受理（上一阶段可能还在自动推进）。 */
+/** 点「开夜」直到被受理（上一阶段靠节拍自动走完）。 */
 async function startNightWhenReady(page, nightNumber) {
   const operations = page.locator('section', { hasText: '兜底与推进' })
   await operations.locator('input[type="number"]').fill(String(nightNumber))
+  // 预算按档位算，不写死次数：取证档 2s/槽 × 首夜 13 槽 ≈ 26 秒（迭代档 0.3s 只需 4 秒）。
+  const deadline = Date.now() + Math.max(60_000, config.quotaSeconds * 60 * 1_000)
   let outcome = null
-  for (let attempt = 0; attempt < 40; attempt += 1) {
+  while (Date.now() < deadline) {
     outcome = await runCommand(page, `开第 ${nightNumber} 夜`, () =>
       operations.getByRole('button', { name: /开夜/ }).click(),
     )
@@ -288,7 +290,7 @@ async function startNightWhenReady(page, nightNumber) {
       return outcome
     }
 
-    await sleep(300)
+    await sleep(500)
   }
 
   return outcome
