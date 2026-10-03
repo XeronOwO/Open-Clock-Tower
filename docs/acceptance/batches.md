@@ -134,8 +134,11 @@
 以主装置取证档做回归：
 
 - 主装置 `tools/verify-storyteller-panel.mjs`（取证档 `--quota 2 --screenshots-all --build`）：
-  **177 项断言 / 0 跳过**（39 张截图均为本次运行写入，113.5s，退出码 0）——终局面（`final`）与重连面
-  （`reconnect`）作为本票回归；
+  **177 项断言 / 0 跳过**（39 张截图均为本次运行写入，113.5s，退出码 0）——四夜 / 白天 / 重建 / 重连的
+  通用回归（**该装置不走游戏结束**：它全程保持恶魔存活）；
+- 胜负装置 `tools/verify-winloss.mjs`（同取证档）：**20 项 + 3 张截图**（退出码 0）——**真实结束批次**：
+  处决呆瓜 → 公开选择 → 邪恶获胜 → 结束横幅（玩家端与说书人端同源）→ 结束后操作被 `phase.game_ended` 拒；
+  截图 `winloss-01…03` 逐张复核（说书人端结束面 + 玩家端结束横幅 + 公开选择，与断言一致）；
 - 真宿主用例（真宿主 + 真 SignalR + 真 SQLite）：`TerminalHoldResidueTests` **2/2**、`SlotUnblockTests` **6/6**；
 - 冻结版门禁：`dotnet build` 0 警告 / 0 错误；`dotnet test` **598 通过 / 0 失败**
   （Kernel 270 · Rules 208 · Integration 97 · NormativeGates 23）；`dotnet format` 退出码 0（未改写任何文件）；
