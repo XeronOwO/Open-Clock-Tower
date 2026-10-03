@@ -27,7 +27,8 @@
  *      推送扫描挂在**玩家页自己的 WebSocket 帧**上（page.on('websocket')）。另开 SignalR 客户端会把
  *      浏览器页的凭据挤掉，页面从此收不到推送，而那些断言仍然"绿"——那是假绿，不是能力通过。
  *   2) SignalR 默认 JSON 协议的**帧尾带 `\x1e` 记录分隔符**：直接 JSON.parse 每条帧都会抛异常、
- *      被吞成「没有推送」→ 推送扫描静默假绿。必须按 `\x1e` 切段再解析（parseSignalRFrame）。
+ *      被吞成「没有推送」→ 推送扫描静默假绿。必须按 `\x1e` 切段、逐段解析（parseSignalRMessages）——
+ *      一帧可能合了"推送 + 调用回执"多条消息，只取第一条会让回执被遮住。
  *
  * 一处断言口径的说明（说书人字段扫描）：`ReceiveOperationRequestAnswered` 帧里的 `note` 是**玩家自己**
  * 作答时填的备注（PlayerPanel 从不填，一向为空），不是说书人专属字段；因此 `note` 这一项对该方法豁免，
@@ -767,24 +768,23 @@ function attachFrameSink(page, sink) {
 
 function recordFrame(sink, direction, rawPayload) {
   const payload = typeof rawPayload === 'string' ? rawPayload : '<binary>'
-  const entry = { direction, payload, parsed: null }
-  const candidate = parseSignalRFrame(payload)
-  if (candidate !== null) {
-    entry.parsed = candidate
-  }
-
+  const messages = parseSignalRMessages(payload)
+  const entry = { direction, payload, parsed: messages[0] ?? null, messages }
   sink.frames.push(entry)
   return entry
 }
 
 /**
- * 解析一帧 SignalR（默认 JSON 协议）。
+ * 解析一帧 SignalR（默认 JSON 协议）里的**全部**消息。
  *
  * 帧尾带 `\x1e` 记录分隔符（SignalR 的 TextMessageFormat）：**不能**直接 JSON.parse，
  * 否则每条帧都会抛异常、被吞成"没有推送"——这会让所有推送扫描静默假绿（本装置踩过）。
- * 非 JSON 帧（握手 / 心跳）返回 null，照收不误，只是不参与 target 解析。
+ * 服务端还会把同一连接上先后写出的多条消息（如"视图推送 + 调用回执"）**合进一帧**：
+ * 只取第一条会让回执被前面的推送遮住，表现为"提交明明生效了却等不到受理回执"
+ * （限次信息族装置首跑实测；本装置同款修复）。
  */
-function parseSignalRFrame(payload) {
+function parseSignalRMessages(payload) {
+  const messages = []
   for (const part of payload.split('\u001e')) {
     const trimmed = part.trim()
     if (!trimmed.startsWith('{')) {
@@ -794,14 +794,14 @@ function parseSignalRFrame(payload) {
     try {
       const candidate = JSON.parse(trimmed)
       if (candidate !== null && typeof candidate === 'object') {
-        return candidate
+        messages.push(candidate)
       }
     } catch {
-      // 落回下一段：帧里可能有半截 / 多段内容。
+      // 半截 / 多段内容：跳过这一段，不吞掉整帧。
     }
   }
 
-  return null
+  return messages
 }
 
 /** 等连接帧里出现满足条件的帧（防"推送扫描是空集"式假绿）。 */
@@ -1320,14 +1320,18 @@ async function submitRequestAndAwaitOutcome(page, sink) {
   await page.getByTestId('player-submit').click()
   const deadline = Date.now() + 30_000
   while (Date.now() < deadline) {
-    const invocation = sink.invocations.slice(before).find((frame) => frame.parsed?.target === 'SubmitResponse')
+    const invocation = sink.invocations
+      .slice(before)
+      .flatMap((frame) => frame.messages)
+      .find((message) => message.target === 'SubmitResponse')
     if (invocation !== undefined) {
-      const invocationId = String(invocation.parsed.invocationId ?? '')
-      const completion = sink.frames.find(
-        (frame) => frame.parsed?.type === 3 && String(frame.parsed.invocationId ?? '') === invocationId,
-      )
+      const invocationId = String(invocation.invocationId ?? '')
+      // 回执可能与推送同帧到达：必须在**全部消息**里找，不能只看每条帧的第一条。
+      const completion = sink.frames
+        .flatMap((frame) => frame.messages)
+        .find((message) => message.type === 3 && String(message.invocationId ?? '') === invocationId)
       if (completion !== undefined) {
-        return completion.parsed?.result?.kind === 'Accepted'
+        return completion.result?.kind === 'Accepted'
       }
     }
 
