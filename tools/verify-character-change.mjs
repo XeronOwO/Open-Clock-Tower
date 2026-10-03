@@ -10,8 +10,13 @@
  *   3) 醉酒的筑梦师**照常拿到请求**（不因醉酒而不被唤醒）；作答后信息退回说书人裁定；
  *   4) 第二夜：1 号的格上执行的是**获得的能力**（筑梦师的提示：不含自己、没有摇头），说书人强制作废后继续；
  *   5) 3 号方古击杀 5 号呆瓜（外来者）→ 5 号变成**邪恶方古**且**不死亡**、3 号死亡（原方古）；
- *   6) 第三夜：「限一次」已用 → 新方古（5 号）击杀 4 号理发师 → **普通死亡**；
+ *      同一次视图推送里魔典中心出现「限一次」标记（`hub-once-marker`）：文本 = 限一次、
+ *      title 归属 = 3 号方古 → 5 号（方古侵染的**整局事实**，R-0034；只说书人可见）；
+ *   6) 第三夜：「限一次」已用 → 新方古（5 号）击杀 4 号理发师 → **普通死亡**（标记仍在：
+ *      整局事实不因换夜消失）；
  *   7) 同夜理发师格：存活恶魔（5 号）拿到「玩家对 / 不交换」请求 → 选 `pair:1+2` → 只写角色维度地互换；
+ *      窗口内魔典中心挂着「今晚理发」标记（`hub-barber-night`：文本 = 今晚理发、title 记以理发师身份
+ *      死亡的 4 号），**结清后消失**（R-0033 的待处理事实收口，不残留到下一夜）；
  *   8) 换手后**尚未进入**的筑梦师格重绑给新持有者（1 号又拿到筑梦师提示）→ 强制作废；
  *   9) 1 号失去角色能力 → 「获得能力」事实与醉酒一并终止（来源失去能力）；
  *  10) 视角隔离：1 号自己的页面上没有说书人词汇；2 / 4 / 6 号的全部推送无越权字段。
@@ -30,7 +35,9 @@
  *   node tools/verify-character-change.mjs --port 5500 --vite-port 5400           # 自定端口（第二局 +1）
  *
  * 外部耦合（换机器先核对 web/AGENTS.md §3.1）：宿主编译产物路径、SQLite 表 Games 的
- * StorytellerTicket / SeatsJson 列形状。退出码：0 = 全过；1 = 有失败；2 = 环境缺依赖。
+ * StorytellerTicket / SeatsJson 列形状、说书人魔典中心的两枚标记锚点
+ * （`hub-once-marker` 文本 = 「限一次」/ `hub-barber-night` 文本 = 「今晚理发」；title 里带席位归属）。
+ * 退出码：0 = 全过；1 = 有失败；2 = 环境缺依赖。
  */
 import { spawn } from 'node:child_process'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
@@ -331,6 +338,20 @@ async function runPresentGrantScene() {
     30_000,
   )
   check('原方古死亡（3 号），角色标记仍留在牌面上', originalDead === 'Dead', `data-life=${originalDead}`)
+
+  // 魔典中心的「限一次」标记：方古侵染是整局事实（R-0034），说书人一眼看到它有没有用掉。
+  const onceMarker = await waitForHubToken(storytellerPage, 'hub-once-marker', 30_000)
+  check(
+    '方古侵染成功后：魔典中心出现「限一次」标记（hub-once-marker 可见）',
+    onceMarker.visible,
+    `visible=${onceMarker.visible}；文本=${onceMarker.text}`,
+  )
+  check('「限一次」标记文本 = 限一次', onceMarker.text === '限一次', `文本=${onceMarker.text}`)
+  check(
+    `「限一次」标记归属正确（title 记 ${FANG_GU_SEAT} 号 → ${KLUTZ_SEAT} 号）`,
+    onceMarker.title.includes(`${FANG_GU_SEAT} 号`) && onceMarker.title.includes(`${KLUTZ_SEAT} 号`),
+    `title=${onceMarker.title}`,
+  )
   await screenshot(storytellerPage, 'cc-06-fanggu-conversion')
 
   // 第二夜剩下的格：醉酒的筑梦师同样照常被唤醒（它的请求挂起会让夜停在这里）。
@@ -372,9 +393,33 @@ async function runPresentGrantScene() {
     `data-character=${await barberCard.getAttribute('data-character')}`,
   )
 
+  // 整局事实的另一半：换到第三夜之后「限一次」标记仍在（它记的是"用过没有"，不是"本夜发生"）。
+  const onceMarkerLaterNight = await waitForHubToken(storytellerPage, 'hub-once-marker', 15_000)
+  check(
+    '「限一次」是整局事实：第三夜标记仍在（不随换夜 / 换角消失）',
+    onceMarkerLaterNight.visible && onceMarkerLaterNight.text === '限一次',
+    `visible=${onceMarkerLaterNight.visible}；文本=${onceMarkerLaterNight.text}`,
+  )
+
   // 同夜的理发师格：恶魔（此刻存活的方古 = 5 号）拿到「玩家对 / 不交换」原子请求。
   const swapOptions = klutzPage.locator('[data-testid="player-request-options"] [data-option-value^="pair:"]')
   await swapOptions.first().waitFor({ timeout: 90_000 })
+
+  // 「今晚理发」待处理事实（R-0033）：请求挂起 = 事实开着，此刻魔典中心必须挂着这枚标记
+  // （放在请求观测之后断言：请求还在，事实就一定没被收口，不受节拍竞态影响）。
+  const barberNightOpen = await waitForHubToken(storytellerPage, 'hub-barber-night', 30_000)
+  check(
+    '理发师之夜的窗口内：魔典中心出现「今晚理发」标记（hub-barber-night 可见）',
+    barberNightOpen.visible,
+    `visible=${barberNightOpen.visible}；文本=${barberNightOpen.text}`,
+  )
+  check('「今晚理发」标记文本 = 今晚理发', barberNightOpen.text === '今晚理发', `文本=${barberNightOpen.text}`)
+  check(
+    `「今晚理发」标记归属正确（title 记以理发师身份死亡的 ${BARBER_SEAT} 号）`,
+    barberNightOpen.title.includes(`${BARBER_SEAT} 号`),
+    `title=${barberNightOpen.title}`,
+  )
+
   const swapValues = await klutzPage
     .locator('[data-testid="player-request-options"] [data-option-value]')
     .evaluateAll((nodes) => nodes.map((node) => node.getAttribute('data-option-value')))
@@ -395,6 +440,14 @@ async function runPresentGrantScene() {
   check('交换只写角色维度：1 号变成筑梦师', swappedPhilosopher === 'dreamer', `data-character=${swappedPhilosopher}`)
   const swappedDreamer = await waitForAttribute(dreamerCard, 'data-character', 'philosopher', 30_000)
   check('2 号变成哲学家（阵营不变）', swappedDreamer === 'philosopher', `data-character=${swappedDreamer}`)
+
+  // 收口（恶魔按「玩家对」结清）后事实关闭：标记在同一份视图推送里消失，不残留到下一夜。
+  const barberNightClosed = await waitForHubTokenGone(storytellerPage, 'hub-barber-night', 30_000)
+  check(
+    '换角结清后：「今晚理发」标记消失（事实收口，不残留）',
+    barberNightClosed,
+    barberNightClosed ? '已消失' : '标记仍在',
+  )
   await screenshot(storytellerPage, 'cc-09-swap-applied')
 
   // 换手后尚未进入的筑梦师格重绑给新持有者（1 号）：它在真界面上拿到筑梦师的请求（R-0032）。
@@ -684,6 +737,43 @@ async function panelText(page, heading) {
   }
 
   return compact(await section.first().innerText())
+}
+
+/**
+ * 魔典中心的标记（`hub-once-marker` = 限一次 / `hub-barber-night` = 今晚理发）：等它出现，
+ * 读出可见性、文本与 title（title 里带席位归属）。标记是 `v-if` 渲染的，视图推送未到就 count = 0，
+ * 所以这里轮询而不是读一次；超时返回最后一次快照（调用方据此报红并打印快照）。
+ */
+async function waitForHubToken(page, testId, timeoutMs = 30_000) {
+  const token = page.locator(`[data-testid="${testId}"]`).first()
+  const deadline = Date.now() + timeoutMs
+  let snapshot = { visible: false, text: '', title: '' }
+  while (Date.now() < deadline) {
+    if (await token.isVisible().catch(() => false)) {
+      snapshot = {
+        visible: true,
+        text: compact(await token.innerText().catch(() => '')),
+        title: (await token.getAttribute('title').catch(() => null)) ?? '',
+      }
+      if (snapshot.text.length > 0) {
+        return snapshot
+      }
+    }
+
+    await sleep(150)
+  }
+
+  return snapshot
+}
+
+/** 等某个魔典中心标记消失（事实被收口 / 本夜过时不候）；超时返回 false。 */
+async function waitForHubTokenGone(page, testId, timeoutMs = 30_000) {
+  try {
+    await page.locator(`[data-testid="${testId}"]`).waitFor({ state: 'detached', timeout: timeoutMs })
+    return true
+  } catch {
+    return false
+  }
 }
 
 async function startNightWhenReady(page, nightNumber) {

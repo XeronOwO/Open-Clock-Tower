@@ -290,7 +290,15 @@ async function main() {
   const decisionContext = compact(await decisionPanel.locator('.context').innerText())
   check('创造镜像双子开出「选择对立双子」裁定', decisionContext.includes('对立双子'), decisionContext)
   const decisionOptions = (
-    await decisionPanel.locator('.options button').evaluateAll((nodes) => nodes.map((node) => node.textContent))
+    await decisionPanel.locator('.options button').evaluateAll((nodes) =>
+      nodes.map((node) => {
+        // 摘掉「已死亡」标签再取文本：界面把标签嵌在按钮里（批次 E25 起），直接 textContent
+        // 会把标签文案混进 preview——与 verify-death-triggers.mjs 的 readDecisionOptionTags 同一口径。
+        const preview = node.cloneNode(true)
+        preview.querySelector('[data-testid="option-dead"]')?.remove()
+        return preview.textContent
+      }),
+    )
   ).map((text) => compact(text))
   check(
     '候选恰为邪恶玩家（1 号 / 4 号），新双子自己不在列',
