@@ -330,6 +330,56 @@ public sealed class SeamstressArtistHostTests
             item => item.Actor == new SeatId(1) && item.Ability == new AbilityId("philosopher.grant"));
     }
 
+    /// <summary>
+    /// 艺术家提问的两道闸的针对性运行证据（矩阵行 9）：不是白天 → 阶段闸 `phase.not_open_day` 拒绝；
+    /// 白天里非艺术家席位 → 内核 `artist.not_artist` 拒绝；同日艺术家本人提问受理（正对照）。
+    /// </summary>
+    [Fact]
+    public async Task AskArtistQuestion_RejectsOutsideDay_AndForNonArtist()
+    {
+        await using var host = new TestServerHost(slotQuotaSeconds: 0.05, seatCount: 5, autoStartTestNight: false);
+        await using var storyteller = await host.ConnectStorytellerAsync();
+
+        Assert.Equal(
+            "Accepted",
+            (await storyteller.InvokeAsync<CommandResultDto>(
+                "AssignCharacters",
+                Seats((1, "artist"), (2, "klutz"), (3, "mutant"), (4, "sweetheart"), (5, "no-dashii")),
+                "test-artist-gate-assign")).Kind);
+
+        await using var one = await host.ConnectSeatAsync(new SeatId(1));
+        await using var two = await host.ConnectSeatAsync(new SeatId(2));
+
+        // 不是白天（还没有开过任何阶段）：阶段闸拒绝，不产生事件。
+        var tooEarly = await one.InvokeAsync<CommandResultDto>("AskArtistQuestion", "现在能问吗？", "test-artist-gate-early");
+        Assert.Equal("Rejected", tooEarly.Kind);
+        Assert.Equal("phase.not_open_day", tooEarly.RejectionCode);
+
+        // 开夜 → 走完 → 开白天：白天里非艺术家席位提问被内核身份判定拒绝。
+        Assert.Equal(
+            "Accepted",
+            (await storyteller.InvokeAsync<CommandResultDto>("StartNight", 1, "Original", "test-artist-gate-night")).Kind);
+        await CompleteNightAsync(storyteller, "artist-gate-1");
+        Assert.Equal(
+            "Accepted",
+            (await storyteller.InvokeAsync<CommandResultDto>("StartDay", "test-artist-gate-day")).Kind);
+
+        var notArtist = await two.InvokeAsync<CommandResultDto>(
+            "AskArtistQuestion",
+            "我不是艺术家？",
+            "test-artist-gate-not-artist");
+        Assert.Equal("Rejected", notArtist.Kind);
+        Assert.Equal("artist.not_artist", notArtist.RejectionCode);
+
+        // 正对照：同一次白天里，艺术家本人提问被受理（上面两条不是"白天没开"造成的假拒绝）。
+        Assert.Equal(
+            "Accepted",
+            (await one.InvokeAsync<CommandResultDto>(
+                "AskArtistQuestion",
+                "1 号是爪牙吗？",
+                "test-artist-gate-control")).Kind);
+    }
+
     /// <summary>等一条满足条件的本人视图推送（自 fromIndex 起；推送按连接有序，断言只看这一窗之后的）。</summary>
     private static async Task<PlayerViewDto> WaitForPushedViewAsync(
         ConcurrentQueue<PlayerViewDto> views,
