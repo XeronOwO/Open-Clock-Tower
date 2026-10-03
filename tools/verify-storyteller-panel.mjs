@@ -22,8 +22,8 @@
  *      筑梦师请求由说书人**强制作废**（行 1：2 号玩家不刷新就看到请求消失与原因）；
  *      两个窗口都对无关玩家做窗口采样（行 4：持续零请求、零了结说明）；
  *  10) 第二夜走完 → 第三夜：诺-达鲺击杀请求由 3 号玩家本人作答（保留提交链路覆盖）→
- *      等筑梦师请求挂起后，先报 3 号死亡（2 号中毒解除进摘要——行 5），再报 2 号死亡
- *      （请求依赖失效自动作废、作废说明进摘要——行 6；玩家侧同样收到作废推送）→ 2 号复活；
+ *      等筑梦师请求挂起后，先把 3 号换成涡流（来源失去能力，2 号中毒解除进摘要——行 5），
+ *      再报 2 号死亡（请求依赖失效自动作废、作废说明进摘要——行 6；玩家侧同样收到作废推送）→ 2 号复活；
  *  11) 魔典主视图逐行取证（说书人端主视图 = 席位圆环）：行 1 圆环牌面、行 2 牌面标记 + 操作台
  *      归因、行 4 当前槽位高亮 + 操作台内完成真实裁定、行 3 死亡帷幕与复活解除、
  *      行 6 下钻表格与牌面同源、行 8 窄视口纵向列表；行 5（视角隔离）沿用玩家端反方向断言；
@@ -32,7 +32,11 @@
  *      修复载荷后重建成功 → 降级清除；玩家端全程没有健康位文案 / 锚点；
  *  13) 重连补齐（快照权威）：隐藏事件不报假缺口、watermark 随快照序号前进；非零 watermark 跨掉线窗口
  *      重连（窗口内有其他席位的隐藏状态变化）仍无假告警；
- *  14) 全程截图（取证档 34 张，用 --screenshots-all 落盘）；断言只落在真正渲染数据的面板 / 牌面内（`data-testid` 锚点 + 单调计数）。
+ *  14) 涡流干扰回归（票据 vortox-interference-counting 行 1 / 4）：涡流存活 + 健康的筑梦师结算信息能力 →
+ *      裁定点写明「涡流在场：信息必须为假（真角色不得出现）」→ 说书人账本同时给「正常生效 + 原因：涡流」
+ *      并落 dreamer / 涡流 一行 → 信息只到 2 号；全部玩家端扫描不到失效归因。
+ *      快档先按角色上报把 3 号换成涡流再开夜；取证档复用第三夜依赖块已换好的状态、收尾第三夜后开第四夜；
+ *  15) 全程截图（取证档 39 张，用 --screenshots-all 落盘）；断言只落在真正渲染数据的面板 / 牌面内（`data-testid` 锚点 + 单调计数）。
  *
  * 前置：Node >= 22.5（node:sqlite）、web/node_modules 已安装、本机已装 Chromium：
  *   cd web
@@ -54,7 +58,7 @@
  *
  * 段落（按序执行；--only 与 --from 互斥；前面段作为必要前置照跑，但只有选中段计入判定）：
  *   boot · tickets · join · assign · opening · night1-clockmaker · night1-dreamer-request
- *   · night1-dreamer-resolution · night1-finish · day1 · night2-3 · rebuild · reconnect · final
+ *   · night1-dreamer-resolution · night1-finish · day1 · night2-3 · vortox · rebuild · reconnect · final
  *
  * 外部耦合（换机器前先核对，见 web/AGENTS.md §3.1）：
  *   - 宿主编译产物路径 src/OpenClockTower.Server/bin/Release/net10.0/OpenClockTower.Server[.exe]；
@@ -66,7 +70,7 @@
  * 退出码：0 = 全部断言通过；1 = 有断言失败；2 = 环境缺依赖（Playwright / 浏览器）。
  */
 import { spawn } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, rmSync, statSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -81,6 +85,7 @@ const webRoot = path.join(repositoryRoot, 'web')
 /** 两端共用的取证标记：唯一文本，用来验证"信息只到该到的人"。 */
 const CLOCKMAKER_INFO = '批次取证-钟表匠信息：本夜最小距离 2（说书人自由裁定）'
 const DREAMER_INFO = '批次取证-筑梦师信息：由说书人自由裁定、可能错误'
+const VORTOX_INFO = '批次取证-涡流：这条信息必须为假（说书人自由裁定）'
 
 const { flags, rest } = extractProfileFlags(process.argv.slice(2))
 const options = parseArguments(rest)
@@ -99,6 +104,7 @@ const SECTIONS = [
   { id: 'night1-finish', title: '说书人结算归因（第一夜）→ 等第一夜走完' },
   { id: 'day1', title: '白天阶段：开白天 → 提名 → 投票 → 计票 → 处决' },
   { id: 'night2-3', title: '第二夜与第三夜：代填 / 强制作废 / 阶段推送 → 依赖变化' },
+  { id: 'vortox', title: '涡流干扰：涡流存活下的镇民信息结算 → 账本落 Vortox + 玩家隔离' },
   { id: 'rebuild', title: '恢复与重建：状态账对比 + 降级位' },
   { id: 'reconnect', title: '重连补齐与日志面：快照权威 watermark + 隐藏事件' },
   { id: 'final', title: '整场收尾：控制台零错误 + 截图落盘' },
@@ -143,6 +149,9 @@ const screenshotsDir = path.resolve(repositoryRoot, options.screenshots)
 if (config.screenshots) {
   mkdirSync(screenshotsDir, { recursive: true })
 }
+
+/** 本次运行的起始时刻：落盘档用它排除"上一轮残留的同名截图"顶过落盘断言（对抗复核 M4）。 */
+const runStartedAt = Date.now()
 
 const serverUrl = `http://localhost:${options.port}`
 const viteUrl = `http://localhost:${options.vitePort}`
@@ -1242,7 +1251,171 @@ async function main() {
     guardOutcome.raw,
   )
 
-  // —— 第 11 步：恢复与重建（重建票行 1–3 / 健康票行 1–5）——
+  // —— 第 11 步（涡流票行 1 / 4）：涡流存活时的镇民信息能力结算 ——
+  // 快档没有第三夜依赖块：先按同一条角色上报把诺-达鲺换成涡流（常驻中毒随之解除），再开第 3 夜；
+  // 取证档复用第三夜依赖块已经换好的 3 号（涡流）——先把第三夜收尾，再开第 4 夜。
+  // 两档落在同一个场景：涡流存活 + 健康筑梦师结算信息能力 → 能力仍「正常生效」、失效账本落 Vortox。
+  if (!runner.begin('vortox')) return
+
+  if (config.slowPacer) {
+    const nightThreeClose = await finishNightQuickly(storyteller.page, '第三夜')
+    check(
+      '涡流票：第三夜收尾（依赖深度块留下的空槽位走完）',
+      nightThreeClose.completed === true,
+      nightThreeClose.note ?? `强推 ${nightThreeClose.forced} 步`,
+    )
+  } else {
+    const fastSwap = await reportSeatState(storyteller.page, {
+      seat: demonSeat,
+      dimensionLabel: '角色',
+      value: 'vortox',
+      reason: '批次取证（快档）：诺-达鲺换成涡流，供涡流干扰结算场景',
+    })
+    check('涡流票：快档先把 3 号换成涡流（中毒来源失去能力）', fastSwap.kind === 'Accepted', fastSwap.raw)
+  }
+
+  // 场景前提（两档同判）：3 号牌面角色确实已是涡流，而不是只拿到一条受理回执。
+  const vortoxSeatCard = await waitForLocatorContains(cardOf(demonSeat), '涡流', 15_000)
+  check(
+    `涡流票：${demonSeat} 号牌面角色已是涡流（场景前提成立）`,
+    vortoxSeatCard.includes('涡流'),
+    vortoxSeatCard.replace(/\s+/g, ' ').slice(0, 120),
+  )
+
+  const vortoxNightNumber = config.slowPacer ? 4 : 3
+  const vortoxNight = await runCommand(storyteller.page, `开夜${vortoxNightNumber}`, async () => {
+    await storyteller.page
+      .locator('section', { hasText: '兜底与推进' })
+      .locator('input[type=number]')
+      .fill(String(vortoxNightNumber))
+    await storyteller.page.getByRole('button', { name: /开夜/ }).click()
+  })
+  check(
+    `涡流票：第 ${vortoxNightNumber} 夜开夜被受理（涡流在场）`,
+    vortoxNight.kind === 'Accepted',
+    vortoxNight.raw,
+  )
+
+  // 夜晚顺序表里涡流（恶魔击杀）在筑梦师之前：先把击杀槽代填到已死的 1 号（不产生新死亡），
+  // 再把节奏交给筑梦师槽——涡流在场时镇民的信息类能力照常「有请求、能结算」，只是信息必假。
+  const vortoxKillAdvance = await advanceSlotsUntil(
+    storyteller.page,
+    async () => (await demonRequestPanel.getAttribute('data-request-state').catch(() => null)) === 'pending',
+    '涡流票推进到涡流击杀槽',
+  )
+  if (vortoxKillAdvance.blockedBy !== undefined) {
+    throw new Error(`涡流票推进受阻：${vortoxKillAdvance.blockedBy}（已强推 ${vortoxKillAdvance.steps} 步）`)
+  }
+
+  const vortoxKillPending = await waitForAttribute(demonRequestPanel, 'data-request-state', 'pending', 180_000)
+  check('涡流票：3 号（涡流）的击杀槽照常发起', vortoxKillPending === 'pending', `data-request-state=${vortoxKillPending}`)
+  const vortoxProxy = await proxyFillPending(
+    storyteller.page,
+    `seat:${clockmakerSeat}`,
+    '批次取证：涡流击杀代填到已死的 1 号（不产生新死亡）',
+  )
+  check('涡流票：击杀代填被受理（目标已死，不产生新死亡）', vortoxProxy.kind === 'Accepted', vortoxProxy.raw)
+
+  const vortoxDreamerPending = await waitForAttribute(dreamerRequestPanel, 'data-request-state', 'pending', 180_000)
+  check(
+    '涡流票：2 号（筑梦师）收到定向请求（涡流在场）',
+    vortoxDreamerPending === 'pending',
+    `data-request-state=${vortoxDreamerPending}`,
+  )
+  await dreamerPlayer.page
+    .locator('[data-testid="player-request-options"] label', { hasText: `${demonSeat} 号玩家` })
+    .locator('input[type=radio]')
+    .check()
+  await dreamerPlayer.page.locator('[data-testid="player-submit"]').click()
+
+  const vortoxDecision = await waitForDecision(
+    storyteller.page,
+    (text) => text.includes('筑梦师') && text.includes('涡流在场'),
+    60_000,
+  )
+  check(
+    '行 1：筑梦师裁定点写明涡流在场、信息必须为假（真角色不得出现）',
+    vortoxDecision.includes('涡流在场')
+      && vortoxDecision.includes('必须为假')
+      && vortoxDecision.includes('真角色不得出现'),
+    vortoxDecision.slice(0, 240),
+  )
+  await setDataDrawer(storyteller.page, false)
+  await screenshot(storyteller.page, '35-vortox-dreamer-decision')
+
+  const vortoxOutcome = await settleFreeDecision(storyteller.page, VORTOX_INFO)
+  check('行 1：涡流场景的信息内容由说书人裁定并受理', vortoxOutcome.kind === 'Accepted', vortoxOutcome.raw)
+  check(
+    '行 1：能力仍「正常生效」——信息送达筑梦师本人',
+    await waitForPanelContains(dreamerPlayer.page, '我收到的信息', VORTOX_INFO, 30_000),
+  )
+  check(
+    '行 1：玩家端保留「信息可能是错的」提示（平台不判真假，D-0002）',
+    (await dreamerPlayer.page.getByText('信息可能是错的').count()) > 0,
+  )
+
+  // 说书人视角（行 1）：最近一次结算 = 正常生效 + 原因：涡流；失效账本落 dreamer / 涡流 一行。
+  const vortoxLedgerVisible = await waitForPanelContains(storyteller.page, '账本与结算结论', '涡流', 15_000)
+  const vortoxLedger = await panelText(storyteller.page, '账本与结算结论')
+  const vortoxLedgerLines = vortoxLedger
+    .split('\n')
+    .map((line) => line.replace(/\s+/g, ' ').trim())
+    .filter((line) => line.length > 0)
+  // 最近一次结算块的边界：面板里「能力使用账本」之前的行才是本次结算（flex 里每个 span 在 innerText 各占一行）。
+  const vortoxResolutionEnd = vortoxLedgerLines.findIndex((line) => line.includes('能力使用账本'))
+  const vortoxResolutionLines =
+    vortoxResolutionEnd === -1 ? vortoxLedgerLines : vortoxLedgerLines.slice(0, vortoxResolutionEnd)
+  // 标签与原因各占一行、按整行等值判：'未正常生效' 含子串 '正常生效'，用 includes 会被顶绿（对抗复核 H1）。
+  check(
+    '行 1：最近一次结算 = 正常生效 + 原因：涡流（能力照常生效，干扰另记）',
+    vortoxLedgerVisible
+      && vortoxResolutionLines.includes('正常生效')
+      && vortoxResolutionLines.includes('原因：涡流')
+      && vortoxResolutionLines.some((line) => line.includes('dreamer')),
+    vortoxResolutionLines.join(' / ').slice(0, 280),
+  )
+  const vortoxMalfunctionRow = vortoxMalfunctionRowOf(vortoxLedger)
+  check(
+    '行 1：失效账本落 dreamer / 涡流 一行（说书人专属）',
+    vortoxMalfunctionRow !== undefined,
+    vortoxMalfunctionRow ?? vortoxLedger.replace(/\s+/g, ' ').slice(0, 280),
+  )
+  await screenshot(storyteller.page, '36-storyteller-vortox-ledger')
+  await screenshot(dreamerPlayer.page, '37-player-vortox-info')
+
+  // 行 4 反方向：失效归因与涡流场景的信息都不许出现在除说书人以外的任何视图。
+  const vortoxLeakTokens = ['原因：涡流', '未正常生效', '失效账本', 'malfunctions', '涡流在场']
+  const vortoxLeaks = []
+  for (const [seat, client] of players) {
+    const shellText = (await client.page.locator('.shell').innerText()).replace(/\s+/g, ' ')
+    const hits = vortoxLeakTokens.filter((token) => shellText.includes(token))
+    if (hits.length > 0) {
+      vortoxLeaks.push(`${seat} 号文案:${hits.join('/')}`)
+    }
+
+    if (seat !== dreamerSeat && (await infoText(client.page)).includes(VORTOX_INFO)) {
+      vortoxLeaks.push(`${seat} 号收到涡流场景信息`)
+    }
+  }
+  check(
+    `行 4：${options.seatCount} 席玩家视图都看不到失效归因，且只有 ${dreamerSeat} 号收到该信息`,
+    vortoxLeaks.length === 0,
+    vortoxLeaks.join('，') || '已逐席扫描页面文本与信息列表',
+  )
+  const vortoxWitnessSeat =
+    [...players.keys()].find(
+      (seat) => seat !== dreamerSeat && seat !== demonSeat && seat !== clockmakerSeat,
+    ) ?? options.seatCount
+  await screenshot(players.get(vortoxWitnessSeat).page, '38-unrelated-player-clean')
+
+  const vortoxNightClose = await finishNightQuickly(storyteller.page, `第 ${vortoxNightNumber} 夜`)
+  check(
+    `涡流票：第 ${vortoxNightNumber} 夜剩余槽位走完（不给后续重建 / 重连留半个夜）`,
+    vortoxNightClose.completed === true,
+    vortoxNightClose.natural ? '自然窗口内走完' : `强推 ${vortoxNightClose.forced} 步`,
+  )
+
+  // —— 第 12 步：恢复与重建（重建票行 1–3 / 健康票行 1–5）——
   // 真宿主 + 真 SQLite + 真浏览器：先判干净重建，再故意制造"内存账与事件流分叉"，
   // 最后停宿主、改库、重启，判降级位的置位 / 保持 / 清除与玩家侧不下发。
   if (!runner.begin('rebuild')) return
@@ -1263,6 +1436,11 @@ async function main() {
     `回执=${cleanRebuild.kind} ${cleanRebuild.raw}`.replace(/\s+/g, ' ').slice(0, 240),
   )
   await screenshot(storyteller.page, '24-rebuild-clean')
+
+  // 涡流票行 5 的基线：宿主重启前记下失效账本行与最近一次结算序号，重启后逐字 / 逐号对比（对抗复核 H3）。
+  const vortoxLedgerBeforeRestart = await panelText(storyteller.page, '账本与结算结论')
+  const vortoxRowBeforeRestart = vortoxMalfunctionRowOf(vortoxLedgerBeforeRestart)
+  const vortoxSequenceBeforeRestart = resolutionSequenceOf(vortoxLedgerBeforeRestart)
 
   // 行 2（重建票）：只改事件流里的原因文本 → 步骤机不受影响，状态账必须报"不一致"，并由重建修回。
   const ledgerMarker = `batch-ledger-dirty-${Date.now()}`
@@ -1359,6 +1537,21 @@ async function main() {
       && (await rebuildReport.getAttribute('data-snapshot-equivalent')) === 'true'
       && (await rebuildReport.getAttribute('data-ledger-equivalent')) === 'false',
     recovered.raw.replace(/\s+/g, ' ').slice(0, 240),
+  )
+
+  // 涡流票行 5：宿主重启 + 修复重建之后，失效账本行与最近一次结算序号都必须原样恢复（不重算）。
+  await waitForPanelContains(storyteller.page, '账本与结算结论', '涡流', 15_000)
+  const ledgerAfterRecovery = await panelText(storyteller.page, '账本与结算结论')
+  const recoveredMalfunctionRow = vortoxMalfunctionRowOf(ledgerAfterRecovery)
+  const recoveredResolutionSequence = resolutionSequenceOf(ledgerAfterRecovery)
+  check(
+    '涡流票行 5：宿主重启 + 修复重建后，失效账本仍是同一行、最近结算序号不回退（随事件流恢复，不重算）',
+    vortoxRowBeforeRestart !== undefined
+      && recoveredMalfunctionRow === vortoxRowBeforeRestart
+      && vortoxSequenceBeforeRestart !== null
+      && recoveredResolutionSequence === vortoxSequenceBeforeRestart,
+    `重启前=${vortoxRowBeforeRestart ?? '（无行）'}@${vortoxSequenceBeforeRestart ?? '?'}`
+      + `；重启后=${recoveredMalfunctionRow ?? '（无行）'}@${recoveredResolutionSequence ?? '?'}`,
   )
 
   // 行 5（健康票）另一面：房间恢复后同一玩家页重载能正常加入，且仍然看不到任何健康位。
@@ -1560,10 +1753,17 @@ async function main() {
     '32-day-counted',
     '33-day-executed',
     '34-player-self-dead',
+    '35-vortox-dreamer-decision',
+    '36-storyteller-vortox-ledger',
+    '37-player-vortox-info',
+    '38-unrelated-player-clean',
   ]
-  const missingShots = expectedShots.filter((name) => !existsSync(path.join(screenshotsDir, `${name}.png`)))
+  const missingShots = expectedShots.filter((name) => {
+    const file = path.join(screenshotsDir, `${name}.png`)
+    return !existsSync(file) || statSync(file).mtimeMs < runStartedAt
+  })
   check(
-    `证据截图都已落盘（${expectedShots.length} 张）`,
+    `证据截图都已落盘（${expectedShots.length} 张，且都是本次运行写入）`,
     missingShots.length === 0,
     missingShots.join(',') || screenshotsDir,
     { screenshots: true },
@@ -2056,6 +2256,23 @@ function linesOf(text, needle) {
     .split('\n')
     .filter((line) => line.includes(needle))
     .join(' / ')
+}
+
+/** 失效账本表体里的涡流行：先切到「失效账本」之后再匹配，避免命中最近结算 / 能力使用账本里的同词（对抗复核 H2）。 */
+function vortoxMalfunctionRowOf(panelText) {
+  const lines = panelText
+    .split('\n')
+    .map((line) => line.replace(/\s+/g, ' ').trim())
+    .filter((line) => line.length > 0)
+  const start = lines.findIndex((line) => line === '失效账本')
+  return lines
+    .slice(start === -1 ? 0 : start + 1)
+    .find((line) => line.includes('dreamer') && line.includes('涡流') && !line.includes('原因：'))
+}
+
+/** 面板里最近一次结算的序号（第一处「序号 N」；还没结算过时为 null）。 */
+function resolutionSequenceOf(panelText) {
+  return /序号\s*(\d+)/.exec(panelText)?.[1] ?? null
 }
 
 /** 等"当前步骤"的槽位计数渲染出来（视图推送先到）；超时返回 null。 */
