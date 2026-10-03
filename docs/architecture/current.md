@@ -126,6 +126,11 @@ DecisionPoint
 - `OnNoOption` 必须显式声明。依据 `docs/standard/rulings.md` R-0009：占卜师的干扰项要求"任意善良玩家"，
   极端局面下可能无合法选项。禁止抛异常，也禁止静默跳过。
 - 裁定点进事件流，因此**可回放、可撤销、可回归测试**。
+- **归属席位（`AttributionSeat`）**：每个裁定点开点时必须显式给出"属于谁 / 谁在等"——
+  `DecisionPointRaisedEvent.AttributionSeat` → `StepMachineState.AwaitingDecisionSeat` → 说书人投影
+  `AwaitingDecisionSeat`。触发格（无 `Actor`）与触发型裁定（无槽位）只有它能归属席位，圆环据此
+  高亮与「定位到 N 号」（R-0038 / R-0039）。字段是后加的可空字段：旧版本事件流没有它，
+  重放**容忍为 null**（界面退回行动者 / 摘要回退，不猜）；新开点必填由 5 处开点的用例锁住。
 - **入槽实时重建**：说书人裁定类提示（`OnNoOption = StorytellerDecides`）在**入槽时**按「已提交账 +
   本批已产出事件」重建一次，并回写槽位提示（`DecisionPointRaisedEvent.SlotPrompt`）——计划快照会漏掉
   当夜更早槽位的结果（数学家的失效窗口是第一例）；玩家操作请求的选项契约**不重建**，仍走计划快照。
@@ -242,7 +247,7 @@ StepMachine（步骤机）
 |---|---|
 | 同源选择原语 | `ChoicePrompt`；`DecisionPoint`（说书人）与 `OperationRequest`（玩家）是它的两套投影 |
 | 步骤表与槽位 | `StepPlan` / `StepSlot`（`Action` / `Empty` / `Beat` 节拍 / `DawnWait` / `DayWindow` 白天窗口）；空槽位与节拍照样消耗配额，白天窗口不消耗、不自动推进 |
-| 挂起 | `StepMachineState` 的 `PendingRequest` / `AwaitingDecision` / `Block`；请求**没有超时字段**（门禁锁死） |
+| 挂起 | `StepMachineState` 的 `PendingRequest` / `AwaitingDecision` / `Block`；裁定挂起带**归属席位**（`AwaitingDecisionSeat`，与裁定点同步置位 / 清空）；请求**没有超时字段**（门禁锁死） |
 | 推进条件 | `SlotQuotaState`：配额是**最短**时间；自动推进 = 配额走完 **且** 无挂起；强推可越过（D-0014） |
 | 事件与重放 | 48 种 `GameEvent`（覆盖阶段 / 槽位 / 请求 / 裁定 / 阻塞、状态账与效果、白天、胜负、裁决与死亡触发各事件族）；`StepMachine.Handle` 产事件、`StepMachineFolder` 折叠重建；**账事件可先于任何阶段**（开局分配），此时步骤机保持"尚未开始"；重启 = 重放，恢复 = 重放后替换快照 |
 | 开局分配 | `AssignCharactersCommand`：每席一条 `SeatStateChangedEvent`（角色 + 初始生死 = 存活），只允许在首个阶段开始前使用（D-0017 / R-0015） |
@@ -308,7 +313,7 @@ StepMachine（步骤机）
 | 折叠 | `GameStateMachine.Apply` / `Fold`（与 `StepMachine.Apply` 同一套路数） |
 | 重建对比 | `GameStateComparer`（五账结构等价，顺序无关）+ `RoomRebuildService`（读全流 → 同源重折两个派生视图 → 三项等价结论 → 原子写快照；失败显式、不返回假"等价"） |
 | 房间健康位 | `RoomHealth`（会话态，不进事件流）：恢复 / 重建失败置位（原因 + 首次发生时间），显式重建成功清除；只说书人视图（`StorytellerView.Health`），玩家侧由门禁与投影锁死 |
-| 说书人视图 | `StorytellerView.Seats` / `PersistentEffects` / `InstantaneousEffects` / `StepDigest`（每步摘要）；玩家投影里**没有**它（D-0012） |
+| 说书人视图 | `StorytellerView.Seats` / `PersistentEffects` / `InstantaneousEffects` / `StepDigest`（每步摘要）+ `AwaitingDecisionSeat`（裁定归属）/ `FangGuInfection`（限一次）/ `BarberNight`（今晚理发）等整局 / 跨阶段事实；玩家投影里**没有**这些字段（D-0012，门禁按契约文件登记） |
 
 **说书人注记（2026-10-03，批次 E22）**：同一事件流上的**第三本账**（`SeatAnnotationLedger`），
 与状态账刻意分开——自由文本不是事实，不进 `GameState`（D-0015 的边界）。

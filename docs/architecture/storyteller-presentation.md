@@ -46,6 +46,10 @@ StorytellerPanel                     连接 / 票据 / 命令回执 / 布局装�
 - 主视图与下钻面板使用**同一份** `StorytellerViewDto`（同一次推送）——矩阵行 6 的"同源"由此保证。
 - 席位牌模型由 `display/grimoire.ts` 从 `view.seats` / `view.effects` / `view.annotations`（说书人注记，D-0019）/ 当前槽位字段派生；
   "未观测 ≠ 默认值"：没有事实的维度显示"未观测"，**绝不**画成"存活 / 健康"。
+- 裁定归属与整局标记直接读服务端字段：`awaitingDecisionSeat`（谁在等，触发格 / 触发型裁定也可归属）、
+  `fangGuInfection`（魔典中心「限一次」）、`barberNight`（「今晚理发」）；前端不解析裁定 id、不做规则推断。
+- 槽位读数是**显示层口径**：`planCompleted` 显示「已完成」、否则封顶在 1..slotCount
+  （`slotIndex == slotCount` 是内核"已走完"的正常表示，直接 `+1` 会读出「2 / 1」）。
 - 服务端数据按不可信输入处理：`normalizeStorytellerView` 之后再做有界化，坏字段只降级该格。
 
 ## 4. 审视结论（每一条都有理由）
