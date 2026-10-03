@@ -44,6 +44,17 @@ internal sealed class GameCommandFactory
             OptionValue = optionValue,
         };
 
+    /// <summary>玩家（艺术家）在白天提问（R-0040；席位由凭据推导，命令面不自称身份）。</summary>
+    internal GameCommand AskArtistQuestion(string? question)
+    {
+        if (string.IsNullOrWhiteSpace(question))
+        {
+            throw Reject("问题不能为空");
+        }
+
+        return new AskArtistQuestionCommand { Question = question };
+    }
+
     /// <summary>说书人强制作废（原因按合法性闸的口径解析：非法值给未定义枚举，由闸拒绝）。</summary>
     internal GameCommand VoidRequest(string requestId, string reason, string? note) =>
         new VoidRequestCommand

@@ -197,6 +197,20 @@ public static class NightPlanBuilder
         }
 
         var actor = aliveOwners[0];
+
+        // 女裁缝的「每局限一次」已经用掉（含醉酒 / 中毒时使用）：不再唤醒她——
+        // 「为她放置"失去能力"提示标记，并从夜晚顺序表上移除她的夜晚标记」（百科《女裁缝》· 运作方式 6；
+        // 平台口径 R-0040；与哲学家的「机会已浪费」同族，R-0036 第 2 条）。
+        if (character == SeamstressNightAction.Seamstress
+            && request.State.AbilityUses.WasUsed(actor.Seat, SeamstressNightAction.InfoAbility))
+        {
+            return (NoActionSlot(
+                tag,
+                actor.Seat,
+                character,
+                "女裁缝的「每局限一次」已经用掉：本局不再被唤醒（百科《女裁缝》· 运作方式 6；R-0040）"), null);
+        }
+
         if (character == PhilosopherAbility.Character
             && BuildPhilosopherSlot(request, binding, actor.Seat, tag, phase) is { } philosopherSlot)
         {
@@ -254,6 +268,7 @@ public static class NightPlanBuilder
                 return NoActionSlot(
                     tag,
                     actor,
+                    PhilosopherAbility.Character,
                     "哲学家的「每局限一次」已经用掉（当时能力未生效，机会被浪费）：本局不能再获得能力");
             }
 
@@ -271,6 +286,7 @@ public static class NightPlanBuilder
         return NoActionSlot(
             tag,
             actor,
+            PhilosopherAbility.Character,
             free
                 ? $"本夜「{grant.Granted.Value}」的格由哲学家代行（那一格没有行动者）：他自己的格不产生行动"
                 : $"获得的能力（{grant.Granted.Value}）本夜没有可执行的行动"
@@ -318,8 +334,9 @@ public static class NightPlanBuilder
     /// <summary>
     /// 「本夜无行动」槽位：仍有行动者与依赖（进入时按账确认他还站得住），但没有合法选项——
     /// 按声明的 Skip 走，配额照走，并在事件流里留一条可归因的跳过记录（R-0009）。
+    /// 哲学家（机会已浪费，R-0036）与女裁缝（用过即失去能力，R-0040）共用。
     /// </summary>
-    private static StepSlot NoActionSlot(string tag, SeatId actor, string reason) =>
+    private static StepSlot NoActionSlot(string tag, SeatId actor, CharacterId character, string reason) =>
         StepSlot.Action(
             new StepSlotId(tag),
             actor,
@@ -334,10 +351,10 @@ public static class NightPlanBuilder
                 {
                     Seat = actor,
                     RequiredLife = LifeState.Alive,
-                    RequiredCharacter = PhilosopherAbility.Character,
+                    RequiredCharacter = character,
                 },
             ],
-            PhilosopherAbility.Character);
+            character);
 
     /// <summary>
     /// 角色触发格 → 触发槽位：与行动槽位同款完整性校验（席位缺角色 / 生死未观测 / 角色重复一律拒绝，

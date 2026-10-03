@@ -7,7 +7,13 @@
  * - **未观测 ≠ 默认值**：缺维度就是 null，绝不画成"存活 / 健康"；
  * - 服务端数据是不可信输入：坏值只降级该格，不炸渲染（架构 §4.4）。
  */
-import type { EffectDto, SeatAnnotationDto, SeatStateFactDto, StorytellerViewDto } from '@/contracts/game'
+import type {
+  EffectDto,
+  LostAbilityMarkerDto,
+  SeatAnnotationDto,
+  SeatStateFactDto,
+  StorytellerViewDto,
+} from '@/contracts/game'
 import { characterLabelOf, characterNameOf, effectMarkNameOf } from '@/display/labels'
 
 /** 六维度里可在牌面上呈现的五个；疯狂要求另列（`SeatStateDto.madnesses`）。 */
@@ -24,9 +30,9 @@ export const ALIGNMENT_EVIL = 'Evil'
 export const DRUNK_DRUNK = 'Drunk'
 export const POISON_POISONED = 'Poisoned'
 
-/** 牌面上的一个标记：中毒 / 醉酒 / 疯狂要求 / 效果链接。 */
+/** 牌面上的一个标记：中毒 / 醉酒 / 疯狂要求 / 效果链接 / 失去能力（R-0040）。 */
 export interface SeatMark {
-  kind: 'poison' | 'drunk' | 'madness' | 'effect'
+  kind: 'poison' | 'drunk' | 'madness' | 'effect' | 'exhausted'
   label: string
   /** 归因补充（原因 / 生效状态 / 来源）；没有时为 null。 */
   detail: string | null
@@ -48,6 +54,8 @@ export interface SeatCardModel {
   effects: readonly EffectDto[]
   /** 挂在该席上的说书人注记（D-0019）：自由文本提示标记，只说书人可见。 */
   annotations: readonly SeatAnnotationDto[]
+  /** 该席用尽的限次能力（「失去能力」标记，R-0040；由能力使用账本派生）。 */
+  lostAbilityMarkers: readonly LostAbilityMarkerDto[]
   marks: readonly SeatMark[]
 }
 
@@ -116,6 +124,12 @@ export function buildSeatCard(view: StorytellerViewDto, seat: number): SeatCardM
   const madnesses = entry?.madnesses ?? []
   const effects = view.effects.filter((effect) => effect.target === seat)
   const annotations = view.annotations.filter((annotation) => annotation.seat === seat)
+  const lostAbilityMarkers = view.lostAbilityMarkers.filter((marker) => marker.seat === seat)
+
+  const marks = buildSeatMarks(facts, madnesses, effects)
+  for (const marker of lostAbilityMarkers) {
+    marks.push({ kind: 'exhausted', label: '失去能力', detail: marker.note })
+  }
 
   return {
     seat,
@@ -129,7 +143,8 @@ export function buildSeatCard(view: StorytellerViewDto, seat: number): SeatCardM
     facts,
     effects,
     annotations,
-    marks: buildSeatMarks(facts, madnesses, effects),
+    lostAbilityMarkers,
+    marks,
   }
 }
 

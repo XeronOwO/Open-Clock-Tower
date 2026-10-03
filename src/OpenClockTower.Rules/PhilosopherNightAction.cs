@@ -58,6 +58,12 @@ internal sealed class PhilosopherNightAction : INightAction, IAbilityResolution
     /// <inheritdoc />
     public ChoicePrompt? BuildPostChoiceDecision(AbilityResolutionContext context) => null;
 
+    /// <summary>
+    /// 摇头不用不算使用：之后的夜晚仍可再选（「每局限一次」约束的是「获得」，R-0036 / R-0040）。
+    /// </summary>
+    public bool CountsAsUse(AbilityResolutionContext context) =>
+        !string.Equals(context.Choice, PhilosopherAbility.Decline, StringComparison.Ordinal);
+
     /// <inheritdoc />
     public IReadOnlyList<GameEvent> Resolve(AbilityResolutionContext context)
     {

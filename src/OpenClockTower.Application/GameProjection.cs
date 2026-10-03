@@ -1,4 +1,5 @@
 using OpenClockTower.Kernel;
+using OpenClockTower.Rules;
 
 namespace OpenClockTower.Application;
 
@@ -48,6 +49,17 @@ public static class GameProjection
             Outcome = machine?.Outcome,
             KlutzChoices = [.. (machine?.KlutzChoices ?? []).Select(PublicKlutzChoice)],
             Sequence = sequence,
+
+            // 艺术家的进行中提问（R-0040）：只对本人可见——问题全文不进任何他人投影（D-0012）。
+            PendingQuestion = machine?.ArtistQuestion is { } question && question.Seat == seat
+                ? question.Question
+                : null,
+
+            // 本人能不能发起提问（白天 + 本人是艺术家 + 还没用过）：前端据此显示入口，服务端仍逐项校验。
+            CanAskArtistQuestion = CanAskArtistQuestion(machine, state, seat),
+
+            // 本人已用尽的一次性能力（重连后恢复"已用"状态，R-0040）：只列自己那一份。
+            ExhaustedAbilities = ExhaustedFor(state, seat),
         };
     }
 
@@ -61,6 +73,72 @@ public static class GameProjection
 
     /// <summary>跳过记录的公开文案：只说"没做出选择"，不解释为什么（原因只在说书人视图）。</summary>
     private const string SkippedChoiceDetail = "呆瓜本次没有做出选择";
+
+    /// <summary>
+    /// 「失去能力」标记：从能力使用账本派生——限次能力只要使用过（含未生效）就永久失去能力
+    /// （R-0040；三-3「使用机会被浪费」）。按（席位，能力）去重，顺序按登记表。
+    /// </summary>
+    private static IReadOnlyList<LostAbilityMarker> BuildLostAbilityMarkers(GameState state)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+
+        var markers = new List<LostAbilityMarker>();
+        foreach (var registered in OnceAbilities.Registry)
+        {
+            foreach (var use in state.AbilityUses.Entries.Where(entry => entry.Ability == registered.Ability))
+            {
+                if (markers.Any(marker => marker.Seat == use.Seat && marker.Ability == use.Ability))
+                {
+                    continue;
+                }
+
+                markers.Add(new LostAbilityMarker
+                {
+                    Seat = use.Seat,
+                    Ability = use.Ability,
+                    Note = $"{registered.DisplayName}（{use.Seat.Value} 号）：能力已用尽——失去能力（R-0040）",
+                });
+            }
+        }
+
+        return markers;
+    }
+
+    /// <summary>本人已用尽的一次性能力 slug（只列自己，不泄露他人的用度）。</summary>
+    private static string[] ExhaustedFor(GameState state, SeatId seat)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+
+        return
+        [
+            .. OnceAbilities.Registry
+                .Where(registered => state.AbilityUses.WasUsed(seat, registered.Ability))
+                .Select(registered => registered.Ability.Value),
+        ];
+    }
+
+    /// <summary>
+    /// 本人此刻能不能发起艺术家的白天提问：白天开着、本人是艺术家（按注册的提问来源）且还没用过（R-0040）。
+    /// 这只是**本人的权限位**；真正的合法性由内核按同一份账再判一次（D-0012：前端不做领域判断）。
+    /// </summary>
+    private static bool CanAskArtistQuestion(StepMachineState? machine, GameState state, SeatId seat)
+    {
+        if (machine?.Plan.Phase != GamePhase.Day || machine.Day?.OpenDay is null)
+        {
+            return false;
+        }
+
+        // 已有未结清的问题：此刻不能再问（与内核的 artist.question_pending 同款判定）。
+        if (machine.ArtistQuestion is not null)
+        {
+            return false;
+        }
+
+        var character = state.Seat(seat)?.CharacterValue;
+        return character is not null
+            && RoleContracts.ArtistQuestions.Any(source =>
+                source.Character == character && !state.AbilityUses.WasUsed(seat, source.Ability));
+    }
 
     /// <summary>说书人视图（含卡点时长、状态账、效果归因、能力结算结论、每步摘要与房间健康位；时长由应用层时钟算出）。</summary>
     public static StorytellerView ForStoryteller(
@@ -130,6 +208,10 @@ public static class GameProjection
 
             // 说书人注记（D-0019）：自由文本提示标记只说书人可见；玩家投影里没有这条字段。
             Annotations = annotations,
+
+            // 「失去能力」提示标记（R-0040）：限次能力用尽后挂在角色标记旁，由能力使用账本派生
+            // （不新增事实，D-0010）；玩家投影里没有它（D-0012 §4.3）。
+            LostAbilityMarkers = BuildLostAbilityMarkers(state),
         };
     }
 }

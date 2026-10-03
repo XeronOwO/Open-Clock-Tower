@@ -145,6 +145,16 @@ public sealed class GameHub : Hub<IGameClient>
             idempotencyKey,
             clientSequence);
 
+    /// <summary>玩家（艺术家）在白天向说书人提一个是 / 否问题（R-0040）。</summary>
+    public Task<CommandResultDto> AskArtistQuestion(
+        string credential,
+        string question,
+        string idempotencyKey) =>
+        ExecuteAsync(
+            ResolveActor(credential),
+            Commands().AskArtistQuestion(question),
+            idempotencyKey);
+
     /// <summary>说书人强制作废。</summary>
     public Task<CommandResultDto> VoidRequest(
         string credential,

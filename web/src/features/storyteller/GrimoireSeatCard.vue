@@ -349,6 +349,13 @@ function typeText(): string {
   color: var(--night);
 }
 
+/* 失去能力（R-0040）：限次能力用尽的一次性标记，刻意低调（不是当场效果） */
+.mark-exhausted {
+  border-color: #6f6f6f;
+  background: #ececec;
+  color: #4a4a4a;
+}
+
 /* 说书人注记（D-0019）：自由文本 token，颜色与派生标记区分开 */
 .mark-note {
   border-color: #8a6d3b;

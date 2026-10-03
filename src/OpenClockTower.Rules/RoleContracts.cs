@@ -38,4 +38,8 @@ public static class RoleContracts
     /// <summary>处罚处决依据契约：说书人主动处决是否成立、死亡怎么归因（R-0020）。</summary>
     public static IReadOnlyList<IAdjudicatedExecutionSource> AdjudicatedExecutions { get; } =
         [new CerenovusMadnessPunishment(), new MutantMadnessPunishment()];
+
+    /// <summary>艺术家提问依据契约（R-0040）：四种回答的结清后果与消耗口径。</summary>
+    public static IReadOnlyList<IArtistQuestionSource> ArtistQuestions { get; } =
+        [new ArtistQuestionSource()];
 }

@@ -108,6 +108,11 @@ public static class GameStateMachine
             SageNightSkippedEvent => current,
             SweetheartDeathSkippedEvent => current,
 
+            // 艺术家的白天提问（R-0040）：改的是步骤机状态（进行中问题与裁定点），
+            // 问题与回答都不是六维度 / 效果；回答产生的信息走 InformationResultIssuedEvent。
+            ArtistQuestionAskedEvent => current,
+            ArtistQuestionClosedEvent => current,
+
             // 方古的「限一次」标记（R-0034）：整局事实记在步骤机状态里，不改六维度与效果；
             // 侵染产生的角色 / 阵营变化与死亡另有配套的 SeatStateChangedEvent 折进账里。
             FangGuInfectionRecordedEvent => current,

@@ -59,6 +59,13 @@ export class PlayerViewMerge {
   private outcomeSequence = -1
   private klutzChoices: KlutzChoiceDto[] = []
   private klutzChoicesSequence = -1
+  /** 艺术家提问（R-0040）：本人进行中的问题与"能不能问"的权限位，随快照按序号更新。 */
+  private pendingQuestion: string | null = null
+  private pendingQuestionSequence = -1
+  private canAskArtistQuestion = false
+  private canAskArtistQuestionSequence = -1
+  private exhaustedAbilities: string[] = []
+  private exhaustedAbilitiesSequence = -1
   /** 已收到的信息结果：序号 → 条目（同一序号只可能有一条事实，天然去重）。 */
   private readonly information = new Map<number, InformationResultDto>()
   /** 事件窗口水位：只由快照推进（见文件头"两个水位"）。 */
@@ -109,6 +116,24 @@ export class PlayerViewMerge {
       changed = true
     }
 
+    if (sequence > this.pendingQuestionSequence) {
+      this.pendingQuestion = view.pendingQuestion
+      this.pendingQuestionSequence = sequence
+      changed = true
+    }
+
+    if (sequence > this.canAskArtistQuestionSequence) {
+      this.canAskArtistQuestion = view.canAskArtistQuestion
+      this.canAskArtistQuestionSequence = sequence
+      changed = true
+    }
+
+    if (sequence > this.exhaustedAbilitiesSequence) {
+      this.exhaustedAbilities = [...view.exhaustedAbilities]
+      this.exhaustedAbilitiesSequence = sequence
+      changed = true
+    }
+
     for (const item of view.informationResults) {
       if (!this.information.has(item.sequence)) {
         this.information.set(item.sequence, item)
@@ -136,6 +161,12 @@ export class PlayerViewMerge {
     this.outcomeSequence = -1
     this.klutzChoices = []
     this.klutzChoicesSequence = -1
+    this.pendingQuestion = null
+    this.pendingQuestionSequence = -1
+    this.canAskArtistQuestion = false
+    this.canAskArtistQuestionSequence = -1
+    this.exhaustedAbilities = []
+    this.exhaustedAbilitiesSequence = -1
     this.information.clear()
     this.eventSequence = 0
   }
@@ -228,6 +259,9 @@ export class PlayerViewMerge {
       day: this.day,
       outcome: this.outcome,
       klutzChoices: [...this.klutzChoices].sort((left, right) => left.sequence - right.sequence),
+      pendingQuestion: this.pendingQuestion,
+      canAskArtistQuestion: this.canAskArtistQuestion,
+      exhaustedAbilities: [...this.exhaustedAbilities],
     }
   }
 }

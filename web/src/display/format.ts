@@ -16,6 +16,7 @@ import type {
   FangGuInfectionDto,
   GameOutcomeDto,
   KlutzChoiceDto,
+  LostAbilityMarkerDto,
   OperationRequestVoidedDto,
   PitHagNightDto,
   PlayerLifeDto,
@@ -566,7 +567,33 @@ export function normalizeStorytellerView(raw: unknown): StorytellerViewDto {
       .map(normalizeSeatAnnotation)
       .filter((annotation): annotation is SeatAnnotationDto => annotation !== null)
       .slice(0, MAX_ANNOTATIONS),
+    lostAbilityMarkers: asArray<unknown>(view['lostAbilityMarkers'])
+      .map(normalizeLostAbilityMarker)
+      .filter((marker): marker is LostAbilityMarkerDto => marker !== null)
+      .slice(0, MAX_LOST_ABILITY_MARKERS),
   }
+}
+
+/** 「失去能力」标记的条数上限：一桌人就这么多，超出的一律丢弃（坏数据不撑爆面板）。 */
+export const MAX_LOST_ABILITY_MARKERS = 64
+
+/**
+ * 归一化一条「失去能力」标记（R-0040）；缺席位或能力时返回 null
+ * （宁可少一条，不编一个状态——服务端数据是输入，不是保证）。
+ */
+export function normalizeLostAbilityMarker(raw: unknown): LostAbilityMarkerDto | null {
+  if (raw === null || typeof raw !== 'object') {
+    return null
+  }
+
+  const entry = raw as Record<string, unknown>
+  const seat = asCount(entry['seat'], 1_000)
+  const ability = asSizedText(entry['ability'], 64)
+  if (seat === null || seat < 1 || ability === null) {
+    return null
+  }
+
+  return { seat, ability, note: asSizedText(entry['note'], 512) ?? '' }
 }
 
 /** 待定死亡的条数上限：一桌人就这么多，超出的一律丢弃（坏数据不撑爆面板）。 */

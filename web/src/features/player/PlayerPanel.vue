@@ -44,6 +44,13 @@ const note = ref('')
 /** 最近一次请求是怎么结束的（作废原因 / 说书人代填）；新请求到达即清空。 */
 const settledNote = ref('')
 
+/** 艺术家提问（R-0040）：服务端只在"白天 + 本人是艺术家 + 还没用过"时下发 true。 */
+const canAskArtistQuestion = ref(false)
+/** 本人进行中的提问全文；null = 没有在等回答。 */
+const pendingQuestion = ref<string | null>(null)
+const artistQuestion = ref('')
+const artistQuestionSubmitting = ref(false)
+
 let gateway: PlayerGateway | null = null
 let clientSequence = 0
 
@@ -106,6 +113,8 @@ function applyView(next: PlayerViewDto): void {
   informationResults.value = [...next.informationResults]
   outcome.value = next.outcome
   klutzChoices.value = [...next.klutzChoices]
+  canAskArtistQuestion.value = next.canAskArtistQuestion
+  pendingQuestion.value = next.pendingQuestion
 
   if (next.pendingRequest === null) {
     selectedOption.value = ''
@@ -152,6 +161,39 @@ function nominateSeat(seat: number, idempotencyKey: string): Promise<unknown> {
 
 function voteOnNomination(nominationIndex: number, voted: boolean, idempotencyKey: string): Promise<unknown> {
   return ensureGateway().castVote(nominationIndex, voted, idempotencyKey)
+}
+
+/** 艺术家提问（R-0040）：问题由玩家决定；「要求重问」不消耗能力，回答只到本人。 */
+async function askArtistQuestion(): Promise<void> {
+  const question = artistQuestion.value.trim()
+  if (question.length === 0) {
+    pushDiagnostic('问题不能为空')
+    return
+  }
+
+  artistQuestionSubmitting.value = true
+  try {
+    const raw = await ensureGateway().askArtistQuestion(
+      question,
+      newIdempotencyKey('artist-question'),
+    )
+    if (raw === null || typeof raw !== 'object') {
+      pushDiagnostic('回执形状不可识别')
+      return
+    }
+
+    const kind = (raw as Record<string, unknown>)['kind']
+    if (kind === 'Accepted' || kind === 'Duplicate') {
+      artistQuestion.value = ''
+      return
+    }
+
+    pushDiagnostic(`提问未成功：${String(kind)}`)
+  } catch (error) {
+    pushDiagnostic(`提问失败：${error instanceof Error ? error.message : String(error)}`)
+  } finally {
+    artistQuestionSubmitting.value = false
+  }
 }
 
 async function submit(): Promise<void> {
@@ -221,6 +263,9 @@ async function disconnect(): Promise<void> {
   day.value = null
   outcome.value = null
   klutzChoices.value = []
+  canAskArtistQuestion.value = false
+  pendingQuestion.value = null
+  artistQuestion.value = ''
 }
 
 /** 胜方文案：未知取值原样回显（服务端数据是不可信输入，不猜、不吞）。 */
@@ -351,6 +396,41 @@ onBeforeUnmount(() => {
         :vote="voteOnNomination"
         @diagnostic="pushDiagnostic"
       />
+
+      <section
+        v-if="canAskArtistQuestion"
+        class="panel"
+        data-testid="player-artist-question"
+        :data-question-state="pendingQuestion === null ? 'idle' : 'waiting'"
+      >
+        <h2>向说书人提问</h2>
+        <p class="hint">每局限一次；「要求重问」不消耗能力，回答只发给你自己。</p>
+        <p
+          v-if="pendingQuestion !== null"
+          class="context"
+          data-testid="player-artist-question-pending"
+        >
+          已提问，等待说书人回答：「{{ pendingQuestion }}」
+        </p>
+        <template v-else>
+          <input
+            v-model="artistQuestion"
+            :maxlength="200"
+            placeholder="是 / 否问题，例如：2 号是爪牙吗？"
+            spellcheck="false"
+            @keyup.enter="askArtistQuestion()"
+          />
+          <button
+            type="button"
+            class="primary"
+            :disabled="artistQuestionSubmitting"
+            data-testid="player-artist-question-submit"
+            @click="askArtistQuestion()"
+          >
+            提问
+          </button>
+        </template>
+      </section>
 
       <section v-if="klutzChoices.length > 0" class="panel" data-testid="player-klutz-choices">
         <h2>呆瓜的公开选择</h2>

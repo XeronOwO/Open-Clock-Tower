@@ -38,7 +38,8 @@ public static class StepMachineStateComparer
                && PitHagNightEquivalent(left.PitHagNight, right.PitHagNight)
                && BarberNightEquivalent(left.BarberNight, right.BarberNight)
                && SageNightEquivalent(left.SageNight, right.SageNight)
-               && SweetheartSkipsEquivalent(left.SweetheartSkips, right.SweetheartSkips);
+               && SweetheartSkipsEquivalent(left.SweetheartSkips, right.SweetheartSkips)
+               && ArtistQuestionEquivalent(left.ArtistQuestion, right.ArtistQuestion);
     }
 
     /// <summary>
@@ -166,6 +167,17 @@ public static class StepMachineStateComparer
 
         return true;
     }
+
+    /// <summary>艺术家的进行中提问（R-0040）进比较器：席位、角色快照与问题全文都是投影输入，漏比会让重建校验在这里失明。</summary>
+    private static bool ArtistQuestionEquivalent(ArtistQuestion? left, ArtistQuestion? right) =>
+        (left, right) switch
+        {
+            (null, null) => true,
+            (not null, null) or (null, not null) => false,
+            ({ } a, { } b) => a.Seat == b.Seat
+                && a.Character == b.Character
+                && string.Equals(a.Question, b.Question, StringComparison.Ordinal),
+        };
 
     private static bool OutcomeEquivalent(GameOutcome? left, GameOutcome? right) =>
         (left, right) switch

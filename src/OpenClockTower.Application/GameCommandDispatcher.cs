@@ -102,6 +102,26 @@ internal static class GameCommandDispatcher
             return Translate(StepMachine.Handle(machine, settlement, BuildPlayerDayInput(envelope.Command, actor)));
         }
 
+        // 艺术家的白天提问（R-0040）：席位从凭据推导（命令面无自称身份），问题原样交给内核校验。
+        if (envelope.Command is AskArtistQuestionCommand askQuestion)
+        {
+            if (envelope.Actor.Seat is not { } artist)
+            {
+                return CommandDispatchResult.Rejected(new CommandRejection
+                {
+                    Code = "identity.player_only",
+                    Message = "艺术家的提问必须由持席位的玩家发出",
+                    Gate = "identity",
+                });
+            }
+
+            return Translate(StepMachine.Handle(machine, settlement, new AskArtistQuestionInput
+            {
+                Seat = artist,
+                Question = askQuestion.Question,
+            }));
+        }
+
         if (envelope.Command is CountVotesCommand or CloseDayCommand)
         {
             return Translate(StepMachine.Handle(machine, settlement, BuildStorytellerDayInput(envelope.Command)));

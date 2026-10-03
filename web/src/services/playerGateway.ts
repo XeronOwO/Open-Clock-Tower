@@ -37,6 +37,7 @@ import {
   asCredential,
   asSizedText,
   asText,
+  asTextArray,
   MAX_PUBLIC_LIFE_ENTRIES,
   normalizeDayView,
   normalizeGameOutcome,
@@ -240,6 +241,16 @@ export class PlayerGateway {
       this.requireCredential(),
       nominationIndex,
       voted,
+      idempotencyKey,
+    )
+  }
+
+  /** 艺术家在白天向说书人提一个是 / 否问题（R-0040；幂等键由调用方持有）。 */
+  async askArtistQuestion(question: string, idempotencyKey: string): Promise<unknown> {
+    return this.connection.invoke<unknown>(
+      'AskArtistQuestion',
+      this.requireCredential(),
+      question,
       idempotencyKey,
     )
   }
@@ -467,6 +478,9 @@ export function normalizeBundle(raw: unknown): NormalizedReconnectBundle {
       klutzChoices: asArray<unknown>(view['klutzChoices'])
         .map(normalizeKlutzChoice)
         .filter((choice): choice is KlutzChoiceDto => choice !== null),
+      pendingQuestion: asSizedText(view['pendingQuestion'], 200),
+      canAskArtistQuestion: asBoolean(view['canAskArtistQuestion']) ?? false,
+      exhaustedAbilities: asTextArray(view['exhaustedAbilities']),
     },
     events,
     // 被丢掉的条目不静默：加入路径据此显式失败（无序号 / 无类型的条目无法参与序号校验）。

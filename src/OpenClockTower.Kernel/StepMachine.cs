@@ -148,6 +148,7 @@ public static class StepMachine
                 => HandleControlChange(state, context, ControlMode.Automatic, release.Reason),
             SeatStateChangedInput seatChanged => HandleSeatStateChanged(state, context, seatChanged),
             ResolveDecisionPointInput resolve => HandleDecisionResolved(state, context, resolve),
+            AskArtistQuestionInput artistQuestion => ArtistQuestionMachine.Ask(state, context, artistQuestion),
             PunishExecutionInput punish => AdjudicatedExecutionMachine.Handle(state, context, punish),
             PitHagCasualtyInput casualty => PitHagNightMachine.HandleCasualty(state, context, casualty),
             ResolveDeferredDeathInput deferredDeath => PitHagNightMachine.HandleResolve(state, context, deferredDeath),
@@ -485,6 +486,19 @@ public static class StepMachine
                 state,
                 StepMachineRejectionReason.NotCurrentRequest,
                 $"当前挂起的是 {state.AwaitingDecision.Id}");
+        }
+
+        // 艺术家的白天提问（R-0040）：裁定点属于问题——回答 / 要求重问在这里结清，
+        // 与槽位结算无关（白天窗口不是角色行动槽位）。
+        if (state.ArtistQuestion is { } artistQuestion
+            && state.AwaitingDecision.Id == ArtistQuestionMachine.DecisionIdOf(state))
+        {
+            return ArtistQuestionMachine.Resolve(
+                state,
+                context,
+                artistQuestion,
+                input.Decision,
+                input.Note);
         }
 
         var events = new List<GameEvent>

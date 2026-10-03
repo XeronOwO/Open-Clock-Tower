@@ -84,9 +84,13 @@ internal static class AbilitySettlement
             }
         }
 
-        var events = new List<GameEvent>
+        var events = new List<GameEvent>();
+
+        // 摇头 / 不用（哲学家、女裁缝）不算使用：不记「用过」、也不记失效（R-0036 / R-0040）——
+        // 记了会让建表期误判"机会已浪费"，把之后的夜晚一并吞掉。
+        if (ability.CountsAsUse(resolutionContext))
         {
-            new AbilityResolvedEvent
+            events.Add(new AbilityResolvedEvent
             {
                 SlotId = slot.Id,
                 Actor = actor,
@@ -94,8 +98,9 @@ internal static class AbilitySettlement
                 Effective = outcome.Effective,
                 Malfunctions = [.. outcome.Malfunctions, .. ability.InterferenceMalfunctions(resolutionContext)],
                 Note = outcome.Note,
-            },
-        };
+            });
+        }
+
         events.AddRange(ability.Resolve(resolutionContext));
         return AbilitySettlementPlan.Resolved(events);
     }

@@ -117,4 +117,10 @@ public sealed record StorytellerView
     /// 它是独立注记账的投影（D-0015：自由文本不进状态账），玩家投影里没有它（D-0012 §4.3）。
     /// </summary>
     public IReadOnlyList<SeatAnnotation> Annotations { get; init; } = [];
+
+    /// <summary>
+    /// 「失去能力」提示标记（R-0040）：限次能力用尽后挂在角色标记旁（由能力使用账本派生）。
+    /// 玩家投影里没有它（D-0012 §4.3）；本人"已用尽"走玩家视图的窄字段。
+    /// </summary>
+    public IReadOnlyList<LostAbilityMarker> LostAbilityMarkers { get; init; } = [];
 }

@@ -46,6 +46,9 @@ internal static class StepMachineFolder
 
                 // 心上人跳过的账同样跨阶段保留：幂等依据不能随阶段遗忘（R-0039）。
                 SweetheartSkips = state?.SweetheartSkips ?? [],
+
+                // 艺术家的进行中提问不能跨阶段：边界上仍挂着说明收口缺失——CarryAcrossPhase 显式失败。
+                ArtistQuestion = ArtistQuestionFolder.CarryAcrossPhase(state),
             },
             SlotEnteredEvent entered => Require(state, entered) with
             {
@@ -108,6 +111,10 @@ internal static class StepMachineFolder
             // 维度变化交给结算对账（D-0015 推论 1）。
             SweetheartDeathSkippedEvent sweetheartSkipped =>
                 DeathTriggerFolder.ApplySweetheartSkip(state, sweetheartSkipped),
+
+            // 艺术家的白天提问（R-0040）：问题进事件流、结清时清空；跨阶段残留由 ApplyPhaseStarted 显式失败。
+            ArtistQuestionAskedEvent artistAsked => ArtistQuestionFolder.ApplyAsked(state, artistAsked),
+            ArtistQuestionClosedEvent artistClosed => ArtistQuestionFolder.ApplyClosed(state, artistClosed),
 
             // 方古的「限一次」标记（R-0034）：整局事实，落下后不再重复。
             FangGuInfectionRecordedEvent infection => ApplyFangGuInfection(state, infection),

@@ -135,6 +135,8 @@ public static class CommandGatePipeline
                 "只有玩家本人可以投票",
                 "identity"),
 
+            AskArtistQuestionCommand => ArtistQuestionGate.IdentityRejection(actor),
+
             CountVotesCommand when actor.Kind is ActorKind.Host or ActorKind.Storyteller => null,
             CountVotesCommand => Reject(
                 "identity.storyteller_only",
@@ -192,44 +194,22 @@ public static class CommandGatePipeline
 
     private static CommandRejection? CheckPhase(CommandEnvelope envelope, StepMachineState? machine)
     {
-        // 触发来源的请求（如呆瓜的死亡选择，R-0027）未了结时，推进类命令一律被拒：
-        // 选择必须尽快做出；说书人的代填 / 作废是永远开着的兜底（D-0011 / D-0014）。
-        if (machine?.PendingRequest is
-            {
-                Status: OperationRequestStatus.Pending,
-            } triggerPending
-            && triggerPending.Origin.Kind == OperationRequestOriginKind.Trigger
-            && envelope.Command is StartPhaseCommand
-                or StartDayCommand
-                or StartNightCommand
-                or NominateCommand
-                or CastVoteCommand
-                or CountVotesCommand
-                or CloseDayCommand
-                or PunishExecutionCommand)
+        // 触发来源的请求（呆瓜死亡选择等）与未结清裁定挂起时，推进类命令一律被拒（白名单见 PendingChoiceGate）。
+        if (PendingChoiceGate.TriggerRequestPending(machine, envelope.Command) is { } triggerPending)
         {
-            return Reject(
-                "phase.trigger_choice_pending",
-                $"还有一条未了结的选择（{triggerPending.Addressee.Value} 号）：先作答，或由说书人代填 / 作废",
-                "phase");
+            return triggerPending;
         }
 
-        // 触发型裁定点（如心上人死亡触发的说书人选择，R-0039）同族：未了结时推进类命令一律被拒，
-        // 裁定必须尽快做出；说书人的强推 / 收口是兜底（D-0011 / D-0014）。
-        if (machine is { AwaitingDecision: not null, AwaitingDecisionTriggerAbility: not null }
-            && envelope.Command is StartPhaseCommand
-                or StartDayCommand
-                or StartNightCommand
-                or NominateCommand
-                or CastVoteCommand
-                or CountVotesCommand
-                or CloseDayCommand
-                or PunishExecutionCommand)
+        // 触发型裁定点（如心上人死亡触发的说书人选择，R-0039）同族：裁定必须尽快做出（D-0011 / D-0014）。
+        if (PendingChoiceGate.TriggerDecisionPending(machine, envelope.Command) is { } triggerDecision)
         {
-            return Reject(
-                "phase.trigger_choice_pending",
-                "还有一条未了结的触发型裁定（说书人）：先裁定，或由说书人强推 / 收口",
-                "phase");
+            return triggerDecision;
+        }
+
+        // 艺术家的白天提问（R-0040）同族：白名单与理由见 PendingChoiceGate。
+        if (PendingChoiceGate.ArtistQuestionPending(machine, envelope.Command) is { } artistPending)
+        {
+            return artistPending;
         }
 
         switch (envelope.Command)
@@ -300,6 +280,10 @@ public static class CommandGatePipeline
                 }
 
                 return null;
+
+            // 艺术家的提问同样只在白天开着时可用（R-0040）；具体规则（是不是艺术家、用没用过）在内核里判。
+            case AskArtistQuestionCommand:
+                return ArtistQuestionGate.DayRequirement(machine);
 
             // 处罚处决可在任何已开始的阶段发生（含夜晚、含提名阶段之外：百科《畸形秀演员》；
             // R-0020）：具体依据（要求是否生效 / 是不是畸形秀演员）在内核里判，这里只要求对局已开始。

@@ -35,6 +35,9 @@ public sealed record SettlementContext
     /// <summary>处罚处决依据契约（规则层实现）；没有时任何处罚处决都会被显式拒绝。</summary>
     public IReadOnlyList<IAdjudicatedExecutionSource> AdjudicatedExecutions { get; init; } = [];
 
+    /// <summary>艺术家提问依据契约（规则层实现）；没有时任何提问都会被显式拒绝。</summary>
+    public IReadOnlyList<IArtistQuestionSource> ArtistQuestions { get; init; } = [];
+
     /// <summary>
     /// 步骤机状态（可选）：给"需要读游戏流程状态"的触发器用（例如呆瓜选择的幂等判断，R-0027）。
     /// 触发管线只读它、不写它；派生事件折回步骤机由应用层完成。

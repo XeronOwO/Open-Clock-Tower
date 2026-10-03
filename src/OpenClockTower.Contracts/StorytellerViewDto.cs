@@ -95,4 +95,7 @@ public sealed record StorytellerViewDto
 
     /// <summary>说书人注记（D-0019）：自由文本提示标记，按发生顺序；玩家投影里没有它。</summary>
     public required SeatAnnotationDto[] Annotations { get; init; }
+
+    /// <summary>「失去能力」提示标记（R-0040）：限次能力用尽后挂在角色标记旁；玩家投影里没有它。</summary>
+    public LostAbilityMarkerDto[] LostAbilityMarkers { get; init; } = [];
 }

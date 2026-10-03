@@ -287,6 +287,13 @@ export interface SeatAnnotationDto {
   text: string
 }
 
+/** 「失去能力」提示标记（说书人视角，R-0040）：限次能力用尽后挂在角色标记旁。 */
+export interface LostAbilityMarkerDto {
+  seat: number
+  ability: string
+  note: string
+}
+
 /** 说书人视图：完整看板 + 兜底所需的一切（D-0014）。 */
 export interface StorytellerViewDto {
   sequence: number
@@ -328,6 +335,8 @@ export interface StorytellerViewDto {
   barberNight: BarberNightDto | null
   /** 说书人注记（D-0019）：自由文本提示标记，按发生顺序；玩家投影里没有它。 */
   annotations: SeatAnnotationDto[]
+  /** 「失去能力」提示标记（R-0040）：限次能力用尽后挂在角色标记旁；玩家投影里没有它。 */
+  lostAbilityMarkers: LostAbilityMarkerDto[]
 }
 
 /** 命令回执。 */
@@ -360,6 +369,12 @@ export interface PlayerViewDto {
   outcome: GameOutcomeDto | null
   /** 呆瓜的公开选择（含跳过），按发生顺序（R-0027）。 */
   klutzChoices: KlutzChoiceDto[]
+  /** 本人进行中的艺术家提问全文；null = 没有（R-0040）。只对本人生效。 */
+  pendingQuestion: string | null
+  /** 本人此刻能不能发起艺术家的白天提问（白天 + 本人是艺术家 + 还没用过）；只对本人生效。 */
+  canAskArtistQuestion: boolean
+  /** 本人已经用尽的一次性能力 slug（R-0040）；只列本人的。 */
+  exhaustedAbilities: string[]
 }
 
 /** 推给玩家的操作请求（刻意不含槽位 / 轮次 / 进度）。 */

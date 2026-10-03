@@ -111,6 +111,15 @@ public sealed record StepMachineState
     /// </summary>
     public IReadOnlyList<SweetheartSkipRecord> SweetheartSkips { get; init; } = [];
 
+    /// <summary>
+    /// 艺术家的进行中提问（白天主动问说书人）；null = 没有进行中的问题（R-0040）。
+    /// </summary>
+    /// <remarks>
+    /// 只属于当前阶段：结清（回答 / 要求重问 / 强推作废）后清空；阶段边界上仍挂着即视为
+    /// 收口缺失（显式失败，不顺延——与 <see cref="BarberNight"/> / <see cref="SageNight"/> 同族）。
+    /// </remarks>
+    public ArtistQuestion? ArtistQuestion { get; init; }
+
     /// <summary>当前槽位；计划已走完时为 null。</summary>
     public StepSlot? CurrentSlot =>
         SlotIndex >= 0 && SlotIndex < Plan.Slots.Count ? Plan.Slots[SlotIndex] : null;

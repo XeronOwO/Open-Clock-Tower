@@ -51,6 +51,7 @@ internal static class SessionSettlement
             EventTriggers = RoleContracts.EventTriggers,
             AbilityPresences = RoleContracts.AbilityPresences,
             AdjudicatedExecutions = RoleContracts.AdjudicatedExecutions,
+            ArtistQuestions = RoleContracts.ArtistQuestions,
             Machine = machine,
             DayWasOpen = machine?.Day?.OpenDay is not null,
         };

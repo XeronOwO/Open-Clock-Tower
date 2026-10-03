@@ -38,6 +38,18 @@ public interface IAbilityResolution
     IReadOnlyList<MalfunctionKind> InterferenceMalfunctions(AbilityResolutionContext context) => [];
 
     /// <summary>
+    /// 这次结算是否计入能力使用账本（「用过没有」）。
+    /// </summary>
+    /// <remarks>
+    /// 默认 true：大多数能力一旦被选择就计一次使用——醉酒 / 中毒期间使用即被浪费
+    /// （百科《重要细节》三-3），建表期据此不再给第二次机会。
+    /// **摇头 / 不用**这类"没有用掉能力"的选择返回 false：哲学家「每局限一次」约束的是「获得」，
+    /// 女裁缝摇头时「无事发生」（百科《女裁缝》· 2026-10-01 抓取 · 运作方式 5），两者之后都还能再选。
+    /// 口径见 <c>docs/standard/rulings.md</c> R-0036（哲学家）与 R-0040（女裁缝）。
+    /// </remarks>
+    bool CountsAsUse(AbilityResolutionContext context) => true;
+
+    /// <summary>
     /// 玩家已经作出选择之后，是否还需要说书人再裁定一次（信息类能力需要）。
     /// 返回 null = 直接按 <see cref="Resolve"/> 结算。
     /// </summary>

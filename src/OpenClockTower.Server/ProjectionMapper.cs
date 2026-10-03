@@ -71,6 +71,9 @@ public static class ProjectionMapper
         Day = view.Day is { } day ? ToDto(day, view.Sequence) : null,
         Outcome = view.Outcome is { } outcome ? ToDto(outcome, view.Sequence) : null,
         KlutzChoices = [.. view.KlutzChoices.Select(record => ToDto(record, view.Sequence))],
+        PendingQuestion = view.PendingQuestion,
+        CanAskArtistQuestion = view.CanAskArtistQuestion,
+        ExhaustedAbilities = [.. view.ExhaustedAbilities],
     };
 
     /// <summary>胜负结论 → DTO（序号 = 这份结论被表达时的序号）。</summary>
@@ -329,6 +332,15 @@ public static class ProjectionMapper
             }
             : null,
         Annotations = [.. view.Annotations.Select(ToDto)],
+        LostAbilityMarkers =
+        [
+            .. view.LostAbilityMarkers.Select(marker => new LostAbilityMarkerDto
+            {
+                Seat = marker.Seat.Value,
+                Ability = marker.Ability.Value,
+                Note = marker.Note,
+            }),
+        ],
     };
 
     /// <summary>说书人注记 → DTO（D-0019）：只说书人视图下发，玩家投影里没有它。</summary>

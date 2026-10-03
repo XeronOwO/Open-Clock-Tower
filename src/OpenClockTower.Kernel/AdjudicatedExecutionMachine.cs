@@ -61,6 +61,15 @@ internal static class AdjudicatedExecutionMachine
 
         if (duringDay)
         {
+            // 艺术家的提问未结清时不能收口白天（R-0040）：否则问题会跨到夜晚 / 残留。
+            if (state.ArtistQuestion is not null)
+            {
+                return Reject(
+                    state,
+                    "day.artist_question_pending",
+                    "还有艺术家的提问没有结清：先由说书人回答（或要求重问 / 强推作废），再处罚处决");
+            }
+
             if (day!.OpenNomination is not null)
             {
                 // 与强推同一口径（白天票对抗性复核 F-2）：不替说书人拍板计票结论，

@@ -66,6 +66,15 @@ internal static class DayStepMachine
             return Reject(state, "day.not_open", "当前阶段不是白天");
         }
 
+        // 艺术家的提问未结清时不能关账（R-0040）：问题必须在白天内收口——说书人回答 / 要求重问 / 强推作废。
+        if (input is CloseDayInput && state.ArtistQuestion is not null)
+        {
+            return Reject(
+                state,
+                "day.artist_question_pending",
+                "还有艺术家的提问没有结清：先由说书人回答（或要求重问 / 强推作废），再结束白天");
+        }
+
         var day = state.Day ?? DayState.Empty;
         var outcome = input switch
         {
@@ -138,6 +147,26 @@ internal static class DayStepMachine
                     Reason = OperationRequestVoidReason.StorytellerForce,
                     Note = input.Reason,
                 },
+            });
+        }
+
+        // 艺术家的提问（R-0040）：强推越过时显式作废——不记账、不产信息，绝不留到下一阶段。
+        if (state.ArtistQuestion is { } artistQuestion)
+        {
+            if (state.AwaitingDecision?.Id == ArtistQuestionMachine.DecisionIdOf(state))
+            {
+                events.Add(new DecisionPointResolvedEvent
+                {
+                    DecisionPointId = ArtistQuestionMachine.DecisionIdOf(state),
+                    Decision = null,
+                    Note = $"强推：{input.Reason}",
+                });
+            }
+
+            events.Add(new ArtistQuestionClosedEvent
+            {
+                Seat = artistQuestion.Seat,
+                Closure = ArtistQuestionClosure.Abandoned,
             });
         }
 
