@@ -822,14 +822,16 @@ async function forceAdvanceSlot(page, label) {
 }
 
 /**
- * 收尾一个夜晚：先观察一个短窗口（保留"槽位确实会按配额自行前进"的真机观察，完整节奏语义在集成测试），
- * 没收口再用强推把剩余空槽位推完——不白等 N × 配额。看到**任何**挂起请求就立刻停手并如实报出来
- * （绝不越权了结随后的请求 / 裁定点）。
+ * 收尾一个夜晚：先观察一个足够长的窗口（= 整夜槽位数 × 配额 + 余量，保留"槽位确实会按配额自行前进"
+ * 的真机观察，完整节奏语义在集成测试），没收口再用强推把剩余空槽位推完——不白等 N × 配额。
+ * 看到**任何**挂起请求就立刻停手并如实报出来（绝不越权了结随后的请求 / 裁定点）。
  *
- * `natural` 在「窗口内没有任何一次强推」时为真：在 0.3s/槽的迭代档下，整夜 ≤ 8s 就该自然走完。
+ * `natural` 在「窗口内没有任何一次强推」时为真：迭代档 0.3s/槽 下整夜 ≤ 8s；
+ * 取证档 2s/槽 下窗口按配额缩放（首夜 13 格 ≈ 26s）——固定 12s 会在取证档误把
+ * "还没走完"判成"走不完"（2026-10-03 取证档实测踩到，故按配额算窗）。
  */
 async function finishNightQuickly(page, label) {
-  const naturalWindowMs = config.slowPacer ? 12_000 : 8_000
+  const naturalWindowMs = Math.max(8_000, Math.round(config.quotaSeconds * 16_000) + 6_000)
   const deadline = Date.now() + naturalWindowMs
   while (Date.now() < deadline) {
     if (await nightSettled(page)) {
