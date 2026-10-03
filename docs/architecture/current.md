@@ -97,6 +97,9 @@ Seat (玩家席位)
 说书人可阻止恶魔击杀、可追加死亡且归因麻脸巫婆，窗口在最后一个能造成死亡的恶魔行动后收口）；
 `GainAbility` 的第一条（哲学家：获得能力落成账上带 `GrantedCharacter` 的常驻事实、被选角色持有者的
 **动态醉酒**走常驻来源对账、能力由获得者在他与"被获得角色的格"之间代行——口径见 `rulings.md` R-0036）；
+`NightAction` 的数学家（批次 E21，2026-10-03）：失效账本带**黎明水位**（`MalfunctionLedger.SinceDawnStart`，
+`DayStartedEvent` 折叠时推进，**不删记录**——R-0004 第 4 条），窗口数字按玩家去重、不含数学家本人；
+数字由说书人给出、平台只推演（D-0002），涡流在场必须为假（R-0028）；
 `OnDeath` / `Entry` / `PublicTrigger` / `Retroactive` 仍随各自角色分批实现。
 
 ### 2.4 裁定点（DecisionPoint）
@@ -120,6 +123,9 @@ DecisionPoint
 - `OnNoOption` 必须显式声明。依据 `docs/standard/rulings.md` R-0009：占卜师的干扰项要求"任意善良玩家"，
   极端局面下可能无合法选项。禁止抛异常，也禁止静默跳过。
 - 裁定点进事件流，因此**可回放、可撤销、可回归测试**。
+- **入槽实时重建**：说书人裁定类提示（`OnNoOption = StorytellerDecides`）在**入槽时**按「已提交账 +
+  本批已产出事件」重建一次，并回写槽位提示（`DecisionPointRaisedEvent.SlotPrompt`）——计划快照会漏掉
+  当夜更早槽位的结果（数学家的失效窗口是第一例）；玩家操作请求的选项契约**不重建**，仍走计划快照。
 
 ### 2.5 冲突解析
 

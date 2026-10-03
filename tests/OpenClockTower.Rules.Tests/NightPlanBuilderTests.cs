@@ -241,7 +241,8 @@ public sealed class NightPlanBuilderTests
     [Fact]
     public void InPlayNightCharacterWithoutContract_IsRejected()
     {
-        var state = State((1, "mathematician", LifeState.Alive));
+        // 用还没实现的女裁缝（首夜顺序表上在场、无契约）；数学家已有契约。
+        var state = State((1, "seamstress", LifeState.Alive));
 
         Assert.Equal("plan.contract_missing", BuildFailure(Request(state, seatCount: 1)));
     }

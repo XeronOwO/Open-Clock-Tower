@@ -47,6 +47,7 @@ internal static class SessionSettlement
                 : [.. setup.Seats.Select(ticket => ticket.Seat).OrderBy(seat => seat.Value)],
             Abilities = abilities,
             StandingEffects = standingEffects,
+            SlotPrompts = NightActions.Prompts,
             EventTriggers = RoleContracts.EventTriggers,
             AbilityPresences = RoleContracts.AbilityPresences,
             AdjudicatedExecutions = RoleContracts.AdjudicatedExecutions,

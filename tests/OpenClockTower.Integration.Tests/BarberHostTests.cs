@@ -354,11 +354,19 @@ public sealed class BarberHostTests
 
     private static async Task<OperationRequest> WaitForRequestAsync(TestServerHost host, SeatId seat)
     {
-        Assert.True(
-            await TestServerHost.WaitUntilAsync(
-                () => host.Session.GetPlayerView(seat).PendingRequest is not null,
-                Wait),
-            $"席位 {seat.Value} 没有收到操作请求");
+        var arrived = await TestServerHost.WaitUntilAsync(
+            () => host.Session.GetPlayerView(seat).PendingRequest is not null,
+            Wait);
+        if (!arrived)
+        {
+            // 并行套件下 0.05s 配额档的夹具曾出现"没人收到请求"：把现场打进失败信息，别让下次只剩超时。
+            var view = host.Session.GetStorytellerView();
+            Assert.Fail(
+                $"席位 {seat.Value} 没有收到操作请求；阶段={view.Phase} "
+                + $"槽位={view.CurrentSlotId?.Value ?? "（无）"}（{view.SlotIndex}/{view.SlotCount}）"
+                + $" 计划走完={view.PlanCompleted} 待裁定={view.AwaitingDecision?.Id.Value ?? "（无）"}"
+                + $" 阻塞={view.BlockedReason ?? "（无）"}");
+        }
 
         return host.Session.GetPlayerView(seat).PendingRequest!;
     }

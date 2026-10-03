@@ -67,7 +67,9 @@ public static class StepMachine
             ?? throw new InvalidOperationException("事件流损坏：开启阶段没有产出步骤机状态");
         if (!state.IsPlanCompleted)
         {
-            StepSlotEntry.Enter(state, ledger, events);
+            // 首个槽位按夜晚顺序表固定是节拍类（黄昏 / 爪牙信息 / 恶魔信息 / …），不是角色行动槽：
+            // 这里没有实时提示来源可用，走计划快照；刷新发生在推进路径（AppendAdvance / AppendForceAdvance）。
+            StepSlotEntry.Enter(state, ledger, [], prompts: null, events);
         }
         else
         {
@@ -386,7 +388,7 @@ public static class StepMachine
 
         var afterHolds = StepMachineFolder.ApplyAll(state, events)
             ?? throw new InvalidOperationException("事件流损坏：处理输入后丢失步骤机状态");
-        StepSlotEntry.AppendForceAdvance(afterHolds, context.State, events, input.Reason);
+        StepSlotEntry.AppendForceAdvance(afterHolds, context, events, input.Reason);
         return Applied(state, events);
     }
 
@@ -544,7 +546,7 @@ public static class StepMachine
             ?? throw new InvalidOperationException("事件流损坏：处理输入后丢失步骤机状态");
         if (StepSlotEntry.CanAutoAdvance(after))
         {
-            StepSlotEntry.AppendAdvance(after, context.State, events);
+            StepSlotEntry.AppendAdvance(after, context, events);
         }
 
         return events;

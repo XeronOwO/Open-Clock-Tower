@@ -95,10 +95,7 @@ internal static class StepMachineFolder
             FangGuInfectionRecordedEvent infection => ApplyFangGuInfection(state, infection),
 
             SeatStateChangedEvent => state,
-            DecisionPointRaisedEvent raised => Require(state, raised) with
-            {
-                AwaitingDecision = raised.DecisionPoint,
-            },
+            DecisionPointRaisedEvent raised => ApplyDecisionPointRaised(state, raised),
             DecisionPointResolvedEvent resolved => ResolveDecision(state, resolved),
             SlotBlockedEvent blocked => Require(state, blocked) with
             {
@@ -278,6 +275,34 @@ internal static class StepMachineFolder
                 activated.Prompt,
                 activated.Dependencies,
                 slot.Character);
+
+    /// <summary>
+    /// 开一个裁定点：挂起待裁定；事件携带槽位提示时，把它**回写进槽位**（替换计划快照）。
+    /// </summary>
+    /// <remarks>
+    /// 槽位提示是这一步的操作上下文（视图「当前步骤」与后续消费者都读它）。入槽实时重建
+    /// （数学家的失效窗口这类上下文）不回写，屏幕就会出现"裁定点是新值、摘要还是计划旧值"的分叉。
+    /// </remarks>
+    /// <exception cref="InvalidOperationException">事件流顺序损坏：裁定点不属于当前槽位。</exception>
+    private static StepMachineState ApplyDecisionPointRaised(StepMachineState? state, DecisionPointRaisedEvent raised)
+    {
+        var current = Require(state, raised) with { AwaitingDecision = raised.DecisionPoint };
+        if (raised.SlotPrompt is not { } prompt)
+        {
+            return current;
+        }
+
+        var slot = current.CurrentSlot;
+        if (slot is null || slot.Id != raised.SlotId)
+        {
+            throw new InvalidOperationException(
+                $"事件流顺序损坏：裁定点 {raised.SlotId.Value} 不在当前槽位上，不能回写槽位提示");
+        }
+
+        var slots = current.Plan.Slots.ToArray();
+        slots[current.SlotIndex] = slot with { Prompt = prompt };
+        return current with { Plan = current.Plan with { Slots = slots } };
+    }
 
     /// <summary>开启麻脸巫婆之夜的死亡裁量窗口；同一夜不能开两次。</summary>
     private static StepMachineState ApplyPitHagNightOpened(StepMachineState? state, PitHagNightOpenedEvent opened)

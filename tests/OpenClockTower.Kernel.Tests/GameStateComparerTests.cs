@@ -215,6 +215,29 @@ public sealed class GameStateComparerTests
         Assert.False(GameStateComparer.AreEquivalent(left, WithMalfunctions([open, open])));
     }
 
+    /// <summary>黎明水位是失效账的语义：条目相同但窗口不同 → 数学家的数字不同，不算等价。</summary>
+    [Fact]
+    public void Malfunctions_CompareDawnWindow()
+    {
+        var entry = new Malfunction
+        {
+            Seat = SeatOne,
+            Ability = new AbilityId("dreamer"),
+            Kind = MalfunctionKind.Poisoned,
+        };
+
+        var noDawn = new GameState { Malfunctions = new MalfunctionLedger { Entries = [entry] } };
+        var afterDawn = new GameState
+        {
+            Malfunctions = new MalfunctionLedger { Entries = [entry], SinceDawnStart = 1 },
+        };
+
+        Assert.True(GameStateComparer.AreEquivalent(
+            noDawn,
+            new GameState { Malfunctions = new MalfunctionLedger { Entries = [entry] } }));
+        Assert.False(GameStateComparer.AreEquivalent(noDawn, afterDawn));
+    }
+
     private static bool EquivalentWith(SeatStateEntry left, SeatStateEntry right) =>
         GameStateComparer.AreEquivalent(
             new GameState { Seats = [left] },

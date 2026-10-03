@@ -64,6 +64,8 @@ todo/  →  in-progress/  →  review/  →  done/
 
 ### In progress
 
+- [数学家：窗口取值与说书人裁定面](in-progress/mathematician.md) — **Medium** — R-0004 的失效窗口（黎明水位）+ 入槽实时重建说书人裁定提示 + 数字只下发给本人；批次 E21
+
 ### Review
 
 ### Done

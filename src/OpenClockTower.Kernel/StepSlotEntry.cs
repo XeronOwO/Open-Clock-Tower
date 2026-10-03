@@ -24,11 +24,11 @@ internal static class StepSlotEntry
         && !state.IsHeld;
 
     /// <summary>产出一条自动推进事件；推进后进入新槽位（计划走完则补阶段完成事件）。</summary>
-    internal static void AppendAdvance(StepMachineState state, GameState ledger, List<GameEvent> events)
+    internal static void AppendAdvance(StepMachineState state, SettlementContext context, List<GameEvent> events)
     {
         var from = state.SlotIndex;
         var to = from + 1;
-        AppendPitHagNightClose(state, ledger, events);
+        AppendPitHagNightClose(state, context.State, events);
         AppendBarberNightClose(state, events, to);
 
         events.Add(new SlotAdvancedEvent { FromIndex = from, ToIndex = to });
@@ -41,20 +41,22 @@ internal static class StepSlotEntry
         Enter(
             StepMachineFolder.Apply(state, events[^1])
                 ?? throw new InvalidOperationException("事件流损坏：推进后丢失步骤机状态"),
-            ledger,
+            context.State,
+            context.Seats,
+            context.SlotPrompts,
             events);
     }
 
     /// <summary>产出一条强推事件（说书人兜底，D-0014）；推进后进入新槽位。</summary>
     internal static void AppendForceAdvance(
         StepMachineState state,
-        GameState ledger,
+        SettlementContext context,
         List<GameEvent> events,
         string reason)
     {
         var from = state.SlotIndex;
         var to = from + 1;
-        AppendPitHagNightClose(state, ledger, events);
+        AppendPitHagNightClose(state, context.State, events);
         AppendBarberNightClose(state, events, to);
 
         events.Add(new SlotForceAdvancedEvent { FromIndex = from, ToIndex = to, Reason = reason });
@@ -67,7 +69,9 @@ internal static class StepSlotEntry
         Enter(
             StepMachineFolder.Apply(state, events[^1])
                 ?? throw new InvalidOperationException("事件流损坏：推进后丢失步骤机状态"),
-            ledger,
+            context.State,
+            context.Seats,
+            context.SlotPrompts,
             events);
     }
 
@@ -138,10 +142,18 @@ internal static class StepSlotEntry
     /// <summary>进入当前槽位：产出槽位进入事件，并按槽位种类与选择契约派生后续事件。</summary>
     /// <param name="state">步骤机状态（提供当前槽位）。</param>
     /// <param name="ledger">状态账：进入时按**当前**账确认行动者还站得住（见 <see cref="UnavailableReason"/>）。</param>
+    /// <param name="seats">本局完整座次；说书人裁定点的实时重建要用（见 <see cref="LivePrompt"/>）。</param>
+    /// <param name="prompts">说书人裁定类提示的实时重建来源；null = 走计划快照。</param>
     /// <param name="events">事件出口（就地追加）。</param>
-    internal static void Enter(StepMachineState state, GameState ledger, List<GameEvent> events)
+    internal static void Enter(
+        StepMachineState state,
+        GameState ledger,
+        IReadOnlyList<SeatId> seats,
+        ISlotPromptSource? prompts,
+        List<GameEvent> events)
     {
         ArgumentNullException.ThrowIfNull(ledger);
+        ArgumentNullException.ThrowIfNull(seats);
 
         var slot = state.CurrentSlot
             ?? throw new InvalidOperationException("进入槽位失败：计划已走完");
@@ -202,20 +214,66 @@ internal static class StepSlotEntry
                 });
                 break;
             case DecisionPointOutcome.StorytellerDecides:
+                var livePrompt = LivePrompt(slot, ledger, seats, prompts, events);
                 events.Add(new DecisionPointRaisedEvent
                 {
                     SlotId = slot.Id,
                     DecisionPoint = new DecisionPoint
                     {
                         Id = AbilitySettlement.DecisionPointIdOf(state, slot),
-                        Prompt = slot.Prompt,
+                        Prompt = livePrompt ?? slot.Prompt,
                     },
+                    SlotPrompt = livePrompt,
                 });
                 break;
             default:
                 events.Add(new SlotBlockedEvent { SlotId = slot.Id, Reason = slot.Prompt.Context });
                 break;
         }
+    }
+
+    /// <summary>
+    /// 说书人裁定点的实时提示：按**当前账**重建，替代计划期的冻结快照。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 计划快照会漏掉**当夜更早槽位**的结果（数学家的失效窗口就是这类上下文），因此入槽时用
+    /// <see cref="SettlementContext.SlotPrompts"/> 重建一次。重建账 = 已提交账 + 本批已产出事件
+    /// （与手工换角绑定同一姿态：提示按新账构建）。
+    /// </para>
+    /// <para>
+    /// 没有来源、槽位缺行动者 / 归属角色、角色没有契约，或重建结果已不是「说书人裁定点」时返回 null——
+    /// 调用方退回计划快照，**本步语义不变**（求值分支仍由快照的求值结果决定）。
+    /// </para>
+    /// </remarks>
+    private static ChoicePrompt? LivePrompt(
+        StepSlot slot,
+        GameState ledger,
+        IReadOnlyList<SeatId> seats,
+        ISlotPromptSource? prompts,
+        List<GameEvent> events)
+    {
+        if (prompts is null || slot.Actor is not { } actor || slot.Owner is not { } abilityOwner)
+        {
+            return null;
+        }
+
+        var live = ledger;
+        foreach (var produced in events)
+        {
+            live = GameStateMachine.Apply(live, produced);
+        }
+
+        var rebuilt = prompts.Rebuild(new SlotPromptRequest
+        {
+            SlotId = slot.Id,
+            Character = abilityOwner,
+            Actor = actor,
+            Seats = seats,
+            State = live,
+        });
+
+        return rebuilt?.Evaluate() == DecisionPointOutcome.StorytellerDecides ? rebuilt : null;
     }
 
     /// <summary>

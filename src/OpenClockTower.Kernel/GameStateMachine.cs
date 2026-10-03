@@ -101,7 +101,8 @@ public static class GameStateMachine
 
             // 白天流程事件：它们改变的是步骤机状态里的白天账（StepMachineFolder），不改六维度与效果；
             // 处决产生的死亡由配套的 SeatStateChangedEvent 折进账里（处决 ≠ 死亡，百科《处决》）。
-            DayStartedEvent => current,
+            // 例外：黎明要推进失效账本的窗口起点（R-0004 第 2 条，见 ApplyDawn）——六维度与效果仍不变。
+            DayStartedEvent => ApplyDawn(current),
             NominationMadeEvent => current,
             VoteCastEvent => current,
             VoteCountedEvent => current,
@@ -362,6 +363,13 @@ public static class GameStateMachine
                 resolved.Effective),
             Malfunctions = RecordMalfunctions(state.Malfunctions, resolved),
         };
+
+    /// <summary>黎明：推进失效账本的窗口起点——R-0004 第 2 条「从上一个黎明到数学家被唤醒」的边界。</summary>
+    /// <remarks>
+    /// 不删记录（R-0004 第 4 条：记录与数学家是否在场无关）；首夜还没有黎明，窗口起点保持 0（全账）。
+    /// </remarks>
+    private static GameState ApplyDawn(GameState state) =>
+        state with { Malfunctions = state.Malfunctions.AdvanceDawn() };
 
     /// <summary>按事件里记录的分类逐条追加，顺序与事件一致（R-0004）。</summary>
     private static MalfunctionLedger RecordMalfunctions(

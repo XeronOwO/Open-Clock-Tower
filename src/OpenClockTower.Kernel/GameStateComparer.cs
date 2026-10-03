@@ -11,7 +11,7 @@ namespace OpenClockTower.Kernel;
 /// </para>
 /// <para>
 /// 覆盖 <see cref="GameState"/> 的全部五个集合：席位账（逐维度值 / 原因 / 导致方 / 效果链接）、
-/// 持续型效果（含终止事实）、即时型效果、能力使用账、失效账。任何一个不同都算分叉——
+/// 持续型效果（含终止事实）、即时型效果、能力使用账、失效账（含黎明窗口起点）。任何一个不同都算分叉——
 /// 重建报告回答的是"整本账是否与事件流一致"，不能只比其中三张表。
 /// </para>
 /// <para>
@@ -46,6 +46,7 @@ public static class GameStateComparer
                    effect => effect.Id,
                    InstantaneousEffectEquivalent)
                && MultisetEquivalent(left.AbilityUses.Entries, right.AbilityUses.Entries)
+               && left.Malfunctions.SinceDawnStart == right.Malfunctions.SinceDawnStart
                && MultisetEquivalent(left.Malfunctions.Entries, right.Malfunctions.Entries);
     }
 

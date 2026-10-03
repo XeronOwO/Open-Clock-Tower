@@ -248,6 +248,36 @@ public sealed class GameStateLedgerTests
         Assert.Empty(state.InstantaneousEffects);
     }
 
+    /// <summary>
+    /// 黎明推进失效账本的窗口起点，但**不删记录**（R-0004 第 2 / 4 条）：首夜记录留在账上，
+    /// 数学家在次夜只看得到本黎明之后的。
+    /// </summary>
+    [Fact]
+    public void DayStarted_AdvancesMalfunctionWindow_WithoutDeletingEntries()
+    {
+        var state = GameStateMachine.Fold(
+        [
+            Malfunction(seat: 2, MalfunctionKind.Poisoned),
+            new DayStartedEvent { DayNumber = 1 },
+            Malfunction(seat: 3, MalfunctionKind.Drunk),
+        ]);
+
+        Assert.Equal(2, state.Malfunctions.Count);
+        Assert.Equal(1, state.Malfunctions.SinceDawnStart);
+        Assert.Equal(new[] { new SeatId(3) }, state.Malfunctions.CountedSeatsSinceDawn);
+        Assert.Equal(new[] { new SeatId(2), new SeatId(3) }, state.Malfunctions.CountedSeats);
+    }
+
     /// <summary>测试专用的"未知事件"，用来证明折叠对陌生事件不会装看不见。</summary>
     private sealed record UnknownEvent : GameEvent;
+
+    /// <summary>一条"能力未正常生效"的结算事件（窗口测试用）。</summary>
+    private static AbilityResolvedEvent Malfunction(int seat, MalfunctionKind kind) => new()
+    {
+        SlotId = new StepSlotId($"test-slot-{seat}"),
+        Actor = new SeatId(seat),
+        Ability = new AbilityId("test-ability"),
+        Effective = false,
+        Malfunctions = [kind],
+    };
 }

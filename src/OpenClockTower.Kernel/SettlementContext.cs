@@ -42,6 +42,13 @@ public sealed record SettlementContext
     public StepMachineState? Machine { get; init; }
 
     /// <summary>
+    /// 说书人裁定类提示的实时重建来源（可选，见 <see cref="ISlotPromptSource"/>）：入槽时用它
+    /// 按当前账重算提示上下文，替代计划期的冻结快照；没有来源（内核夹具 / 只推进不结算）时
+    /// 按快照走，行为不变。
+    /// </summary>
+    public ISlotPromptSource? SlotPrompts { get; init; }
+
+    /// <summary>
     /// 本批命令**之前**白天是否开着（R-0027 判断"白天死亡即时公告"的输入）：
     /// 白天开着 → 本批的死亡随提交即时公开；否则要等下一个黎明（R-0022 第 2 条）。
     /// </summary>

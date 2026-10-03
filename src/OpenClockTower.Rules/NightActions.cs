@@ -26,6 +26,9 @@ public static class NightActions
     /// <summary>结算契约目录（结算用）。</summary>
     public static IAbilityResolutionCatalog Resolutions => Registry;
 
+    /// <summary>说书人裁定类提示的实时重建来源（入槽时按当前账重算提示上下文）。</summary>
+    public static ISlotPromptSource Prompts { get; } = new NightActionPromptSource(Registry);
+
     /// <summary>常驻效果来源（提交前对账用）：诺-达鲺的中毒与哲学家的醉酒。</summary>
     public static IReadOnlyList<IStandingEffectSource> StandingEffects { get; } =
         [new NoDashiiPoisonSource(), new PhilosopherDrunkSource()];
@@ -36,6 +39,7 @@ public static class NightActions
         {
             [new CharacterId("clockmaker")] = new ClockmakerNightAction(),
             [new CharacterId("dreamer")] = new DreamerNightAction(),
+            [new CharacterId("mathematician")] = new MathematicianNightAction(),
             [new CharacterId("no-dashii")] = new NoDashiiNightAction(),
             [new CharacterId("vortox")] = new VortoxNightAction(),
             [new CharacterId("witch")] = new WitchNightAction(),

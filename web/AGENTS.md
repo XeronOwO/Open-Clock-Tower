@@ -42,7 +42,7 @@ npm run dev          # http://localhost:5273
 
 ## 3.1 验收批次取证（说书人 + 玩家多客户端）
 
-装置清单（七个装置 / 夹具 / 档位 / 分段 / 退出码）在 `docs/acceptance/devices.md`；
+装置清单（八个装置 / 夹具 / 档位 / 分段 / 退出码）在 `docs/acceptance/devices.md`；
 本页只留运行入口与外部耦合。
 
 ```bash
