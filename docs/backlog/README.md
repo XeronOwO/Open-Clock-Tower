@@ -64,7 +64,11 @@ todo/  →  in-progress/  →  review/  →  done/
 
 - [排版与上手引导优化：让版块自解释、信息降密度](todo/ui-layout-and-onboarding.md) — **Medium** — 版块标题自解释 + 「?」悬停说明 + 文案通俗化与数据拼接连贯化；只动呈现层，信息隔离红线不变
 
+- [说书人面板：裁定归属与读数越界](todo/storyteller-decision-affordances.md) — **Medium** — 触发格 / 触发型裁定在圆环上没有归属与「定位到 N 号」；白天计划收口后读数越界（2 / 1）；裁定候选缺「已死亡」标注——纯呈现层
+
 ### In progress
+
+- [死亡触发族：贤者 / 心上人](in-progress/sage-and-sweetheart.md) — **High** — 贤者被恶魔击杀 → 当夜展示两名玩家（信息只到本人）；心上人死亡即由说书人指定一名玩家持续醉酒；补齐 `OnDeath` 触发族与触发型裁定点
 
 ### Review
 
