@@ -144,6 +144,99 @@ internal static class SessionCommit
     }
 
     /// <summary>
+    /// 裁定结清后的「重进本格」补事件（独立对抗性复核 H-1）：触发型 / 触发格裁定
+    /// （贤者展示 / 心上人醉酒 / 理发师的多恶魔裁定）结清后可能没有后续请求，而挂起期间配额
+    /// 已经走完——结清之后就没有任何推进入口，夜晚会停在原地。这里在**触发管线跑完之后**补一步：
+    /// 重进当前槽位把配额复位为 Running，由下一次节拍继续推进。
+    /// </summary>
+    /// <remarks>
+    /// 有挂起（请求 / 裁定 / 阻塞）时一律不补：那些路径各自的结清动作会接续推进，
+    /// 重进本格反而会把挂起清掉（理发师「先开后续请求再推进」的窗口因此不受影响）。
+    /// 计划已走完时不补：下一阶段由说书人开启。
+    /// </remarks>
+    /// <returns>补事件；不需要补时为 null。</returns>
+    internal static GameEvent? BuildDecisionContinuation(
+        StepMachineState? machine,
+        IReadOnlyList<GameEvent> applied,
+        IReadOnlyList<GameEvent> derived)
+    {
+        ArgumentNullException.ThrowIfNull(applied);
+        ArgumentNullException.ThrowIfNull(derived);
+
+        if (machine is null
+            || machine.Outcome is not null
+            || machine.IsPlanCompleted
+            || machine.Control != ControlMode.Automatic
+            || machine.Quota != SlotQuotaState.Elapsed
+            || machine.IsHeld
+            || machine.CurrentSlot is not { } slot)
+        {
+            return null;
+        }
+
+        // 只在本批确有裁定结清时补；本批已经产过槽位事件（自动推进 / 强推 / 重进）时也不补，避免重复。
+        if (!applied.Any(gameEvent => gameEvent is DecisionPointResolvedEvent)
+            || applied.Any(IsSlotProgress)
+            || derived.Any(IsSlotProgress))
+        {
+            return null;
+        }
+
+        return new SlotEnteredEvent { SlotIndex = machine.SlotIndex, SlotId = slot.Id };
+    }
+
+    /// <summary>把「裁定结清后的续推」补进草案并折进步骤机视图；不需要补时原样返回。</summary>
+    internal static (long Sequence, StepMachineState? Machine) AppendDecisionContinuation(
+        List<StoredEventDraft> drafts,
+        List<GameEvent> sink,
+        IReadOnlyList<GameEvent> applied,
+        IReadOnlyList<GameEvent> derived,
+        long sequence,
+        DateTimeOffset recordedAt,
+        StepMachineState? machine)
+    {
+        ArgumentNullException.ThrowIfNull(drafts);
+        ArgumentNullException.ThrowIfNull(sink);
+
+        if (BuildDecisionContinuation(machine, applied, derived) is not { } continuation)
+        {
+            return (sequence, machine);
+        }
+
+        sequence++;
+        drafts.Add(new StoredEventDraft
+        {
+            Sequence = sequence,
+            Event = continuation,
+            RecordedAt = recordedAt,
+        });
+        sink.Add(continuation);
+        return (sequence, StepMachine.Apply(machine, continuation) ?? machine);
+    }
+
+    /// <summary>槽位推进 / 重进类事件（补续推的排重判据）。</summary>
+    private static bool IsSlotProgress(GameEvent gameEvent) =>
+        gameEvent is SlotEnteredEvent or SlotAdvancedEvent or SlotForceAdvancedEvent;
+
+    /// <summary>
+    /// 派生事件入草案 + 步骤机视图，并补上「裁定结清后的续推」（H-1；口径见
+    /// <see cref="BuildDecisionContinuation"/>）——两个动作合成一次调用，
+    /// 免得调用方（<c>GameSession</c>）为了行数门禁再拆一遍。
+    /// </summary>
+    internal static (long Sequence, StepMachineState? Machine) AppendDerivedWithContinuation(
+        List<StoredEventDraft> drafts,
+        List<GameEvent> sink,
+        IReadOnlyList<GameEvent> applied,
+        IReadOnlyList<GameEvent> derived,
+        long sequence,
+        DateTimeOffset recordedAt,
+        StepMachineState? machine)
+    {
+        (sequence, machine) = AppendDerived(drafts, sink, derived, sequence, recordedAt, machine);
+        return AppendDecisionContinuation(drafts, sink, applied, derived, sequence, recordedAt, machine);
+    }
+
+    /// <summary>
     /// 结束批次的收口：先把仍挂起的操作请求作废、把等待说书人的裁定点与阻塞报警收口（若有），
     /// 再追加唯一的结束事件并把它们折进派生视图（R-0024；票据 ended-game-pending-request-void
     /// 与 terminal-hold-residue）。

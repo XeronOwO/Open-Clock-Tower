@@ -79,7 +79,7 @@ Seat (玩家席位)
 | 类别 | 求值时机 | 例 |
 |---|---|---|
 | `NightAction` | 夜晚顺序表调度 | 舞蛇人、筑梦师 |
-| `OnDeath` | 某玩家死亡的那一刻 | 守鸦人 |
+| `OnDeath` | 某玩家死亡的那一刻 | 理发师 / 贤者 / 心上人（守鸦人不在首版） |
 | `Entry` 进场能力 | 角色被创造/变更后尽快结算 | 痢蛭选宿主 |
 | `PublicTrigger` 公开触发能力 | 玩家在白天公开声明 | 猎手 |
 | `Retroactive` 回溯型能力 | 先记条件，后结算结果 | 杂耍艺人 |
@@ -100,7 +100,10 @@ Seat (玩家席位)
 `NightAction` 的数学家（批次 E21，2026-10-03）：失效账本带**黎明水位**（`MalfunctionLedger.SinceDawnStart`，
 `DayStartedEvent` 折叠时推进，**不删记录**——R-0004 第 4 条），窗口数字按玩家去重、不含数学家本人；
 数字由说书人给出、平台只推演（D-0002），涡流在场必须为假（R-0028）；
-`OnDeath` / `Entry` / `PublicTrigger` / `Retroactive` 仍随各自角色分批实现。
+`OnDeath` 族的**死亡触发**已随事件触发管线落地：理发师（死亡记事实 → 当夜交互，R-0033）、
+呆瓜（公告时开触发型请求，R-0027）、贤者（被恶魔击杀 → 当晚展示，R-0038）、
+心上人（死亡**即时**开触发型裁定 → 持续醉酒，R-0039）；
+`Entry` / `PublicTrigger` / `Retroactive` 仍随各自角色分批实现。
 
 ### 2.4 裁定点（DecisionPoint）
 
@@ -173,9 +176,11 @@ DecisionPoint
 | 维度解除 | `SettlementReconciler` 固定点对账 + `DimensionEffectReconciler`：效果终止 / 挂起 → 解除，恢复 → 重挂，支持效果迁移 → 换链接；已终止的同源效果不复用标识——重新获得能力产生**新的一条**（世代规则，R-0012 第 4 条）；派生事件与业务事件同批落库 | D-0015 推论 1 / R-0012 |
 | 常驻效果 | `IStandingEffectSource`（Rules 实现）+ 诺-达鲺的常驻中毒（顺 / 逆时针最近的镇民，跳过非镇民，动态重算） | 百科《诺-达鲺》 |
 
-**能力边界（2026-10-02）**：行动契约与结算契约当前只实现钟表匠 / 筑梦师 / 诺-达鲺 / 女巫 / 洗脑师。其他在夜晚顺序表上的
-角色一旦在场，开夜会被显式拒绝（`plan.contract_missing`），等后续按角色分批补——刻意的"宁可开不了、
-也不静默跳过"。不在夜晚顺序表上的角色（艺术家 / 呆瓜 / 畸形秀演员 / 博学者）不受影响。
+**能力边界**：行动契约与结算契约随角色分批实现；仍未覆盖的角色（博学者 / 女裁缝 / 艺术家 / 杂耍艺人 /
+亡骨魔）在场时按位置**显式拒绝**——夜晚顺序表上的条目走 `plan.contract_missing`（女裁缝 / 杂耍艺人 /
+亡骨魔），白天相关条目走 `legality.day_contract_missing`（博学者 / 艺术家 / 杂耍艺人）——刻意的
+"宁可开不了、也不静默跳过"。死亡触发族（理发师 / 呆瓜 / 贤者 / 心上人）走触发管线与触发格，
+不由行动槽位承载。不在夜晚顺序表上且不在白天名单里的角色不受影响。
 
 逐角色实现（25 个角色）仍按票分批补，残余事项见
 `docs/backlog/done/settlement-engine.md`。
@@ -239,7 +244,7 @@ StepMachine（步骤机）
 | 步骤表与槽位 | `StepPlan` / `StepSlot`（`Action` / `Empty` / `Beat` 节拍 / `DawnWait` / `DayWindow` 白天窗口）；空槽位与节拍照样消耗配额，白天窗口不消耗、不自动推进 |
 | 挂起 | `StepMachineState` 的 `PendingRequest` / `AwaitingDecision` / `Block`；请求**没有超时字段**（门禁锁死） |
 | 推进条件 | `SlotQuotaState`：配额是**最短**时间；自动推进 = 配额走完 **且** 无挂起；强推可越过（D-0014） |
-| 事件与重放 | 41 种 `GameEvent`（覆盖阶段 / 槽位 / 请求 / 裁定 / 阻塞、状态账与效果、白天、胜负与裁决各事件族）；`StepMachine.Handle` 产事件、`StepMachineFolder` 折叠重建；**账事件可先于任何阶段**（开局分配），此时步骤机保持"尚未开始"；重启 = 重放，恢复 = 重放后替换快照 |
+| 事件与重放 | 48 种 `GameEvent`（覆盖阶段 / 槽位 / 请求 / 裁定 / 阻塞、状态账与效果、白天、胜负、裁决与死亡触发各事件族）；`StepMachine.Handle` 产事件、`StepMachineFolder` 折叠重建；**账事件可先于任何阶段**（开局分配），此时步骤机保持"尚未开始"；重启 = 重放，恢复 = 重放后替换快照 |
 | 开局分配 | `AssignCharactersCommand`：每席一条 `SeatStateChangedEvent`（角色 + 初始生死 = 存活），只允许在首个阶段开始前使用（D-0017 / R-0015） |
 | 建表 | `NightPlanBuilder` + `StartNightCommand`：口径进 `StepPlan.Variant`；缺事实显式拒绝，不猜（R-0014 / D-0013） |
 | 白天阶段 | `StartDayCommand` 开白天（单 `DayWindow` 槽位）→ `Nominate` / `CastVote` / `CountVotes` → `CloseDay` 处决并走完计划；`ForceAdvance` 兜底立即结束白天（未计票的提名先被要求计票，`docs/backlog/done/day-phase.md` / R-0017） |
@@ -322,7 +327,7 @@ StepMachine（步骤机）
 | 已结束的批次 | 不再跑事件触发（死亡触发能力不结算），但保留账实一致的收尾 `SessionSettlement.ReconcileHousekeeping`（常驻效果终止 / 维度解除）——它不产生规则后果 |
 | 结束批次收口 | 追加结束事件之前，同一批把仍挂起的**操作请求**作废（`OperationRequestVoidReason.GameEnded`，折成 `Voided`）与把等待说书人的**裁定点**以「本局已结束」了结（`Decision = null`）：终局快照不留闭不掉的挂起，重放只折事件；没有挂起时不产生多余事件。收口点唯一（`SessionCommit.AppendGameEnding`），①/② 两条判定路径共用；系统专属的 `GameEnded` 原因不接受客户端手动使用 |
 | 冻结 | 唯一一条 `GameEndedEvent` → `StepMachineState.Outcome`；此后一切输入（含说书人接管）被 `StepMachineRejectionReason.GameEnded` 拒绝，命令面由 `CommandGatePipeline` 的 `phase.game_ended` 闸拦下 |
-| 触发型请求 | `OperationRequestOrigin`（`Slot` / `Trigger` 两种来源）：呆瓜的公开选择挂在**事件**上而不是槽位上，因此不受"计划是否走完"约束（它常开在白天关闭之后、下一夜之前）；`phase.trigger_choice_pending` 闸在它未了结时挡住白天动作与开夜 |
+| 触发型请求 / 裁定 | `OperationRequestOrigin`（`Slot` / `Trigger` 两种来源）与 `DecisionPointRaisedEvent` 的来源表达（`SlotId` / `TriggerAbility` **恰好一个非空**）：呆瓜的公开选择、心上人的醉酒目标选择都挂在**事件**上而不是槽位上，因此不受"计划是否走完"约束（它常开在白天关闭之后、下一夜之前）；`phase.trigger_choice_pending` 闸在它们未了结时挡住白天动作与开夜（R-0027 / R-0039） |
 
 ## 3. 数据流：命令 → 事件 → 投影
 

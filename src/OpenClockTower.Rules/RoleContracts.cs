@@ -17,9 +17,19 @@ namespace OpenClockTower.Rules;
 /// </remarks>
 public static class RoleContracts
 {
-    /// <summary>事件触发器：按「本轮新事件 + 当前账」求后果（女巫的提名即死、洗脑师的到期撤下、呆瓜的死亡选择、理发师的死亡触发）。</summary>
+    /// <summary>
+    /// 事件触发器：按「本轮新事件 + 当前账」求后果（女巫的提名即死、洗脑师的到期撤下、呆瓜的死亡选择、
+    /// 理发师的死亡触发、贤者的被恶魔击杀、心上人的死亡醉酒）。
+    /// </summary>
     public static IReadOnlyList<IEventTrigger> EventTriggers { get; } =
-        [new WitchCurseTrigger(), new CerenovusRequirementTrigger(), new KlutzChoiceTrigger(), new BarberNightTrigger()];
+    [
+        new WitchCurseTrigger(),
+        new CerenovusRequirementTrigger(),
+        new KlutzChoiceTrigger(),
+        new BarberNightTrigger(),
+        new SageNightTrigger(),
+        new SweetheartDeathTrigger(),
+    ];
 
     /// <summary>能力存续契约：会在特定局势下失去的能力，失去时它名下的持续型效果立即解除。</summary>
     public static IReadOnlyList<IAbilityPresence> AbilityPresences { get; } =

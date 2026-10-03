@@ -214,6 +214,24 @@ public static class CommandGatePipeline
                 "phase");
         }
 
+        // 触发型裁定点（如心上人死亡触发的说书人选择，R-0039）同族：未了结时推进类命令一律被拒，
+        // 裁定必须尽快做出；说书人的强推 / 收口是兜底（D-0011 / D-0014）。
+        if (machine is { AwaitingDecision: not null, AwaitingDecisionTriggerAbility: not null }
+            && envelope.Command is StartPhaseCommand
+                or StartDayCommand
+                or StartNightCommand
+                or NominateCommand
+                or CastVoteCommand
+                or CountVotesCommand
+                or CloseDayCommand
+                or PunishExecutionCommand)
+        {
+            return Reject(
+                "phase.trigger_choice_pending",
+                "还有一条未了结的触发型裁定（说书人）：先裁定，或由说书人强推 / 收口",
+                "phase");
+        }
+
         switch (envelope.Command)
         {
             case SubmitResponseCommand:

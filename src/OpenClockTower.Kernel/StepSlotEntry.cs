@@ -30,6 +30,7 @@ internal static class StepSlotEntry
         var to = from + 1;
         AppendPitHagNightClose(state, context.State, events);
         AppendBarberNightClose(state, events, to);
+        AppendSageNightClose(state, events, to);
 
         events.Add(new SlotAdvancedEvent { FromIndex = from, ToIndex = to });
         if (to >= state.Plan.Slots.Count)
@@ -58,6 +59,7 @@ internal static class StepSlotEntry
         var to = from + 1;
         AppendPitHagNightClose(state, context.State, events);
         AppendBarberNightClose(state, events, to);
+        AppendSageNightClose(state, events, to);
 
         events.Add(new SlotForceAdvancedEvent { FromIndex = from, ToIndex = to, Reason = reason });
         if (to >= state.Plan.Slots.Count)
@@ -136,6 +138,33 @@ internal static class StepSlotEntry
         {
             Note = $"过时不候：理发师（{night.Source.Value} 号）死亡触发的恶魔交互没有被消费，"
                 + "夜晚结束时清空（事实不顺延到下一夜；平台口径见 rulings.md R-0033）",
+        });
+    }
+
+    /// <summary>
+    /// 贤者事实的收口（过时不候）：夜晚计划走完时仍未消费的事实显式清空。
+    /// </summary>
+    /// <remarks>
+    /// 依据 <c>docs/standard/rulings.md</c> R-0038：贤者死于恶魔击杀总发生在当夜贤者格之前
+    /// （恶魔段在前），走到夜末仍未消费说明收口缺失或数据缺陷——显式记「过时不候」再清空，
+    /// 不顺延到下一夜（<see cref="StepMachineFolder"/> 的阶段守卫会在顺延时显式失败）。
+    /// </remarks>
+    private static void AppendSageNightClose(StepMachineState state, List<GameEvent> events, int toIndex)
+    {
+        if (state.SageNight is not { } night || toIndex < state.Plan.Slots.Count)
+        {
+            return;
+        }
+
+        if (state.Plan.Phase is not (GamePhase.FirstNight or GamePhase.OtherNight))
+        {
+            return;
+        }
+
+        events.Add(new SageNightClosedEvent
+        {
+            Note = $"过时不候：贤者（{night.Sage.Value} 号）被恶魔击杀后的展示没有被消费，"
+                + "夜晚结束时清空（事实不顺延到下一夜；平台口径见 rulings.md R-0038）",
         });
     }
 

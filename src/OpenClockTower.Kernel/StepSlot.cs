@@ -116,8 +116,9 @@ public sealed record StepSlot
         new() { Id = id, Kind = StepSlotKind.Empty, Character = character };
 
     /// <summary>
-    /// 构造一个触发槽位（如理发师格）：进入时只标记「时机到了」，
-    /// 是否开操作请求由触发管线按步骤机事实决定（<see cref="BarberNight"/>）。
+    /// 构造一个触发槽位（如理发师 / 贤者 / 心上人格）：进入时只标记「时机到了」，
+    /// 是否开交互由触发管线按步骤机事实决定（<see cref="BarberNight"/> / <see cref="SageNight"/>，
+    /// 心上人则在死亡批内立即处理、本格只作顺序表保真）。
     /// </summary>
     /// <param name="id">槽位标识。</param>
     /// <param name="character">这个槽位对应的角色（触发格必须有角色归属）。</param>

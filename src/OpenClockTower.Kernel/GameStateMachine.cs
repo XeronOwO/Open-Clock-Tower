@@ -101,6 +101,13 @@ public static class GameStateMachine
             BarberNightClosedEvent => current,
             BarberNightSkippedEvent => current,
 
+            // 贤者事实（R-0038）与心上人跳过账（R-0039）：改的同样是步骤机状态，不改六维度与效果；
+            // 心上人的醉酒效果走 PersistentEffectAppliedEvent 进效果账，维度变化由结算对账产出。
+            SageNightOpenedEvent => current,
+            SageNightClosedEvent => current,
+            SageNightSkippedEvent => current,
+            SweetheartDeathSkippedEvent => current,
+
             // 方古的「限一次」标记（R-0034）：整局事实记在步骤机状态里，不改六维度与效果；
             // 侵染产生的角色 / 阵营变化与死亡另有配套的 SeatStateChangedEvent 折进账里。
             FangGuInfectionRecordedEvent => current,

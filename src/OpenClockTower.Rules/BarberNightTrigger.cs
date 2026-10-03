@@ -121,14 +121,14 @@ internal sealed class BarberNightTrigger : IEventTrigger
         SeatStateChangedEvent death,
         int index)
     {
-        var diedAsBarber = DiedAsBarber(context, death, index);
+        var diedAsBarber = DeathTriggerReadings.CharacterAt(context, death.Seat, index);
         if (diedAsBarber is null)
         {
             return (null, "死亡批里该席位有角色变化、却缺少「变化前角色」：判不了死亡时是不是理发师，"
                 + "不猜也不静默（如确为理发师死亡，请上报角色变化时带上变化前角色）");
         }
 
-        if (diedAsBarber == false)
+        if (diedAsBarber != BarberAbility.Character)
         {
             return (null, null);
         }
@@ -185,49 +185,5 @@ internal sealed class BarberNightTrigger : IEventTrigger
 
         var slot = machine.Plan.Slots[slotIndex];
         return slot.Kind == StepSlotKind.Trigger && slot.Character == BarberAbility.Character;
-    }
-
-    /// <summary>
-    /// 这条死亡事件发生时该席位是不是理发师（「必须作为理发师死亡才触发」；死后才变成理发师不算）。
-    /// </summary>
-    /// <remarks>
-    /// 批内按事件顺序重建：死亡事件自带角色维度时以它为准；否则从本批之前的角色出发，
-    /// 逐条折入排在该事件之前的角色变化。本批之前的角色取「本批第一条角色变化的『变化前角色』」
-    /// （提交管线对业务事件统一补全）。
-    /// </remarks>
-    /// <returns>true = 死亡时是理发师；false = 不是；null = 角色维度缺失、判不了（不猜，由调用方显式跳过）。</returns>
-    private static bool? DiedAsBarber(EventTriggerContext context, SeatStateChangedEvent death, int index)
-    {
-        if (death.Character is { } changed)
-        {
-            return changed == BarberAbility.Character;
-        }
-
-        var character = CharacterBeforeBatch(context, death.Seat);
-        for (var earlier = 0; earlier < index; earlier++)
-        {
-            if (context.Events[earlier] is SeatStateChangedEvent change
-                && change.Seat == death.Seat
-                && change.Character is { } value)
-            {
-                character = value;
-            }
-        }
-
-        return character is null ? null : character == BarberAbility.Character;
-    }
-
-    /// <summary>该席位在本批之前的角色；本批没有角色变化时就是批后账上的角色。</summary>
-    private static CharacterId? CharacterBeforeBatch(EventTriggerContext context, SeatId seat)
-    {
-        foreach (var gameEvent in context.Events)
-        {
-            if (gameEvent is SeatStateChangedEvent { Character: not null } change && change.Seat == seat)
-            {
-                return change.PreviousCharacter;
-            }
-        }
-
-        return context.State.Seat(seat)?.CharacterValue;
     }
 }

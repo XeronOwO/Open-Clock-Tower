@@ -39,7 +39,13 @@ internal static class StepMachineFolder
 
                 // 「今晚理发」事实跨阶段保留：白天死亡 → 当夜交互（R-0033）。
                 // 从**夜晚**带进新阶段说明夜末的「过时不候」收口缺失——CarryBarberNight 显式失败。
-                BarberNight = CarryBarberNight(state),
+                BarberNight = DeathTriggerFolder.CarryBarberNight(state),
+
+                // 贤者事实只属于当夜：阶段边界上仍挂着说明夜末收口缺失——CarrySageNight 显式失败。
+                SageNight = DeathTriggerFolder.CarrySageNight(state),
+
+                // 心上人跳过的账同样跨阶段保留：幂等依据不能随阶段遗忘（R-0039）。
+                SweetheartSkips = state?.SweetheartSkips ?? [],
             },
             SlotEnteredEvent entered => Require(state, entered) with
             {
@@ -47,6 +53,7 @@ internal static class StepMachineFolder
                 Quota = SlotQuotaState.Running,
                 PendingRequest = null,
                 AwaitingDecision = null,
+                AwaitingDecisionTriggerAbility = null,
                 Block = null,
             },
             OperationRequestIssuedEvent issued => Require(state, issued) with
@@ -87,9 +94,19 @@ internal static class StepMachineFolder
             PitHagNightClosedEvent closed => ApplyPitHagNightClosed(state, closed),
 
             // 「今晚理发」事实（R-0033）：开启 / 关闭改步骤机状态；跳过事件只在事件流里留痕。
-            BarberNightOpenedEvent barberOpened => ApplyBarberNightOpened(state, barberOpened),
-            BarberNightClosedEvent barberClosed => ApplyBarberNightClosed(state, barberClosed),
+            BarberNightOpenedEvent barberOpened => DeathTriggerFolder.ApplyBarberNightOpened(state, barberOpened),
+            BarberNightClosedEvent barberClosed => DeathTriggerFolder.ApplyBarberNightClosed(state, barberClosed),
             BarberNightSkippedEvent => state,
+
+            // 贤者「被恶魔杀死」事实（R-0038）：开启 / 关闭改步骤机状态；跳过事件只在事件流里留痕。
+            SageNightOpenedEvent sageOpened => DeathTriggerFolder.ApplySageNightOpened(state, sageOpened),
+            SageNightClosedEvent sageClosed => DeathTriggerFolder.ApplySageNightClosed(state, sageClosed),
+            SageNightSkippedEvent => state,
+
+            // 心上人的跳过账（R-0039）：幂等依据；醉酒效果本身走 PersistentEffectAppliedEvent，
+            // 维度变化交给结算对账（D-0015 推论 1）。
+            SweetheartDeathSkippedEvent sweetheartSkipped =>
+                DeathTriggerFolder.ApplySweetheartSkip(state, sweetheartSkipped),
 
             // 方古的「限一次」标记（R-0034）：整局事实，落下后不再重复。
             FangGuInfectionRecordedEvent infection => ApplyFangGuInfection(state, infection),
@@ -116,8 +133,8 @@ internal static class StepMachineFolder
 
             // 胜负结论与呆瓜选择账：两条都是步骤机自己的账（R-0024 / R-0027）。
             GameEndedEvent ended => ApplyGameEnded(state, ended),
-            KlutzChoiceMadeEvent choice => ApplyKlutzChoice(state, choice),
-            KlutzChoiceSkippedEvent skipped => ApplyKlutzChoiceSkipped(state, skipped),
+            KlutzChoiceMadeEvent choice => DeathTriggerFolder.ApplyKlutzChoice(state, choice),
+            KlutzChoiceSkippedEvent skipped => DeathTriggerFolder.ApplyKlutzChoiceSkipped(state, skipped),
 
             // 状态账的事件：进同一条事件流，但步骤机状态不由它们改变
             // （座位状态变化对步骤机的影响是"作废依赖失效的挂起请求"，在 Handle 阶段已经处理完）。
@@ -153,7 +170,8 @@ internal static class StepMachineFolder
         return current;
     }
 
-    private static StepMachineState Require(StepMachineState? state, GameEvent gameEvent) =>
+    /// <summary>折叠一条事件前必须已有状态；否则事件流顺序损坏（供 <see cref="DeathTriggerFolder"/> 共用）。</summary>
+    internal static StepMachineState Require(StepMachineState? state, GameEvent gameEvent) =>
         state ?? throw new InvalidOperationException($"事件流顺序损坏：{gameEvent.GetType().Name} 之前没有状态");
 
     private static OperationRequest RequireOpenPending(StepMachineState? state, OperationRequestId requestId)
@@ -182,7 +200,7 @@ internal static class StepMachineFolder
                 $"事件流顺序损坏：{resolved.DecisionPointId} 不是当前挂起的裁定点");
         }
 
-        return current with { AwaitingDecision = null };
+        return current with { AwaitingDecision = null, AwaitingDecisionTriggerAbility = null };
     }
 
     /// <summary>
@@ -292,17 +310,40 @@ internal static class StepMachineFolder
     /// <exception cref="InvalidOperationException">事件流顺序损坏：裁定点不属于当前槽位。</exception>
     private static StepMachineState ApplyDecisionPointRaised(StepMachineState? state, DecisionPointRaisedEvent raised)
     {
-        var current = Require(state, raised) with { AwaitingDecision = raised.DecisionPoint };
+        var before = Require(state, raised);
+
+        // 来源必须**恰好一个**：槽位（SlotId 非空）或触发（TriggerAbility 非空）。都缺会让
+        // 「谁在等说书人」无法归因、推进闸无法区分触发型挂起；都填属于产出方自相矛盾（R-0039）。
+        if ((raised.SlotId is null) == (raised.TriggerAbility is null))
+        {
+            throw new InvalidOperationException(
+                $"事件流顺序损坏：裁定点 {raised.DecisionPoint.Id} 的来源必须恰好一个"
+                + "（槽位来源填 SlotId；触发来源填 TriggerAbility 且不填 SlotId）");
+        }
+
+        // 同时只挂一个裁定点：覆盖旧挂起会让它永远答不了（触发器层应在开新裁定前显式跳过，
+        // 这里是第二道安全网——顺序损坏必须显式失败，不静默丢一条挂起）。
+        if (before.AwaitingDecision is { } pending)
+        {
+            throw new InvalidOperationException(
+                $"事件流顺序损坏：已有挂起的裁定点 {pending.Id}，不能直接覆盖为 {raised.DecisionPoint.Id}");
+        }
+
+        var current = before with
+        {
+            AwaitingDecision = raised.DecisionPoint,
+            AwaitingDecisionTriggerAbility = raised.TriggerAbility,
+        };
         if (raised.SlotPrompt is not { } prompt)
         {
             return current;
         }
 
         var slot = current.CurrentSlot;
-        if (slot is null || slot.Id != raised.SlotId)
+        if (slot is null || raised.SlotId is not { } slotId || slot.Id != slotId)
         {
             throw new InvalidOperationException(
-                $"事件流顺序损坏：裁定点 {raised.SlotId.Value} 不在当前槽位上，不能回写槽位提示");
+                $"事件流顺序损坏：裁定点 {raised.SlotId?.Value ?? "(触发来源)"} 不在当前槽位上，不能回写槽位提示");
         }
 
         var slots = current.Plan.Slots.ToArray();
@@ -399,55 +440,6 @@ internal static class StepMachineFolder
     }
 
     /// <summary>
-    /// 「今晚理发」事实跨阶段保留的守卫：只允许白天 → 夜晚（白天死亡的事件在**当夜**交互，
-    /// 百科《死亡触发能力》· 2026-10-01 抓取 · 能力简介）；从夜晚带进新阶段说明夜末的
-    /// 「过时不候」收口缺失，显式失败而不是静默顺延（D-0014 能力 3）。
-    /// </summary>
-    private static BarberNight? CarryBarberNight(StepMachineState? state)
-    {
-        if (state?.BarberNight is not { } night)
-        {
-            return null;
-        }
-
-        if (state.Plan.Phase is GamePhase.FirstNight or GamePhase.OtherNight)
-        {
-            throw new InvalidOperationException(
-                $"事件流顺序损坏：夜晚（{state.Plan.Label}）已经结束，理发师之夜事实还没有收口"
-                + "（过时不候的关闭事件缺失），不能把它顺延到新阶段");
-        }
-
-        return night;
-    }
-
-    /// <summary>开启「今晚理发」事实；同一夜不能开两次（重复即事件流损坏）。</summary>
-    private static StepMachineState ApplyBarberNightOpened(StepMachineState? state, BarberNightOpenedEvent opened)
-    {
-        var current = Require(state, opened);
-        if (current.BarberNight is not null)
-        {
-            throw new InvalidOperationException("事件流顺序损坏：理发师之夜事实已经开启过，不能重复开启");
-        }
-
-        return current with
-        {
-            BarberNight = new BarberNight { Source = opened.Source, Note = opened.Note },
-        };
-    }
-
-    /// <summary>关闭「今晚理发」事实：没有开启却要关闭一律抛错（恢复必须失败，不静默继续）。</summary>
-    private static StepMachineState ApplyBarberNightClosed(StepMachineState? state, BarberNightClosedEvent closed)
-    {
-        var current = Require(state, closed);
-        if (current.BarberNight is null)
-        {
-            throw new InvalidOperationException("事件流顺序损坏：理发师之夜事实没有开启，却要关闭");
-        }
-
-        return current with { BarberNight = null };
-    }
-
-    /// <summary>
     /// 落下方古的「限一次」标记；一局只能落下一次（重复即事件流损坏——标记整局不复用）。
     /// </summary>
     private static StepMachineState ApplyFangGuInfection(
@@ -497,6 +489,7 @@ internal static class StepMachineFolder
             Quota = SlotQuotaState.Running,
             PendingRequest = null,
             AwaitingDecision = null,
+            AwaitingDecisionTriggerAbility = null,
             Block = null,
         };
 
@@ -538,57 +531,6 @@ internal static class StepMachineFolder
                 Condition = ended.Condition,
                 Detail = ended.Detail,
             },
-        };
-    }
-
-    /// <summary>记录呆瓜的选择；同一名呆瓜只能有一条记录。</summary>
-    private static StepMachineState ApplyKlutzChoice(StepMachineState? state, KlutzChoiceMadeEvent choice)
-    {
-        var current = Require(state, choice);
-        if (current.KlutzChoices.Any(record => record.Klutz == choice.Klutz))
-        {
-            throw new InvalidOperationException(
-                $"事件流顺序损坏：席位 {choice.Klutz.Value} 的呆瓜选择已经记录过");
-        }
-
-        return current with
-        {
-            KlutzChoices =
-            [
-                .. current.KlutzChoices,
-                new KlutzChoiceRecord
-                {
-                    Klutz = choice.Klutz,
-                    Target = choice.Target,
-                    Detail = $"呆瓜（{choice.Klutz.Value} 号）公开选择了 {choice.Target.Value} 号",
-                },
-            ],
-        };
-    }
-
-    /// <summary>记录呆瓜"没有选择"（能力未生效 / 被作废）；同一名呆瓜只能有一条记录。</summary>
-    private static StepMachineState ApplyKlutzChoiceSkipped(
-        StepMachineState? state,
-        KlutzChoiceSkippedEvent skipped)
-    {
-        var current = Require(state, skipped);
-        if (current.KlutzChoices.Any(record => record.Klutz == skipped.Klutz))
-        {
-            throw new InvalidOperationException(
-                $"事件流顺序损坏：席位 {skipped.Klutz.Value} 的呆瓜选择已经记录过");
-        }
-
-        return current with
-        {
-            KlutzChoices =
-            [
-                .. current.KlutzChoices,
-                new KlutzChoiceRecord
-                {
-                    Klutz = skipped.Klutz,
-                    Detail = skipped.Reason,
-                },
-            ],
         };
     }
 }

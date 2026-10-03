@@ -28,13 +28,16 @@ public static class StepMachineStateComparer
                && PlanEquivalent(left.Plan, right.Plan)
                && RequestEquivalent(left.PendingRequest, right.PendingRequest)
                && DecisionEquivalent(left.AwaitingDecision, right.AwaitingDecision)
+               && left.AwaitingDecisionTriggerAbility == right.AwaitingDecisionTriggerAbility
                && string.Equals(left.Block?.Reason, right.Block?.Reason, StringComparison.Ordinal)
                && DayEquivalent(left.Day, right.Day)
                && OutcomeEquivalent(left.Outcome, right.Outcome)
                && KlutzChoicesEquivalent(left.KlutzChoices, right.KlutzChoices)
                && FangGuInfectionEquivalent(left.FangGuInfection, right.FangGuInfection)
                && PitHagNightEquivalent(left.PitHagNight, right.PitHagNight)
-               && BarberNightEquivalent(left.BarberNight, right.BarberNight);
+               && BarberNightEquivalent(left.BarberNight, right.BarberNight)
+               && SageNightEquivalent(left.SageNight, right.SageNight)
+               && SweetheartSkipsEquivalent(left.SweetheartSkips, right.SweetheartSkips);
     }
 
     /// <summary>
@@ -124,6 +127,44 @@ public static class StepMachineStateComparer
             ({ } a, { } b) => a.Source == b.Source
                 && string.Equals(a.Note, b.Note, StringComparison.Ordinal),
         };
+
+    /// <summary>
+    /// 贤者事实（R-0038）进比较器：击杀者、击杀时角色与生效判定都是"当晚要不要开展示"的输入，
+    /// 漏比会让重建校验在这一族上失明。
+    /// </summary>
+    private static bool SageNightEquivalent(SageNight? left, SageNight? right) =>
+        (left, right) switch
+        {
+            (null, null) => true,
+            (not null, null) or (null, not null) => false,
+            ({ } a, { } b) => a.Sage == b.Sage
+                && a.Demon == b.Demon
+                && a.DemonCharacter == b.DemonCharacter
+                && a.Effective == b.Effective
+                && string.Equals(a.Note, b.Note, StringComparison.Ordinal),
+        };
+
+    /// <summary>心上人跳过账（R-0039）进比较器：它是触发器的幂等依据，漏比会让重建后重复触发。</summary>
+    private static bool SweetheartSkipsEquivalent(
+        IReadOnlyList<SweetheartSkipRecord> left,
+        IReadOnlyList<SweetheartSkipRecord> right)
+    {
+        if (left.Count != right.Count)
+        {
+            return false;
+        }
+
+        for (var index = 0; index < left.Count; index++)
+        {
+            if (left[index].Sweetheart != right[index].Sweetheart
+                || !string.Equals(left[index].Reason, right[index].Reason, StringComparison.Ordinal))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
 
     private static bool OutcomeEquivalent(GameOutcome? left, GameOutcome? right) =>
         (left, right) switch

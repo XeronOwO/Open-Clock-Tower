@@ -500,6 +500,9 @@ public static class StepMachine
         // ② 触发器开出的裁定点（如理发师死亡触发的「哪名恶魔执行交换」）：这里只落裁定本身——
         //    它的续推动作（开请求 / 收口事实）由同一批的触发管线产出；在这里替它推进计划，
         //    会让尚未开出的后续请求错过自己的槽位（触发来源请求的旁路口径见 HandleResponse）。
+        // 「结清后没有任何后续挂起」的收口路径（贤者展示 / 心上人醉酒）由提交管线补一步
+        // 「重进本格」复位配额（见 SessionCommit.BuildDecisionContinuation，独立复核 H-1）——
+        // 放在那里而不是这里，是因为只有**触发管线跑完之后**才知道有没有后续请求。
         var slot = state.CurrentSlot;
         if (slot is null || AbilitySettlement.DecisionPointIdOf(state, slot) != input.DecisionPointId)
         {

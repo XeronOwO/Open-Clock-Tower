@@ -348,9 +348,13 @@ public sealed class GameSession
                     settlement with { Machine = nextMachine },
                     businessEvents);
                 LogDiagnostics(reconciliation.Diagnostics);
-                (sequence, nextMachine) = SessionCommit.AppendDerived(
+
+                // 派生事件入账 + 裁定结清后的续推（H-1：触发型 / 触发格裁定结清且无后续挂起时
+                // 重进本格复位配额；内核只落裁定本身、不产推进事件）。
+                (sequence, nextMachine) = SessionCommit.AppendDerivedWithContinuation(
                     drafts,
                     derivedEvents,
+                    businessEvents,
                     reconciliation.Events,
                     sequence,
                     recordedAt,

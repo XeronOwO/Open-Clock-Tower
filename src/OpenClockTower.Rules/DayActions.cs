@@ -79,6 +79,10 @@ public static class DayActions
         // 理发师格（触发格 + BarberNightTrigger，R-0033）——白天本身不发生交互，但必须登记覆盖，
         // 否则开白天会被 legality.day_contract_missing 拒绝。
         new("barber"),
+
+        // 心上人：任何死因（含白天处决）都在死亡批内立即开触发型裁定 + 施加持续醉酒（R-0039）；
+        // 白天死亡同样要立刻处理，因此必须登记覆盖。
+        new("sweetheart"),
     ];
 
     /// <summary>该角色是否与白天阶段相关（无论实现与否）。</summary>

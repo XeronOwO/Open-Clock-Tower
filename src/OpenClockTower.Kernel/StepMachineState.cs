@@ -28,6 +28,12 @@ public sealed record StepMachineState
     /// <summary>等待说书人裁定的裁定点（R-0009 StorytellerDecides）；null 表示没有。</summary>
     public DecisionPoint? AwaitingDecision { get; init; }
 
+    /// <summary>
+    /// 挂起裁定点的**触发来源**归因（如心上人死亡触发的说书人选择）；null = 槽位来源（或没有挂起）。
+    /// 与 <see cref="AwaitingDecision"/> 同步置位 / 清空：推进闸用它区分触发型挂起（R-0039）。
+    /// </summary>
+    public AbilityId? AwaitingDecisionTriggerAbility { get; init; }
+
     /// <summary>阻塞报警（R-0009 BlockAndAlert）；null 表示没有。</summary>
     public StepBlock? Block { get; init; }
 
@@ -78,6 +84,22 @@ public sealed record StepMachineState
     /// <c>docs/standard/rulings.md</c> R-0033。
     /// </remarks>
     public BarberNight? BarberNight { get; init; }
+
+    /// <summary>
+    /// 贤者「被恶魔杀死」的待展示事实：死亡批记下、当夜贤者触发格开裁定；null = 没有待处理事实。
+    /// </summary>
+    /// <remarks>
+    /// 与 <see cref="BarberNight"/> 同族：事实只属于当夜，夜晚计划走完仍未消费时由推进路径
+    /// 显式清空并记「过时不候」；阶段边界上仍挂着即视为事件流收口缺失（显式失败，不顺延）。
+    /// 口径见 <c>docs/standard/rulings.md</c> R-0038。
+    /// </remarks>
+    public SageNight? SageNight { get; init; }
+
+    /// <summary>
+    /// 心上人的死亡触发跳过账（能力未生效 / 说书人未裁定），按发生顺序。
+    /// 触发器的幂等依据——有记录之后不再为同一名心上人的死亡重复求值（R-0039）。
+    /// </summary>
+    public IReadOnlyList<SweetheartSkipRecord> SweetheartSkips { get; init; } = [];
 
     /// <summary>当前槽位；计划已走完时为 null。</summary>
     public StepSlot? CurrentSlot =>
