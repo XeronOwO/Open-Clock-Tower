@@ -74,6 +74,7 @@ public sealed class SageNightTests
         {
             SlotId = null,
             TriggerAbility = new AbilityId("sweetheart"),
+            AttributionSeat = new SeatId(3),
             DecisionPoint = new DecisionPoint
             {
                 Id = new DecisionPointId("sweetheart:1"),
@@ -83,6 +84,7 @@ public sealed class SageNightTests
 
         Assert.NotNull(raised.AwaitingDecision);
         Assert.Equal(new AbilityId("sweetheart"), raised.AwaitingDecisionTriggerAbility);
+        Assert.Equal(new SeatId(3), raised.AwaitingDecisionSeat);
 
         var entered = StepMachine.Apply(raised, new SlotEnteredEvent
         {
@@ -91,6 +93,7 @@ public sealed class SageNightTests
         })!;
         Assert.Null(entered.AwaitingDecision);
         Assert.Null(entered.AwaitingDecisionTriggerAbility);
+        Assert.Null(entered.AwaitingDecisionSeat);
     }
 
     /// <summary>裁定点来源必须恰好一个：都缺 / 都填都是事件流损坏（显式失败）。</summary>
@@ -124,6 +127,30 @@ public sealed class SageNightTests
             }));
     }
 
+    /// <summary>
+    /// 旧版本事件流没有归属席位字段：重放**容忍为 null**（后加的可空字段不能把旧事件流打断），
+    /// 界面退回行动者 / 摘要回退；新开点一律显式给出，由 5 处开点的用例锁住。
+    /// </summary>
+    [Fact]
+    public void MissingAttributionSeat_IsToleratedForOldStreams()
+    {
+        var started = Start(NightPlan(Trigger("sage")));
+
+        var oldShape = StepMachine.Apply(started.State, new DecisionPointRaisedEvent
+        {
+            SlotId = new StepSlotId("sage"),
+            DecisionPoint = new DecisionPoint
+            {
+                Id = new DecisionPointId("d:3"),
+                Prompt = StepFixture.Prompt("seat:1"),
+            },
+        });
+
+        Assert.NotNull(oldShape);
+        Assert.NotNull(oldShape!.AwaitingDecision);
+        Assert.Null(oldShape.AwaitingDecisionSeat);
+    }
+
     /// <summary>比较器看得见贤者事实与触发来源：重建校验不能在这两处失明。</summary>
     [Fact]
     public void Comparer_SeesFactAndTriggerOrigin()
@@ -136,6 +163,7 @@ public sealed class SageNightTests
         {
             SlotId = null,
             TriggerAbility = new AbilityId("sage"),
+            AttributionSeat = new SeatId(2),
             DecisionPoint = new DecisionPoint
             {
                 Id = new DecisionPointId("d:1"),
@@ -144,6 +172,12 @@ public sealed class SageNightTests
         });
         var withoutOrigin = decision! with { AwaitingDecisionTriggerAbility = null };
         Assert.False(StepMachineStateComparer.AreEquivalent(decision, withoutOrigin));
+
+        // 归属席位同样进比较器：重建校验不能在"谁在等"上失明。
+        var withoutSeat = decision! with { AwaitingDecisionSeat = null };
+        Assert.False(StepMachineStateComparer.AreEquivalent(decision, withoutSeat));
+        var otherSeat = decision! with { AwaitingDecisionSeat = new SeatId(9) };
+        Assert.False(StepMachineStateComparer.AreEquivalent(decision, otherSeat));
     }
 
     /// <summary>
@@ -159,6 +193,7 @@ public sealed class SageNightTests
         {
             SlotId = null,
             TriggerAbility = new AbilityId("sweetheart"),
+            AttributionSeat = new SeatId(3),
             DecisionPoint = new DecisionPoint
             {
                 Id = new DecisionPointId("sweetheart:3"),
@@ -207,6 +242,7 @@ public sealed class SageNightTests
         {
             SlotId = null,
             TriggerAbility = new AbilityId("sweetheart"),
+            AttributionSeat = new SeatId(3),
             DecisionPoint = new DecisionPoint
             {
                 Id = new DecisionPointId("sweetheart:3"),

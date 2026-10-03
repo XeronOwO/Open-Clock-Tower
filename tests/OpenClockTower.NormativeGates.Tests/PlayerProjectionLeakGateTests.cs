@@ -41,9 +41,11 @@ public sealed partial class PlayerProjectionLeakGateTests
     {
         "AbilityResolutionDto.cs",
         "AbilityUseDto.cs",
+        "BarberNightDto.cs",
         "CommandResultDto.cs",
         "DeferredDeathDto.cs",
         "EffectDto.cs",
+        "FangGuInfectionDto.cs",
         "MalfunctionDto.cs",
         "PendingRequestDto.cs",
         "PitHagNightDto.cs",
@@ -347,6 +349,12 @@ public sealed partial class PlayerProjectionLeakGateTests
         "PendingRequestDto",
         "SeatAnnotationDto",
         "normalizeStorytellerView",
+
+        // 整局 / 跨阶段事实与裁量窗口的 DTO：只说书人可见，玩家侧出现任何一个都说明越界。
+        "FangGuInfectionDto",
+        "BarberNightDto",
+        "PitHagNightDto",
+        "DeferredDeathDto",
     ];
 
     private static Regex WholeWord(string token) =>

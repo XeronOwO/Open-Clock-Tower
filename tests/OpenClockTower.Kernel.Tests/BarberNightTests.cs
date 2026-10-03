@@ -123,12 +123,15 @@ public sealed class BarberNightTests
             new DecisionPointRaisedEvent
             {
                 SlotId = new StepSlotId("barber"),
+                AttributionSeat = new SeatId(1),
                 DecisionPoint = new DecisionPoint
                 {
                     Id = decisionId,
                     Prompt = StepFixture.Prompt("seat:1", "seat:2"),
                 },
             })!;
+
+        Assert.Equal(new SeatId(1), withDecision.AwaitingDecisionSeat);
 
         var outcome = StepMachine.Handle(
             withDecision,
@@ -146,6 +149,7 @@ public sealed class BarberNightTests
             gameEvent => gameEvent is SlotAdvancedEvent or SlotForceAdvancedEvent or SlotEnteredEvent);
         Assert.Equal(0, outcome.State.SlotIndex);
         Assert.Null(outcome.State.AwaitingDecision);
+        Assert.Null(outcome.State.AwaitingDecisionSeat);
     }
 
     /// <summary>

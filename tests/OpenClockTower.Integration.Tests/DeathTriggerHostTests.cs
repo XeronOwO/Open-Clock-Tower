@@ -81,6 +81,9 @@ public sealed class DeathTriggerHostTests
         var sweetheartDecision = await WaitForTriggerDecisionAsync(storyteller, "心上人");
         Assert.Null(sweetheartDecision.CurrentSlotId);
 
+        // 触发型裁定没有槽位：归属由内核显式给出（死亡的心上人 = 3 号）——说书人圆环据此定位。
+        Assert.Equal(3, sweetheartDecision.AwaitingDecisionSeat);
+
         // ② 推进命令被拒：裁定未了结前不许开夜（R-0039 第 6 条）。
         var blockedNight = await storyteller.InvokeAsync<CommandResultDto>(
             "StartNight",
@@ -124,6 +127,9 @@ public sealed class DeathTriggerHostTests
         Assert.Contains("推演", sageDecision.AwaitingDecisionContext, StringComparison.Ordinal);
         Assert.Contains("1 号", sageDecision.AwaitingDecisionContext, StringComparison.Ordinal);
 
+        // 触发格没有行动者：归属 = 死亡时点以贤者身份落账的席位（2 号）。
+        Assert.Equal(2, sageDecision.AwaitingDecisionSeat);
+
         // ⑤ 说书人展示 1 号与 4 号 → 信息只到贤者本人。
         var shown = await storyteller.InvokeAsync<CommandResultDto>(
             "ResolveDecisionPoint",
@@ -148,9 +154,9 @@ public sealed class DeathTriggerHostTests
             view => view.AwaitingDecisionId is null && view.PlanCompleted,
             Wait);
         Assert.True(
-            settled is { AwaitingDecisionId: null, PlanCompleted: true },
+            settled is { AwaitingDecisionId: null, AwaitingDecisionSeat: null, PlanCompleted: true },
             $"贤者裁定结清后夜晚没有继续推进：slot={settled?.SlotIndex}/{settled?.SlotCount} "
-                + $"completed={settled?.PlanCompleted}");
+                + $"completed={settled?.PlanCompleted}；归属残留={settled?.AwaitingDecisionSeat}");
     }
 
     private static void AssertSageInfo(InformationResultDto info)

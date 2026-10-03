@@ -130,6 +130,12 @@ public sealed class FangGuHostTests
         Assert.Equal(LifeState.Alive, LifeOf(host, 3));
         Assert.Equal("mutant", CharacterOf(host, 5));
 
+        // 「限一次」整局事实进说书人投影（R-0034）：面板在魔典中心显示标记。
+        var infectedView = await storyteller.InvokeAsync<StorytellerViewDto>("GetStorytellerView");
+        Assert.NotNull(infectedView.FangGuInfection);
+        Assert.Equal(3, infectedView.FangGuInfection!.Seat);
+        Assert.Equal(1, infectedView.FangGuInfection.Source);
+
         await CompleteNightAsync(storyteller, "fang-gu-3");
 
         // 事件流证据：标记只有一条；侵染的两次变化带「变化前角色」与阵营；被攻击者没有死亡。

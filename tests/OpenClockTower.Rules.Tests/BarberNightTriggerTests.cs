@@ -219,6 +219,9 @@ public sealed class BarberNightTriggerTests
             state,
             machine,
             SlotEntered()))));
+
+        // 触发格没有行动者：归属 = 死亡时点以理发师身份落账的席位。
+        Assert.Equal(BarberSeat, raised.AttributionSeat);
         Assert.Equal(
             ["seat:4", "seat:5"],
             raised.DecisionPoint.Prompt.Options.Select(option => option.Value).ToArray());

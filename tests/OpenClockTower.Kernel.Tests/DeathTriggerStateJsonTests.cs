@@ -51,6 +51,7 @@ public sealed class DeathTriggerStateJsonTests
             Control = ControlMode.Automatic,
             AwaitingDecision = decision,
             AwaitingDecisionTriggerAbility = new AbilityId("sweetheart"),
+            AwaitingDecisionSeat = new SeatId(3),
             SageNight = new SageNight
             {
                 Sage = new SeatId(2),
@@ -101,6 +102,7 @@ public sealed class DeathTriggerStateJsonTests
         Assert.Null(restored!.SageNight);
         Assert.Empty(restored.SweetheartSkips);
         Assert.Null(restored.AwaitingDecisionTriggerAbility);
+        Assert.Null(restored.AwaitingDecisionSeat);
         Assert.True(StepMachineStateComparer.AreEquivalent(state, restored));
     }
 }

@@ -197,6 +197,11 @@ public sealed class BarberHostTests
                 1L)).Kind);
         Assert.Equal(LifeState.Dead, LifeOf(host, 1));
 
+        // 「今晚理发」事实进说书人投影（R-0033）：面板据此显示待处理交互。
+        var pendingView = await storyteller.InvokeAsync<StorytellerViewDto>("GetStorytellerView");
+        Assert.NotNull(pendingView.BarberNight);
+        Assert.Equal(1, pendingView.BarberNight!.Source);
+
         // 同一夜的理发师格：恶魔（4 号）收到交换请求，摇头 → 不交换。
         var swap = await WaitForRequestAsync(host, new SeatId(4));
         Assert.Contains(swap.Prompt.Options, option => option.Value == "decline");
@@ -211,6 +216,10 @@ public sealed class BarberHostTests
 
         Assert.Equal("dreamer", CharacterOf(host, 3));
         Assert.Equal("no-dashii", CharacterOf(host, 4));
+
+        // 摇头收口 → 事实从说书人投影消失（不残留幽灵事实）。
+        var closedView = await storyteller.InvokeAsync<StorytellerViewDto>("GetStorytellerView");
+        Assert.Null(closedView.BarberNight);
 
         await CompleteNightAsync(storyteller, "barber-night-death-2");
 

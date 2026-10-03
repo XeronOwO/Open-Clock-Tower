@@ -17,9 +17,13 @@ import {
   decisionSeatOf,
   effectMarkLabel,
   factValueOf,
+  optionSeatIsDead,
   ringPosition,
   seatNumbersOf,
+  seatOfOptionValue,
   seatTitleOf,
+  slotCounterTextOf,
+  slotProgressTextOf,
 } from '@/display/grimoire'
 
 function viewOf(overrides: Partial<StorytellerViewDto> = {}): StorytellerViewDto {
@@ -36,6 +40,7 @@ function viewOf(overrides: Partial<StorytellerViewDto> = {}): StorytellerViewDto
     awaitingDecisionId: null,
     awaitingDecisionContext: null,
     awaitingDecisionOptions: [],
+    awaitingDecisionSeat: null,
     blockedReason: null,
     currentSlotActor: null,
     currentSlotContext: null,
@@ -51,6 +56,8 @@ function viewOf(overrides: Partial<StorytellerViewDto> = {}): StorytellerViewDto
     outcome: null,
     klutzChoices: [],
     pitHagNight: null,
+    fangGuInfection: null,
+    barberNight: null,
     annotations: [],
     ...overrides,
   }
@@ -278,6 +285,73 @@ describe('注意力归属（卡点 / 裁定 / 当前槽位）', () => {
     expect(decisionSeatOf(withDigest)).toBe(5)
     expect(decisionSeatOf(withoutActor)).toBeNull()
     expect(attentionSeatOf(withoutActor)).toBeNull()
+  })
+
+  it('服务端给的归属席位优先于槽位行动者（触发格 / 触发型裁定的唯一归属）', () => {
+    const view = viewOf({
+      awaitingDecisionId: 'dp-4',
+      awaitingDecisionSeat: 3,
+      currentSlotActor: 1,
+      stepDigest: { seat: 5, character: null, state: null, ability: null, optionCount: null, onNoOption: null },
+    })
+
+    expect(decisionSeatOf(view)).toBe(3)
+    expect(attentionSeatOf(view)).toBe(3)
+  })
+})
+
+describe('槽位读数（收口不越界）', () => {
+  it('计划走完显示「已完成」，不再出现 2 / 1', () => {
+    const completed = viewOf({ slotIndex: 1, slotCount: 1, planCompleted: true })
+
+    expect(slotCounterTextOf(completed)).toBe('已完成')
+    expect(slotProgressTextOf(completed)).toBe('已完成')
+  })
+
+  it('进行中的读数从 1 起算；未建计划显示占位', () => {
+    const running = viewOf({ slotIndex: 0, slotCount: 13 })
+
+    expect(slotCounterTextOf(running)).toBe('1 / 13')
+    expect(slotProgressTextOf(running)).toBe('第 1 / 13 步')
+    expect(slotCounterTextOf(viewOf({ slotCount: 0 }))).toBe('—')
+    expect(slotProgressTextOf(viewOf({ slotCount: 0 }))).toBe('尚未建计划')
+  })
+
+  it('坏载荷（下标越界但未标 completed）也封顶为「已完成」', () => {
+    const broken = viewOf({ slotIndex: 9, slotCount: 1 })
+
+    expect(slotCounterTextOf(broken)).toBe('已完成')
+    expect(slotProgressTextOf(broken)).toBe('已完成')
+  })
+})
+
+describe('裁定候选的生死标注（映射，不是规则判断）', () => {
+  it('只认 seat:N 编码；其它选项值一律不标注', () => {
+    expect(seatOfOptionValue('seat:3')).toBe(3)
+    expect(seatOfOptionValue('seat:0')).toBeNull()
+    expect(seatOfOptionValue('seat:')).toBeNull()
+    expect(seatOfOptionValue('seat:3x')).toBeNull()
+    expect(seatOfOptionValue('pair:3+4')).toBeNull()
+    expect(seatOfOptionValue('decline')).toBeNull()
+    // 与内核 SeatChoice.Parse 一致：前导零按十进制解析；超界（> 1000）视为坏载荷。
+    expect(seatOfOptionValue('seat:007')).toBe(7)
+    expect(seatOfOptionValue('seat:1001')).toBeNull()
+  })
+
+  it('已死亡标 true；存活 / 未观测 / 非席位选项标 false', () => {
+    const view = viewOf({
+      seats: [
+        seatOf(2, [fact(DIMENSION_LIFE, LIFE_DEAD)]),
+        seatOf(3, [fact(DIMENSION_LIFE, LIFE_ALIVE)]),
+        seatOf(4, [fact(DIMENSION_CHARACTER, 'clockmaker')]),
+      ],
+    })
+
+    expect(optionSeatIsDead(view, 'seat:2')).toBe(true)
+    expect(optionSeatIsDead(view, 'seat:3')).toBe(false)
+    expect(optionSeatIsDead(view, 'seat:4')).toBe(false)
+    expect(optionSeatIsDead(view, 'seat:5')).toBe(false)
+    expect(optionSeatIsDead(view, 'pair:2+3')).toBe(false)
   })
 })
 

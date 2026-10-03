@@ -31,6 +31,9 @@ public sealed class SweetheartDeathTriggerTests
         var raised = Assert.IsType<DecisionPointRaisedEvent>(Assert.Single(produced));
         Assert.Null(raised.SlotId);
         Assert.Equal(new AbilityId("sweetheart"), raised.TriggerAbility);
+
+        // 触发型裁定没有槽位：归属 = 死亡的心上人本人。
+        Assert.Equal(SweetheartSeat, raised.AttributionSeat);
         Assert.Equal(new DecisionPointId("sweetheart:1"), raised.DecisionPoint.Id);
         Assert.Equal(
             ["seat:1", "seat:2", "seat:5"],

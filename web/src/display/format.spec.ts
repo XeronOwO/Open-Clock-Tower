@@ -5,8 +5,11 @@ import {
   asArray,
   asCount,
   asCredential,
+  asSeatNumber,
   asSizedText,
   clockTimeOf,
+  normalizeBarberNight,
+  normalizeFangGuInfection,
   normalizeRoomHealth,
   normalizeSeatAnnotation,
   normalizeStorytellerView,
@@ -20,6 +23,15 @@ describe('不可信输入规范化（架构 §4.4）', () => {
     expect(asArray<number>(null)).toEqual([])
     expect(asArray<number>({ length: 1 })).toEqual([])
     expect(asArray<number>([1, 2])).toEqual([1, 2])
+  })
+
+  it('席位号必须是 1..1000 的正整数：0 / 负数 / 小数 / 超界都退化成 null', () => {
+    expect(asSeatNumber(3)).toBe(3)
+    expect(asSeatNumber(0)).toBeNull()
+    expect(asSeatNumber(-1)).toBeNull()
+    expect(asSeatNumber(1.5)).toBeNull()
+    expect(asSeatNumber(1_001)).toBeNull()
+    expect(asSeatNumber('3')).toBeNull()
   })
 
   it('席位号非法时降级为占位符', () => {
@@ -53,6 +65,9 @@ describe('说书人视图规范化', () => {
     expect(view.stepDigest).toBeNull()
     expect(view.lastVoidedRequest).toBeNull()
     expect(view.awaitingDecisionOptions).toEqual([])
+    expect(view.awaitingDecisionSeat).toBeNull()
+    expect(view.fangGuInfection).toBeNull()
+    expect(view.barberNight).toBeNull()
     expect(view.health).toEqual({ degraded: false, reason: null, since: null })
   })
 
@@ -105,6 +120,41 @@ describe('说书人视图规范化', () => {
     expect(view.lastResolution?.effective).toBe(false)
     expect(view.lastResolution?.malfunctions).toEqual(['Poisoned'])
     expect(view.awaitingDecisionOptions).toEqual([{ value: 'a', preview: '选它' }])
+  })
+
+  it('归属席位与两枚整局事实（限一次 / 今晚理发）按形状归一化', () => {
+    const view = normalizeStorytellerView({
+      awaitingDecisionId: 'dp-9',
+      awaitingDecisionSeat: 3,
+      fangGuInfection: { seat: 3, source: 1, note: '方古侵染' },
+      barberNight: { source: 1, note: '理发师死亡' },
+    })
+
+    expect(view.awaitingDecisionSeat).toBe(3)
+    expect(view.fangGuInfection).toEqual({ seat: 3, source: 1, note: '方古侵染' })
+    expect(view.barberNight).toEqual({ source: 1, note: '理发师死亡' })
+  })
+
+  it('限一次 / 今晚理发：坏形状退化成"没有事实"，不编数据', () => {
+    expect(normalizeFangGuInfection({ seat: 0, source: 1 })).toBeNull()
+    expect(normalizeFangGuInfection({ seat: 3 })).toBeNull()
+    expect(normalizeFangGuInfection(null)).toBeNull()
+    expect(normalizeBarberNight({ source: 0 })).toBeNull()
+    expect(normalizeBarberNight({ source: '一号' })).toBeNull()
+
+    const view = normalizeStorytellerView({
+      awaitingDecisionSeat: '三号',
+      fangGuInfection: { seat: 0, source: 1 },
+      barberNight: null,
+    })
+    expect(view.awaitingDecisionSeat).toBeNull()
+    expect(view.fangGuInfection).toBeNull()
+    expect(view.barberNight).toBeNull()
+
+    // 归属链上的席位字段必须拒绝 0：否则会短路前端的回退链（「定位到 0 号」）。
+    const zeroSeats = normalizeStorytellerView({ awaitingDecisionSeat: 0, currentSlotActor: 0 })
+    expect(zeroSeats.awaitingDecisionSeat).toBeNull()
+    expect(zeroSeats.currentSlotActor).toBeNull()
   })
 
   it('每步摘要与最近作废按形状归一化，枚举/数字类型不猜', () => {

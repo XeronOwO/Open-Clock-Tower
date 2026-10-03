@@ -145,6 +145,9 @@ public sealed class SageNightTriggerTests
         var raised = Assert.IsType<DecisionPointRaisedEvent>(Assert.Single(produced));
         Assert.Equal(new StepSlotId("sage"), raised.SlotId);
         Assert.Null(raised.TriggerAbility);
+
+        // 触发格没有行动者：归属 = 死亡时点以贤者身份落账的席位。
+        Assert.Equal(SageSeat, raised.AttributionSeat);
         Assert.Equal(new DecisionPointId("sage:sv:night-2:sage:pair"), raised.DecisionPoint.Id);
         Assert.Equal(
             ["pair:3+4", "pair:3+5", "pair:4+5"],
