@@ -56,6 +56,8 @@ public sealed partial class PlayerProjectionLeakGateTests
         "SeatCharacterAssignmentDto.cs",
         "SeatStateDto.cs",
         "SeatStateFactDto.cs",
+        "SetupProposalDto.cs",
+        "SetupTypeCountDto.cs",
         "SlotAbilityDto.cs",
         "StepDigestDto.cs",
         "StorytellerJoinDto.cs",
@@ -356,6 +358,10 @@ public sealed partial class PlayerProjectionLeakGateTests
         "BarberNightDto",
         "PitHagNightDto",
         "DeferredDeathDto",
+
+        // 配板建议：只说书人查询、不落账，玩家侧出现任何一个都说明越界（R-0041 / R-0042）。
+        "SetupProposalDto",
+        "SetupTypeCountDto",
     ];
 
     private static Regex WholeWord(string token) =>
