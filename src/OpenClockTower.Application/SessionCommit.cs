@@ -144,8 +144,9 @@ internal static class SessionCommit
     }
 
     /// <summary>
-    /// 结束批次的收口：先把仍挂起的操作请求作废、把等待说书人的裁定点收口（若有），
-    /// 再追加唯一的结束事件并把它们折进派生视图（R-0024；票据 ended-game-pending-request-void）。
+    /// 结束批次的收口：先把仍挂起的操作请求作废、把等待说书人的裁定点与阻塞报警收口（若有），
+    /// 再追加唯一的结束事件并把它们折进派生视图（R-0024；票据 ended-game-pending-request-void
+    /// 与 terminal-hold-residue）。
     /// </summary>
     /// <remarks>
     /// <para>
@@ -154,9 +155,9 @@ internal static class SessionCommit
     /// 重连把它重投给玩家，而一切提交都被 <c>phase.game_ended</c> 拒（D-0010 / D-0011 / D-0014）。
     /// </para>
     /// <para>
-    /// 两类挂起——操作请求（槽位来源与触发来源一视同仁）与等待说书人的裁定点——在结束之后
-    /// 都没有任何出口能再了结它们，因此一并收口；没有挂起时不产生多余事件（幂等）。
-    /// 收口不重跑触发管线（《处决》第 3 步先于第 4 步）。
+    /// 三类挂起——操作请求（槽位来源与触发来源一视同仁）、等待说书人的裁定点、阻塞报警
+    /// （R-0009 BlockAndAlert）——在结束之后都没有任何出口能再了结它们，因此一并收口；
+    /// 没有挂起时不产生多余事件（幂等）。收口不重跑触发管线（《处决》第 3 步先于第 4 步）。
     /// </para>
     /// </remarks>
     internal static (long Sequence, GameState State, StepMachineState? Machine) AppendGameEnding(
@@ -224,6 +225,36 @@ internal static class SessionCommit
                 gameId,
                 decision.Id.Value,
                 resolved.Note);
+        }
+
+        // 与它们同族的第三个挂起：阻塞报警（R-0009 BlockAndAlert）。结束后同样没有任何出口能解除它
+        // （强推 / 接管 / 应答都被 phase.game_ended 拒）：快照会带着 IsHeld == true 自称"还挂着"，
+        // 说书人视图上留一块点不动的死控件。用 SlotUnblockedEvent 显式收口——**只清阻塞**，
+        // 不动槽位下标与最小配额（伪造推进事件去顺手清它，投影与快照立刻分叉；D-0010 / D-0014）。
+        if (machine is { Block: { } block })
+        {
+            var slotId = machine.CurrentSlot?.Id
+                ?? throw new InvalidOperationException("事件流损坏：有阻塞报警却没有当前槽位");
+            var unblocked = new SlotUnblockedEvent
+            {
+                SlotId = slotId,
+                Reason = "本局已结束：阻塞报警不再有意义",
+            };
+            sequence++;
+            drafts.Add(new StoredEventDraft
+            {
+                Sequence = sequence,
+                Event = unblocked,
+                RecordedAt = recordedAt,
+            });
+            machine = StepMachine.Apply(machine, unblocked) ?? machine;
+
+            logger.LogInformation(
+                "结束批次解除阻塞报警：game={GameId} slot={SlotId} 原阻塞原因={BlockedReason} 说明={Note}",
+                gameId,
+                slotId.Value,
+                block.Reason,
+                unblocked.Reason);
         }
 
         var ended = new GameEndedEvent

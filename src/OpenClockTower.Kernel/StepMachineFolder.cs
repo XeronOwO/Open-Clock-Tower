@@ -104,6 +104,7 @@ internal static class StepMachineFolder
             {
                 Block = new StepBlock { Reason = blocked.Reason },
             },
+            SlotUnblockedEvent unblocked => ApplyUnblock(state, unblocked),
 
             // 白天事件：折叠白天账（提名 / 投票 / 计票 / 处决 / 结束）；槽位推进由 CloseDay / 强推产出的事件驱动。
             DayStartedEvent => ApplyDay(state, gameEvent),
@@ -179,6 +180,34 @@ internal static class StepMachineFolder
         }
 
         return current with { AwaitingDecision = null };
+    }
+
+    /// <summary>
+    /// 解除阻塞报警：**只**清 <see cref="StepMachineState.Block"/>——槽位下标、最小配额、挂起请求与
+    /// 裁定点一律不动。这正是"只清阻塞"的内核原语：与推进类事件的区别就在这里，结束批次不得
+    /// 伪造推进去顺手清它（那会让投影与快照分叉；票据 terminal-hold-residue、依据 R-0024 / D-0010）。
+    /// </summary>
+    /// <remarks>
+    /// 没有阻塞却要解除、或事件里的槽位与当前槽位对不上，都是事件流损坏：显式失败，不静默继续
+    /// （D-0014 能力 3）。阻塞只在**进入槽位**时置位，此后下标不会变——任何进出槽位的事件都会清掉它，
+    /// 槽位激活只允许未来槽位。所以 <see cref="StepMachineState.CurrentSlot"/> 就是被阻塞的那一格。
+    /// </remarks>
+    private static StepMachineState ApplyUnblock(StepMachineState? state, SlotUnblockedEvent unblocked)
+    {
+        var current = Require(state, unblocked);
+        if (current.Block is null)
+        {
+            throw new InvalidOperationException("事件流顺序损坏：没有阻塞报警，却要解除");
+        }
+
+        if (current.CurrentSlot?.Id != unblocked.SlotId)
+        {
+            throw new InvalidOperationException(
+                $"事件流顺序损坏：阻塞报警属于槽位 {current.CurrentSlot?.Id.Value ?? "（无）"}，"
+                + $"不是 {unblocked.SlotId.Value}");
+        }
+
+        return current with { Block = null };
     }
 
     /// <summary>

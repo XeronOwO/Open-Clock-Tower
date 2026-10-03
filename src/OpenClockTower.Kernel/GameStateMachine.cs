@@ -68,6 +68,7 @@ public static class GameStateMachine
             DecisionPointRaisedEvent => current,
             DecisionPointResolvedEvent => current,
             SlotBlockedEvent => current,
+            SlotUnblockedEvent => current,
             OperationRequestIssuedEvent => current,
             OperationRequestAnsweredEvent => current,
             OperationRequestVoidedEvent => current,

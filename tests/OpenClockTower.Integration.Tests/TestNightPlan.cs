@@ -93,4 +93,34 @@ internal static class TestNightPlan
             Slots = slots,
         };
     }
+
+    /// <summary>
+    /// 构造测试首夜计划：1 号槽位是**空槽位却绑着一名存活持有者的角色**（这一格没有行动契约）
+    /// → 进入即产出阻塞报警（R-0009 BlockAndAlert；票据 terminal-hold-residue 的夹具入口）。
+    /// </summary>
+    /// <remarks>
+    /// 与 <c>SlotEntryLedgerTests.EmptySlotWithLivingHolder_Blocks</c> 同一条生产置位路径
+    /// （<see cref="StepSlotEntry"/> 的 <c>OrphanReason</c>）：调用方要把
+    /// <paramref name="blockedCharacter"/> 分配给一名存活席位，否则这一格会安静地空着。
+    /// </remarks>
+    internal static StepPlan CreateBlockedFirstNight(int seatCount, string blockedCharacter)
+    {
+        var slots = new List<StepSlot>
+        {
+            StepSlot.Empty(new StepSlotId("test-seat-1"), new CharacterId(blockedCharacter)),
+        };
+
+        for (var seat = 2; seat <= seatCount; seat++)
+        {
+            slots.Add(StepSlot.Empty(new StepSlotId($"test-seat-{seat}")));
+        }
+
+        slots.Add(StepSlot.DawnWait(new StepSlotId("test-dawn")));
+        return new StepPlan
+        {
+            Label = "test:night-1-blocked",
+            Phase = GamePhase.FirstNight,
+            Slots = slots,
+        };
+    }
 }
