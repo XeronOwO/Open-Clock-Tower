@@ -202,6 +202,9 @@ public sealed class DeathTriggerHostTests
             "test-death-trigger-late-quota-close-day");
         Assert.Equal("Accepted", dayClosed.Kind);
 
+        // 配额到点用**事件**等，不 sleep 猜时序：先记基线序号，裁定结清前等到本夜「配额到点」落库。
+        var nightBaseline = await TestServerHost.LastSequenceAsync(host);
+
         // 次夜：方古击杀 2 号贤者（镇民，不触发侵染）→ 当夜贤者格开裁定。
         var nightTwo = await storyteller.InvokeAsync<CommandResultDto>(
             "StartNight",
@@ -224,7 +227,7 @@ public sealed class DeathTriggerHostTests
         var sageDecision = await WaitForSlotDecisionAsync(storyteller, "sage");
 
         // 关键时序：配额（0.05s / 50ms 节拍）在裁定结清**之前**到点——挂起期间那条配额输入已落库。
-        await Task.Delay(300);
+        await TestServerHost.WaitForSlotQuotaElapsedAsync(host, nightBaseline, "sage", Wait);
 
         var shown = await storyteller.InvokeAsync<CommandResultDto>(
             "ResolveDecisionPoint",

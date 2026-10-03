@@ -361,6 +361,9 @@ public sealed class BarberHostTests
         var closedDay = await storyteller.InvokeAsync<CommandResultDto>("CloseDay", "test-barber-late-quota-close-day");
         Assert.Equal("Accepted", closedDay.Kind);
 
+        // 配额到点用**事件**等，不 sleep 猜时序：先记基线序号，答前等到本夜该槽位「配额到点」落库。
+        var nightBaseline = await TestServerHost.LastSequenceAsync(host);
+
         // 第 2 夜：诺-达鲺击杀 2 号，随后理发师格向恶魔开交换请求。
         var night = await storyteller.InvokeAsync<CommandResultDto>(
             "StartNight",
@@ -384,9 +387,9 @@ public sealed class BarberHostTests
         var swap = await WaitForRequestAsync(host, new SeatId(4));
         Assert.Contains(swap.Prompt.Options, option => option.Value == "pair:3+4");
 
-        // 关键时序：配额（0.05s / 50ms 节拍）在应答**之前**到点——真实世界里玩家不可能比节拍器还快，
-        // 这也正是并行套件下偶发卡死的窗口。等 300ms 足以让节拍器送出并落库那条配额输入。
-        await Task.Delay(300);
+        // 关键时序：让配额（0.05s / 50ms 节拍）在应答**之前**到点——真实世界里玩家不可能比节拍器还快，
+        // 这也正是并行套件下偶发卡死的窗口。等到那笔配额输入真的落库再作答，不用 sleep 猜。
+        await TestServerHost.WaitForSlotQuotaElapsedAsync(host, nightBaseline, "barber", Wait);
 
         Assert.Equal(
             "Accepted",

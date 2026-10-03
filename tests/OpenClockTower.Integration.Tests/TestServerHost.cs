@@ -228,6 +228,40 @@ public sealed class TestServerHost : IAsyncDisposable
         return view;
     }
 
+    /// <summary>当前事件流的最后序号（给「等基线之后的新事件」的谓词做基线）。</summary>
+    public static async Task<long> LastSequenceAsync(TestServerHost host)
+    {
+        var stored = await host.Store.ReadEventsAsync(GameId, 0, CancellationToken.None);
+        return stored.Count == 0 ? 0 : stored.Max(item => item.Sequence);
+    }
+
+    /// <summary>
+    /// 等到指定槽位的「配额到点」事件真正落库（基线序号之后的新事件）。回归里不能用 sleep 猜时序：
+    /// 猜早了断言可能假绿，猜晚了又变成 flaky；等到事件即确定性。
+    /// </summary>
+    public static async Task WaitForSlotQuotaElapsedAsync(
+        TestServerHost host,
+        long afterSequence,
+        string slotId,
+        TimeSpan timeout)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+        while (DateTime.UtcNow < deadline)
+        {
+            var stored = await host.Store.ReadEventsAsync(GameId, 0, CancellationToken.None);
+            if (stored.Any(item => item.Sequence > afterSequence
+                && item.Event is SlotQuotaElapsedEvent elapsed
+                && elapsed.SlotId == new StepSlotId(slotId)))
+            {
+                return;
+            }
+
+            await Task.Delay(20);
+        }
+
+        Assert.Fail($"槽位 {slotId} 的「配额到点」事件没有在超时前落库（基线序号 {afterSequence}）");
+    }
+
     /// <inheritdoc />
     public async ValueTask DisposeAsync()
     {
