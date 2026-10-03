@@ -33,7 +33,7 @@ internal static class BarberSwapInteraction
             return;
         }
 
-        if (CurrentFact(context, events) is null || IsInteractionPending(machine, events))
+        if (CurrentFact(context, events) is not { } fact || IsInteractionPending(machine, events))
         {
             return;
         }
@@ -56,6 +56,9 @@ internal static class BarberSwapInteraction
             {
                 SlotId = TryBarberSlotId(machine)
                     ?? throw new InvalidOperationException("理发师之夜：当前计划里没有理发师触发格（数据缺陷）"),
+
+                // 归属 = 以理发师身份死亡的席位（触发格没有行动者）。
+                AttributionSeat = fact.Source,
                 DecisionPoint = new DecisionPoint
                 {
                     Id = TryDemonChoiceId(machine)

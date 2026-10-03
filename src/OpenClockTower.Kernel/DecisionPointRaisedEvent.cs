@@ -17,6 +17,14 @@ public sealed record DecisionPointRaisedEvent : GameEvent
     /// <summary>触发来源的能力归因（幂等 / 投影用）；槽位来源时为 null。</summary>
     public AbilityId? TriggerAbility { get; init; }
 
+    /// <summary>
+    /// 裁定点的**归属席位**：说书人视图「谁在等这一裁定」的唯一真相（触发格 / 触发型裁定没有
+    /// 行动者或槽位，只能靠它归属）。规则上每个裁定点都能归属到一席（槽位来源 = 行动者；
+    /// 触发来源 = 死亡 / 触发者本人），新开点一律显式给出；旧版本事件没有这个字段时为 null，
+    /// 重放容忍（界面退回行动者 / 摘要回退，不猜）。
+    /// </summary>
+    public SeatId? AttributionSeat { get; init; }
+
     /// <summary>面向说书人的裁定点（与操作请求同源同一个 <see cref="ChoicePrompt"/>）。</summary>
     public required DecisionPoint DecisionPoint { get; init; }
 

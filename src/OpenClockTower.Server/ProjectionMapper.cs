@@ -220,6 +220,7 @@ public static class ProjectionMapper
                 Preview = option.Preview,
             })]
             : null,
+        AwaitingDecisionSeat = view.AwaitingDecisionSeat?.Value,
         BlockedReason = view.BlockedReason,
         CurrentSlotActor = view.CurrentSlotActor?.Value,
         CurrentSlotContext = view.CurrentSlotContext,
@@ -308,6 +309,23 @@ public static class ProjectionMapper
                         Transformation = deferred.Transformation is not null,
                     }),
                 ],
+            }
+            : null,
+
+        // 方古「限一次」/「今晚理发」：整局 / 跨阶段事实只说书人可见（R-0034 / R-0033）。
+        FangGuInfection = view.FangGuInfection is { } infection
+            ? new FangGuInfectionDto
+            {
+                Seat = infection.Seat.Value,
+                Source = infection.Source.Value,
+                Note = infection.Note,
+            }
+            : null,
+        BarberNight = view.BarberNight is { } barber
+            ? new BarberNightDto
+            {
+                Source = barber.Source.Value,
+                Note = barber.Note,
             }
             : null,
         Annotations = [.. view.Annotations.Select(ToDto)],

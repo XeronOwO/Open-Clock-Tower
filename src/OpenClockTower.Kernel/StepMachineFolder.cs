@@ -54,6 +54,7 @@ internal static class StepMachineFolder
                 PendingRequest = null,
                 AwaitingDecision = null,
                 AwaitingDecisionTriggerAbility = null,
+                AwaitingDecisionSeat = null,
                 Block = null,
             },
             OperationRequestIssuedEvent issued => Require(state, issued) with
@@ -200,7 +201,12 @@ internal static class StepMachineFolder
                 $"事件流顺序损坏：{resolved.DecisionPointId} 不是当前挂起的裁定点");
         }
 
-        return current with { AwaitingDecision = null, AwaitingDecisionTriggerAbility = null };
+        return current with
+        {
+            AwaitingDecision = null,
+            AwaitingDecisionTriggerAbility = null,
+            AwaitingDecisionSeat = null,
+        };
     }
 
     /// <summary>
@@ -329,10 +335,15 @@ internal static class StepMachineFolder
                 $"事件流顺序损坏：已有挂起的裁定点 {pending.Id}，不能直接覆盖为 {raised.DecisionPoint.Id}");
         }
 
+        // 归属席位（"谁在等"）：开点来源显式给出（触发格 / 触发型裁定没有行动者，只能靠它）。
+        // 该字段是**后加的**可空字段：旧版本事件流里没有它，这里容忍为 null——重放不能因为
+        // 一条旧事件就失败；界面在 null 时退回行动者 / 摘要回退，不猜归属（口径见 E25 票据）。
+        // 5 处开点的"必填"由 Rules/Kernel/宿主用例锁住，而不是靠重放时抛错。
         var current = before with
         {
             AwaitingDecision = raised.DecisionPoint,
             AwaitingDecisionTriggerAbility = raised.TriggerAbility,
+            AwaitingDecisionSeat = raised.AttributionSeat,
         };
         if (raised.SlotPrompt is not { } prompt)
         {
@@ -490,6 +501,7 @@ internal static class StepMachineFolder
             PendingRequest = null,
             AwaitingDecision = null,
             AwaitingDecisionTriggerAbility = null,
+            AwaitingDecisionSeat = null,
             Block = null,
         };
 

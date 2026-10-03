@@ -275,6 +275,9 @@ public static class StepMachine
                     events.Add(new DecisionPointRaisedEvent
                     {
                         SlotId = slot.Id,
+
+                        // 归属 = 这一步的行动者：说书人看着他的席位就知道"谁在等"。
+                        AttributionSeat = slot.Actor,
                         DecisionPoint = new DecisionPoint
                         {
                             Id = AbilitySettlement.DecisionPointIdOf(state, slot),

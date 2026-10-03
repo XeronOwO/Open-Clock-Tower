@@ -102,6 +102,7 @@ public static class GameProjection
             PlanCompleted = machine?.IsPlanCompleted ?? false,
             Pending = pendingSummary,
             AwaitingDecision = machine?.AwaitingDecision,
+            AwaitingDecisionSeat = machine?.AwaitingDecisionSeat,
             BlockedReason = machine?.Block?.Reason,
             CurrentSlotActor = machine?.CurrentSlot?.Actor,
             CurrentSlotContext = machine?.CurrentSlot?.Prompt?.Context,
@@ -121,6 +122,11 @@ public static class GameProjection
             // 麻脸巫婆之夜的死亡裁量窗口（R-0030）：说书人要据此裁定待定死亡、
             // 并在窗口内追加死亡——玩家投影里没有它（D-0012 §4.3）。
             PitHagNight = machine?.PitHagNight,
+
+            // 方古「限一次」/「今晚理发」：整局 / 跨阶段事实的说书人投影（R-0034 / R-0033）；
+            // 玩家投影里没有它们（D-0012 §4.3）。
+            FangGuInfection = machine?.FangGuInfection,
+            BarberNight = machine?.BarberNight,
 
             // 说书人注记（D-0019）：自由文本提示标记只说书人可见；玩家投影里没有这条字段。
             Annotations = annotations,

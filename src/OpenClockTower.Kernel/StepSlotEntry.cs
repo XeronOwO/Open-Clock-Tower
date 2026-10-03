@@ -247,6 +247,9 @@ internal static class StepSlotEntry
                 events.Add(new DecisionPointRaisedEvent
                 {
                     SlotId = slot.Id,
+
+                    // 归属 = 这一步的行动者（Action 槽位在进入前已校验 `Actor` 非空）。
+                    AttributionSeat = slot.Actor,
                     DecisionPoint = new DecisionPoint
                     {
                         Id = AbilitySettlement.DecisionPointIdOf(state, slot),

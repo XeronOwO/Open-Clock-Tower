@@ -15,6 +15,7 @@ import {
   decisionSeatOf,
   ringPosition,
   seatNumbersOf,
+  slotProgressTextOf,
 } from '@/display/grimoire'
 import type { CommandOutcome, CommandSender } from '@/services/storytellerCommands'
 import { computed, ref } from 'vue'
@@ -33,6 +34,11 @@ const seats = computed(() => seatNumbersOf(props.view, props.seatCount))
 const cards = computed(() => seats.value.map((seat) => buildSeatCard(props.view, seat)))
 const decisionSeat = computed(() => decisionSeatOf(props.view))
 const attentionSeat = computed(() => attentionSeatOf(props.view))
+
+/** 常驻「本步上下文」：优先挂起裁定的上下文（触发格没有槽位提示），再退当前槽位上下文。 */
+const slotContextText = computed(
+  () => props.view.awaitingDecisionContext ?? props.view.currentSlotContext,
+)
 
 /** "定位到 N 号"按钮的说辞：说明这一席为什么需要处理。 */
 const attentionReason = computed(() => {
@@ -69,6 +75,17 @@ function pick(seat: number): void {
         <p class="hint">
           席位顺序按服务端席位号（1 号在正上方、顺时针）。圆环只是呈现——角色、生死、状态都来自同一次视图推送。
         </p>
+
+        <!-- 本步上下文常驻：优先挂起裁定的上下文（触发格没有槽位提示），再退当前槽位上下文；
+             入槽实时重建的推演值由 SlotPrompt 回写，不再只藏在数据抽屉或挂起裁定块里。 -->
+        <p
+          v-if="slotContextText !== null"
+          class="hint context-line"
+          data-testid="grimoire-slot-context"
+          :title="slotContextText"
+        >
+          本步上下文：{{ slotContextText }}
+        </p>
         <button
           v-if="attentionSeat !== null && attentionSeat !== selected"
           type="button"
@@ -81,10 +98,26 @@ function pick(seat: number): void {
       <div class="ring">
         <div class="hub">
           <strong>{{ labelOf(view.phase) }}</strong>
-          <span class="hint">
-            {{ view.slotCount === 0 ? '尚未建计划' : `第 ${view.slotIndex + 1} / ${view.slotCount} 步` }}
-          </span>
+          <span class="hint">{{ slotProgressTextOf(view) }}</span>
           <span class="hint">{{ seats.length }} 席</span>
+
+          <!-- 魔典中心的两枚整局 / 跨阶段标记（只说书人可见）：百科里「限一次」放在魔典中心。 -->
+          <span
+            v-if="view.fangGuInfection"
+            class="hub-token"
+            data-testid="hub-once-marker"
+            :title="`限一次：${view.fangGuInfection.source} 号方古侵染了 ${view.fangGuInfection.seat} 号；标记持续至整局结束（R-0034）`"
+          >
+            限一次
+          </span>
+          <span
+            v-if="view.barberNight"
+            class="hub-token"
+            data-testid="hub-barber-night"
+            :title="`今晚理发：${view.barberNight.source} 号理发师死亡，恶魔当夜可选择两名玩家交换角色（R-0033）`"
+          >
+            今晚理发
+          </span>
         </div>
 
         <GrimoireSeatCard
@@ -173,6 +206,21 @@ function pick(seat: number): void {
   border: 1px dashed var(--line);
   min-width: 132px;
   text-align: center;
+}
+
+.hub-token {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--warn);
+  color: var(--warn);
+}
+
+.context-line {
+  max-width: 52ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 @media (max-width: 760px) {

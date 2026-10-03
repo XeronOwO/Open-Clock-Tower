@@ -154,13 +154,79 @@ export function seatNumbersOf(view: StorytellerViewDto, seatCount: number, cap =
     .slice(0, cap)
 }
 
-/** 待裁定归属的席位：优先当前槽位行动者，其次每步摘要的行动者；无法归属时为 null。 */
+/**
+ * 待裁定归属的席位：**服务端给的归属席位优先**（触发格 / 触发型裁定没有行动者，
+ * 只有内核知道"谁在等"）；退回当前槽位行动者、每步摘要的行动者；都无法归属时为 null。
+ */
 export function decisionSeatOf(view: StorytellerViewDto): number | null {
   if (view.awaitingDecisionId === null) {
     return null
   }
 
-  return view.currentSlotActor ?? view.stepDigest?.seat ?? null
+  return view.awaitingDecisionSeat ?? view.currentSlotActor ?? view.stepDigest?.seat ?? null
+}
+
+/**
+ * 状态条的槽位读数：计划已走完显示「已完成」、未建计划显示「—」、否则封顶在 1..slotCount。
+ *
+ * `slotIndex == slotCount` 是内核"计划已走完"的正常表示，直接 `+1` 会读出「2 / 1」。
+ */
+export function slotCounterTextOf(view: StorytellerViewDto): string {
+  if (view.slotCount <= 0) {
+    return '—'
+  }
+
+  if (view.planCompleted || view.slotIndex >= view.slotCount) {
+    return '已完成'
+  }
+
+  return `${Math.max(view.slotIndex, 0) + 1} / ${view.slotCount}`
+}
+
+/** 环心读数：与状态条同口径（`已完成` / `第 N / M 步` / 尚未建计划）。 */
+export function slotProgressTextOf(view: StorytellerViewDto): string {
+  if (view.slotCount <= 0) {
+    return '尚未建计划'
+  }
+
+  if (view.planCompleted || view.slotIndex >= view.slotCount) {
+    return '已完成'
+  }
+
+  return `第 ${Math.max(view.slotIndex, 0) + 1} / ${view.slotCount} 步`
+}
+
+/**
+ * 选项值里的席位：只认规则层 `seat:N` 的编码（`web/AGENTS.md` §4 允许的映射，
+ * 不是规则推断）；不是席位选择的选项（是 / 否、角色 slug、玩家对等）返回 null。
+ */
+export function seatOfOptionValue(value: string): number | null {
+  const prefix = 'seat:'
+  if (!value.startsWith(prefix)) {
+    return null
+  }
+
+  const digits = value.slice(prefix.length)
+  if (!/^[0-9]+$/.test(digits)) {
+    return null
+  }
+
+  const seat = Number.parseInt(digits, 10)
+  return Number.isInteger(seat) && seat >= 1 && seat <= 1_000 ? seat : null
+}
+
+/**
+ * 该选项指向的席位是否**已死亡**（按状态账 `Life = Dead`）。
+ * 非席位选项、该席未观测一律 false——"未观测 ≠ 默认值"，绝不把未知标成已死亡。
+ */
+export function optionSeatIsDead(view: StorytellerViewDto, value: string): boolean {
+  const seat = seatOfOptionValue(value)
+  if (seat === null) {
+    return false
+  }
+
+  const entry = view.seats.find((candidate) => candidate.seat === seat)
+  return entry?.facts.some((fact) => fact.dimension === DIMENSION_LIFE && fact.value === LIFE_DEAD) ?? false
 }
 
 /** 说书人现在最需要处理的席位：卡点优先，其次待裁定，再次当前行动者。 */

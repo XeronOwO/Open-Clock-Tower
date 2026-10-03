@@ -29,6 +29,7 @@ public static class StepMachineStateComparer
                && RequestEquivalent(left.PendingRequest, right.PendingRequest)
                && DecisionEquivalent(left.AwaitingDecision, right.AwaitingDecision)
                && left.AwaitingDecisionTriggerAbility == right.AwaitingDecisionTriggerAbility
+               && left.AwaitingDecisionSeat == right.AwaitingDecisionSeat
                && string.Equals(left.Block?.Reason, right.Block?.Reason, StringComparison.Ordinal)
                && DayEquivalent(left.Day, right.Day)
                && OutcomeEquivalent(left.Outcome, right.Outcome)

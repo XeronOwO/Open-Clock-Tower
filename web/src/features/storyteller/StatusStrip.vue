@@ -2,6 +2,7 @@
 /** 顶部状态条：说书人一眼看到「这局现在在哪、卡在哪」。 */
 import type { StorytellerViewDto } from '@/contracts/game'
 import { seatLabelOf, waitingSecondsTextOf } from '@/display/format'
+import { slotCounterTextOf } from '@/display/grimoire'
 import { labelOf } from '@/display/labels'
 
 defineProps<{ view: StorytellerViewDto }>()
@@ -19,9 +20,7 @@ defineProps<{ view: StorytellerViewDto }>()
     </div>
     <div class="cell">
       <span class="caption">槽位</span>
-      <strong>
-        {{ view.slotCount === 0 ? '—' : `${view.slotIndex + 1} / ${view.slotCount}` }}
-      </strong>
+      <strong>{{ slotCounterTextOf(view) }}</strong>
       <span class="mono">{{ view.currentSlotId ?? '' }}</span>
     </div>
     <div class="cell">

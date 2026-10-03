@@ -54,6 +54,9 @@ internal static class SageInteraction
         events.Add(new DecisionPointRaisedEvent
         {
             SlotId = slotId,
+
+            // 归属 = 死亡时点以贤者身份落账的席位（fact.Sage）：触发格没有行动者，只有它有。
+            AttributionSeat = fact.Sage,
             DecisionPoint = new DecisionPoint
             {
                 Id = PairDecisionId(machine, slotId),

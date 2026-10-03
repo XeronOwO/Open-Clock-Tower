@@ -34,6 +34,16 @@ public sealed record StepMachineState
     /// </summary>
     public AbilityId? AwaitingDecisionTriggerAbility { get; init; }
 
+    /// <summary>
+    /// 挂起裁定点的**归属席位**（说书人视图「谁在等」的呈现依据）；与
+    /// <see cref="AwaitingDecision"/> 同步置位 / 清空。
+    /// </summary>
+    /// <remarks>
+    /// 触发格与触发型裁定没有行动者 / 槽位，归属只能由开点来源显式给出（见
+    /// <see cref="DecisionPointRaisedEvent.AttributionSeat"/>）。
+    /// </remarks>
+    public SeatId? AwaitingDecisionSeat { get; init; }
+
     /// <summary>阻塞报警（R-0009 BlockAndAlert）；null 表示没有。</summary>
     public StepBlock? Block { get; init; }
 

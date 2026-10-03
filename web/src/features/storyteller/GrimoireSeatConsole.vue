@@ -10,7 +10,13 @@ import type { StorytellerViewDto } from '@/contracts/game'
 import GrimoireAnnotationControl from '@/features/storyteller/GrimoireAnnotationControl.vue'
 import { ROSTER, characterLabelOf, dimensionLabelOf, labelOf } from '@/display/labels'
 import { causedByLabelOf, seatLabelOf, waitingSecondsTextOf } from '@/display/format'
-import { buildSeatCard, decisionSeatOf, seatNumbersOf, seatTitleOf } from '@/display/grimoire'
+import {
+  buildSeatCard,
+  decisionSeatOf,
+  optionSeatIsDead,
+  seatNumbersOf,
+  seatTitleOf,
+} from '@/display/grimoire'
 import { newIdempotencyKey } from '@/services/idempotency'
 import {
   proxyFill,
@@ -36,7 +42,7 @@ const emit = defineEmits<{ outcome: [CommandOutcome]; locate: [number]; engage: 
 
 const model = computed(() => (props.seat === null ? null : buildSeatCard(props.view, props.seat)))
 
-/** 待裁定归属的席位：与圆环高亮同一口径（优先当前槽位行动者，其次每步摘要的行动者）。 */
+/** 待裁定归属的席位：与圆环高亮同一口径（服务端归属席位优先，再回退行动者 / 摘要）。 */
 const decisionSeat = computed(() => decisionSeatOf(props.view))
 
 const seatNumbers = computed(() => seatNumbersOf(props.view, props.seatCount))
@@ -317,7 +323,10 @@ async function submitReport(): Promise<void> {
       <div class="line">
         <span class="tag warn">待裁定的裁定点</span>
         <span class="mono">{{ view.awaitingDecisionId }}</span>
-        <span v-if="seat === null" class="hint">（归属席位未知，就近在操作台处理）</span>
+        <span v-if="decisionSeat !== null" class="hint" data-testid="console-decision-seat">
+          归属：{{ seatLabelOf(decisionSeat) }}
+        </span>
+        <span v-else class="hint">（归属席位未知，就近在操作台处理）</span>
         <button
           v-if="decisionSeat !== null && decisionSeat !== seat"
           type="button"
@@ -338,6 +347,14 @@ async function submitReport(): Promise<void> {
           @click="decide(option.value)"
         >
           {{ option.preview }}
+          <!-- 席位候选的生死标注：只对 `seat:N` 选项按状态账打标，不影响候选集合（R-0039）。 -->
+          <span
+            v-if="optionSeatIsDead(view, option.value)"
+            class="tag dead"
+            data-testid="option-dead"
+          >
+            已死亡
+          </span>
         </button>
       </div>
       <p v-else class="hint">引擎没有给出候选选项——按 R-0009 由说书人自由决定。</p>
@@ -545,6 +562,14 @@ async function submitReport(): Promise<void> {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+}
+
+.dead {
+  border: 1px solid var(--evil);
+  color: var(--evil);
+  border-radius: 999px;
+  padding: 0 6px;
+  font-size: 11px;
 }
 
 .context {

@@ -40,6 +40,12 @@ public sealed record StorytellerView
     /// <summary>等待说书人裁定的裁定点（R-0009）；没有时为 null。</summary>
     public DecisionPoint? AwaitingDecision { get; init; }
 
+    /// <summary>
+    /// 挂起裁定点的**归属席位**（谁在等）：触发格 / 触发型裁定没有行动者或槽位，圆环只能靠它归属；
+    /// 没有挂起时为 null。
+    /// </summary>
+    public SeatId? AwaitingDecisionSeat { get; init; }
+
     /// <summary>阻塞原因（R-0009 BlockAndAlert）；没有阻塞时为 null。</summary>
     public string? BlockedReason { get; init; }
 
@@ -93,6 +99,18 @@ public sealed record StorytellerView
     /// 说书人据此看到待定死亡与关闭点，并用「追加死亡 / 裁定待定死亡」两条命令收口。
     /// </summary>
     public PitHagNight? PitHagNight { get; init; }
+
+    /// <summary>
+    /// 方古的「限一次」整局事实（R-0034）；null = 还没用掉。
+    /// 说书人据此在魔典中心显示「限一次」标记（百科《方古》· 提示标记）；玩家投影里没有它。
+    /// </summary>
+    public FangGuInfection? FangGuInfection { get; init; }
+
+    /// <summary>
+    /// 「今晚理发」待处理事实（R-0033）：理发师死亡后、恶魔在当夜交互；null = 没有待处理。
+    /// 事实跨阶段保留，说书人据此知道"今晚还有一次理发交互"；玩家投影里没有它。
+    /// </summary>
+    public BarberNight? BarberNight { get; init; }
 
     /// <summary>
     /// 说书人注记（D-0019）：自由文本提示标记，按发生顺序。

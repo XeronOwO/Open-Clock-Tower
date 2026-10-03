@@ -7,11 +7,13 @@
  */
 
 import type {
+  BarberNightDto,
   DayNominationDto,
   DayViewDto,
   DecisionOptionDto,
   DeferredDeathDto,
   EffectDto,
+  FangGuInfectionDto,
   GameOutcomeDto,
   KlutzChoiceDto,
   OperationRequestVoidedDto,
@@ -81,6 +83,15 @@ export function asCount(value: unknown, max = 1_000_000): number | null {
   return typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= max
     ? value
     : null
+}
+
+/**
+ * 安全取席位号：正整数且在 1..max 内，否则 null。
+ * 0 / 负数 / 小数 / 超界都是坏载荷——归属席位这类字段拿到 0 会短路前端回退链（「定位到 0 号」）。
+ */
+export function asSeatNumber(value: unknown, max = 1_000): number | null {
+  const number = asCount(value, max)
+  return number !== null && number >= 1 ? number : null
 }
 
 /** 席位号 → 「N 号」。非法值退化成占位符。 */
@@ -478,8 +489,9 @@ export function normalizeStorytellerView(raw: unknown): StorytellerViewDto {
     awaitingDecisionOptions: asArray<unknown>(view['awaitingDecisionOptions'])
       .map(normalizeOption)
       .filter((option): option is DecisionOptionDto => option !== null),
+    awaitingDecisionSeat: asSeatNumber(view['awaitingDecisionSeat']),
     blockedReason: asText(view['blockedReason']),
-    currentSlotActor: asNumber(view['currentSlotActor']),
+    currentSlotActor: asSeatNumber(view['currentSlotActor']),
     currentSlotContext: asText(view['currentSlotContext']),
     recentSeatChanges: asArray<unknown>(view['recentSeatChanges'])
       .map(normalizeSeatChange)
@@ -548,6 +560,8 @@ export function normalizeStorytellerView(raw: unknown): StorytellerViewDto {
       .map(normalizeKlutzChoice)
       .filter((choice): choice is KlutzChoiceDto => choice !== null),
     pitHagNight: normalizePitHagNight(view['pitHagNight']),
+    fangGuInfection: normalizeFangGuInfection(view['fangGuInfection']),
+    barberNight: normalizeBarberNight(view['barberNight']),
     annotations: asArray<unknown>(view['annotations'])
       .map(normalizeSeatAnnotation)
       .filter((annotation): annotation is SeatAnnotationDto => annotation !== null)
@@ -608,6 +622,40 @@ export function normalizePitHagNight(raw: unknown): PitHagNightDto | null {
       .map(normalizeDeferredDeath)
       .filter((deferred): deferred is DeferredDeathDto => deferred !== null),
   }
+}
+
+/**
+ * 归一化方古的「限一次」整局事实（R-0034）：形状不对就当成"还没用掉"——
+ * 宁可不显示魔典中心标记，也不让说书人对着坏数据做判断。
+ */
+export function normalizeFangGuInfection(raw: unknown): FangGuInfectionDto | null {
+  if (raw === null || typeof raw !== 'object') {
+    return null
+  }
+
+  const infection = raw as Record<string, unknown>
+  const seat = asCount(infection['seat'], 1_000)
+  const source = asCount(infection['source'], 1_000)
+  if (seat === null || source === null || seat < 1 || source < 1) {
+    return null
+  }
+
+  return { seat, source, note: asSizedText(infection['note'], 512) ?? '' }
+}
+
+/** 归一化「今晚理发」待处理事实（R-0033）；缺来源或来源非法时视为没有待处理事实。 */
+export function normalizeBarberNight(raw: unknown): BarberNightDto | null {
+  if (raw === null || typeof raw !== 'object') {
+    return null
+  }
+
+  const night = raw as Record<string, unknown>
+  const source = asCount(night['source'], 1_000)
+  if (source === null || source < 1) {
+    return null
+  }
+
+  return { source, note: asSizedText(night['note'], 512) ?? '' }
 }
 
 /** 归一化胜负结论；缺序号 / 胜方 / 条件时返回 null（宁可少显示，不编一个结论）。 */

@@ -158,6 +158,9 @@ internal sealed class SweetheartDeathTrigger : IEventTrigger
             // 触发来源：不由任何槽位承载（白天死亡也立即处理），与呆瓜的触发型请求同族。
             SlotId = null,
             TriggerAbility = SweetheartAbility.DeathAbility,
+
+            // 归属 = 死亡的心上人本人（触发型裁定没有槽位，圆环只能靠它归属）。
+            AttributionSeat = death.Seat,
             DecisionPoint = new DecisionPoint
             {
                 Id = SweetheartAbility.DecisionIdFor(death.Seat),

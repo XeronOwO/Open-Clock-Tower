@@ -39,6 +39,9 @@ public sealed record StorytellerViewDto
     /// <summary>等待裁定的合法选项（引擎算出的候选）；无选项的裁定点为 null。</summary>
     public DecisionOptionDto[]? AwaitingDecisionOptions { get; init; }
 
+    /// <summary>等待裁定的归属席位（"谁在等"）；没有挂起裁定时为 null。触发格 / 触发型裁定靠它归属。</summary>
+    public int? AwaitingDecisionSeat { get; init; }
+
     /// <summary>阻塞原因；没有阻塞时为 null。</summary>
     public string? BlockedReason { get; init; }
 
@@ -83,6 +86,12 @@ public sealed record StorytellerViewDto
 
     /// <summary>麻脸巫婆之夜的死亡裁量窗口；null = 今晚没有（R-0030）。只说书人可见。</summary>
     public PitHagNightDto? PitHagNight { get; init; }
+
+    /// <summary>方古的「限一次」整局事实；null = 还没用掉（R-0034）。只说书人可见。</summary>
+    public FangGuInfectionDto? FangGuInfection { get; init; }
+
+    /// <summary>「今晚理发」待处理事实；null = 没有待处理（R-0033）。只说书人可见。</summary>
+    public BarberNightDto? BarberNight { get; init; }
 
     /// <summary>说书人注记（D-0019）：自由文本提示标记，按发生顺序；玩家投影里没有它。</summary>
     public required SeatAnnotationDto[] Annotations { get; init; }

@@ -166,6 +166,24 @@ export interface PitHagNightDto {
   deferred: DeferredDeathDto[]
 }
 
+/** 方古的「限一次」整局事实（R-0034）：只说书人视图可见（魔典中心的提示标记）。 */
+export interface FangGuInfectionDto {
+  /** 被侵染、变成新方古的席位。 */
+  seat: number
+  /** 发起侵染的原方古席位。 */
+  source: number
+  /** 记账说明。 */
+  note: string
+}
+
+/** 「今晚理发」待处理事实（R-0033）：只说书人视图可见；null = 没有待处理交互。 */
+export interface BarberNightDto {
+  /** 以理发师身份死亡的席位（能力来源）。 */
+  source: number
+  /** 记账说明。 */
+  note: string
+}
+
 /** 房间健康位：恢复 / 重建失败后为降级态（原因 + 发生时间）；正常时 degraded=false。 */
 export interface RoomHealthDto {
   degraded: boolean
@@ -283,6 +301,8 @@ export interface StorytellerViewDto {
   awaitingDecisionId: string | null
   awaitingDecisionContext: string | null
   awaitingDecisionOptions: DecisionOptionDto[] | null
+  /** 等待裁定的归属席位（"谁在等"）；没有挂起裁定时为 null。 */
+  awaitingDecisionSeat: number | null
   blockedReason: string | null
   currentSlotActor: number | null
   currentSlotContext: string | null
@@ -302,6 +322,10 @@ export interface StorytellerViewDto {
   klutzChoices: KlutzChoiceDto[]
   /** 麻脸巫婆之夜的死亡裁量窗口；null = 今晚没有（R-0030）。 */
   pitHagNight: PitHagNightDto | null
+  /** 方古的「限一次」整局事实；null = 还没用掉（R-0034）。 */
+  fangGuInfection: FangGuInfectionDto | null
+  /** 「今晚理发」待处理事实；null = 没有待处理（R-0033）。 */
+  barberNight: BarberNightDto | null
   /** 说书人注记（D-0019）：自由文本提示标记，按发生顺序；玩家投影里没有它。 */
   annotations: SeatAnnotationDto[]
 }
