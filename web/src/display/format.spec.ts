@@ -277,6 +277,25 @@ describe('不可信输入的有界化（长度 / 范围，架构 §4.4）', () =
   })
 })
 
+describe('失去能力标记的归一化（R-0040）', () => {
+  it('缺省退化成空集合；坏条目只丢自己，不炸渲染', () => {
+    expect(normalizeStorytellerView(null).lostAbilityMarkers).toEqual([])
+
+    const view = normalizeStorytellerView({
+      lostAbilityMarkers: [
+        { seat: 2, ability: 'seamstress', note: '女裁缝（2 号）：能力已用尽' },
+        { seat: 0, ability: 'artist', note: '坏席位' },
+        { seat: 3, ability: '', note: '坏能力' },
+        'not-an-object',
+      ],
+    })
+
+    expect(view.lostAbilityMarkers).toEqual([
+      { seat: 2, ability: 'seamstress', note: '女裁缝（2 号）：能力已用尽' },
+    ])
+  })
+})
+
 describe('说书人注记的归一化（D-0019）', () => {
   it('缺省退化成空集合；坏条目只丢自己，不炸渲染', () => {
     expect(normalizeStorytellerView(null).annotations).toEqual([])

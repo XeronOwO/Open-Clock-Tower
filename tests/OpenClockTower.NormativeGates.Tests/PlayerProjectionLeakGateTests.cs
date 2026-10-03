@@ -46,6 +46,7 @@ public sealed partial class PlayerProjectionLeakGateTests
         "DeferredDeathDto.cs",
         "EffectDto.cs",
         "FangGuInfectionDto.cs",
+        "LostAbilityMarkerDto.cs",
         "MalfunctionDto.cs",
         "PendingRequestDto.cs",
         "PitHagNightDto.cs",

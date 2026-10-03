@@ -45,13 +45,24 @@ public sealed class DayActionsTests
     /// 已实现的白天契约：女巫（诅咒在下个白天触发）、洗脑师与畸形秀演员（处罚处决，R-0020 / R-0021）、
     /// 呆瓜（死亡公告后公开选择，R-0027）、镜像双子（善良方被处决即邪恶获胜，R-0025）、
     /// 涡流（黄昏无人被处决即邪恶获胜，R-0026）、理发师（死亡触发立即记账、交互等到当夜，R-0033）、
-    /// 心上人（任何死因都立即开触发型裁定 + 持续醉酒，R-0039）；
+    /// 心上人（任何死因都立即开触发型裁定 + 持续醉酒，R-0039）、艺术家（白天主动提问，R-0040）；
     /// 其余白天相关角色仍不覆盖——在场时开白天显式拒绝，不许"白天照跑、能力静默不发生"。
     /// </summary>
     [Fact]
     public void OnlyImplementedDayContractsAreCovered()
     {
-        var covered = new[] { "witch", "cerenovus", "mutant", "klutz", "evil-twin", "vortox", "barber", "sweetheart" };
+        var covered = new[]
+        {
+            "witch",
+            "cerenovus",
+            "mutant",
+            "klutz",
+            "evil-twin",
+            "vortox",
+            "barber",
+            "sweetheart",
+            "artist",
+        };
 
         foreach (var character in covered)
         {

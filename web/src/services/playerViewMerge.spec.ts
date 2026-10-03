@@ -52,6 +52,9 @@ function snapshotView(overrides: Partial<PlayerViewDto> = {}): PlayerViewDto {
     day: null,
     outcome: null,
     klutzChoices: [],
+    pendingQuestion: null,
+    canAskArtistQuestion: false,
+    exhaustedAbilities: [],
     ...overrides,
   }
 }

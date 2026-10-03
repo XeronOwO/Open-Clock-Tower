@@ -241,10 +241,10 @@ public sealed class NightPlanBuilderTests
     [Fact]
     public void InPlayNightCharacterWithoutContract_IsRejected()
     {
-        // 用还没实现的女裁缝（首夜顺序表上在场、无契约）；数学家已有契约。
-        var state = State((1, "seamstress", LifeState.Alive));
+        // 用还没实现的杂耍艺人（其他夜晚顺序表上在场、无契约）；女裁缝已随 R-0040 落地。
+        var state = State((1, "juggler", LifeState.Alive));
 
-        Assert.Equal("plan.contract_missing", BuildFailure(Request(state, seatCount: 1)));
+        Assert.Equal("plan.contract_missing", BuildFailure(Request(state, nightNumber: 2, seatCount: 1)));
     }
 
     /// <summary>
@@ -355,6 +355,62 @@ public sealed class NightPlanBuilderTests
         var philosopher = plan.Slots.Single(slot => slot.Id.Value == "philosopher");
         Assert.Empty(philosopher.Prompt!.Options);
         Assert.Equal(NoOptionBehavior.Skip, philosopher.Prompt.OnNoOption);
+    }
+
+    /// <summary>女裁缝没用过 → 常规选择格：除自己外的玩家对 + 摇头（R-0040）。</summary>
+    [Fact]
+    public void SeamstressWithoutUse_HasPairChoice()
+    {
+        var state = State(
+            (1, "seamstress", LifeState.Alive),
+            (2, "klutz", LifeState.Alive),
+            (3, "clockmaker", LifeState.Alive));
+
+        var plan = Build(Request(state, nightNumber: 2, seatCount: 3));
+
+        var seamstress = plan.Slots.Single(slot => slot.Id.Value == "seamstress");
+        Assert.Contains(seamstress.Prompt!.Options, option => option.Value == "pair:2+3");
+        Assert.Contains(seamstress.Prompt.Options, option => option.Value == "decline");
+    }
+
+    /// <summary>
+    /// 女裁缝用过（含未生效）→ 不再唤醒：只有一条可归因的无行动
+    /// （「从夜晚顺序表上移除她的夜晚标记」，百科《女裁缝》· 运作方式 6；R-0040）。
+    /// </summary>
+    [Fact]
+    public void SeamstressUsed_NoLongerWakes()
+    {
+        var state = State(
+            (1, "seamstress", LifeState.Alive),
+            (2, "klutz", LifeState.Alive),
+            (3, "clockmaker", LifeState.Alive)) with
+        {
+            AbilityUses = new AbilityUseLedger().RecordUse(
+                new SeatId(1),
+                new AbilityId("seamstress"),
+                effective: false),
+        };
+
+        var plan = Build(Request(state, nightNumber: 2, seatCount: 3));
+
+        var seamstress = plan.Slots.Single(slot => slot.Id.Value == "seamstress");
+        Assert.Empty(seamstress.Prompt!.Options);
+        Assert.Equal(NoOptionBehavior.Skip, seamstress.Prompt.OnNoOption);
+        Assert.Contains("不再被唤醒", seamstress.Prompt.Context, StringComparison.Ordinal);
+    }
+
+    /// <summary>女裁缝已死亡：不唤醒（空槽，照样走配额）——与「用过后不再唤醒」相邻路径。</summary>
+    [Fact]
+    public void SeamstressDead_IsEmptySlot()
+    {
+        var state = State(
+            (1, "seamstress", LifeState.Dead),
+            (2, "klutz", LifeState.Alive));
+
+        var plan = Build(Request(state, nightNumber: 2, seatCount: 2));
+
+        var seamstress = plan.Slots.Single(slot => slot.Id.Value == "seamstress");
+        Assert.Equal(StepSlotKind.Empty, seamstress.Kind);
     }
 
     /// <summary>带「获得能力」事实的账（哲学家在第一个席位）。</summary>

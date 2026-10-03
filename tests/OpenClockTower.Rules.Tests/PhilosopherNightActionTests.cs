@@ -29,7 +29,7 @@ public sealed class PhilosopherNightActionTests
         Assert.Equal("decline", values[^1]);
     }
 
-    /// <summary>摇头：什么都不发生，之后的夜里还可以再选（「每局限一次」约束的是"获得"）。</summary>
+    /// <summary>摇头：什么都不发生、不计使用，之后的夜里还可以再选（「每局限一次」约束的是"获得"）。</summary>
     [Fact]
     public void Decline_DoesNothing()
     {
@@ -38,6 +38,7 @@ public sealed class PhilosopherNightActionTests
         var events = Contract().Resolve(Context(state, "decline"));
 
         Assert.Empty(events);
+        Assert.False(Contract().CountsAsUse(Context(state, "decline")));
     }
 
     /// <summary>

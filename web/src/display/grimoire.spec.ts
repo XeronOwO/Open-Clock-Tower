@@ -59,6 +59,7 @@ function viewOf(overrides: Partial<StorytellerViewDto> = {}): StorytellerViewDto
     fangGuInfection: null,
     barberNight: null,
     annotations: [],
+    lostAbilityMarkers: [],
     ...overrides,
   }
 }
@@ -374,5 +375,30 @@ describe('说书人注记（D-0019）', () => {
 
     expect(seatTitleOf(buildSeatCard(view, 2))).toContain('注记：18 不共边')
     expect(seatTitleOf(buildSeatCard(view, 1))).not.toContain('不共边')
+  })
+})
+
+describe('失去能力标记（R-0040）', () => {
+  it('用尽的限次能力画成该席位的牌面标记，其他席不受牵连', () => {
+    const view = viewOf({
+      lostAbilityMarkers: [
+        {
+          seat: 2,
+          ability: 'seamstress',
+          note: '女裁缝（2 号）：能力已用尽——失去能力（R-0040）',
+        },
+      ],
+    })
+
+    const card = buildSeatCard(view, 2)
+    expect(card.lostAbilityMarkers).toHaveLength(1)
+    expect(card.marks).toEqual([
+      {
+        kind: 'exhausted',
+        label: '失去能力',
+        detail: '女裁缝（2 号）：能力已用尽——失去能力（R-0040）',
+      },
+    ])
+    expect(buildSeatCard(view, 1).marks).toEqual([])
   })
 })
