@@ -372,6 +372,50 @@
 - 本批后 `in-progress/`、`review/` 清空；`todo/` 三张（两张既有用户待办 + 新增的初始身份随机器票）；
   `done/` 新增 `storyteller-decision-affordances.md`。
 
+## 批次 E26（2026-10-03，限次信息族：女裁缝 / 艺术家）
+
+冻结版本：`main` @ `2789e1b`（走查中发现并当场修复一个交付缺陷 `cf4863f`（艺术家入口与等待态的在线通道），
+再提交装置与同族解析修复 `2789e1b` 后冻结跑批；跑批期间工作树干净、未改产品代码）。
+
+本批改动跨推送面（新增本人视图变更通道）、应用 / 契约投影与 Web（面板三态），
+故按「本票装置 + 通用回归 + 激活路径 + 零信任」四面对齐（四装置全部前台；首装置 `--build` 一次构建）：
+
+- `tools/verify-seamstress-artist.mjs`（**本批新增**，取证档 `--quota 2 --screenshots-all --build`）：
+  **82 项全部通过 / 0 跳过、退出码 0**。夜 1 女裁缝在玩家页选两名 / 摇头（6 组 pair + decline）→
+  白天 1 艺术家提问（四答 / 要求重问 / 重连等待态）→ 夜 2 顺序表恶魔格在女裁缝格之前
+  （击杀 2 号后她**再次被唤醒**）→ 裁定「是」→ 信息 + 失能标记 → 夜 3 空槽不再唤醒
+  （DOM 观察器 + 视图帧双通道）+ 五席 116 帧隔离扫描。截图 `limitinfo-01…10` 均为本次运行写入并逐张复核。
+- 主装置 `tools/verify-storyteller-panel.mjs`（同档）：**判定 194 项 / 0 跳过、退出码 0**；
+- 角色变更族 `tools/verify-character-change.mjs`（同档）：**67 项全部通过**；
+- 零信任 `tools/verify-zero-trust.mjs`：**44 项全部通过**。
+
+真宿主用例 `SeamstressArtistHostTests` **3/3**（女裁缝用后不再唤醒 / 艺术家四答与重问 / 哲学家摇头同族；
+本批扩展的在线推送断言含在其中）。冻结版门禁（跑批时）：`dotnet build` 0 警告 0 错误；
+`dotnet test` **749 通过 / 0 失败**（Kernel 327 · Rules 282 · Integration 117 · NormativeGates 23）；
+`dotnet format` 就地通过；`npm run gate` 全绿（typecheck + lint + 113 前端单测 + build）。
+跑批后仅测试增补一条提问闸用例（行 9 的 `phase.not_open_day` / `artist.not_artist`，E19 先例）：
+Integration 118、全量 **750** 通过，产品代码未变。
+
+诚实记录：
+
+- **E26 首跑在真机上发现交付缺陷并当场修复**：`canAskArtistQuestion` / `pendingQuestion` /
+  `exhaustedAbilities` 只随 `JoinSeat` 快照更新，白天开始与提问结清都没有推送通道——艺术家的提问入口
+  在**在线连接**上永不出现（装置首跑的第一条红），等待态还被面板 `v-if` 只认权限位遮住。修法（`cf4863f`）：
+  新增 `ReceivePlayerViewChanged`（提问 / 结清定向、阶段边界与白天收口广播），客户端复用快照合并闸，
+  面板三态改 `canAsk || pendingQuestion`；先红后绿：装置 34→82 项全绿、宿主补四条在线推送断言、
+  web 接线 / 解析用例随 `npm run gate` 全绿。
+- **装置侧同族修复**（`2789e1b`）：SignalR 一帧可合多条消息（服务端把推送与调用回执写进同一帧），
+  `verify-seamstress-artist` / `verify-death-triggers` / `verify-retro-info` 的解析器改为逐段解析、
+  回执匹配改用全量消息，修「提交生效却等不到回执」的间歇假红；三装置迭代档复跑 82 / 70 / 53 全绿。
+- 女裁缝「能力未生效 / 已死亡」与艺术家醉酒 / 中毒由规则级用例给结论（行 4 / 5 / 8），本批无真机中毒夹具，
+  不声称装置覆盖。
+
+批次 E26 判出：
+
+- **限次信息族票验收矩阵 15 行全部通过**（逐行证据见 `done/seamstress-and-artist.md` 的「E26 验收判定」）→ 移入 `done/`。
+- 本批后 `in-progress/`、`review/` 清空；`todo/` 三张（`replay-auto-review` / `setup-randomizer` /
+  `ui-layout-and-onboarding`）；`done/` 新增 `seamstress-and-artist.md`。
+
 ## 相关阅读
 
 - 验收规程：`docs/acceptance/AGENTS.md`

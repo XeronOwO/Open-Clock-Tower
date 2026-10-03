@@ -1,6 +1,6 @@
 # 限次信息族：女裁缝 / 艺术家
 
-- Status: Review（等待验收批次；真机装置待补）
+- Status: Done（E26 判定通过；判定记录见文末「E26 验收判定」）
 - Priority: High
 - Depends on: 能力使用账本（`AbilityUseLedger`，哲学家的「每局限一次」先例 R-0036）；
   玩家对编码（`PlayerPairChoice`：理发师 R-0033 / 贤者 R-0038）；
@@ -114,12 +114,12 @@ S&V 剩余 5 个未实现角色里的两名「获取信息 + 限次能力」角�
 - **结构**：`CommandGatePipeline` 借本轮拆出 `ArtistQuestionGate` / `PendingChoiceGate`
   （600 行门禁，575 行）；`NoActionSlot` 参数化以支持女裁缝。
 
-## 残余（收尾时逐条更新）
+## 残余（E26 收尾后）
 
-- **装置未建，真机证据留验收批次**：本票的运行时证据目前是**真宿主用例**（真 SQLite + 真 SignalR）
-  与 Kernel / Rules 用例；`tools/` 下没有本族的真机装置，也**不声称**装置已覆盖。
-  验收批次需补：女裁缝「选两名 → 裁定 → 信息 → 次夜不再唤醒」与艺术家「提问 → 四答 / 重问 →
-  失去能力标记」的界面级截图。
+- **已消化（E26 首跑发现并当场修复，`cf4863f`）**：艺术家的提问入口 / 等待态原来只随 `JoinSeat`
+  快照更新、没有任何在线推送通道——白天开始后入口在在线连接上永不出现，等待态还被面板 `v-if`
+  的权限位门遮住。修法：新增「本人视图变更」推送（`ReceivePlayerViewChanged`），面板三态改
+  `canAsk || pendingQuestion`；E26 装置与宿主用例已把四态锁进回归。
 - 艺术家「要求重问」后的界面提示：重连场景下本地提示可能丢失，兜底是重新提问（服务端不拒绝）。
 - 问题文本口径已定稿：trim 后非空、≤ 200 字符、拒绝控制字符（`artist.question_control`）。
 - 女裁缝「若两名候选中有首版外角色」的相克条目不做（R-0002）。
@@ -128,3 +128,73 @@ S&V 剩余 5 个未实现角色里的两名「获取信息 + 限次能力」角�
 - 已知边界（非本票引入，登记备查）：说书人对**其他**裁定点提交 `decision = null` 时仍会被受理
   （`DecisionPointResolvedEvent.Decision` 可空，历史上用于强推；内核只对艺术家问题显式拒绝空裁定）。
   若要收紧，应作为独立票据处理（影响所有裁定来源）。
+- 装置侧同族修复（非本票引入，`2789e1b`）：`verify-death-triggers` / `verify-retro-info` 的
+  SignalR 帧解析改为逐段解析、调用回执改用全量消息匹配（修「一帧合多条消息」导致的间歇假红）。
+
+## E26 验收判定（2026-10-03，冻结版 `2789e1b`）
+
+本批等待判定的票据一张（本票）。改动含**推送面**（艺术家提问状态的在线通道——E26 首跑发现并当场修复，
+`cf4863f`）、应用 / 契约投影与 Web（面板三态），故按「本票装置 + 通用回归 + 激活路径 + 零信任」四面对齐
+（四装置全部前台；首装置 `--build` 一次构建）：
+
+- `tools/verify-seamstress-artist.mjs`（**本批新增**，取证档 `--quota 2 --screenshots-all --build`）：
+  **82 项全部通过 / 0 跳过、退出码 0**。5 席（1 女裁缝 / 2 艺术家 / 3 呆瓜 / 4 畸形秀演员 / 5 方古）一条链路：
+  夜 1 女裁缝在**玩家页**收到「选两名 / 摇头」（6 组 pair + decline、不含自己）→ 摇头提交（零裁定 / 零标记 /
+  零信息）→ 白天 1 只有 2 号出现提问入口（idle）→ 提问后本人页等待态 + 说书人端问题全文 / 归属 2 号 / 恰好四答 →
+  挂起时「结束白天」被拒 `phase.artist_question_pending` → **重连（刷新 = 快照）后等待态仍带问题全文** →
+  「要求重问」不消耗、不落标记、输入框回来 → 再问并回答「不是」（信息 + `mark-exhausted` + 入口撤下）→
+  夜 2 顺序表恶魔格（第 7 位）在女裁缝格（第 18 位）之前：击杀 2 号后女裁缝**再次被唤醒**（摇头不消耗）→
+  选 `pair:3+4` → 裁定归属 1 号 + 推演行 + 是 / 否 → 信息只到 1 号 + 她的失能标记 → 夜 3 她的格走空槽：
+  1 号页整夜零请求、槽上下文与说书人视图帧均含「不再被唤醒」、信息不增且标记仍在 →
+  五席连接 116 帧零说书人字段（推演 / MayBeFalse / note / 失去能力）+ 信息只推本人 + 问题全文只进本人与说书人 +
+  阳性对照。截图 `limitinfo-01…10` 均为本次运行写入并**逐张复核**（01 请求候选 / 03 四答裁定 / 06 艺术家失能标记 /
+  07 女裁缝裁定与推演 / 09 两枚标记 / 10 夜 3 空槽上下文）。
+- 主装置 `tools/verify-storyteller-panel.mjs`（同档）：**判定 194 项 / 0 跳过、退出码 0**；
+- 角色变更族 `tools/verify-character-change.mjs`（同档）：**67 项全部通过**——哲学家代行 / 理发师换角 / 方古侵染回归；
+- 零信任 `tools/verify-zero-trust.mjs`：**44 项全部通过**——伪造 / 冒用 / 越权 / 收包扫描。
+
+真宿主用例 `SeamstressArtistHostTests` **4/4**（真 SQLite + 真 SignalR：女裁缝用后不再唤醒的事件流证据、
+艺术家回答消耗 / 要求重问不消耗 / 挂起挡收口 / 失能标记；本批扩展的**在线推送断言**：白天开始入口下发、
+提问后等待态下发、重问后入口回来、回答后用尽下发；跑批后追加仅测试的提问闸证据 `phase.not_open_day` + `artist.not_artist`）。
+
+内核 / 规则证据：`ArtistQuestionMachineTests` 14 例 + `OnceAbilityUseTests` 2 例 + `SeamstressNightActionTests` 8 例 +
+`ArtistQuestionSourceTests` 8 例 + `NightPlanBuilderTests` 女裁缝 3 例。
+
+冻结版门禁（跑批时）：`dotnet build` 0 警告 0 错误；`dotnet test` **749 通过 / 0 失败**
+（Kernel 327 · Rules 282 · Integration 117 · NormativeGates 23）；`dotnet format` 就地通过；
+`npm run gate` 全绿（typecheck + lint + 113 前端单测 + build）。
+跑批后仅测试增补一条（提问闸）→ Integration 118、全量 **750** 通过；产品代码未变（E19 先例）。
+
+诚实记录：
+
+- **E26 首跑在真机上发现交付缺陷并当场修复**：`canAskArtistQuestion` / `pendingQuestion` /
+  `exhaustedAbilities` 只随 `JoinSeat` 快照更新，而白天开始与提问结清都没有推送通道——艺术家的提问入口
+  在**在线连接**上永不出现（装置首跑的第一条红），等待态还叠加了面板 `v-if` 只认权限位的门。
+  修法（`cf4863f`）：新增「本人视图变更」推送（`ReceivePlayerViewChanged`：提问 / 结清定向到本人，
+  阶段边界与白天收口广播），客户端复用快照合并闸，面板三态改 `canAsk || pendingQuestion`；
+  先红后绿：装置 34→82 项全绿、宿主用例补四条在线推送断言、web 接线 / 解析用例随 `npm run gate` 全绿。
+- 装置侧同族修复（`2789e1b`）：SignalR 一帧可合多条消息（服务端把推送与调用回执写进同一帧），
+  `verify-seamstress-artist` / `verify-death-triggers` / `verify-retro-info` 的解析器改为逐段解析、
+  回执匹配改用全量消息，修掉「提交生效却等不到回执」的间歇假红（三装置迭代档复跑 82 / 70 / 53 全绿）。
+- 本批未直接跑到的面（如实登记）：女裁缝「能力未生效」与「已死亡」、艺术家醉酒 / 中毒由规则级用例给结论
+  （见逐行）；无真机中毒夹具，不声称装置覆盖。
+
+### 逐行判定
+
+| # | 结论 | 证据（本批运行） |
+|---|---|---|
+| 1 | 通过 | 装置 01 / 07 / 08（候选 6 组 pair 不含自己、裁定归属 1 号、是 / 否、信息只到本人）；宿主 `Seamstress_UsesOnce_ThenNeverWakesAgain`；Rules `Prompt_OffersPlayerPairsAndDecline` / `Prompt_OffersPairsRegardlessOfLife` / `Resolve_Yes_IssuesInformationToSelf` |
+| 2 | 通过 | 装置：夜 1 摇头零裁定 / 零标记 / 零信息 + **夜 2 再次收到同一候选**；宿主 `PhilosopherDecline_DoesNotConsumeOncePerGame`（同族记账）+ 女裁缝宿主用例的摇头路径；Rules `Decline_SkipsDecisionAndResolve`；内核 `OnceAbilityUseTests` |
+| 3 | 通过 | 装置夜 3（1 号页零请求 + 槽上下文 / 视图帧含「不再被唤醒」+ 信息不增 + 标记仍在，截图 10）；宿主 `Seamstress_UsesOnce_ThenNeverWakesAgain`（第二夜无请求、有可归因跳过事件）；Rules `SeamstressUsed_NoLongerWakes` |
+| 4 | 通过（规则级） | Rules `Resolve_Ineffective_MarksMayBeFalse` / `Resolve_WithVortox_MarksMustBeFalse`；本批无中毒真机夹具（如实标注） |
+| 5 | 通过（规则级） | Rules `SeamstressDead_IsEmptySlot`（不唤醒、空槽走配额）+ `NightSlotActivationTests` 同族的「进入时求值」口径（D-0013 §1） |
+| 6 | 通过 | 装置 02 / 03（入口只对 2 号、等待态、说书人端问题全文 + 归属 2 号、无关席位页面零问题文本）；宿主 `Artist_AnswerConsumes_ReturnDoesNot` |
+| 7 | 通过 | 装置 03 / 04 / 05 / 06（四答候选；要求重问不消耗 / 不落标记 / 可再问；回答「不是」→ 信息 + 标记 + 入口撤下）；宿主同用例（含在线推送四态）；Rules `Prompt_OffersFourAnswers` / `Resolve_Returned_DoesNotConsume` / `Resolve_Yes` / `Resolve_Unknown` |
+| 8 | 通过（规则级） | Rules `Resolve_Ineffective_MarksMayBeFalse`（无论是否生效都消耗 + 信息按三-1 标注） |
+| 9 | 通过 | 宿主 `AskArtistQuestion_RejectsOutsideDay_AndForNonArtist`（`phase.not_open_day` + `artist.not_artist` + 同日受理正对照）+ `Artist_AnswerConsumes_ReturnDoesNot`（`artist.already_used`）；内核 `ArtistQuestionMachineTests`（`artist.question_control` / `question_pending` 等）；装置：用尽后入口不再出现 |
+| 10 | 通过 | 装置与宿主均断言 `phase.artist_question_pending`（界面回执 + 服务端拒绝码） |
+| 11 | 通过 | 装置 06 / 09（两枚标记、title 记「能力已用尽」、夜 3 仍在）+ 帧 / 页面级零「失去能力」；宿主 `LostAbilityMarkers`（席位 + 能力）；`PlayerProjectionLeakGate` 收录 `LostAbilityMarkerDto` |
+| 12 | 通过 | 装置 04（提问挂起中刷新重连 → 等待态 + 问题全文由快照恢复）；宿主 `PendingQuestion` 快照断言；内核 `ArtistQuestionFolder` 阶段边界显式失败 |
+| 13 | 通过（内核级） | 内核 `OnceAbilityUseTests`（同一席位同一能力只记一次）+ `ArtistQuestionMachineTests`（重复 / 越界 / 空裁定显式拒绝）；重放口径由事件流折叠覆盖 |
+| 14 | 通过 | 本批四装置回归（主 194 / 角色变更 67 / 零信任 44 / 本票 82）+ 同族装置解析修复后复跑（death-triggers 70 / retro-info 53）+ 全量 750 用例 |
+| 15 | 通过 | 装置五席 116 帧零说书人字段 + 信息只推本人 + 问题全文只进本人与说书人 + 阳性对照；零信任装置 44 项 |

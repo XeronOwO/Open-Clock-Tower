@@ -1,6 +1,6 @@
 /**
  * 限次信息族（女裁缝 / 艺术家）批次装置 —— 票据
- * docs/backlog/review/seamstress-and-artist.md 的界面级验收行，平台口径见 docs/standard/rulings.md R-0040。
+ * docs/backlog/done/seamstress-and-artist.md 的界面级验收行，平台口径见 docs/standard/rulings.md R-0040。
  *
  * 它回答：**「每局限一次的信息能力 + 失去能力标记」这条链路在真界面上走得完吗？**
  *
