@@ -205,6 +205,36 @@
 - **数学家票验收矩阵 10 行全部通过**（逐行证据见 `done/mathematician.md` 的「E21 验收判定」）→ 移入 `done/`。
 - 本批后 `in-progress/` 与 `review/` 为空；`todo/` 仍只有 `storyteller-annotation`（Low）。
 
+## 批次 E22（2026-10-03，说书人注记）
+
+冻结版本：`main` @ `9f1796d`（一次提交含实现 + 装置段落 + 文档；跑批期间工作树干净、未改产品代码）。
+本批等待判定的票据一张：`storyteller-annotation`，跑它所在的通用装置：
+
+- 主装置 `tools/verify-storyteller-panel.mjs`（取证档 `--quota 2 --screenshots-all --build`）：
+  **194 项全部通过 / 0 跳过、退出码 0**（110.7s；39 张截图均为本次运行写入）。新增 `annotation` 段 16 项：
+  选中席位 → 注记区初始为空 → 新增（序号 11）→ 牌面 token（截断显示 + 全文 `title`）+ 操作台全文 +
+  状态账面板无该文本（D-0015 反向）→ 改（序号 12，同一 `data-note-id` 原地更新）→ 5 席玩家页零文案 / 零锚点
+  + 5 席活动快照 4 次采样不变 → 删（序号 13）后 token 消失 → 再写一条留给重启断言；
+  `rebuild` / `reconnect` 段新增：真宿主停机 → 损坏事件载荷 → 重启 → 修复重建后注记仍在牌面。
+  新增截图 `39-grimoire-annotation` / `40-grimoire-annotation-edited` / `41-annotation-player-clean` /
+  `42-grimoire-annotation-after-restart` 逐张复核（牌面 token 与操作台、玩家端干净、重启后仍在）；
+  其余 35 张为既有链路回归。
+- 真宿主用例 `AnnotationHostTests` **6/6**（增改删链路 + 重连包零下发 + 玩家连接零推送 + 玩家凭据被身份闸拒 +
+  越界输入各拒绝码 + 文本归一化 + 幂等 + 重启后水位恢复）；内核 `SeatAnnotationTests` **12/12**
+  （折叠顺序 / 标识不复用 / 顺序损坏抛错 / 不动状态账与步骤机 / 每席计数 / 文本口径）。
+- 门禁（冻结版本）：`dotnet build` 0 警告 0 错误；`dotnet test OpenClockTower.slnx` **637 通过 / 0 失败**；
+  `dotnet format` 退出码 0；`npm run gate` 通过（99 前端单测）。
+- 结构门禁的一次真实拦截（诚实记录）：首版实现给 `GameHub` 加了 3 条命令方法后该文件 612 行、
+  被 `SourceFileLengthGateTests` 当场拦下；按「超限先拆再改」把 wire→命令的翻译与参数层审计拆到
+  `src/OpenClockTower.Server/GameCommandFactory.cs`（Hub 只留连接 / 凭据 / 调用 / 推送），拆分后
+  `GameHub` 467 行、行为由既有 105 条集成用例与 99 条前端单测回归确认。
+- 其余七装置未跑：本批没有它们的改动，也没有等待判定的票据（诚实记录，不用"全装置回归"顶替）。
+
+批次 E22 判出：
+
+- **说书人注记票验收矩阵 8 行全部通过**（逐行证据见 `done/storyteller-annotation.md` 的「E22 验收判定」）→ 移入 `done/`。
+- 本批后 `in-progress/`、`review/`、`todo/` 均为空；`done/` 新增 `storyteller-annotation.md`。
+
 ## 相关阅读
 
 - 验收规程：`docs/acceptance/AGENTS.md`

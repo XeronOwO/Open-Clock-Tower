@@ -7,7 +7,7 @@
 
 | 装置 | 脚本 | 夹具（`--assign` 派生） | 它回答的问题 |
 |---|---|---|---|
-| 主装置 | `tools/verify-storyteller-panel.mjs` | 默认 5 席：`clockmaker / dreamer / no-dashii / mutant / klutz`（`--seats` / `--assign` 可换） | 真宿主 + 真 Vite + 真 Chromium 的多客户端通用玩法回归：加入 → 分配 → 首夜（钟表匠裁定点 / 筑梦师请求）→ 白天（提名 / 投票 / 处决）→ 第二 / 三夜（代填 / 强制作废 / 依赖失效）→ 涡流干扰（涡流存活下的镇民信息结算：账本落 `Vortox` + 玩家隔离；快档第 3 夜 / 取证档第 4 夜）→ 魔典主视图 → 重建 → 重连补齐 |
+| 主装置 | `tools/verify-storyteller-panel.mjs` | 默认 5 席：`clockmaker / dreamer / no-dashii / mutant / klutz`（`--seats` / `--assign` 可换） | 真宿主 + 真 Vite + 真 Chromium 的多客户端通用玩法回归：加入 → 分配 → **说书人注记**（D-0019：加 / 改 / 删 + 牌面 token + 5 席玩家零下发；重启 / 重建后仍在）→ 首夜（钟表匠裁定点 / 筑梦师请求）→ 白天（提名 / 投票 / 处决）→ 第二 / 三夜（代填 / 强制作废 / 依赖失效）→ 涡流干扰（涡流存活下的镇民信息结算：账本落 `Vortox` + 玩家隔离；快档第 3 夜 / 取证档第 4 夜）→ 魔典主视图 → 重建 → 重连补齐 |
 | 胜负链路 | `tools/verify-winloss.mjs` | 5 席：`vortox / klutz / mutant / witch / dreamer` | 呆瓜被处决 → 公开选择当场开出（候选不含已死的自己）→ 双端同一份结束结论 → 结束后命令被拒 |
 | 麻脸巫婆之夜 | `tools/verify-pit-hag.mjs` | 5 席：`pit-hag / savant / artist / no-dashii / klutz` | 创造恶魔 → 当夜该恶魔真的被唤醒并行动 → 恶魔击杀进待定死亡 → 说书人「阻止 / 确认 / 追加死亡」→ 窗口收口 |
 | 女巫链路 | `tools/verify-witch.mjs` | 4 席：`witch / clockmaker / dreamer / no-dashii`（存活 4 > 3，女巫保住能力的最小局面） | 夜晚诅咒 → 下个白天提名即死（提名仍生效；存活 ≤3 时解除）+ 三席收包扫描 |
