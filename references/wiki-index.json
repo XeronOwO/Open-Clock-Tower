@@ -1,558 +1,579 @@
 {
   "source": "https://clocktower-wiki.gstonegames.com",
-  "generatedAt": "2026-10-01",
-  "pageCount": 79,
+  "generatedAt": "2026-10-04",
+  "pageCount": 82,
   "pages": [
     {
       "page": "梦殒春宵",
       "file": "梦殒春宵.wiki",
-      "fetchedAt": "2026-10-01",
+      "fetchedAt": "2026-10-04",
       "bytes": 16047,
       "sha256": "f80a77fcc4b31c28f7a96f4360e2b040d8de6d2bd608e38ecb02cbb7ef4499a3"
     },
     {
       "page": "暗流涌动",
       "file": "暗流涌动.wiki",
-      "fetchedAt": "2026-10-01",
+      "fetchedAt": "2026-10-04",
       "bytes": 10906,
       "sha256": "c71793156165478caed2bc9ecfaaa7e4c61b07624cf828dd68045fd45daaf53d"
     },
     {
       "page": "钟表匠",
       "file": "钟表匠.wiki",
-      "fetchedAt": "2026-10-01",
+      "fetchedAt": "2026-10-04",
       "bytes": 7648,
       "sha256": "51a4393246c618ccee2a7b5ee2076f289d7f19fdad07a6a729d3a786a86bdf0f"
     },
     {
       "page": "筑梦师",
       "file": "筑梦师.wiki",
-      "fetchedAt": "2026-10-01",
+      "fetchedAt": "2026-10-04",
       "bytes": 8636,
       "sha256": "53ca18c52267b871c0041d1b4101f486f83bace0005aa7261493b3aa4cacfdf7"
     },
     {
       "page": "舞蛇人",
       "file": "舞蛇人.wiki",
-      "fetchedAt": "2026-10-01",
+      "fetchedAt": "2026-10-04",
       "bytes": 9186,
       "sha256": "5b736b1c5b8465e7ab9b2e2beefb09f59d36366a2b5aace63d4145c608c13cfc"
     },
     {
       "page": "数学家",
       "file": "数学家.wiki",
-      "fetchedAt": "2026-10-01",
+      "fetchedAt": "2026-10-04",
       "bytes": 9640,
       "sha256": "cdd2002b0110a09463e0084c2415e334aef0024f7635d7b914814a9a89233e1c"
     },
     {
       "page": "卖花女孩",
       "file": "卖花女孩.wiki",
-      "fetchedAt": "2026-10-01",
+      "fetchedAt": "2026-10-04",
       "bytes": 8367,
       "sha256": "6c250f4f45fd465f3e3793e79150a9307bae7092bda3210806f06530b772d9f0"
     },
     {
       "page": "城镇公告员",
       "file": "城镇公告员.wiki",
-      "fetchedAt": "2026-10-01",
+      "fetchedAt": "2026-10-04",
       "bytes": 6621,
       "sha256": "2861bba3cb8e6daf6d73c52e06c2f279126445227ec5c1314c568c9c3663e70d"
     },
     {
       "page": "神谕者",
       "file": "神谕者.wiki",
-      "fetchedAt": "2026-10-01",
+      "fetchedAt": "2026-10-04",
       "bytes": 5497,
       "sha256": "78e04260b807d901ee7b22005ec3e24a4c68ce53d08c5b6db889223b70de865d"
     },
     {
       "page": "博学者",
       "file": "博学者.wiki",
-      "fetchedAt": "2026-10-01",
+      "fetchedAt": "2026-10-04",
       "bytes": 11833,
       "sha256": "f65940a46c892de58583ab6a1679f6325a309382127670f5ff07ef361492287e"
     },
     {
       "page": "女裁缝",
       "file": "女裁缝.wiki",
-      "fetchedAt": "2026-10-01",
+      "fetchedAt": "2026-10-04",
       "bytes": 6670,
       "sha256": "ba0feacd19f649c8680fd5c84ab013f3e65d363c4eaeec2c3ee3c6b35e19d3e2"
     },
     {
       "page": "哲学家",
       "file": "哲学家.wiki",
-      "fetchedAt": "2026-10-01",
+      "fetchedAt": "2026-10-04",
       "bytes": 14288,
       "sha256": "9b1c00ed6cef563836b1a7b1eeae9d531ed19674fce690138dff7e29436601be"
     },
     {
       "page": "艺术家",
       "file": "艺术家.wiki",
-      "fetchedAt": "2026-10-01",
+      "fetchedAt": "2026-10-04",
       "bytes": 7451,
       "sha256": "08362a9e7459db7e12d5fef860b7442cdd404a39e52e5e0a1c12337260aaee46"
     },
     {
       "page": "杂耍艺人",
       "file": "杂耍艺人.wiki",
-      "fetchedAt": "2026-10-01",
+      "fetchedAt": "2026-10-04",
       "bytes": 10475,
       "sha256": "07955ed2b7c1f8c914a314b157bf90c784c112c7b3710b880afc1b7abab5aa72"
     },
     {
       "page": "贤者",
       "file": "贤者.wiki",
-      "fetchedAt": "2026-10-01",
+      "fetchedAt": "2026-10-04",
       "bytes": 5649,
       "sha256": "13f7c264eb0ef60b00e306ad4a60f14e60d2d1d1d0bd1aff6a1f6d20115a945a"
     },
     {
       "page": "畸形秀演员",
       "file": "畸形秀演员.wiki",
-      "fetchedAt": "2026-10-01",
+      "fetchedAt": "2026-10-04",
       "bytes": 7891,
       "sha256": "1026a4fcba19e7807d7037e19dca524932157b54a9d54d4f5706978a2ed7dd09"
     },
     {
       "page": "心上人",
       "file": "心上人.wiki",
-      "fetchedAt": "2026-10-01",
+      "fetchedAt": "2026-10-04",
       "bytes": 5562,
       "sha256": "1a2dcf22187ba5a0281d41841c32b5d02bb84de6dc0244b8a740eaee78fcccae"
     },
     {
       "page": "理发师",
       "file": "理发师.wiki",
-      "fetchedAt": "2026-10-01",
+      "fetchedAt": "2026-10-04",
       "bytes": 8391,
       "sha256": "39805e2f19646e9e8260e3f2258e0e93d7688b07f563d754a42dc7b40424d269"
     },
     {
       "page": "呆瓜",
       "file": "呆瓜.wiki",
-      "fetchedAt": "2026-10-01",
+      "fetchedAt": "2026-10-04",
       "bytes": 8112,
       "sha256": "7be6fe419c82d00dec6b472c496738e6a20feae3dffa51feb9c00c042a0f99e0"
     },
     {
       "page": "镜像双子",
       "file": "镜像双子.wiki",
-      "fetchedAt": "2026-10-01",
+      "fetchedAt": "2026-10-04",
       "bytes": 15514,
       "sha256": "588c8f7a46658ce3aeefc5f90c0acb75421ea857b3a6afa2f7bdd37b7a0cc1de"
     },
     {
       "page": "女巫",
       "file": "女巫.wiki",
-      "fetchedAt": "2026-10-01",
+      "fetchedAt": "2026-10-04",
       "bytes": 7131,
       "sha256": "3c1a75e2f88d7098e5816508d469b5ecc316fd0a721a9c3bf712799839cac0b2"
     },
     {
       "page": "洗脑师",
       "file": "洗脑师.wiki",
-      "fetchedAt": "2026-10-01",
+      "fetchedAt": "2026-10-04",
       "bytes": 13663,
       "sha256": "2d4bd29cb1dd876a413f885d7c4f0df5f1f53f172608355c0584f50eb7f58eba"
     },
     {
       "page": "麻脸巫婆",
       "file": "麻脸巫婆.wiki",
-      "fetchedAt": "2026-10-01",
+      "fetchedAt": "2026-10-04",
       "bytes": 13921,
       "sha256": "8850ed24c939a0f369c3f2b382fa5767511fe0b4f9dde574536e2677daee1332"
     },
     {
       "page": "方古",
       "file": "方古.wiki",
-      "fetchedAt": "2026-10-01",
+      "fetchedAt": "2026-10-04",
       "bytes": 8463,
       "sha256": "3dd577f966c9dc283e0dfe7b39e685e643b1c00f33d293709bed29c6f60b20d9"
     },
     {
       "page": "亡骨魔",
       "file": "亡骨魔.wiki",
-      "fetchedAt": "2026-10-01",
+      "fetchedAt": "2026-10-04",
       "bytes": 12161,
       "sha256": "9520bd0c20fc21a274ac6450e7bb2490ce6ee34bb53e8880e035185ac836d275"
     },
     {
       "page": "诺-达鲺",
       "file": "诺-达鲺.wiki",
-      "fetchedAt": "2026-10-01",
+      "fetchedAt": "2026-10-04",
       "bytes": 6819,
       "sha256": "8c6fc3fb2db3d59efd33e9180b8af28871ec7f025023cb80a2ec7cd0f6c5c6d7"
     },
     {
       "page": "涡流",
       "file": "涡流.wiki",
-      "fetchedAt": "2026-10-01",
+      "fetchedAt": "2026-10-04",
       "bytes": 9941,
       "sha256": "36716eb890bd93b2fed5d27f67ccdc6c7a13fa67900a4a11a685580c0c3608ff"
     },
     {
       "page": "圣洁之魂",
       "file": "圣洁之魂.wiki",
-      "fetchedAt": "2026-10-01",
+      "fetchedAt": "2026-10-04",
       "bytes": 2617,
       "sha256": "24ffb1c45f5db2b8a3ec368ab40420b3d591653234c093d034f7ea2a9c736bb0"
     },
     {
       "page": "僵怖",
       "file": "僵怖.wiki",
-      "fetchedAt": "2026-10-01",
+      "fetchedAt": "2026-10-04",
       "bytes": 9039,
       "sha256": "57f767afd538e670ce56bac7a2bbd9295d67b64dd4070e28cb5eb1280fe06ae6"
     },
     {
       "page": "占卜师",
       "file": "占卜师.wiki",
-      "fetchedAt": "2026-10-01",
+      "fetchedAt": "2026-10-04",
       "bytes": 9897,
       "sha256": "0927badd99d710fddc65a335eeec7d9a0f83b9deaa6778c0420ca058a80e2a92"
     },
     {
       "page": "酒鬼",
       "file": "酒鬼.wiki",
-      "fetchedAt": "2026-10-01",
+      "fetchedAt": "2026-10-04",
       "bytes": 9844,
       "sha256": "06c8339801475f0d66312eeac936104d88c98251d61a2ac56c48c0123d804aba"
     },
     {
       "page": "小恶魔",
       "file": "小恶魔.wiki",
-      "fetchedAt": "2026-10-01",
+      "fetchedAt": "2026-10-04",
       "bytes": 11965,
       "sha256": "e55600483a989685efcbfa1fbc1186da6271e027d8273d0ddfcf7b61afe5921b"
     },
     {
       "page": "僧侣",
       "file": "僧侣.wiki",
-      "fetchedAt": "2026-10-01",
+      "fetchedAt": "2026-10-04",
       "bytes": 7573,
       "sha256": "653efc81a272b5b656096f25792e10e0862369935c3e2e421355f475d1d4078f"
     },
     {
       "page": "镇民",
       "file": "镇民.wiki",
-      "fetchedAt": "2026-10-01",
+      "fetchedAt": "2026-10-04",
       "bytes": 3868,
       "sha256": "c356f83f063093c20a44eb7bab305c90ce35c695df05bbfd199b792f0e9a8fed"
     },
     {
       "page": "外来者",
       "file": "外来者.wiki",
-      "fetchedAt": "2026-10-01",
+      "fetchedAt": "2026-10-04",
       "bytes": 1613,
       "sha256": "58022881ac94c1b019e731b80f3aa018daa8e3fc1c6fbc924c63a11e81c07f3e"
     },
     {
       "page": "爪牙",
       "file": "爪牙.wiki",
-      "fetchedAt": "2026-10-01",
+      "fetchedAt": "2026-10-04",
       "bytes": 1793,
       "sha256": "609fd1f2cdb37bcbd576ae46df197ecf8fa2ded8ddc5ec94e83a0120f5fbf423"
     },
     {
       "page": "恶魔",
       "file": "恶魔.wiki",
-      "fetchedAt": "2026-10-01",
+      "fetchedAt": "2026-10-04",
       "bytes": 1397,
       "sha256": "205131b1aeb6ba781dadbf0c0266b594f5dca4a8c139d350cf541412720d1917"
     },
     {
       "page": "旅行者",
       "file": "旅行者.wiki",
-      "fetchedAt": "2026-10-01",
+      "fetchedAt": "2026-10-04",
       "bytes": 10477,
       "sha256": "0fece917315c19afd412f6b014cfae9f1bd3b5d15119ba8fecc21a97bf5162af"
     },
     {
       "page": "传奇角色",
       "file": "传奇角色.wiki",
-      "fetchedAt": "2026-10-01",
+      "fetchedAt": "2026-10-04",
       "bytes": 3505,
       "sha256": "cc22a6d1f5344c8afaa43d677c7963402092c8fa5d5611dd80a47db76481768d"
     },
     {
+      "page": "设置调整",
+      "file": "设置调整.wiki",
+      "fetchedAt": "2026-10-04",
+      "bytes": 10010,
+      "sha256": "39ac4a8573086c0a9dfb014e2262e1cd748fccbb579f0439ac589b00cc8bf843"
+    },
+    {
+      "page": "男爵",
+      "file": "男爵.wiki",
+      "fetchedAt": "2026-10-04",
+      "bytes": 8322,
+      "sha256": "980e73d99f1e2a81e99e6c7546278291297327240a34f068e5b3768e5891762b"
+    },
+    {
+      "page": "无名旅客",
+      "file": "无名旅客.wiki",
+      "fetchedAt": "2026-10-04",
+      "bytes": 5204,
+      "sha256": "942beb0dd9a594313c2089af16b31be5d5de55163edf97613ccb10121fa35b85"
+    },
+    {
       "page": "夜晚行动顺序一览",
       "file": "夜晚行动顺序一览.wiki",
-      "fetchedAt": "2026-10-01",
+      "fetchedAt": "2026-10-04",
       "bytes": 40124,
       "sha256": "b13402ea7898b8d5dc21376714c5c8de20ce54edb62c9c0d11d2ca3356d23c87"
     },
     {
       "page": "角色能力类别总览",
       "file": "角色能力类别总览.wiki",
-      "fetchedAt": "2026-10-01",
+      "fetchedAt": "2026-10-04",
       "bytes": 609,
       "sha256": "a09d785d2580b4843894f9186d460d05585f7f877f5a1effea2804c618e1baa1"
     },
     {
       "page": "死亡触发能力",
       "file": "死亡触发能力.wiki",
-      "fetchedAt": "2026-10-01",
+      "fetchedAt": "2026-10-04",
       "bytes": 3103,
       "sha256": "641fcf91969c1134970d7d260482f279d87d50da7b78bb354dceb35623e1af4f"
     },
     {
       "page": "钟楼谜团隐性规则汇总",
       "file": "钟楼谜团隐性规则汇总.wiki",
-      "fetchedAt": "2026-10-01",
+      "fetchedAt": "2026-10-04",
       "bytes": 4513,
       "sha256": "1a0c4110de6b07d773dd3c544e497a8e014e980f85929bfbcfd983a702be6ae8"
     },
     {
       "page": "疯狂",
       "file": "疯狂.wiki",
-      "fetchedAt": "2026-10-01",
+      "fetchedAt": "2026-10-04",
       "bytes": 3781,
       "sha256": "f1cd491b1c5c6473f73045196f1742737aa8cee3f4b7e2a714544298bc8c5ffd"
     },
     {
       "page": "“规则”与“理念”——关于角色能力互动的说明",
       "file": "“规则”与“理念”——关于角色能力互动的说明.wiki",
-      "fetchedAt": "2026-10-01",
+      "fetchedAt": "2026-10-04",
       "bytes": 6561,
       "sha256": "0da8274f5c209e034c0c912f170ae521a2a2e9b34a8cc87ad001645767fba849"
     },
     {
       "page": "规则概要",
       "file": "规则概要.wiki",
-      "fetchedAt": "2026-10-01",
+      "fetchedAt": "2026-10-04",
       "bytes": 27241,
       "sha256": "358c1f05e64574b40f074a641d743021f974a60eef41feda4a9fef81fe78a3c0"
     },
     {
       "page": "设计师总结的国内玩家对染的错误理解",
       "file": "设计师总结的国内玩家对染的错误理解.wiki",
-      "fetchedAt": "2026-10-01",
+      "fetchedAt": "2026-10-04",
       "bytes": 1942,
       "sha256": "334f04e599cc797a007fca5fd3a713f0ac07e2b67973b6cd48d2ebabea1ea0df"
     },
     {
       "page": "认知覆盖",
       "file": "认知覆盖.wiki",
-      "fetchedAt": "2026-10-01",
+      "fetchedAt": "2026-10-04",
       "bytes": 6520,
       "sha256": "5fbe505d09eff9be1ed9fde7aab8188689c927a1192b06c7810e7f5bb3479692"
     },
     {
       "page": "获取信息",
       "file": "获取信息.wiki",
-      "fetchedAt": "2026-10-01",
+      "fetchedAt": "2026-10-04",
       "bytes": 16470,
       "sha256": "1fab411be4db9e2932ad695dfd8f8999ad7cee071e5d35ee5bf3fbd6feaade1d"
     },
     {
       "page": "中毒",
       "file": "中毒.wiki",
-      "fetchedAt": "2026-10-01",
+      "fetchedAt": "2026-10-04",
       "bytes": 7830,
       "sha256": "8440f30a0c57ac2f2231e6c7a4e89c9bbeaba0271f19a43f8f61515a6d294c59"
     },
     {
       "page": "相克规则",
       "file": "相克规则.wiki",
-      "fetchedAt": "2026-10-01",
+      "fetchedAt": "2026-10-04",
       "bytes": 30478,
       "sha256": "78a900e3d5838c1e79661077c36a64c15fa070e41ddbac9ecba46022ac1174f5"
     },
     {
       "page": "哪些是“可以但不建议”",
       "file": "哪些是“可以但不建议”.wiki",
-      "fetchedAt": "2026-10-01",
+      "fetchedAt": "2026-10-04",
       "bytes": 6462,
       "sha256": "ece342a688984374092456646f8c9c5f174bdda10a8a86caeb814c276e721b0d"
     },
     {
       "page": "重要细节",
       "file": "重要细节.wiki",
-      "fetchedAt": "2026-10-01",
+      "fetchedAt": "2026-10-04",
       "bytes": 27942,
       "sha256": "0ad4b0b776a3c73642565eb515b9051146b9276ddb0af0fc4e0acfa9221cf48a"
     },
     {
       "page": "特殊胜利失败条件",
       "file": "特殊胜利失败条件.wiki",
-      "fetchedAt": "2026-10-01",
+      "fetchedAt": "2026-10-04",
       "bytes": 3600,
       "sha256": "2cb6f79897beed849841251af314c60a730af473f869c59dad52a38fc0adcb84"
     },
     {
       "page": "规则解释",
       "file": "规则解释.wiki",
-      "fetchedAt": "2026-10-01",
+      "fetchedAt": "2026-10-04",
       "bytes": 6177,
       "sha256": "46a6c01ad9b4c9fdaffc679132e740a79372099a72ddc29263fd367f2cbc6b24"
     },
     {
       "page": "暴露角色",
       "file": "暴露角色.wiki",
-      "fetchedAt": "2026-10-01",
+      "fetchedAt": "2026-10-04",
       "bytes": 7153,
       "sha256": "4928f60f6bcdab807165eaa09d28e0e84b9d82587c38ef7efe5fecd6dcf69f05"
     },
     {
       "page": "要赢了吗？",
       "file": "要赢了吗？.wiki",
-      "fetchedAt": "2026-10-01",
+      "fetchedAt": "2026-10-04",
       "bytes": 1016,
       "sha256": "27b0465fb1d7b810890992494ebd391b61c6931bdc6ced3e035c24fc5a79de82"
     },
     {
       "page": "死后能力保留",
       "file": "死后能力保留.wiki",
-      "fetchedAt": "2026-10-01",
+      "fetchedAt": "2026-10-04",
       "bytes": 1868,
       "sha256": "fb24c55b3ae79542e3a5c981c99f6e3512fded447218ce160d61381d12bb1c0d"
     },
     {
       "page": "进场能力",
       "file": "进场能力.wiki",
-      "fetchedAt": "2026-10-01",
+      "fetchedAt": "2026-10-04",
       "bytes": 3059,
       "sha256": "e83f62e37ceb097850c2b5c038368f2921f20ba14b9e57264abde616a134f29b"
     },
     {
       "page": "术语汇总",
       "file": "术语汇总.wiki",
-      "fetchedAt": "2026-10-01",
+      "fetchedAt": "2026-10-04",
       "bytes": 16503,
       "sha256": "ebe4c1776bd2f552609455859945aa21cb71fb442abe7e4cef6c22b1bc01c9c8"
     },
     {
       "page": "提名",
       "file": "提名.wiki",
-      "fetchedAt": "2026-10-01",
+      "fetchedAt": "2026-10-04",
       "bytes": 1643,
       "sha256": "230ea8fb14ef577469a4a2933abef2fc39c3eacbdfcc04bed5d921a6bc0b5ed9"
     },
     {
       "page": "额外死亡",
       "file": "额外死亡.wiki",
-      "fetchedAt": "2026-10-01",
+      "fetchedAt": "2026-10-04",
       "bytes": 1845,
       "sha256": "7513117e9436590f5d5a1ee990ab124570b5c68149312e899e999223425c56da"
     },
     {
       "page": "醉酒",
       "file": "醉酒.wiki",
-      "fetchedAt": "2026-10-01",
+      "fetchedAt": "2026-10-04",
       "bytes": 1045,
       "sha256": "be4951627fa6f27b99dcab3a2041983612b4aeb7d3edabdf161d4b2c43b4f76e"
     },
     {
       "page": "投票",
       "file": "投票.wiki",
-      "fetchedAt": "2026-10-01",
+      "fetchedAt": "2026-10-04",
       "bytes": 2501,
       "sha256": "48418634ff7491cff7bc9074c6b6dc6b37b7e1223afd3f85db84a5bfc7fe34da"
     },
     {
       "page": "处决",
       "file": "处决.wiki",
-      "fetchedAt": "2026-10-01",
+      "fetchedAt": "2026-10-04",
       "bytes": 6508,
       "sha256": "2411c4d46adbe6e4a25631d35a43888731bacd4cc3de314783090453217c888e"
     },
     {
       "page": "阵营转变",
       "file": "阵营转变.wiki",
-      "fetchedAt": "2026-10-01",
+      "fetchedAt": "2026-10-04",
       "bytes": 1406,
       "sha256": "2fba527cc9a56b9f862303acaeab0fc89c16bc391af6d4a360761e158f4f8dfa"
     },
     {
       "page": "获得能力",
       "file": "获得能力.wiki",
-      "fetchedAt": "2026-10-01",
+      "fetchedAt": "2026-10-04",
       "bytes": 4322,
       "sha256": "102a72c1f9fa1218467dd344a43a655cec7e318fc83b8058bf8b960f5e9ba2f7"
     },
     {
       "page": "持续检测型能力",
       "file": "持续检测型能力.wiki",
-      "fetchedAt": "2026-10-01",
+      "fetchedAt": "2026-10-04",
       "bytes": 5694,
       "sha256": "cf3e96eeee11234c0ce6758618d00e33cc959e29f6b49c063e3b698000912ea7"
     },
     {
       "page": "更换选择目标",
       "file": "更换选择目标.wiki",
-      "fetchedAt": "2026-10-01",
+      "fetchedAt": "2026-10-04",
       "bytes": 5934,
       "sha256": "20381ecb82b83b804c59d9fd806258501de7e9c9878be99d6c8756f7eda61546"
     },
     {
       "page": "复活",
       "file": "复活.wiki",
-      "fetchedAt": "2026-10-01",
+      "fetchedAt": "2026-10-04",
       "bytes": 1598,
       "sha256": "34307803036c5fbb21e03a459f4a28522a94d4129cb2e5c8e1c9f685f8991f17"
     },
     {
       "page": "回溯型能力",
       "file": "回溯型能力.wiki",
-      "fetchedAt": "2026-10-01",
+      "fetchedAt": "2026-10-04",
       "bytes": 5932,
       "sha256": "a67ef9f61801b6f5a11762ef7a9127b8a3439e0e5d6c60739507881c5ed36dde"
     },
     {
       "page": "影响",
       "file": "影响.wiki",
-      "fetchedAt": "2026-10-01",
+      "fetchedAt": "2026-10-04",
       "bytes": 1716,
       "sha256": "c6c565a3d66435ba9194046a8ed06678c08ca2d553076167d4441b6f81104d8f"
     },
     {
       "page": "互动干扰",
       "file": "互动干扰.wiki",
-      "fetchedAt": "2026-10-01",
+      "fetchedAt": "2026-10-04",
       "bytes": 9662,
       "sha256": "ebcab3e118f1896e7141159bc104d1cd1878d0916b74756d9cf61b53d9507521"
     },
     {
       "page": "免死",
       "file": "免死.wiki",
-      "fetchedAt": "2026-10-01",
+      "fetchedAt": "2026-10-04",
       "bytes": 1402,
       "sha256": "01870f298c9c44761381d7a049e1e554ea25fc4c59be4ab9949b09e33cac8577"
     },
     {
       "page": "疯狂规则如何运作？——疯狂的小精灵",
       "file": "疯狂规则如何运作？——疯狂的小精灵.wiki",
-      "fetchedAt": "2026-10-01",
+      "fetchedAt": "2026-10-04",
       "bytes": 9755,
       "sha256": "19c11fcadd49b7922dfa75130194e9c41e99619aa82fcaea4fcbbe71ae24c09f"
     },
     {
       "page": "公开触发能力",
       "file": "公开触发能力.wiki",
-      "fetchedAt": "2026-10-01",
+      "fetchedAt": "2026-10-04",
       "bytes": 2045,
       "sha256": "94bb6b5032ca6e4694f3a0bee999eabafd6617d99692edfb42c416f0a1b07915"
     },
     {
       "page": "限次能力",
       "file": "限次能力.wiki",
-      "fetchedAt": "2026-10-01",
+      "fetchedAt": "2026-10-04",
       "bytes": 2772,
       "sha256": "a2caf6a3816facda7194e15bc5d00e720be417f1a85ef37d2ad417249876ce72"
     },
     {
       "page": "能力效果干扰",
       "file": "能力效果干扰.wiki",
-      "fetchedAt": "2026-10-01",
+      "fetchedAt": "2026-10-04",
       "bytes": 1668,
       "sha256": "814d65b2b56ce4819007bae38b20e9976b3a39e480921301a45b460c3b21df19"
     },
     {
       "page": "保护",
       "file": "保护.wiki",
-      "fetchedAt": "2026-10-01",
+      "fetchedAt": "2026-10-04",
       "bytes": 1818,
       "sha256": "6da2b4bbea4a8ed318f0a87924ee57b9a60984f3d0e42e25de8bb1e9484a7a18"
     }

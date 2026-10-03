@@ -172,7 +172,7 @@ DecisionPoint
 | 建表 | `NightPlanBuilder`：顺序表 + 状态账 + 席位名单 + 行动契约 → `StepPlan`；非角色条目 → 节拍 / 黎明槽位；角色不在场 / 已死亡 → 空槽位（照样走配额）；**席位缺角色 / 生死未观测 / 角色重复 / 契约未实现 / 未知口径一律显式拒绝** | D-0013 §1 / D-0015 |
 | 口径记录 | 选择结果写进 `StepPlan.Variant`，随 `PhaseStartedEvent` 进事件流 | R-0014 |
 | 行动契约 | `INightAction`（提示契约：上下文 / 合法选项 / 无选项行为）+ `IAbilityResolution`（结算契约，同批角色对象同时实现）；首批角色：钟表匠 / 筑梦师 / 诺-达鲺 | D-0002 / R-0009 |
-| 入口 | `AssignCharactersCommand`（开局分配：角色 + 存活 + 清醒 + 健康）+ `StartNightCommand`（服务端建表后开阶段） | D-0017 / R-0015 / R-0016 / D-0012 |
+| 入口 | `AssignCharactersCommand`（开局分配：角色 + 存活 + 清醒 + 健康）+ `StartNightCommand`（服务端建表后开阶段）+ `GameHub.ProposeSetup`（只读配板建议：分布表 + 设置调整，建议不落账） | D-0017 / R-0015 / R-0016 / D-0012 / R-0041 / R-0042 |
 | 逐步结算 | `AbilitySettlement`：行动槽位在「玩家答毕 / 说书人裁毕」后按 `StepSlot.Owner` 取结算契约并产出事件；信息类契约先要一次说书人裁定（`BuildPostChoiceDecision`）再结算 | D-0002 / D-0011 |
 | 生效判定 | `AbilityEffectivenessEvaluator`：存活 + 清醒 + 健康 → 生效；中毒 / 醉酒 / 死亡 → 不生效；维度未观测 → 整条输入被拒绝（不猜） | 百科《重要细节》三-3 / D-0015 |
 | 事件与账 | `AbilityResolvedEvent` 折进 `GameState.AbilityUses` / `GameState.Malfunctions`（用过 ≠ 生效过）；`PersistentEffectApplied` / `Terminated` / `InstantaneousEffectApplied` 由角色契约与对账产出 | 架构 §2.2 / D-0015 |
@@ -304,6 +304,7 @@ StepMachine（步骤机）
 说书人上报（`ApplySeatStateCommand` / `GameHub.ReportSeatState`）与**结算引擎**
 （角色契约产出效果 / 信息事件，`SettlementReconciler` 产出常驻效果与维度解除事件）。
 结算引擎是状态的**推演方**：它读账算生效、产出事件；账本本身仍然只记事实，不替它翻维度（D-0015）。
+配板建议（`GameHub.ProposeSetup`）是**只读查询**：读分布表与花名册算建议，不写任何账（R-0041 / R-0042）。
 
 **已落地映射（2026-10-02）**：
 
@@ -449,16 +450,16 @@ StepMachine（步骤机）
 | 模块 | 说明 | 状态 |
 |---|---|---|
 | `OpenClockTower.Kernel` | 纯规则内核 | 已建（六状态 + 效果生命周期 + 两本账 + 裁定点契约 + 步骤机/操作请求/事件模型 + 状态账与效果归因 + 结算调度 / 生效判定 / 常驻效果与维度对账；角色行为在 Rules） |
-| `OpenClockTower.Rules` | 梦殒春宵角色、剧本、相克数据 | 已建（夜晚顺序表两套口径 + 逐条来源；花名册 25 人与类型 / 中文名；`NightPlanBuilder` 建表；角色契约：钟表匠 / 筑梦师 / 诺-达鲺）；逐角色实现与相克数据待补 |
+| `OpenClockTower.Rules` | 梦殒春宵角色、剧本、相克数据 | 已建（夜晚顺序表两套口径 + 逐条来源；花名册 25 人与类型 / 中文名 / 设置调整；初始设置分布表（逐行取证等级，R-0041）+ 可重放配板求解 `SetupComposer`（R-0042）；`NightPlanBuilder` 建表；角色契约：钟表匠 / 筑梦师 / 诺-达鲺）；逐角色实现与相克数据待补 |
 | `OpenClockTower.Application` | 命令/查询/裁定编排 | 已建（四道闸、会话编排、结算管线、投影与重连包、房间重建；`GameSession` + `GameCommandDispatcher` + `SessionSettlement`） |
 | `OpenClockTower.Contracts` | 前后端共享契约（由 OpenAPI 生成前端客户端） | 已建（SignalR 推送与命令回执 DTO） |
-| `OpenClockTower.Server` | ASP.NET Core 宿主、SignalR、EF Core | 已建（定向单播、EF Core + SQLite 事件/快照/回执/票据、服务端节拍器；不再自动开阶段；`AssignCharacters` / `StartNight` 入口；心跳产生的通知照常分发） |
-| `tests/OpenClockTower.Kernel.Tests` | 内核行为测试 | 已建（123 条：六状态 / 效果生命周期 / 两本账 / 裁定点与疯狂 / 步骤机与操作请求 / 状态账与效果归因 / 能力生效判定 / 结算调度 / 维度对账） |
-| `tests/OpenClockTower.Rules.Tests` | 规则数据测试 | 已建（57 条：夜晚顺序表 / 结构不变量 / 变体差异 / 建表 / 花名册档案 / 诺-达鲺常驻中毒与角色契约） |
-| `tests/OpenClockTower.NormativeGates.Tests` | 把规范写成会失败的测试 | 已建（17 条门禁，逐条先红后绿） |
-| `tests/OpenClockTower.Integration.Tests` | 多客户端端到端 | 已建（43 条：真实宿主 + 真实 SignalR 客户端；含真实进程重启、损坏载荷恢复、预阶段状态观测、分配→开夜→请求/裁定点，结算引擎验收矩阵 1–8 的 3 条真宿主链路，以及玩家推送的覆盖面与投递方向） |
+| `OpenClockTower.Server` | ASP.NET Core 宿主、SignalR、EF Core | 已建（定向单播、EF Core + SQLite 事件/快照/回执/票据、服务端节拍器；不再自动开阶段；`AssignCharacters` / `StartNight` / `ProposeSetup`（配板建议，只读）入口；心跳产生的通知照常分发） |
+| `tests/OpenClockTower.Kernel.Tests` | 内核行为测试 | 已建（327 条：六状态 / 效果生命周期 / 两本账 / 裁定点与疯狂 / 步骤机与操作请求 / 状态账与效果归因 / 能力生效判定 / 结算调度 / 维度对账） |
+| `tests/OpenClockTower.Rules.Tests` | 规则数据测试 | 已建（312 条：夜晚顺序表 / 结构不变量 / 变体差异 / 建表 / 花名册档案 / 初始设置分布表与配板求解 / 诺-达鲺常驻中毒与角色契约） |
+| `tests/OpenClockTower.NormativeGates.Tests` | 把规范写成会失败的测试 | 已建（24 条门禁，逐条先红后绿；含花名册两侧镜像对账） |
+| `tests/OpenClockTower.Integration.Tests` | 多客户端端到端 | 已建（118 条：真实宿主 + 真实 SignalR 客户端；含真实进程重启、损坏载荷恢复、预阶段状态观测、分配→开夜→请求/裁定点，结算引擎验收矩阵 1–8 的 3 条真宿主链路，以及玩家推送的覆盖面与投递方向） |
 | `web/` | Vue 3 + TS 前端（单 SPA 两套视图） | 已建（说书人魔典主视图：席位圆环 + 席位操作台 + 数据下钻；玩家端骨架；连接 / 命令 / 防御性呈现分层，见 `web/AGENTS.md`、D-0018 与 `architecture/storyteller-presentation.md`） |
-| `tools/` | 抓取、索引、数据生成、来源核对 | 已建（`fetch-wiki.ps1`：79 页快照 + SHA256 索引；`check-night-order.ps1`：顺序表与快照逐条核对） |
+| `tools/` | 抓取、索引、数据生成、来源核对 | 已建（`fetch-wiki.ps1`：82 页快照 + SHA256 索引；`check-night-order.ps1`：顺序表与快照逐条核对） |
 
 门禁清单（每条都做过"见红"验证）：
 

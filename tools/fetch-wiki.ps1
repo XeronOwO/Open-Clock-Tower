@@ -111,6 +111,13 @@ $Pages = @(
     '旅行者'
     '传奇角色'
 
+    # --- Setup-adjustment and distribution evidence pages (setup-randomizer) ---
+    # 设置调整：`[...]` 设置调整的官方口径（先加总、再按剧本池钳制、默认由镇民补偿）；
+    # 男爵 / 无名旅客：分布表的逐行示例（7 人 / 15 人 / 12 人 / 14 人）。
+    '设置调整'
+    '男爵'
+    '无名旅客'
+
     # --- Rule, mechanic and glossary pages (evidence tiers 1-2) ---
     '夜晚行动顺序一览'
     '角色能力类别总览'
