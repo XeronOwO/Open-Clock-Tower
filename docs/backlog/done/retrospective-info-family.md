@@ -1,6 +1,7 @@
 # 回溯型信息族：卖花女孩 / 城镇公告员 / 神谕者
 
-- Status: In progress
+- Status: Done（批次 E23 矩阵 13 行全部通过，见「E23 验收判定」；实现 `6bd5a49`，
+  装置等待窗修正 `670ce98`，用例增补 `4943ec0`）
 - Priority: High
 - Depends on: 白天账（`done/day-phase.md`：提名与投票事实已记全、跨阶段保留）；
   夜晚顺序表（`NightOrderTable` 已含三者，只在「其他夜晚」）；R-0037（本票新登记）
@@ -73,3 +74,30 @@
 - 旅行者 / 流放不在首版（R-0007），因此「赞成流放」这类非提名举手不会进账——
   与《卖花女孩》3 的例外天然一致（平台只记提名投票）。
 - 卖花女孩「忘记时问恶魔本人」的说书人补救流程（《卖花女孩》8）是线下动作，平台不承载。
+
+## E23 验收判定（2026-10-03，冻结版本 `main` @ `670ce98`）
+
+批次记录见 `docs/acceptance/batches.md`；本票装置 `tools/verify-retro-info.mjs` 取证档
+（`--quota 2 --screenshots-all --build`）**53 项全部通过 / 0 跳过**，截图 `retro-01…retro-05` 逐张复核；
+主装置 **194 项**、角色变更族 **59 项**、零信任 **43 项**同批回归全过；真宿主 `RetrospectiveInfoHostTests` **1/1**。逐行结论：
+
+| # | 结论 | 证据（本次运行） |
+|---|---|---|
+| 1 | 通过 | 装置 `retro-01`：提示「按白天账推演：**是**」→ 结清后 3 号页出现 `flowergirl 恶魔参与了投票`；真宿主用例同断言 + 「只到本人」。 |
+| 2 | 通过（规则级） | `RetrospectiveInfoTests.FlowergirlPrompt_NoDemonVote_SaysNo`（只读账、按快照判定）。 |
+| 3 | 通过（规则级） | `FlowergirlPrompt_DemonRetracted_StillSaysYes` + `DayFactSnapshotTests.CastVote_FoldsEveryAttempt_…`（撤回也进动作表、票面清空）。 |
+| 4 | 通过（规则级） | `FlowergirlPrompt_DemonVoted_SaysYes_EvenIfTheDemonChangedAfterwards` + 内核快照用例（事件携带动作时刻角色）。 |
+| 5 | 通过 | 装置 `retro-02`：「按白天账推演：**是**」（爪牙提名）；规则用例覆盖「非爪牙 ⇒ 否」「无提名 ⇒ 否」「快照缺 ⇒ 无法判定」。 |
+| 6 | 通过 | 装置 `retro-03`：「按当前账推演：**1**」；真宿主用例同断言；规则用例覆盖多死邪恶计数与「维度未观测 ⇒ 无法判定」。 |
+| 7 | 通过 | 装置首夜段：六席无首夜行动者 → 整夜零裁定点自然收口（未强推）；夜晚顺序表既有用例回归。 |
+| 8 | 通过 | 装置 `retro-04` / `retro-05` + 帧扫描断言（只推给 3 / 4 / 5；2 / 6 零下发；六席 152 帧无说书人字段）+ 真宿主「内容不含 `MayBeFalse` / `Note`」。 |
+| 9 | 通过（规则级） | `Prompts_WithVortox_SayTheInformationMustBeFalse`（三角色提示「必须为假」+ R-0028）+ `Resolve_WithVortox_…`（`MayBeFalse = true`）；本批真机夹具未摆涡流（诚实记录）。 |
+| 10 | 通过（规则级 + 真机观测） | `Resolve_Ineffective_MarksInfoAsPossiblyFalse`；本批真机里 3 / 5 号常驻中毒，其信息按「能力未生效」结算（内容照发、标可能为假），4 号生效。 |
+| 11 | 通过（规则级） | `Resolve_WithoutStorytellerContent_IsRefused`（三名角色分别缺内容 ⇒ 抛错、不产出信息事件）。 |
+| 12 | 通过（组合证据） | `DayFactSnapshotTests.DayLedger_RoundTripsThroughJson`（快照 / 动作表过 JSON 往返）+ `Comparer_SeesSnapshotsAndAttempts`（重建比较器覆盖新字段）+ 主装置 `rebuild` 13 / `reconnect` 10 回归。 |
+| 13 | 通过（组合证据） | `NightSlotActivationTests.PlanGranted_CarriesTheDayLedgerIntoThePrompt`（代行槽位提示带最近白天账）+ 角色变更族装置 59 项回归。 |
+
+**残余（不改判行结论）**：
+
+- 未在含这三名角色的局面上单独做「停机 → 重启 → 提示仍按同一账推演」；由 JSON 往返 + 重建比较器 + 全量重建 / 重连用例组合覆盖。
+- 行 9 / 10 的**界面级**证据（涡流 / 中毒注记在本族裁定提示上的真机呈现）留给面板迭代批次一并覆盖；提示文本已由规则用例锁定。

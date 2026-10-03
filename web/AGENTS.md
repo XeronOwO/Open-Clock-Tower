@@ -42,7 +42,7 @@ npm run dev          # http://localhost:5273
 
 ## 3.1 验收批次取证（说书人 + 玩家多客户端）
 
-装置清单（八个装置 / 夹具 / 档位 / 分段 / 退出码）在 `docs/acceptance/devices.md`；
+装置清单（九个装置 / 夹具 / 档位 / 分段 / 退出码）在 `docs/acceptance/devices.md`；
 本页只留运行入口与外部耦合。
 
 ```bash
@@ -62,6 +62,8 @@ node tools/verify-storyteller-panel.mjs        # 主装置：退出码 0 = 全�
 | 席位数量 | `--seats` 与 `--assign` 必须同数（建表要求每席都有角色） | 开夜被拒 `plan.seat_unassigned` |
 | 场景角色 | 主装置 `--assign` 含 clockmaker / dreamer / no-dashii | 参数校验直接报错退出 |
 | Node ≥ 22.5（`node:sqlite`）+ `npx playwright install chromium` | 本机环境 | 退出码 2 = 缺 Playwright |
+| SignalR 默认 JSON 协议**帧尾带 `\x1e` 分隔符** | `tools/verify-*.mjs` 的帧扫描 | 直接 `JSON.parse` 静默失败 → 推送扫描断言假绿（按 `\x1e` 切段再解析） |
+| **每席位只保留一条连接**（`ConnectionRegistry.IssueForSeat`） | 装置给同席另开客户端 | 旧凭据被吊销，浏览器页此后收不到推送、断言仍"绿"（假绿） |
 
 ## 4. 边界
 
