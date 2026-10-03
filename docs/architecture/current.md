@@ -233,7 +233,7 @@ StepMachine（步骤机）
 | 步骤表与槽位 | `StepPlan` / `StepSlot`（`Action` / `Empty` / `Beat` 节拍 / `DawnWait` / `DayWindow` 白天窗口）；空槽位与节拍照样消耗配额，白天窗口不消耗、不自动推进 |
 | 挂起 | `StepMachineState` 的 `PendingRequest` / `AwaitingDecision` / `Block`；请求**没有超时字段**（门禁锁死） |
 | 推进条件 | `SlotQuotaState`：配额是**最短**时间；自动推进 = 配额走完 **且** 无挂起；强推可越过（D-0014） |
-| 事件与重放 | 25 种 `GameEvent`（含 4 种状态账事件与 6 种白天事件）；`StepMachine.Handle` 产事件、`StepMachineFolder` 折叠重建；**账事件可先于任何阶段**（开局分配），此时步骤机保持"尚未开始"；重启 = 重放，恢复 = 重放后替换快照 |
+| 事件与重放 | 41 种 `GameEvent`（覆盖阶段 / 槽位 / 请求 / 裁定 / 阻塞、状态账与效果、白天、胜负与裁决各事件族）；`StepMachine.Handle` 产事件、`StepMachineFolder` 折叠重建；**账事件可先于任何阶段**（开局分配），此时步骤机保持"尚未开始"；重启 = 重放，恢复 = 重放后替换快照 |
 | 开局分配 | `AssignCharactersCommand`：每席一条 `SeatStateChangedEvent`（角色 + 初始生死 = 存活），只允许在首个阶段开始前使用（D-0017 / R-0015） |
 | 建表 | `NightPlanBuilder` + `StartNightCommand`：口径进 `StepPlan.Variant`；缺事实显式拒绝，不猜（R-0014 / D-0013） |
 | 白天阶段 | `StartDayCommand` 开白天（单 `DayWindow` 槽位）→ `Nominate` / `CastVote` / `CountVotes` → `CloseDay` 处决并走完计划；`ForceAdvance` 兜底立即结束白天（未计票的提名先被要求计票，`docs/backlog/done/day-phase.md` / R-0017） |

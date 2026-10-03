@@ -127,6 +127,31 @@
   落盘断言加「本次运行写入」时间校验（提交 `899eb8f`）。
 - 本批后 `review/` 清空；`todo/` 剩 `storyteller-annotation` / `terminal-hold-residue`（Low）。
 
+## 批次 E19（2026-10-03）
+
+冻结版本：`main` @ `fc9a41f`（跑批时工作树与该提交一致；跑批期间未改产品代码）。
+本票的界面面只在"阻塞报警残留在终局"时出现，而阻塞需要数据缺陷级局面（见下），因此以真宿主用例判行、
+以主装置取证档做回归：
+
+- 主装置 `tools/verify-storyteller-panel.mjs`（取证档 `--quota 2 --screenshots-all --build`）：
+  **177 项断言 / 0 跳过**（39 张截图均为本次运行写入，113.5s，退出码 0）——终局面（`final`）与重连面
+  （`reconnect`）作为本票回归；
+- 真宿主用例（真宿主 + 真 SignalR + 真 SQLite）：`TerminalHoldResidueTests` **2/2**、`SlotUnblockTests` **5/5**；
+- 冻结版门禁：`dotnet build` 0 警告 / 0 错误；`dotnet test` **597 通过 / 0 失败**
+  （Kernel 269 · Rules 208 · Integration 97 · NormativeGates 23）；`dotnet format` 退出码 0（未改写任何文件）；
+- `npm run gate` 未跑：本票无 `web/` 改动，按门禁规则跳过。
+
+批次 E19 判出：
+
+- **终局残留挂起票（Low）验收矩阵 1–8 全部通过** → 移入 `done/`。行 1 / 4 / 6 / 7 由真宿主用例给出
+  （同批解除、只清阻塞、排序、日志），行 2 由「无阻塞不产生多余事件」用例给出，行 3 由「整条事件流重折 +
+  同库重启」给出，行 8 由内核三条显式失败用例给出（逐行证据见票据「E19 验收判定」）。
+- **装置不新增段的理由（诚实记录）**：阻塞报警需要「空槽位却绑着存活持有者、而这一格没有契约」这类
+  数据缺陷（或提示求值落 `BlockAndAlert` 的真实局面），真机花名册走不到；主装置取证档因此只作回归，
+  不作行级证据。
+- 随票订正 `docs/architecture/current.md` 的 `GameEvent` 计数：25（陈旧）→ 41。
+- 本批后 `review/` 清空；`todo/` 剩 `storyteller-annotation`（Low）。
+
 ## 相关阅读
 
 - 验收规程：`docs/acceptance/AGENTS.md`

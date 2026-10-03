@@ -61,13 +61,14 @@ todo/  →  in-progress/  →  review/  →  done/
 ### Todo
 
 - [说书人注记：魔典上的自由文本提示标记](todo/storyteller-annotation.md) — **Low** — 魔典上的自由文本 token；首版刻意不做，待定归属 / 持久化 / 审计边界
-- [终局残留挂起：阻塞报警的收口](todo/terminal-hold-residue.md) — **Low** — 阻塞报警（`Block`）随终局快照残留（仅说书人视图可见）：先定「只清阻塞」的内核原语，再谈结束批次收口
 
 ### In progress
 
 ### Review
 
 ### Done
+
+- [终局残留挂起：阻塞报警的收口](done/terminal-hold-residue.md) — **Low** — 阻塞报警（`Block`）随终局快照残留（仅说书人视图可见）：内核补「只清阻塞」原语 `SlotUnblockedEvent` 并在结束批次收口；批次 E19 矩阵 1–8 全部通过（真宿主 2 条 + 内核 5 条 + 主装置 177 项回归）
 
 - [涡流干扰计数：R-0004 的引擎级口径（数学家）](done/vortox-interference-counting.md) — **Medium** — 涡流在场的「能力未正常生效」落失效账本（`MalfunctionKind.Vortox`）+ R-0004 逐条口径闭合（按玩家去重、组合原因逐条并列）；批次 E18 逐行判定 1–5 全部通过（主装置 177 项 + 涡流段截图 35–38）
 
