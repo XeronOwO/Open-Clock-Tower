@@ -2,15 +2,16 @@
  * 数学家（mathematician）批次装置 —— 票据 docs/backlog/in-progress/mathematician.md 的验收矩阵。
  *
  * 它回答：**「窗口推演 + 说书人裁定 + 数字只到本人」这条链路在真界面上跑得通吗？**
- * 场景（固定 6 席：1 诺-达鲺 / 2 筑梦师 / 3 数学家 / 4 畸形秀演员 / 5 呆瓜 / 6 钟表匠）：
+ * 场景（固定 6 席：1 诺-达鲺 / 2 筑梦师 / 3 数学家 / 4 畸形秀演员（白天上报为涡流）/ 5 呆瓜 / 6 钟表匠）：
  *   1) 分配 → 常驻中毒落 2 号与 6 号；开首夜（Original）；
  *   2) 6 号钟表匠（中毒）入槽：说书人裁定 → 结算留下 `Poisoned`；
  *   3) 2 号筑梦师（中毒）：真 SignalR 席位作答 → 未生效的自由信息由说书人给出 → 留下 `Poisoned`；
  *   4) 3 号数学家入槽：裁定提示必须含「推演：2」——计划期快照会是 0，因此这一行同时证明
  *      「入槽实时重建」真的生效；结清「2」；
  *   5) 数学家玩家端（真浏览器）出现信息结果（ability=mathematician / content=2）；无关席位零下发；
- *   6) 跨黎明：开白天 → 结束白天 → 开第二夜 → 恶魔击杀 2 号筑梦师 → 数学家的提示必须是「推演：0」
- *      （窗口按黎明重置，本黎明后没有新的失效）；
+ *   6) 跨黎明：开白天 → 结束白天 → **说书人把 4 号上报为涡流**（涡流在场）→ 开第二夜 →
+ *      诺-达鲺击杀 2 号筑梦师、涡流击杀已死者（无事发生）→ 数学家的提示必须是「推演：0」
+ *      （窗口按黎明重置）且注明「必须为假」+ R-0028；说书人给出假数字「1」；
  *   7) 全程扫描各 SignalR 席位收到的推送：玩家端不得出现失效账本 / 归因字段。
  *
  * 与主批次的分工：主批次（verify-storyteller-panel.mjs）跑五席固定花名册的通用玩法回归，
@@ -67,14 +68,15 @@ const serverUrl = `http://localhost:${options.port}`
 const viteUrl = `http://localhost:${options.vitePort}`
 const hubUrl = `${serverUrl}/hub/game`
 
-/** 六个席位（与 web/src/display/labels.ts 的花名册一致）。 */
+/** 六个席位（与 web/src/display/labels.ts 的花名册一致）：4 号白天被上报为涡流，用于摆出「涡流在场」（R-0028）。 */
 const ASSIGN = ['no-dashii', 'dreamer', 'mathematician', 'mutant', 'klutz', 'clockmaker']
 /** 席位号从花名册顺序派生：调换 ASSIGN 顺序时断言跟着走，不靠人工同步。 */
 const seatOf = (slug) => ASSIGN.indexOf(slug) + 1
 const DEMON_SEAT = seatOf('no-dashii')
 const DREAMER_SEAT = seatOf('dreamer')
 const MATHEMATICIAN_SEAT = seatOf('mathematician')
-const UNRELATED_SEAT = seatOf('mutant')
+const VORTOX_SEAT = seatOf('mutant')
+const UNRELATED_SEAT = seatOf('klutz')
 const BYSTANDER_SEAT = seatOf('klutz')
 const CLOCKMAKER_SEAT = seatOf('clockmaker')
 
@@ -196,8 +198,9 @@ async function main() {
   )
   check('分配 6 个角色被受理', assigned.kind === 'Accepted', assigned.raw)
 
-  // 三个真 SignalR 席位：恶魔（第二夜击杀）/ 筑梦师（作答 + 收自己的信息）/ 无关席位（越权扫描）。
+  // 四个真 SignalR 席位：诺-达鲺 / 涡流（第二夜击杀）/ 筑梦师（作答 + 收自己的信息）/ 无关席位（越权扫描）。
   const demonSeat = await connectSeat(seatTickets[DEMON_SEAT - 1])
+  const vortoxSeat = await connectSeat(seatTickets[VORTOX_SEAT - 1])
   const dreamerSeat = await connectSeat(seatTickets[DREAMER_SEAT - 1])
   const unrelatedSeat = await connectSeat(seatTickets[UNRELATED_SEAT - 1])
 
@@ -302,6 +305,16 @@ async function main() {
     unrelatedPushes.length === 0,
     `收到 ${unrelatedPushes.length} 条`,
   )
+  const numbersElsewhere = [demonSeat, vortoxSeat, dreamerSeat].flatMap((client) =>
+    client.messages
+      .filter((message) => message.method === 'ReceiveInformationResult')
+      .filter((message) => String(message.payload?.ability ?? '') === 'mathematician'),
+  )
+  check(
+    '数学家的数字没有下发给其他任何席位',
+    numbersElsewhere.length === 0,
+    `越权下发 ${numbersElsewhere.length} 条`,
+  )
   const bystanderInformation = await bystanderPage
     .locator('[data-testid="player-information"]')
     .getAttribute('data-information-count')
@@ -319,6 +332,20 @@ async function main() {
   const dayClosed = await runCommand(storytellerPage, '结束白天', () => storytellerPage.getByTestId('st-close-day').click())
   check('结束白天被受理', dayClosed.kind === 'Accepted', dayClosed.raw)
 
+  // 第二夜前把 4 号上报为涡流：摆出「涡流在场」的真实局面（首夜不受影响，也不会触发白天不处决的涡流胜负条件）。
+  const vortoxCard = storytellerPage.locator(`[data-testid="grimoire-seat"][data-seat="${VORTOX_SEAT}"]`)
+  await vortoxCard.click()
+  const characterLabel = storytellerPage.locator('label', { hasText: '角色' }).first()
+  await characterLabel.locator('input[type="checkbox"]').check()
+  await characterLabel.locator('select').selectOption('vortox')
+  await storytellerPage
+    .getByPlaceholder('变化原因（必填，会随事件流记录）')
+    .fill('批次取证：4 号被创造为涡流（摆出「涡流在场」）')
+  const reported = await runCommand(storytellerPage, '上报涡流', () =>
+    storytellerPage.getByRole('button', { name: '上报', exact: true }).click(),
+  )
+  check('说书人把 4 号上报为涡流（涡流在场）被受理', reported.kind === 'Accepted', reported.raw)
+
   const nightInput = storytellerPage.locator('section', { hasText: '兜底与推进' }).locator('input[type="number"]')
   await nightInput.fill('2')
   const secondNight = await runCommand(storytellerPage, '开第二夜', () =>
@@ -327,7 +354,7 @@ async function main() {
   check('开第二夜被受理', secondNight.kind === 'Accepted', secondNight.raw)
 
   const demonAsked = await waitUntil(() => demonSeat.requests.length > 0, 60_000)
-  check('第二夜恶魔收到击杀请求', demonAsked, `收到 ${demonSeat.requests.length} 条`)
+  check('第二夜诺-达鲺收到击杀请求', demonAsked, `收到 ${demonSeat.requests.length} 条`)
   const demonRequest = demonSeat.requests[0]
   const demonAnswered = await demonSeat.invoke(
     'SubmitResponse',
@@ -336,18 +363,33 @@ async function main() {
     'mathematician-demon-answer',
     1,
   )
-  check('恶魔击杀筑梦师被受理（次夜该席不再产生失效）', demonAnswered?.kind === 'Accepted', describeOutcome(demonAnswered))
+  check('诺-达鲺击杀筑梦师被受理（次夜该席不再产生失效）', demonAnswered?.kind === 'Accepted', describeOutcome(demonAnswered))
+
+  const vortoxAsked = await waitUntil(() => vortoxSeat.requests.length > 0, 60_000)
+  check('第二夜涡流收到击杀请求', vortoxAsked, `收到 ${vortoxSeat.requests.length} 条`)
+  const vortoxAnswered = await vortoxSeat.invoke(
+    'SubmitResponse',
+    vortoxSeat.requests[0].requestId,
+    `seat:${DREAMER_SEAT}`,
+    'mathematician-vortox-answer',
+    1,
+  )
+  check(
+    '涡流击杀已死亡玩家被受理（不重复产出死亡事实）',
+    vortoxAnswered?.kind === 'Accepted',
+    describeOutcome(vortoxAnswered),
+  )
 
   const secondDecision = await waitForDecision(storytellerPage, (text) => text.includes('数学家'), 90_000)
   check(
-    '第二夜数学家提示含「推演：0」（窗口按黎明重置）',
-    secondDecision.includes('推演：0'),
+    '第二夜数学家提示含「推演：0」（窗口按黎明重置）且仍有涡流注记',
+    secondDecision.includes('推演：0') && secondDecision.includes('必须为假'),
     compact(secondDecision),
   )
   await screenshot(storytellerPage, 'math-05-night2-window-reset')
 
-  const secondSettled = await settleFreeDecision(storytellerPage, '0')
-  check('第二夜数学家裁定结清（输入 0）被受理', secondSettled.kind === 'Accepted', secondSettled.raw)
+  const secondSettled = await settleFreeDecision(storytellerPage, '1')
+  check('第二夜数学家裁定结清（涡流在场，给出假数字 1）被受理', secondSettled.kind === 'Accepted', secondSettled.raw)
 
   const secondInfoCount = await waitForAttributeValue(
     () => readPlayerInformationCount(mathematicianPage),
@@ -355,17 +397,17 @@ async function main() {
     30_000,
   )
   check(
-    '数学家玩家端累计两条信息（第二夜内容 0）',
-    secondInfoCount === '2' && (await readPlayerInformationText(mathematicianPage)).includes('0'),
+    '数学家玩家端累计两条信息（第二夜内容 1）',
+    secondInfoCount === '2' && (await readPlayerInformationText(mathematicianPage)).includes('1'),
     await readPlayerInformationText(mathematicianPage),
   )
 
   console.log('=== 7/7 视角隔离与收尾 ===')
-  const scannedSeats = [demonSeat, dreamerSeat, unrelatedSeat]
+  const scannedSeats = [demonSeat, vortoxSeat, dreamerSeat, unrelatedSeat]
   const receivedText = JSON.stringify(scannedSeats.map((client) => client.messages))
   const leaked = FORBIDDEN_PLAYER_TOKENS.filter((token) => receivedText.includes(token))
   check(
-    '三席（恶魔 + 筑梦师 + 无关席位）收到的全部推送里没有越权字段',
+    '四席（诺-达鲺 + 涡流 + 筑梦师 + 无关席位）收到的全部推送里没有越权字段',
     leaked.length === 0,
     leaked.join(', ') || `已扫描 ${scannedSeats.reduce((total, client) => total + client.messages.length, 0)} 条`,
   )
