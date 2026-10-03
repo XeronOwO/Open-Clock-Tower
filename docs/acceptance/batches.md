@@ -157,6 +157,24 @@
 - 随票订正 `docs/architecture/current.md` 的 `GameEvent` 计数：25（陈旧）→ 41。
 - 本批后 `review/` 清空；`todo/` 剩 `storyteller-annotation`（Low）。
 
+## 批次 E20（2026-10-03，残段补证）
+
+冻结版本：`main` @ `34442f2`（先提交家族装置第二局，再冻结跑批；跑批期间工作树干净、未改产品代码）。
+本批没有等待判定的票据，只补 E17 残余②的界面级证据，因此只跑改动所在的家族装置：
+
+- 角色变更族 `tools/verify-character-change.mjs`（取证档 `--quota 2 --screenshots-all --build`）：
+  **59 项全部通过、退出码 0**——第一局（被获得角色**在场**）43 项回归 + 第二局（哲学家选**不在场**的钟表匠
+  → 当夜钟表匠的格就地激活由他代行）16 项；截图 `cc-01…cc-14` 由本次运行写入，其中 `cc-11…cc-14`
+  逐张复核（清单含钟表匠、效果链「获得能力：钟表匠（clockmaker）」且无醉酒、槽位 9/13 =
+  `sv:night-1:clockmaker:decision`、账本「1 号 的 clockmaker 正常生效」+ 信息下发到 1 号玩家端）。
+- 其余六装置未跑：本批没有它们的改动，也没有等待判定的票据（诚实记录，不用"全装置回归"顶替）。
+
+批次 E20 判出：
+
+- **E17 残余②「哲学家选不在场角色 → 同夜代行」以界面级证据闭合**（逐条见
+  `done/character-change-family.md` 的「残余补证 · 哲学家选不在场角色」）；票据的 46 行判行结论不变。
+- 本批后 `review/` 仍为空；`todo/` 仍只有 `storyteller-annotation`（Low）。
+
 ## 相关阅读
 
 - 验收规程：`docs/acceptance/AGENTS.md`
