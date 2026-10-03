@@ -152,6 +152,57 @@ public sealed class NightSlotActivationTests
         Assert.Null(activation);
     }
 
+    /// <summary>
+    /// 代行槽位（哲学家「获得能力」，R-0036）也要拿到最近白天账：回溯型信息能力在**被获得**路径上
+    /// 按同一口径推演（R-0037）——提示不含账的话，被获得的卖花女孩会答不出「恶魔今天投过票吗」。
+    /// </summary>
+    [Fact]
+    public void PlanGranted_CarriesTheDayLedgerIntoThePrompt()
+    {
+        var plan = Plan(
+            "sv:night-2",
+            StepSlot.Beat(new StepSlotId("dusk")),
+            StepSlot.Empty(new StepSlotId("flowergirl"), new CharacterId("flowergirl")));
+        var state = GameStateMachine.Fold(
+        [
+            new SeatStateChangedEvent
+            {
+                Seat = new SeatId(1),
+                Character = new CharacterId("philosopher"),
+                Life = LifeState.Alive,
+                Reason = "test.plan-granted",
+            },
+        ]);
+        var day = new DayRecord
+        {
+            DayNumber = 1,
+            Status = DayStatus.Closed,
+            VoteAttempts =
+            [
+                new DayVoteAttempt
+                {
+                    NominationIndex = 1,
+                    Voter = new SeatId(5),
+                    VoterCharacter = new CharacterId("no-dashii"),
+                    Voted = true,
+                },
+            ],
+        };
+
+        var activation = NightSlotActivation.PlanGranted(
+            plan,
+            slotIndex: 0,
+            actor: new SeatId(1),
+            grantedCharacter: new CharacterId("flowergirl"),
+            state: state,
+            lastDay: day,
+            seats: [new SeatId(1), new SeatId(5)],
+            catalog: NightActions.Default);
+
+        Assert.NotNull(activation);
+        Assert.Contains("推演：是", activation!.Prompt.Context, StringComparison.Ordinal);
+    }
+
     private static ChoicePrompt Prompt() => new()
     {
         Context = "测试用选择",
