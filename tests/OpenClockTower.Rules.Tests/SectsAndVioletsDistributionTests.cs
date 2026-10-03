@@ -32,14 +32,15 @@ public sealed class SectsAndVioletsDistributionTests
     [Fact]
     public void AttestedRowsMatchTheirWikiSources()
     {
-        // 逐行出处见 R-0041「依据」：百科《男爵》/《设置调整》/《无名旅客》（2026-10-04 抓取）。
+        // 逐行出处见 R-0041「依据」（页名 + 抓取日期也在每行的 Source 里）。
         Assert.Equal(new SetupCounts(5, 0, 1, 1), SectsAndVioletsDistribution.BaseFor(7));
+        Assert.Equal(new SetupCounts(5, 1, 1, 1), SectsAndVioletsDistribution.BaseFor(8));
         Assert.Equal(new SetupCounts(7, 1, 2, 1), SectsAndVioletsDistribution.BaseFor(11));
         Assert.Equal(new SetupCounts(7, 2, 2, 1), SectsAndVioletsDistribution.BaseFor(12));
         Assert.Equal(new SetupCounts(9, 1, 3, 1), SectsAndVioletsDistribution.BaseFor(14));
         Assert.Equal(new SetupCounts(9, 2, 3, 1), SectsAndVioletsDistribution.BaseFor(15));
 
-        foreach (var playerCount in new[] { 7, 11, 12, 14, 15 })
+        foreach (var playerCount in new[] { 7, 8, 11, 12, 14, 15 })
         {
             Assert.Equal(
                 SetupRowProvenance.Attested,
@@ -48,13 +49,46 @@ public sealed class SectsAndVioletsDistributionTests
     }
 
     [Fact]
+    public void DerivedRowsFollowFromWikiExamples()
+    {
+        // 推算过程写在 R-0041 依据里：5 人由《洗衣妇》例反推、9 / 10 人由善恶总数推、13 人由爪牙数推。
+        foreach (var playerCount in new[] { 5, 9, 10, 13 })
+        {
+            Assert.Equal(
+                SetupRowProvenance.Derived,
+                SectsAndVioletsDistribution.RowFor(playerCount)!.Provenance);
+        }
+    }
+
+    [Fact]
     public void ExtrapolatedRowsStayMarkedOpen()
     {
-        foreach (var playerCount in new[] { 5, 6, 8, 9, 10, 13 })
+        // 全站 431 页文本扫描后，只有 6 人这一行没有任何直接或一步推算的例证（R-0041 状态 Open）。
+        foreach (var playerCount in new[] { 6 })
         {
             Assert.Equal(
                 SetupRowProvenance.Extrapolated,
                 SectsAndVioletsDistribution.RowFor(playerCount)!.Provenance);
+        }
+    }
+
+    [Fact]
+    public void EveryRowCarriesItsProvenanceReference()
+    {
+        foreach (var row in SectsAndVioletsDistribution.All)
+        {
+            Assert.False(string.IsNullOrWhiteSpace(row.Source), $"{row.PlayerCount} 人那一行没有写出处");
+
+            if (row.Provenance == SetupRowProvenance.Extrapolated)
+            {
+                // 外推行没有页面可引——出处必须写明它是外推、并指向裁定号。
+                Assert.Contains("外推", row.Source, StringComparison.Ordinal);
+                Assert.Contains("R-0041", row.Source, StringComparison.Ordinal);
+                continue;
+            }
+
+            Assert.Contains("百科", row.Source, StringComparison.Ordinal);
+            Assert.Contains("2026-10-04 抓取", row.Source, StringComparison.Ordinal);
         }
     }
 
