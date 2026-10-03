@@ -152,48 +152,23 @@ public sealed class GameSession
     }
 
     /// <summary>
-    /// 节拍器心跳：配额到点就把它翻译成一条系统命令（时间 → 输入，D-0008）。
+    /// 节拍器心跳：把「配额到点」翻译成一条系统命令（时间 → 输入，D-0008）；
+    /// 这一拍到底有没有输入由 <see cref="SlotQuotaPacer"/> 判定。
     /// </summary>
     /// <remarks>
-    /// 接管模式下不做任何自动推进（D-0014 能力 2）；没有起点信息（异常数据）时宁可不动，
-    /// 等说书人重建或强推。**返回本次心跳的提交结果**（没有到点时为 null）——
-    /// 调用方拿到结果后必须照常分发通知，否则这一步产生的操作请求只会留在服务端。
+    /// **返回本次心跳的提交结果**（没有到点时为 null）——调用方拿到结果后必须照常分发通知，
+    /// 否则这一步产生的操作请求只会留在服务端。
     /// </remarks>
     public async Task<CommandResult?> TickAsync(CancellationToken cancellationToken)
     {
         await _gate.WaitAsync(cancellationToken);
         try
         {
-            var machine = _machine;
-            if (machine is null || machine.IsPlanCompleted || machine.Outcome is not null)
-            {
-                // 计划走完 / 本局已结束：节拍器没有可以推进的槽位（R-0024）。
-                return null;
-            }
-
-            if (machine.Control != ControlMode.Automatic || machine.Quota != SlotQuotaState.Running)
+            if (SlotQuotaPacer.TryBuild(_machine, _trackers, _clock.UtcNow, _pacing.SlotQuota) is not { } envelope)
             {
                 return null;
             }
 
-            if (_trackers.SlotStartedAt is not { } startedAt || _clock.UtcNow < startedAt + _pacing.SlotQuota)
-            {
-                return null;
-            }
-
-            if (machine.CurrentSlot is { Kind: StepSlotKind.DayWindow })
-            {
-                // 白天窗口不消耗配额：白天节奏由说书人掌握，没有节拍可送。
-                return null;
-            }
-
-            var slot = machine.CurrentSlot!;
-            var envelope = new CommandEnvelope
-            {
-                Command = new SlotQuotaElapsedCommand(),
-                Actor = Actor.System,
-                IdempotencyKey = $"slot-elapsed:{machine.Plan.Label}:{slot.Id}",
-            };
             return await ExecuteCoreAsync(envelope, cancellationToken);
         }
         finally

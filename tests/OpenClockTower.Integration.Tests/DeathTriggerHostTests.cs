@@ -159,6 +159,92 @@ public sealed class DeathTriggerHostTests
                 + $"completed={settled?.PlanCompleted}；归属残留={settled?.AwaitingDecisionSeat}");
     }
 
+    /// <summary>
+    /// 触发型裁定在配额到点**之后**才结清：续推的「重进本格」必须为本次进入重新起算配额
+    /// （幂等键按进入事件序号区分）——旧实现下第二次配额会撞上挂起期间那条收据被去重，
+    /// 夜晚永久停在贤者格。与理发师触发格请求（BarberHostTests 的对偶用例）同属一族。
+    /// </summary>
+    [Fact]
+    public async Task SageDecisionResolvedAfterQuotaElapsed_PlanStillAdvances()
+    {
+        await using var host = new TestServerHost(
+            slotQuotaSeconds: 0.05,
+            seatCount: 5,
+            autoStartTestNight: false);
+        await using var storyteller = await host.ConnectStorytellerAsync();
+
+        var assigned = await storyteller.InvokeAsync<CommandResultDto>(
+            "AssignCharacters",
+            Seats((1, "fang-gu"), (2, "sage"), (3, "sweetheart"), (4, "klutz"), (5, "barber")),
+            "test-death-trigger-late-quota-assign");
+        Assert.Equal("Accepted", assigned.Kind);
+
+        OperationRequestDto? demonRequest = null;
+        await using var demon = await host.ConnectSeatAsync(new SeatId(1), asked => demonRequest = asked);
+
+        // 首夜：五席都没有首夜行动格 → 配额走完即收口。
+        var nightOne = await storyteller.InvokeAsync<CommandResultDto>(
+            "StartNight",
+            1,
+            "Original",
+            "test-death-trigger-late-quota-night-1");
+        Assert.Equal("Accepted", nightOne.Kind);
+        var nightOneDone = await TestServerHost.WaitForViewAsync(storyteller, view => view.PlanCompleted, Wait);
+        Assert.True(nightOneDone!.PlanCompleted, "首夜没有自然走完（配额未推进到收口）");
+
+        // 白天 1：不处决任何人，开完即关（下一夜只能跟在白天之后）。
+        var dayStarted = await storyteller.InvokeAsync<CommandResultDto>(
+            "StartDay",
+            "test-death-trigger-late-quota-day-1");
+        Assert.Equal("Accepted", dayStarted.Kind);
+        var dayClosed = await storyteller.InvokeAsync<CommandResultDto>(
+            "CloseDay",
+            "test-death-trigger-late-quota-close-day");
+        Assert.Equal("Accepted", dayClosed.Kind);
+
+        // 次夜：方古击杀 2 号贤者（镇民，不触发侵染）→ 当夜贤者格开裁定。
+        var nightTwo = await storyteller.InvokeAsync<CommandResultDto>(
+            "StartNight",
+            2,
+            "Original",
+            "test-death-trigger-late-quota-night-2");
+        Assert.Equal("Accepted", nightTwo.Kind);
+
+        Assert.True(
+            await TestServerHost.WaitUntilAsync(() => demonRequest is not null, Wait),
+            "方古没有收到操作请求");
+        var killed = await demon.InvokeAsync<CommandResultDto>(
+            "SubmitResponse",
+            demonRequest!.RequestId,
+            "seat:2",
+            "test-death-trigger-late-quota-kill",
+            1L);
+        Assert.Equal("Accepted", killed.Kind);
+
+        var sageDecision = await WaitForSlotDecisionAsync(storyteller, "sage");
+
+        // 关键时序：配额（0.05s / 50ms 节拍）在裁定结清**之前**到点——挂起期间那条配额输入已落库。
+        await Task.Delay(300);
+
+        var shown = await storyteller.InvokeAsync<CommandResultDto>(
+            "ResolveDecisionPoint",
+            sageDecision.AwaitingDecisionId,
+            "pair:1+4",
+            null,
+            "test-death-trigger-late-quota-show");
+        Assert.Equal("Accepted", shown.Kind);
+
+        // 结清后续推必须继续：重进本格 → 新幂等键 → 下一次配额推进到收口。
+        var settled = await TestServerHost.WaitForViewAsync(
+            storyteller,
+            view => view.AwaitingDecisionId is null && view.PlanCompleted,
+            Wait);
+        Assert.True(
+            settled is { AwaitingDecisionId: null, PlanCompleted: true },
+            $"贤者裁定结清后夜晚没有继续推进：槽位={settled?.SlotIndex}/{settled?.SlotCount} "
+                + $"completed={settled?.PlanCompleted}；归属残留={settled?.AwaitingDecisionSeat}");
+    }
+
     private static void AssertSageInfo(InformationResultDto info)
     {
         Assert.Equal("sage", info.Ability);

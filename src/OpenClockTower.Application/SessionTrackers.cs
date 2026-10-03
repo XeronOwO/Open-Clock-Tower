@@ -28,6 +28,14 @@ public sealed class SessionTrackers
     /// <summary>当前槽位的起算时刻；没有起点信息（异常数据）时为 null，此时宁可不动。</summary>
     public DateTimeOffset? SlotStartedAt { get; private set; }
 
+    /// <summary>
+    /// 本次槽位进入的事件序号（重进本格 = 新序号）；没有起点信息时为 null。
+    /// 配额输入的幂等键按它区分**每一次进入**——只按「计划 + 槽位」做键时，重进本格后的第二次配额
+    /// 会撞上上一次的收据、被当成重复命令回放，计划永久停在原地
+    /// （回归见 <c>BarberHostTests.BarberSwapAnsweredAfterQuotaElapsed_PlanStillAdvances</c>）。
+    /// </summary>
+    public long? SlotEntrySequence { get; private set; }
+
     /// <summary>当前挂起请求的起算时刻；没有挂起时为 null（说书人视图据此算"卡了多久"）。</summary>
     public DateTimeOffset? PendingRequestSince { get; private set; }
 
@@ -77,6 +85,7 @@ public sealed class SessionTrackers
                     break;
                 case SlotEnteredEvent:
                     SlotStartedAt = recordedAt;
+                    SlotEntrySequence = draft.Sequence;
                     PendingRequestSince = null;
                     break;
                 case OperationRequestIssuedEvent:
@@ -132,6 +141,7 @@ public sealed class SessionTrackers
         PendingRequestSince = null;
 
         DateTimeOffset? lastSlotEnteredAt = null;
+        long? lastSlotEnteredSequence = null;
         OperationRequestId? lastIssuedRequestId = null;
         DateTimeOffset? lastIssuedAt = null;
 
@@ -145,6 +155,7 @@ public sealed class SessionTrackers
                     break;
                 case SlotEnteredEvent:
                     lastSlotEnteredAt = stored.RecordedAt;
+                    lastSlotEnteredSequence = stored.Sequence;
                     break;
                 case OperationRequestIssuedEvent issued:
                     lastIssuedRequestId = issued.Request.Id;
@@ -174,6 +185,7 @@ public sealed class SessionTrackers
         }
 
         SlotStartedAt = lastSlotEnteredAt;
+        SlotEntrySequence = lastSlotEnteredSequence;
 
         var pending = machine?.PendingRequest;
         if (pending is { Status: OperationRequestStatus.Pending } && pending.Id == lastIssuedRequestId)
@@ -193,6 +205,7 @@ public sealed class SessionTrackers
         LastResolution = null;
         LastVoidedRequest = null;
         SlotStartedAt = null;
+        SlotEntrySequence = null;
         PendingRequestSince = null;
     }
 

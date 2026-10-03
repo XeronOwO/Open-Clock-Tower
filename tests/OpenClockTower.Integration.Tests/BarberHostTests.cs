@@ -314,6 +314,106 @@ public sealed class BarberHostTests
         Assert.DoesNotContain(stored.Select(item => item.Event).OfType<BarberNightOpenedEvent>(), _ => true);
     }
 
+    /// <summary>
+    /// 触发格应答落在配额到点**之后**：重进本格必须为本次进入重新起算配额，不能与上一次配额输入
+    /// 共用幂等键——否则第二次「配额到点」会被当成重复命令回放，夜晚永久停在理发师格
+    /// （「换手后尚未进入的格重绑」请求时有时无的根因）。
+    /// </summary>
+    [Fact]
+    public async Task BarberSwapAnsweredAfterQuotaElapsed_PlanStillAdvances()
+    {
+        await using var host = new TestServerHost(slotQuotaSeconds: 0.05, seatCount: 5, autoStartTestNight: false);
+        await using var storyteller = await host.ConnectStorytellerAsync();
+
+        var assigned = await storyteller.InvokeAsync<CommandResultDto>(
+            "AssignCharacters",
+            Seats((1, "barber"), (2, "clockmaker"), (3, "dreamer"), (4, "no-dashii"), (5, "klutz")),
+            "test-barber-late-quota-assign");
+        Assert.Equal("Accepted", assigned.Kind);
+
+        await using var four = await host.ConnectSeatAsync(new SeatId(4));
+
+        var firstNight = await storyteller.InvokeAsync<CommandResultDto>(
+            "StartNight",
+            1,
+            "Original",
+            "test-barber-late-quota-night-1");
+        Assert.Equal("Accepted", firstNight.Kind);
+        await CompleteNightAsync(storyteller, "late-quota-1");
+
+        // 第 1 个白天：处决理发师（死亡即时落账 → 立即记「今晚理发」）。
+        var day = await storyteller.InvokeAsync<CommandResultDto>("StartDay", "test-barber-late-quota-day-1");
+        Assert.True(
+            day.Kind == "Accepted",
+            $"StartDay 没被接受：kind={day.Kind} code={day.RejectionCode} msg={day.RejectionMessage}");
+        var executed = await storyteller.InvokeAsync<CommandResultDto>(
+            "ReportSeatState",
+            1,
+            "Dead",
+            null,
+            null,
+            null,
+            null,
+            "测试：处决理发师",
+            null,
+            "test-barber-late-quota-executed");
+        Assert.Equal("Accepted", executed.Kind);
+        var closedDay = await storyteller.InvokeAsync<CommandResultDto>("CloseDay", "test-barber-late-quota-close-day");
+        Assert.Equal("Accepted", closedDay.Kind);
+
+        // 第 2 夜：诺-达鲺击杀 2 号，随后理发师格向恶魔开交换请求。
+        var night = await storyteller.InvokeAsync<CommandResultDto>(
+            "StartNight",
+            2,
+            "Original",
+            "test-barber-late-quota-night-2");
+        Assert.True(
+            night.Kind == "Accepted",
+            $"StartNight(2) 没被接受：kind={night.Kind} code={night.RejectionCode} msg={night.RejectionMessage}");
+
+        var kill = await WaitForRequestAsync(host, new SeatId(4));
+        Assert.Equal(
+            "Accepted",
+            (await four.InvokeAsync<CommandResultDto>(
+                "SubmitResponse",
+                kill.Id.Value,
+                "seat:2",
+                "test-barber-late-quota-kill",
+                1L)).Kind);
+
+        var swap = await WaitForRequestAsync(host, new SeatId(4));
+        Assert.Contains(swap.Prompt.Options, option => option.Value == "pair:3+4");
+
+        // 关键时序：配额（0.05s / 50ms 节拍）在应答**之前**到点——真实世界里玩家不可能比节拍器还快，
+        // 这也正是并行套件下偶发卡死的窗口。等 300ms 足以让节拍器送出并落库那条配额输入。
+        await Task.Delay(300);
+
+        Assert.Equal(
+            "Accepted",
+            (await four.InvokeAsync<CommandResultDto>(
+                "SubmitResponse",
+                swap.Id.Value,
+                "pair:3+4",
+                "test-barber-late-quota-swap",
+                1L)).Kind);
+        Assert.Equal("no-dashii", CharacterOf(host, 3));
+        Assert.Equal("dreamer", CharacterOf(host, 4));
+
+        // 换手后尚未进入的筑梦师格重绑给 4 号并开请求：能等到它就证明重进本格的配额再次生效。
+        var dreamer = await WaitForRequestAsync(host, new SeatId(4));
+        Assert.Equal(new SeatId(4), dreamer.Addressee);
+        Assert.Equal(
+            "Accepted",
+            (await four.InvokeAsync<CommandResultDto>(
+                "SubmitResponse",
+                dreamer.Id.Value,
+                "seat:1",
+                "test-barber-late-quota-dream",
+                1L)).Kind);
+
+        await CompleteNightAsync(storyteller, "late-quota-2");
+    }
+
     /// <summary>席位与角色名称的分配请求形状。</summary>
     private static SeatCharacterAssignmentDto[] Seats(params (int Seat, string Character)[] rows) =>
         [.. rows.Select(row => new SeatCharacterAssignmentDto { Seat = row.Seat, Character = row.Character })];
