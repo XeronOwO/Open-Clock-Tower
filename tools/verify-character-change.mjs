@@ -419,6 +419,7 @@ async function runPresentGrantScene() {
     barberNightOpen.title.includes(`${BARBER_SEAT} 号`),
     `title=${barberNightOpen.title}`,
   )
+  await screenshot(storytellerPage, 'cc-08-barber-night-marker')
 
   const swapValues = await klutzPage
     .locator('[data-testid="player-request-options"] [data-option-value]')
