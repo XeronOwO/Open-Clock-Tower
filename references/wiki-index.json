@@ -1,7 +1,7 @@
 {
   "source": "https://clocktower-wiki.gstonegames.com",
   "generatedAt": "2026-10-04",
-  "pageCount": 82,
+  "pageCount": 87,
   "pages": [
     {
       "page": "梦殒春宵",
@@ -296,6 +296,41 @@
       "fetchedAt": "2026-10-04",
       "bytes": 5204,
       "sha256": "942beb0dd9a594313c2089af16b31be5d5de55163edf97613ccb10121fa35b85"
+    },
+    {
+      "page": "黯月初升",
+      "file": "黯月初升.wiki",
+      "fetchedAt": "2026-10-04",
+      "bytes": 14218,
+      "sha256": "7a33689c3919c5b25b3985313a03c463b3edc6b71a113a8e8faefde2fcd51dc1"
+    },
+    {
+      "page": "洗衣妇",
+      "file": "洗衣妇.wiki",
+      "fetchedAt": "2026-10-04",
+      "bytes": 9330,
+      "sha256": "7006c412428873d8ddc13880b9a5fdd93f762e277f44c4fcced110d4ae020770"
+    },
+    {
+      "page": "异教领袖",
+      "file": "异教领袖.wiki",
+      "fetchedAt": "2026-10-04",
+      "bytes": 10335,
+      "sha256": "bdb8ff7bba5d36ded5d1f24f42706ee2a4171f5eb48365e4ac6ec40cff505f54"
+    },
+    {
+      "page": "军团",
+      "file": "军团.wiki",
+      "fetchedAt": "2026-10-04",
+      "bytes": 11059,
+      "sha256": "83ad0047dca436e0fc2dda3bc30776eba33878f1d5cc020420f6bc2cd3352776"
+    },
+    {
+      "page": "戏法师",
+      "file": "戏法师.wiki",
+      "fetchedAt": "2026-10-04",
+      "bytes": 7219,
+      "sha256": "00c27f89d721a7604d3612a6f29257ac6231fd596b67d965705610fd03a15ed4"
     },
     {
       "page": "夜晚行动顺序一览",

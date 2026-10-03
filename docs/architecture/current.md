@@ -459,7 +459,7 @@ StepMachine（步骤机）
 | `tests/OpenClockTower.NormativeGates.Tests` | 把规范写成会失败的测试 | 已建（24 条门禁，逐条先红后绿；含花名册两侧镜像对账） |
 | `tests/OpenClockTower.Integration.Tests` | 多客户端端到端 | 已建（118 条：真实宿主 + 真实 SignalR 客户端；含真实进程重启、损坏载荷恢复、预阶段状态观测、分配→开夜→请求/裁定点，结算引擎验收矩阵 1–8 的 3 条真宿主链路，以及玩家推送的覆盖面与投递方向） |
 | `web/` | Vue 3 + TS 前端（单 SPA 两套视图） | 已建（说书人魔典主视图：席位圆环 + 席位操作台 + 数据下钻；玩家端骨架；连接 / 命令 / 防御性呈现分层，见 `web/AGENTS.md`、D-0018 与 `architecture/storyteller-presentation.md`） |
-| `tools/` | 抓取、索引、数据生成、来源核对 | 已建（`fetch-wiki.ps1`：82 页快照 + SHA256 索引；`check-night-order.ps1`：顺序表与快照逐条核对） |
+| `tools/` | 抓取、索引、数据生成、来源核对 | 已建（`fetch-wiki.ps1`：87 页快照 + SHA256 索引；`check-night-order.ps1`：顺序表与快照逐条核对） |
 
 门禁清单（每条都做过"见红"验证）：
 
