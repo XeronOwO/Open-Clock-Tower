@@ -64,11 +64,11 @@ todo/  →  in-progress/  →  review/  →  done/
 
 ### In progress
 
-- [数学家：窗口取值与说书人裁定面](in-progress/mathematician.md) — **Medium** — R-0004 的失效窗口（黎明水位）+ 入槽实时重建说书人裁定提示 + 数字只下发给本人；批次 E21
-
 ### Review
 
 ### Done
+
+- [数学家：窗口取值与说书人裁定面](done/mathematician.md) — **Medium** — R-0004 的失效窗口（黎明水位 + 首夜口径）+ 入槽实时重建说书人裁定提示 + 数字只下发给本人；批次 E21 矩阵 10 行全部通过（装置 38 项 + 真宿主两夜 + 内核/规则单测，全量 618 通过）
 
 - [终局残留挂起：阻塞报警的收口](done/terminal-hold-residue.md) — **Low** — 阻塞报警（`Block`）随终局快照残留（仅说书人视图可见）：内核补「只清阻塞」原语 `SlotUnblockedEvent` 并在结束批次收口；批次 E19 矩阵 1–8 全部通过（真宿主 2 条 + 内核 5 条 + 主装置 177 项回归）
 

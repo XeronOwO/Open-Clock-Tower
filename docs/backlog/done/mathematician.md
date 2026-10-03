@@ -1,6 +1,7 @@
 # 数学家：窗口取值与说书人裁定面
 
-- Status: In progress
+- Status: Done（批次 E21 矩阵 10 行全部通过，见「E21 验收判定」；先提交实现与装置 `5e370f7`，
+  再补装置的涡流段 `365c102` 并对该冻结版本跑取证档）
 - Priority: Medium
 - Depends on: R-0004（已闭合）；E18 涡流干扰计数（引擎级口径已就位）
 
@@ -48,6 +49,23 @@
 - **代行槽位**：能力契约按 `slot.Owner` 解析（哲学家获得能力时是「被获得角色」），提示重建
   与结算同一把键，避免「结算找得到、重建找不到」。
 
-## 证据索引（随批次 E21 补）
+## E21 验收判定（2026-10-03，冻结版本 `main` @ `365c102`）
 
-（待补：单测 / 真宿主 / 真机装置 / 批次判定）
+批次记录见 `docs/acceptance/batches.md`；装置 `tools/verify-mathematician.mjs` 取证档
+（`--quota 2 --screenshots-all --build`）**38 项全部通过**，截图 `math-01…math-05` 逐张复核。
+逐行结论：
+
+| # | 结论 | 证据（本次运行） |
+|---|---|---|
+| 1 | 通过 | 空窗 → 推演 0：`MalfunctionLedgerTests.AdvanceDawn_KeepsEntries_ButMovesTheWindow` + 装置 `math-05`（跨黎明后的空窗：提示「推演：0」）；首夜全账口径由 `MalfunctionLedgerTests.CountedSeatsSinceDawn_FirstNight_CoversTheWholeLedger` 覆盖（矩阵草稿的「首夜空窗」在装置里以跨黎明后的空窗跑出）；带推演值的提示与数字下发见 `math-01` / `math-03`。 |
+| 2 | 通过 | 装置 `math-01`：当夜更早的两名中毒信息角色（2 号 dreamer / 6 号 clockmaker）先结算后，数学家入槽提示「按失效账本推演：2」——计划期快照会是 0，证明入槽实时重建生效（矩阵草稿按单条失效写 1，装置场景实际两条，语义一致）；`SlotPromptRefreshTests.StorytellerDecision_IsRebuiltWithBatchLedger`（同批事件折进重建账）与真宿主 `MathematicianHostTests` 同断言。 |
+| 3 | 通过 | `MalfunctionLedgerTests.ConsecutiveDawns_MoveTheWindowEachTime`、`GameStateLedgerTests.DayStarted_AdvancesMalfunctionWindow_WithoutDeletingEntries`；装置 `math-05`：开白天 / 结束白天后第二夜推演 = 0。 |
+| 4 | 通过 | `MalfunctionLedgerTests.CountedSeatsSinceDawn_DeduplicatesAndExcludesNonCountedKinds` + `MathematicianTests.Prompt_CountsWindowedPlayers_ExcludingSelf`（同一玩家 Poisoned + Drunk 只算 1）。 |
+| 5 | 通过 | `MathematicianTests.Prompt_CountsWindowedPlayers_ExcludingSelf`（数学家自己的席位记录不进推演）。 |
+| 6 | 通过 | 装置 `math-03`（3 号玩家端只有 `mathematician 2`）+ 无关席位（5 号浏览器 count=0、SignalR 零条）与「数字没有下发给其他任何席位」断言；真宿主 `MathematicianHostTests` 反方向断言。 |
+| 7 | 通过 | 装置 `math-05`：第二夜（说书人在真界面把 4 号上报为涡流）提示注明「必须为假」+ R-0028，说书人给出假数字「1」并下发本人；`MathematicianTests.Prompt_WithVortox_…` / `Resolve_WithVortox_MarksInfoAsMustBeFalse` 覆盖 `MayBeFalse` 标记与说明（该标记与说明不投影给玩家）。 |
+| 8 | 通过 | `MathematicianTests.Resolve_Ineffective_MarksInfoAsPossiblyFalse`（未生效照常给信息、`MayBeFalse = true`、说明沿用中毒原因）；装置 `math-04` 失效账本两条「中毒」与真宿主账本断言。 |
+| 9 | 通过 | `MathematicianTests.Resolve_WithoutStorytellerNumber_IsRefused`（抛错、不产出信息事件）。 |
+| 10 | 通过 | `SlotPromptRefreshTests.PlayerChoiceRequest_IsNotRebuilt`（玩家选项不重建、来源不被问到）+ `InfoResolutionTests` 全绿 + 全量 **618 通过 / 0 失败**（钟表匠 / 筑梦师等既有行为不变）。 |
+
+**残余**：无阻塞项。面板若要常驻显示「本夜推演」（不依赖裁定提示），随面板迭代另票（与 E17 残余③同族）。
