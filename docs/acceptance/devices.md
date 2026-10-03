@@ -9,14 +9,14 @@
 |---|---|---|---|
 | 主装置 | `tools/verify-storyteller-panel.mjs` | 默认 5 席：`clockmaker / dreamer / no-dashii / mutant / klutz`（`--seats` / `--assign` 可换） | 真宿主 + 真 Vite + 真 Chromium 的多客户端通用玩法回归：加入 → 分配 → **说书人注记**（D-0019：加 / 改 / 删 + 牌面 token + 5 席玩家零下发；重启 / 重建后仍在）→ 首夜（钟表匠裁定点 / 筑梦师请求）→ 白天（提名 / 投票 / 处决）→ 第二 / 三夜（代填 / 强制作废 / 依赖失效）→ 涡流干扰（涡流存活下的镇民信息结算：账本落 `Vortox` + 玩家隔离；快档第 3 夜 / 取证档第 4 夜）→ 魔典主视图 → 重建 → 重连补齐 |
 | 胜负链路 | `tools/verify-winloss.mjs` | 5 席：`vortox / klutz / mutant / witch / dreamer` | 呆瓜被处决 → 公开选择当场开出（候选不含已死的自己）→ 双端同一份结束结论 → 结束后命令被拒 |
-| 麻脸巫婆之夜 | `tools/verify-pit-hag.mjs` | 5 席：`pit-hag / savant / artist / no-dashii / klutz` | 创造恶魔 → 当夜该恶魔真的被唤醒并行动 → 恶魔击杀进待定死亡 → 说书人「阻止 / 确认 / 追加死亡」→ 窗口收口 |
+| 麻脸巫婆之夜 | `tools/verify-pit-hag.mjs` | 5 席：`pit-hag / savant / artist / no-dashii / klutz` | 创造恶魔 → 当夜该恶魔真的被唤醒并行动 → 恶魔击杀进待定死亡 → 说书人「阻止 / 确认 / 追加死亡」→ 窗口收口（候选文本读取口径与面板「已死亡」标签兼容，批次 E25 起） |
 | 女巫链路 | `tools/verify-witch.mjs` | 4 席：`witch / clockmaker / dreamer / no-dashii`（存活 4 > 3，女巫保住能力的最小局面） | 夜晚诅咒 → 下个白天提名即死（提名仍生效；存活 ≤3 时解除）+ 三席收包扫描 |
 | 处罚处决链路 | `tools/verify-madness.mjs` | 4 席：`cerenovus / clockmaker / dreamer / mutant` | 洗脑师两维选择 → 魔典疯狂要求 → 夜晚处罚（夜晚继续）→ 白天处罚（占上限 + 立即入夜） |
 | 零信任负向 | `tools/verify-zero-trust.mjs` | Node SignalR 客户端扮演**篡改前端**（无浏览器） | 伪造 / 冒用 / 旧连接凭据直调 Hub、白天越权提交、非法选项、收包与审计扫描 |
-| 角色变更族 | `tools/verify-character-change.mjs` | 6 席：`philosopher / dreamer / fang-gu / barber / klutz / mutant` | 哲学家在真界面上从镇民 / 外来者清单获得能力（不变身）→ 被选角色持有者醉酒、醉酒者**照常被唤醒** → 次夜在**自己的格**上代行获得的能力 → 方古首次成功杀外来者即侵染（目标变邪恶方古、原方古死亡）→「限一次」已用后普通死亡 → 理发师死亡当夜换角 + 尚未进入的格重绑；第二局：哲学家改选**不在场**的钟表匠 → 同夜钟表匠的格就地激活由他代行（账本「1 号 · clockmaker · 正常生效」+ 信息下发本人） |
+| 角色变更族 | `tools/verify-character-change.mjs` | 6 席：`philosopher / dreamer / fang-gu / barber / klutz / mutant` | 哲学家在真界面上从镇民 / 外来者清单获得能力（不变身）→ 被选角色持有者醉酒、醉酒者**照常被唤醒** → 次夜在**自己的格**上代行获得的能力 → 方古首次成功杀外来者即侵染（目标变邪恶方古、原方古死亡）→「限一次」已用后普通死亡 → 理发师死亡当夜换角 + 尚未进入的格重绑；第二局：哲学家改选**不在场**的钟表匠 → 同夜钟表匠的格就地激活由他代行（账本「1 号 · clockmaker · 正常生效」+ 信息下发本人）；魔典中心两枚说书人标记——「限一次」（侵染后直至整局，第三夜仍在）与「今晚理发」（理发师之夜窗口内出现、结清后消失） |
 | 数学家链路 | `tools/verify-mathematician.mjs` | 6 席：`no-dashii / dreamer / mathematician / mutant / klutz / clockmaker` | 两个中毒的信息角色先结算 → 数学家入槽时裁定提示按**入槽时刻**的账本推演（首夜 = 2；「当前步骤」摘要与裁定点同源）→ 数字只下发本人、无关席位零下发 → 跨黎明（开白天 / 结束白天）后第二夜推演 = 0（窗口按黎明重置） |
 | 回溯型信息族 | `tools/verify-retro-info.mjs` | 6 席：`no-dashii / pit-hag / flowergirl / town-crier / oracle / mutant` | 白天「爪牙自我提名 + 恶魔投赞成」→ 次夜三张说书人裁定提示分别按记录推演（**按白天账推演：是 / 是**、**按当前账推演：1**，且裁定点标识逐个换新、不是上一条残留）→ 信息只到本人且互不串台 → 无关席位零下发（含每席自己那条连接的帧扫描） |
-| 死亡触发族 | `tools/verify-death-triggers.mjs` | 5 席：`fang-gu / sage / sweetheart / klutz / barber` | 白天处决 3 号（心上人）→ 触发型裁定挂起（开夜被拒 `phase.trigger_choice_pending`）→ 指定 4 号持续醉酒（跨阶段不自动清除、操作台可见效果来源）→ 次夜恶魔击杀 2 号（贤者）→ 当夜触发格裁定按击杀记录推演 → 展示两名玩家 → 信息只到本人、其余席位零下发 |
+| 死亡触发族 | `tools/verify-death-triggers.mjs` | 5 席：`fang-gu / sage / sweetheart / klutz / barber` | 白天处决 3 号（心上人）→ 触发型裁定挂起（开夜被拒 `phase.trigger_choice_pending`）→ 指定 4 号持续醉酒（跨阶段不自动清除、操作台可见效果来源）→ 次夜恶魔击杀 2 号（贤者）→ 当夜触发格裁定按击杀记录推演 → 展示两名玩家 → 信息只到本人、其余席位零下发；说书人面板——两处裁定的归属席位与「定位到 N 号」、候选「已死亡」标注（含阳性 / 阴性对照）、白天收口读数封顶（不再出现 `2 / 1`）、环区常驻本步上下文（含推演） |
 
 分工：主装置跑通用玩法回归；其余九个各跑一条能力链路（胜负 / 角色变更 + 死亡裁量 / 白天触发 / 处罚处决 / 安全负向 / 涡流干扰 / 数学家窗口 / 回溯型信息 / 死亡触发）。
 **结束批次只在胜负装置里跑到**：主装置全程保持恶魔存活、从不产生 `GameEndedEvent`——引"终局面 / 结束面"的真机证据只能引胜负装置（主装置那一段叫 `final`，含义是"整场收尾"，不是"游戏结束"）。

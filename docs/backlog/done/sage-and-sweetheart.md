@@ -105,7 +105,7 @@ S&V 剩余 7 个未实现角色里的两名**死亡触发**角色，入场即被
 - **装置**：`tools/verify-death-triggers.mjs`（真机两链：触发型裁定挂起 + 开夜被拒 + 指定醉酒 +
   跨阶段保留；当夜展示 + 信息只到本人 + 五席 99 帧零说书人字段 + 阳性对照）；迭代档 **55 项全过**、
   退出码 0；已登记 `docs/acceptance/devices.md`；产品侧疑点（触发格裁定无席位归属 / 白天读数越界 /
-  候选不标生死）登记为 `todo/storyteller-decision-affordances.md`。
+  候选不标生死）登记为 `done/storyteller-decision-affordances.md`（当轮在 `todo/`）。
 
 ## 残余（开工前登记，收尾时逐条更新）
 
@@ -118,7 +118,7 @@ S&V 剩余 7 个未实现角色里的两名**死亡触发**角色，入场即被
   重放 / 重连——由 Rules 用例与 `DeathTriggerHostTests` / `DeathTriggerStateJsonTests` 组合覆盖，
   判定时逐行注明证据性质；将来扩装置时优先补「离场解除」与「选已死亡玩家」。
 - 界面侧：触发格 / 触发型裁定在说书人圆环上暂无席位归属、白天计划收口后读数越界（2 / 1）、
-  裁定候选不标生死——登记为 `todo/storyteller-decision-affordances.md`，随面板迭代同批处理。
+  裁定候选不标生死——登记为 `done/storyteller-decision-affordances.md`（当轮在 `todo/`），随面板迭代同批处理。
 
 ## E24 验收判定（冻结版本 `d5cf109`）
 
