@@ -104,7 +104,8 @@ public sealed class TestServerHost : IAsyncDisposable
         Action<StorytellerViewDto>? onStorytellerView = null,
         Action<InformationResultDto>? onInformation = null,
         Action<OperationRequestAnsweredDto>? onAnswered = null,
-        Action<PhaseStartedDto>? onPhaseStarted = null)
+        Action<PhaseStartedDto>? onPhaseStarted = null,
+        Action<long, PlayerViewDto>? onPlayerViewChanged = null)
     {
         var setup = await GetSetupAsync();
         var ticket = setup.Seats.Single(item => item.Seat == seat).Ticket;
@@ -132,6 +133,11 @@ public sealed class TestServerHost : IAsyncDisposable
         if (onPhaseStarted is not null)
         {
             connection.On<PhaseStartedDto>("ReceivePhaseStarted", onPhaseStarted);
+        }
+
+        if (onPlayerViewChanged is not null)
+        {
+            connection.On<long, PlayerViewDto>("ReceivePlayerViewChanged", onPlayerViewChanged);
         }
 
         if (onStorytellerView is not null)

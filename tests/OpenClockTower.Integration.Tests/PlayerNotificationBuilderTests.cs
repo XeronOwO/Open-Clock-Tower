@@ -188,6 +188,56 @@ public sealed class PlayerNotificationBuilderTests
         Assert.DoesNotContain(quiet, item => item.Kind == GameNotificationKind.DayChanged);
     }
 
+    /// <summary>
+    /// 艺术家提问状态只在本人的视图里：提问 / 结清各推一次**定向**本人视图；
+    /// 阶段边界与白天收口推一次**全体**本人视图（Seat=null）——否则入口与等待态只能等重连才更新
+    /// （本票 E26 首跑实测：白天开始后艺术家的提问入口根本不出现）。
+    /// </summary>
+    [Fact]
+    public void ArtistQuestionAndPhaseBoundary_ProducePlayerViewChangedPushes()
+    {
+        var notifications = GameNotificationBuilder.Build(
+            [
+                Draft(
+                    21,
+                    new ArtistQuestionAskedEvent
+                    {
+                        Seat = new SeatId(2),
+                        Character = new CharacterId("artist"),
+                        Question = "1 号是爪牙吗？",
+                    }),
+                Draft(
+                    22,
+                    new ArtistQuestionClosedEvent
+                    {
+                        Seat = new SeatId(2),
+                        Closure = ArtistQuestionClosure.Returned,
+                    }),
+            ],
+            previousMachine: null,
+            publicSurfaceChanged: false);
+
+        var asked = notifications.Single(item =>
+            item.Kind == GameNotificationKind.PlayerViewChanged && item.Sequence == 21);
+        Assert.Equal(new SeatId(2), asked.Seat);
+        var closed = notifications.Single(item =>
+            item.Kind == GameNotificationKind.PlayerViewChanged && item.Sequence == 22);
+        Assert.Equal(new SeatId(2), closed.Seat);
+
+        // 阶段开始 / 白天收口：Seat=null = 推给全部已绑定席位（各自的那份投影），序号取边界事件。
+        var boundary = GameNotificationBuilder.Build(
+            [
+                Draft(31, new DayStartedEvent { DayNumber = 1 }),
+                Draft(32, new DayClosedEvent { DayNumber = 1 }),
+            ],
+            previousMachine: null,
+            publicSurfaceChanged: false);
+
+        var broadcast = boundary.Single(item => item.Kind == GameNotificationKind.PlayerViewChanged);
+        Assert.Null(broadcast.Seat);
+        Assert.Equal(32, broadcast.Sequence);
+    }
+
     /// <summary>测试用草案：只关心序号与事件本身，记录时刻统一取纪元。</summary>
     private static StoredEventDraft Draft(long sequence, GameEvent @event) => new()
     {

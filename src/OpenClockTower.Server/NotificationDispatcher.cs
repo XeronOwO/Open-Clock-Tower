@@ -132,6 +132,11 @@ public sealed class NotificationDispatcher
                     await PushPhaseStartedAsync(startedPhase, notification.Sequence, cancellationToken);
                     break;
 
+                // 本人视图变更：按席位推一份整视图（快照口径；未连接玩家重连时从快照取同一份事实）。
+                case GameNotificationKind.PlayerViewChanged:
+                    await PushPlayerViewChangedAsync(notification.Seat, cancellationToken);
+                    break;
+
                 // 白天是公开信息：按席位投影后各推一份（含"我现在能不能动"）。
                 case GameNotificationKind.DayChanged:
                     await PushDayChangedAsync(cancellationToken);
@@ -203,6 +208,35 @@ public sealed class NotificationDispatcher
         }
 
         _logger.LogInformation("已广播白天状态：推送={Pushed}/{Total}", pushed, seats.Count);
+    }
+
+    /// <summary>
+    /// 把"本人视图"推给指定席位（<paramref name="seat"/> 为 null 时推给全部已绑定席位）：
+    /// 投影按席位算，序号取读取到的那份视图的序号（读时状态，与 <see cref="PushDayChangedAsync"/> 同一口径）；
+    /// 未连接玩家重连时从快照取同一份事实。
+    /// </summary>
+    private async Task PushPlayerViewChangedAsync(SeatId? seat, CancellationToken cancellationToken)
+    {
+        IReadOnlyCollection<SeatId> targets = seat is { } single ? [single] : _registry.Seats;
+        var pushed = 0;
+        foreach (var target in targets)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!_registry.TryGetSeatConnection(target, out var connectionId))
+            {
+                continue;
+            }
+
+            var view = _session.GetPlayerView(target);
+            await _hub.Clients.Client(connectionId).ReceivePlayerViewChanged(view.Sequence, ProjectionMapper.ToDto(view));
+            pushed++;
+        }
+
+        _logger.LogInformation(
+            "已推送本人视图：seat={Seat} 推送={Pushed}/{Total}",
+            seat?.Value,
+            pushed,
+            targets.Count);
     }
 
     private async Task PushStorytellerViewAsync(CancellationToken cancellationToken)

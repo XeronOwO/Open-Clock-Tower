@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using OpenClockTower.Application;
 using OpenClockTower.Contracts;
 using OpenClockTower.Kernel;
@@ -138,29 +139,44 @@ public sealed class SeamstressArtistHostTests
                 Seats((1, "artist"), (2, "klutz"), (3, "mutant"), (4, "sweetheart"), (5, "no-dashii")),
                 "test-artist-assign")).Kind);
 
-        await using var one = await host.ConnectSeatAsync(new SeatId(1));
-
+        var pushedViews = new ConcurrentQueue<PlayerViewDto>();
+        await using var one = await host.ConnectSeatAsync(
+            new SeatId(1),
+            onPlayerViewChanged: (_, view) => pushedViews.Enqueue(view));
         // 第 1 夜：艺术家没有夜间行动，走完即可。
         Assert.Equal(
             "Accepted",
             (await storyteller.InvokeAsync<CommandResultDto>("StartNight", 1, "Original", "test-artist-night-1")).Kind);
         await CompleteNightAsync(storyteller, "artist-1");
 
-        // 白天：只有艺术家本人拿到提问入口（权限位由服务端下发）。
+        // 白天：只有艺术家本人拿到提问入口（权限位由服务端下发），且入口在**在线连接**上即时出现——
+        // 修复前权限位只随快照更新，白天开始后入口要等重连才出现（本票 E26 首跑实测的缺陷）。
+        var beforeDayPush = pushedViews.Count;
         Assert.Equal(
             "Accepted",
             (await storyteller.InvokeAsync<CommandResultDto>("StartDay", "test-artist-day-1")).Kind);
+        var dayView = await WaitForPushedViewAsync(pushedViews, beforeDayPush, pushed => pushed.CanAskArtistQuestion);
+        Assert.Equal(1, dayView.Seat);
+        Assert.Equal("Day", dayView.Phase);
         Assert.True(await TestServerHost.WaitUntilAsync(
             () => host.Session.GetPlayerView(new SeatId(1)).CanAskArtistQuestion,
             Wait));
         Assert.False(host.Session.GetPlayerView(new SeatId(2)).CanAskArtistQuestion);
 
+        var beforeAskPush = pushedViews.Count;
         Assert.Equal(
             "Accepted",
             (await one.InvokeAsync<CommandResultDto>(
                 "AskArtistQuestion",
                 "2 号是爪牙吗？",
                 "test-artist-ask-1")).Kind);
+
+        // 等待态（进行中问题）必须**在线**下发到本人：权限位关闭 + 带问题全文。
+        var pendingView = await WaitForPushedViewAsync(
+            pushedViews,
+            beforeAskPush,
+            pushed => pushed.PendingQuestion == "2 号是爪牙吗？" && !pushed.CanAskArtistQuestion);
+        Assert.Equal(1, pendingView.Seat);
 
         Assert.True(await TestServerHost.WaitUntilAsync(
             () => host.Session.GetStorytellerView().AwaitingDecision is not null,
@@ -178,7 +194,8 @@ public sealed class SeamstressArtistHostTests
         Assert.Equal("Rejected", blocked.Kind);
         Assert.Equal("phase.artist_question_pending", blocked.RejectionCode);
 
-        // 「要求重问」：不消耗、不落标记、可以再问。
+        // 「要求重问」：不消耗、不落标记、可以再问（本人视图推送让等待态即时清掉、入口回来）。
+        var beforeRetryPush = pushedViews.Count;
         Assert.Equal(
             "Accepted",
             (await storyteller.InvokeAsync<CommandResultDto>(
@@ -187,6 +204,10 @@ public sealed class SeamstressArtistHostTests
                 "retry",
                 null,
                 "test-artist-retry")).Kind);
+        await WaitForPushedViewAsync(
+            pushedViews,
+            beforeRetryPush,
+            pushed => pushed.PendingQuestion is null && pushed.CanAskArtistQuestion);
         Assert.True(await TestServerHost.WaitUntilAsync(
             () => host.Session.GetPlayerView(new SeatId(1)).PendingQuestion is null,
             Wait));
@@ -206,6 +227,7 @@ public sealed class SeamstressArtistHostTests
             () => host.Session.GetStorytellerView().AwaitingDecision is not null,
             Wait));
         var second = host.Session.GetStorytellerView();
+        var beforeAnswerPush = pushedViews.Count;
         Assert.Equal(
             "Accepted",
             (await storyteller.InvokeAsync<CommandResultDto>(
@@ -214,6 +236,11 @@ public sealed class SeamstressArtistHostTests
                 "no",
                 null,
                 "test-artist-answer")).Kind);
+        var answeredView = await WaitForPushedViewAsync(
+            pushedViews,
+            beforeAnswerPush,
+            pushed => !pushed.CanAskArtistQuestion && pushed.ExhaustedAbilities.Contains("artist"));
+        Assert.Null(answeredView.PendingQuestion);
 
         Assert.True(await TestServerHost.WaitUntilAsync(
             () => host.Session.GetPlayerView(new SeatId(1)).ExhaustedAbilities.Contains("artist"),
@@ -301,6 +328,20 @@ public sealed class SeamstressArtistHostTests
         Assert.DoesNotContain(
             events.OfType<AbilityResolvedEvent>(),
             item => item.Actor == new SeatId(1) && item.Ability == new AbilityId("philosopher.grant"));
+    }
+
+    /// <summary>等一条满足条件的本人视图推送（自 fromIndex 起；推送按连接有序，断言只看这一窗之后的）。</summary>
+    private static async Task<PlayerViewDto> WaitForPushedViewAsync(
+        ConcurrentQueue<PlayerViewDto> views,
+        int fromIndex,
+        Func<PlayerViewDto, bool> predicate)
+    {
+        Assert.True(
+            await TestServerHost.WaitUntilAsync(
+                () => views.Skip(fromIndex).Any(predicate),
+                Wait),
+            $"没有等到期望的本人视图推送（自第 {fromIndex} 条起共 {views.Count} 条）");
+        return views.Skip(fromIndex).First(predicate);
     }
 
     /// <summary>席位与角色名称的分配请求形状。</summary>

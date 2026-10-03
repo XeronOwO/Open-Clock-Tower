@@ -397,8 +397,9 @@ onBeforeUnmount(() => {
         @diagnostic="pushDiagnostic"
       />
 
+      <!-- 三态：可提问（idle）/ 等待回答（waiting；此时服务端权限位为 false，靠 pendingQuestion 保持可见）/ 已用尽（整块撤下）。 -->
       <section
-        v-if="canAskArtistQuestion"
+        v-if="canAskArtistQuestion || pendingQuestion !== null"
         class="panel"
         data-testid="player-artist-question"
         :data-question-state="pendingQuestion === null ? 'idle' : 'waiting'"

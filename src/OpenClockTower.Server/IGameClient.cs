@@ -31,4 +31,11 @@ public interface IGameClient
 
     /// <summary>服务端广播呆瓜的公开选择（公开事实，R-0027）。</summary>
     Task ReceiveKlutzChoiceMade(KlutzChoiceDto choice);
+
+    /// <summary>
+    /// 服务端推送"你的视图变了"：本人整视图（快照口径；艺术家提问状态 / 阶段边界等）。
+    /// </summary>
+    /// <param name="sequence">这份视图被表达时的序号（与快照同源，客户端按它合并）。</param>
+    /// <param name="view">该席位的完整投影（不含任何他人字段）。</param>
+    Task ReceivePlayerViewChanged(long sequence, PlayerViewDto view);
 }

@@ -30,6 +30,7 @@ public static class GameNotificationBuilder
         var notifications = new List<GameNotification>();
         long? lastDayEventSequence = null;
         long? lastLifeChangeSequence = null;
+        long? lastViewRefreshSequence = null;
         foreach (var draft in drafts)
         {
             if (draft.Event is DayStartedEvent
@@ -47,6 +48,13 @@ public static class GameNotificationBuilder
                 // 公开面变化的背书事件；无白天事件的补推序号用它，而不是"本批最后一条草案"
                 // （草案里可能跟着对账派生事件，口径与 lastDayEventSequence 保持一致）。
                 lastLifeChangeSequence = draft.Sequence;
+            }
+
+            if (draft.Event is PhaseStartedEvent or DayClosedEvent)
+            {
+                // 阶段边界与白天收口都会改"我现在能不能动"（艺术家的提问权限位只在本人视图里，
+                // 而它没有自己的推送通道）：记住最后一次边界序号，批末推一次按席位投影的整视图。
+                lastViewRefreshSequence = draft.Sequence;
             }
 
             switch (draft.Event)
@@ -130,6 +138,26 @@ public static class GameNotificationBuilder
                     });
                     break;
 
+                // 艺术家提问状态只在本人的视图里：提问 / 结清（回答、要求重问、强推作废）各推一次本人视图，
+                // 否则入口与等待态只能等重连快照才更新（本装置首跑实测：白天开始后入口根本不出现）。
+                case ArtistQuestionAskedEvent asked:
+                    notifications.Add(new GameNotification
+                    {
+                        Kind = GameNotificationKind.PlayerViewChanged,
+                        Sequence = draft.Sequence,
+                        Seat = asked.Seat,
+                    });
+                    break;
+
+                case ArtistQuestionClosedEvent closed:
+                    notifications.Add(new GameNotification
+                    {
+                        Kind = GameNotificationKind.PlayerViewChanged,
+                        Sequence = draft.Sequence,
+                        Seat = closed.Seat,
+                    });
+                    break;
+
                 case KlutzChoiceMadeEvent choice:
                     notifications.Add(new GameNotification
                     {
@@ -160,6 +188,17 @@ public static class GameNotificationBuilder
             {
                 Kind = GameNotificationKind.DayChanged,
                 Sequence = lastLifeChangeSequence ?? drafts[^1].Sequence,
+            });
+        }
+
+        if (lastViewRefreshSequence is { } viewRefreshSequence)
+        {
+            // Seat=null = 推给全部已绑定席位（各自的那份投影）：白天开始会让艺术家的入口出现、
+            // 白天收口 / 入夜会让它消失，都不该等重连才发现。
+            notifications.Add(new GameNotification
+            {
+                Kind = GameNotificationKind.PlayerViewChanged,
+                Sequence = viewRefreshSequence,
             });
         }
 

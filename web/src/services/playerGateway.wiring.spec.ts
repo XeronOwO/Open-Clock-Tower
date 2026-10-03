@@ -18,9 +18,9 @@ class FakeConnection {
   holdNext = false
   readonly invocations: Array<{ method: string; args: unknown[] }> = []
   private pending: ((value: unknown) => void) | null = null
-  private readonly handlers = new Map<string, (payload: unknown) => void>()
+  private readonly handlers = new Map<string, (...args: unknown[]) => void>()
 
-  on(method: string, handler: (payload: unknown) => void): void {
+  on(method: string, handler: (...args: unknown[]) => void): void {
     this.handlers.set(method, handler)
   }
 
@@ -50,9 +50,9 @@ class FakeConnection {
     })
   }
 
-  /** 模拟服务端推送。 */
-  receive(method: string, payload: unknown): void {
-    this.handlers.get(method)?.(payload)
+  /** 模拟服务端推送（可带多个参数，如 PlayerViewChanged 的序号 + 视图）。 */
+  receive(method: string, ...args: unknown[]): void {
+    this.handlers.get(method)?.(...args)
   }
 
   /** 放行被扣住的响应。 */
@@ -219,6 +219,59 @@ describe('玩家网关接线：补齐窗口', () => {
 
     expect(record.settled).toEqual(['voided', 'view'])
     expect(record.views.at(-1)?.pendingRequest).toBeNull()
+  })
+
+  it('本人视图推送：按快照口径合并（艺术家入口出现 / 等待态可见 / 用尽撤下）', async () => {
+    const fake = new FakeConnection()
+    const record = recorder()
+    const gateway = gatewayWith(fake, record.callbacks)
+
+    fake.response = joinResult(5, view({ phase: 'FirstNight', canAskArtistQuestion: false }))
+    await gateway.joinSeat('ticket-1')
+
+    // 白天开始：服务端补推一份本人视图 → 提问入口出现（修复前该位只在快照里更新，入口永不出现）。
+    fake.receive('ReceivePlayerViewChanged', 51, view({ phase: 'Day', canAskArtistQuestion: true }))
+    expect(record.views.at(-1)?.canAskArtistQuestion).toBe(true)
+
+    // 提问后：权限位关闭，但等待态带着问题全文（面板靠 pendingQuestion 保持可见，R-0040）。
+    fake.receive(
+      'ReceivePlayerViewChanged',
+      52,
+      view({ phase: 'Day', canAskArtistQuestion: false, pendingQuestion: '1 号是爪牙吗？' }),
+    )
+    expect(record.views.at(-1)?.pendingQuestion).toBe('1 号是爪牙吗？')
+    expect(record.views.at(-1)?.canAskArtistQuestion).toBe(false)
+
+    // 回答结清：问题清空、用尽能力下发（面板撤下）。
+    fake.receive(
+      'ReceivePlayerViewChanged',
+      53,
+      view({ phase: 'Day', canAskArtistQuestion: false, pendingQuestion: null, exhaustedAbilities: ['artist'] }),
+    )
+    expect(record.views.at(-1)?.exhaustedAbilities).toEqual(['artist'])
+  })
+
+  it('本人视图推送：旧序号被字段闸挡下，缺序号 / 不可识别视图不采纳（宁可少更新一次）', async () => {
+    const fake = new FakeConnection()
+    const record = recorder()
+    const gateway = gatewayWith(fake, record.callbacks)
+
+    fake.response = joinResult(50, view({ phase: 'Day', canAskArtistQuestion: true }))
+    await gateway.joinSeat('ticket-1')
+    const before = record.views.length
+
+    // 迟到的旧视图：序号低于字段水位，不覆盖。
+    fake.receive('ReceivePlayerViewChanged', 40, view({ phase: 'Day', canAskArtistQuestion: false }))
+    expect(record.views.length).toBe(before)
+
+    // 缺序号的推送：表达不了先后就不合并。
+    fake.receive('ReceivePlayerViewChanged', null, view({ phase: 'Day', canAskArtistQuestion: false }))
+    expect(record.views.length).toBe(before)
+
+    // 不可识别的视图（缺席位 / 阶段）：不采纳。
+    fake.receive('ReceivePlayerViewChanged', 60, { phase: 'Day' })
+    expect(record.views.length).toBe(before)
+    expect(record.views.at(-1)?.canAskArtistQuestion).toBe(true)
   })
 })
 

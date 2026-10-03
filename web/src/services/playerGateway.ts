@@ -136,6 +136,19 @@ export class PlayerGateway {
         this.dispatchPush({ kind: 'KlutzChoice', sequence: choice.sequence, choice })
       }
     })
+    // 本人视图变更（艺术家提问状态 / 阶段边界）：一份**整视图**推送，按快照口径与序号合并（R-0040）——
+    // 权力位 / 等待态只活在本人的投影里，没有这条通道时要等重连才更新。
+    this.connection.on('ReceivePlayerViewChanged', (sequence: unknown, payload: unknown) => {
+      const view = normalizePlayerView(payload)
+      const viewSequence = asCount(sequence)
+      if (view === null || viewSequence === null) {
+        return
+      }
+
+      if (this.merge.applySnapshot(view, viewSequence)) {
+        this.callbacks.onView(this.merge.snapshot())
+      }
+    })
     this.connection.onreconnecting(() => callbacks.onState('reconnecting'))
     this.connection.onreconnected(() => {
       callbacks.onState('connected')
@@ -458,7 +471,6 @@ export function normalizePlayerDay(raw: unknown): PlayerDayDto | null {
 /** 未知载荷 → 重连包；缺序号按 0 处理（与本地序号 / 事件序号对不上时会在 applyBundle 显式诊断，而不是静默通过）。 */
 export function normalizeBundle(raw: unknown): NormalizedReconnectBundle {
   const bundle = (raw ?? {}) as Record<string, unknown>
-  const view = (bundle['view'] ?? {}) as Record<string, unknown>
   const rawEvents = asArray<unknown>(bundle['events'])
   const events = rawEvents
     .map(normalizePlayerEvent)
@@ -466,25 +478,63 @@ export function normalizeBundle(raw: unknown): NormalizedReconnectBundle {
 
   return {
     sequence: asCount(bundle['sequence']) ?? 0,
-    view: {
-      seat: asCount(view['seat']) ?? 0,
-      phase: asText(view['phase']) ?? '',
-      pendingRequest: normalizeRequest(view['pendingRequest']),
-      informationResults: asArray<unknown>(view['informationResults'])
-        .map(normalizeInformation)
-        .filter((information): information is InformationResultDto => information !== null),
-      day: normalizePlayerDay(view['day']),
-      outcome: normalizeGameOutcome(view['outcome']),
-      klutzChoices: asArray<unknown>(view['klutzChoices'])
-        .map(normalizeKlutzChoice)
-        .filter((choice): choice is KlutzChoiceDto => choice !== null),
-      pendingQuestion: asSizedText(view['pendingQuestion'], 200),
-      canAskArtistQuestion: asBoolean(view['canAskArtistQuestion']) ?? false,
-      exhaustedAbilities: asTextArray(view['exhaustedAbilities']),
-    },
+    // 视图解析与个人视图推送共用一份：不可识别时退回空视图（老口径：席位 0 / 阶段空串），不白屏。
+    view: normalizePlayerView(bundle['view']) ?? emptyPlayerView(),
     events,
     // 被丢掉的条目不静默：加入路径据此显式失败（无序号 / 无类型的条目无法参与序号校验）。
     droppedEvents: rawEvents.length - events.length,
+  }
+}
+
+/**
+ * 未知载荷 → 玩家视图；缺席位 / 阶段时返回 null（表达不了"这是谁的视图"就不采纳）。
+ *
+ * 与 `JoinSeat` 快照里的 view 同一份解析：个人视图推送（`ReceivePlayerViewChanged`）与快照
+ * 走同一个序号闸，解析口径也必须同一份（D-0014）。
+ */
+export function normalizePlayerView(raw: unknown): PlayerViewDto | null {
+  if (raw === null || typeof raw !== 'object') {
+    return null
+  }
+
+  const view = raw as Record<string, unknown>
+  const seat = asCount(view['seat'])
+  const phase = asText(view['phase'])
+  if (seat === null || phase === null) {
+    return null
+  }
+
+  return {
+    seat,
+    phase,
+    pendingRequest: normalizeRequest(view['pendingRequest']),
+    informationResults: asArray<unknown>(view['informationResults'])
+      .map(normalizeInformation)
+      .filter((information): information is InformationResultDto => information !== null),
+    day: normalizePlayerDay(view['day']),
+    outcome: normalizeGameOutcome(view['outcome']),
+    klutzChoices: asArray<unknown>(view['klutzChoices'])
+      .map(normalizeKlutzChoice)
+      .filter((choice): choice is KlutzChoiceDto => choice !== null),
+    pendingQuestion: asSizedText(view['pendingQuestion'], 200),
+    canAskArtistQuestion: asBoolean(view['canAskArtistQuestion']) ?? false,
+    exhaustedAbilities: asTextArray(view['exhaustedAbilities']),
+  }
+}
+
+/** 加入包里 view 不可识别时的降级形状（旧口径：席位 0 / 阶段空串），只作兜底、不编事实。 */
+function emptyPlayerView(): PlayerViewDto {
+  return {
+    seat: 0,
+    phase: '',
+    pendingRequest: null,
+    informationResults: [],
+    day: null,
+    outcome: null,
+    klutzChoices: [],
+    pendingQuestion: null,
+    canAskArtistQuestion: false,
+    exhaustedAbilities: [],
   }
 }
 

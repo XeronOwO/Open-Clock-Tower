@@ -35,4 +35,13 @@ public enum GameNotificationKind
 
     /// <summary>呆瓜公开选择了某席位：公开事实，广播给全部已绑定席位（R-0027）。</summary>
     KlutzChoiceMade,
+
+    /// <summary>
+    /// 本人视图有变化（艺术家提问状态 / 阶段边界导致的"我现在能不能动"）：**按席位**推一份整视图。
+    /// </summary>
+    /// <remarks>
+    /// 推送的是**状态投影**（与 <c>JoinSeat</c> 快照同一份投影、同一个序号闸）：客户端按快照口径合并，
+    /// 重连时同一份事实由快照覆盖（D-0014）；Seat=null 表示推给全部已绑定席位（各自的那份投影）。
+    /// </remarks>
+    PlayerViewChanged,
 }

@@ -8,6 +8,7 @@ import {
   normalizePhaseStarted,
   normalizePlayerDay,
   normalizePlayerEvent,
+  normalizePlayerView,
   normalizeRequest,
   normalizeSeatJoin,
   normalizeVoided,
@@ -295,5 +296,29 @@ describe('加入结果：连接级凭据（D-0012）', () => {
     expect(normalizeSeatJoin({ credential, bundle: null })).toBeNull()
     expect(normalizeSeatJoin({ credential })).toBeNull()
     expect(normalizeSeatJoin(null)).toBeNull()
+  })
+})
+
+describe('个人视图推送的解析（与快照同一份口径，R-0040）', () => {
+  it('缺席位 / 阶段不可识别；完整形状保留三态字段', () => {
+    expect(normalizePlayerView({ phase: 'Day' })).toBeNull()
+    expect(normalizePlayerView({ seat: 2 })).toBeNull()
+    expect(normalizePlayerView(null)).toBeNull()
+
+    expect(
+      normalizePlayerView({
+        seat: 2,
+        phase: 'Day',
+        pendingQuestion: '1 号是爪牙吗？',
+        canAskArtistQuestion: false,
+        exhaustedAbilities: ['artist'],
+      }),
+    ).toMatchObject({
+      seat: 2,
+      phase: 'Day',
+      pendingQuestion: '1 号是爪牙吗？',
+      canAskArtistQuestion: false,
+      exhaustedAbilities: ['artist'],
+    })
   })
 })
