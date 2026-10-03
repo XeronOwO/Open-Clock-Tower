@@ -20,6 +20,28 @@ public static class ProjectionMapper
         LedgerEquivalent = result.Rebuild?.LedgerEquivalent,
     };
 
+    /// <summary>配板建议 → DTO（服务端生成的种子、席位映射、净分布与显式说明）。</summary>
+    public static SetupProposalDto ToDto(SetupProposalResult result) => new()
+    {
+        Ok = result.Ok,
+        Seed = result.Seed,
+        Assignments =
+        [
+            .. result.Assignments.Select(assignment => new SeatCharacterAssignmentDto
+            {
+                Seat = assignment.Seat.Value,
+                Character = assignment.Character.Value,
+            }),
+        ],
+        Distribution =
+        [
+            .. result.Distribution.Select(item => new SetupTypeCountDto { Type = item.Type, Count = item.Count }),
+        ],
+        Notes = [.. result.Notes],
+        FailureCode = result.FailureCode,
+        FailureMessage = result.FailureMessage,
+    };
+
     /// <summary>操作请求 → DTO（刻意不带槽位 / 轮次 / 进度；序号 = 这条状态对应的事件流序号）。</summary>
     public static OperationRequestDto ToDto(OperationRequest request, long sequence) => new()
     {

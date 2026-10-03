@@ -357,6 +357,23 @@ export interface SeatCharacterAssignmentDto {
   character: string
 }
 
+/** 配板建议（说书人查询；瞬态、不落账、不进事件流）。 */
+export interface SetupProposalDto {
+  ok: boolean
+  seed: string
+  assignments: SeatCharacterAssignmentDto[]
+  distribution: SetupTypeCountDto[]
+  notes: string[]
+  failureCode: string | null
+  failureMessage: string | null
+}
+
+/** 净分布的一项：角色类型（Kernel 枚举名）→ 数量。 */
+export interface SetupTypeCountDto {
+  type: string
+  count: number
+}
+
 /** 玩家视图：只有他自己的席位、当前大阶段与他自己的挂起请求。 */
 export interface PlayerViewDto {
   seat: number

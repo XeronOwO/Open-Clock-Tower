@@ -16,8 +16,9 @@ export interface CharacterProfile {
   /**
    * 阵型修正（`docs/standard/terminology.md` §7 `setup-modifier`）。
    *
-   * 平台**不建盲抽袋**、也不做分布校验——建袋是线下的动作，服务端拿到的只是最终分配
-   * （D-0017）。这里只把修正摆给说书人看，避免"静默缺失"；口径见 `rulings.md` R-0035。
+   * 服务端权威数据在 `SectsAndVioletsRoster`（设置调整参与净分布，口径见 `rulings.md` R-0042）；
+   * 这里保留的是**呈现文案**：方括号片段（如 `[+1 外来者]`）必须与权威数据逐字一致——
+   * 两侧对账由规范门禁 `RosterMirrorGateTests` 强制，漂移会红。
    */
   readonly setupModifier?: string
 }
@@ -49,7 +50,7 @@ export const ROSTER: readonly CharacterProfile[] = [
   { slug: 'cerenovus', name: '洗脑师', type: '爪牙' },
   { slug: 'pit-hag', name: '麻脸巫婆', type: '爪牙' },
   { slug: 'fang-gu', name: '方古', type: '恶魔', setupModifier: '[+1 外来者]：初始设置时用一个外来者角色标记替换一个镇民角色标记' },
-  { slug: 'vigormortis', name: '亡骨魔', type: '恶魔' },
+  { slug: 'vigormortis', name: '亡骨魔', type: '恶魔', setupModifier: '[-1 外来者]：初始设置时用一个镇民角色标记替换一个外来者角色标记；没有可移除的外来者时不作调整' },
   { slug: 'no-dashii', name: '诺-达鲺', type: '恶魔' },
   { slug: 'vortox', name: '涡流', type: '恶魔' },
 ]
@@ -176,6 +177,22 @@ export function characterTypeOf(slug: string | null | undefined): string {
   }
 
   return ROSTER_BY_SLUG.get(slug)?.type ?? ''
+}
+
+const TYPE_LABELS: Readonly<Record<string, string>> = {
+  Townsfolk: '镇民',
+  Outsider: '外来者',
+  Minion: '爪牙',
+  Demon: '恶魔',
+}
+
+/** 角色类型枚举名（Kernel，如 `Townsfolk`）→ 中文；未知取值原样回显，不猜。 */
+export function typeLabelOf(raw: string | null | undefined): string {
+  if (raw === null || raw === undefined || raw === '') {
+    return '—'
+  }
+
+  return TYPE_LABELS[raw] ?? raw
 }
 
 /**

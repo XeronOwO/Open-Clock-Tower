@@ -8,6 +8,7 @@ import {
   effectMarkNameOf,
   labelOf,
   setupModifiersOf,
+  typeLabelOf,
   voidReasonLabelOf,
 } from '@/display/labels'
 
@@ -23,6 +24,13 @@ describe('花名册（docs/standard/terminology.md §9）', () => {
     expect(characterNameOf('no-dashii')).toBe('诺-达鲺')
     expect(characterTypeOf('no-dashii')).toBe('恶魔')
     expect(characterTypeOf('clockmaker')).toBe('镇民')
+  })
+
+  it('角色类型枚举名有中文，未知类型原样回显（配板净分布要用）', () => {
+    expect(typeLabelOf('Townsfolk')).toBe('镇民')
+    expect(typeLabelOf('Demon')).toBe('恶魔')
+    expect(typeLabelOf('Unknown')).toBe('Unknown')
+    expect(typeLabelOf(null)).toBe('—')
   })
 })
 
@@ -90,12 +98,12 @@ describe('文案映射', () => {
   })
 })
 
-describe('阵型修正提示（setup-modifier；rulings.md R-0035）', () => {
-  it('方古在已选分配里 → 提示 [+1 外来者]', () => {
-    const notes = setupModifiersOf(['fang-gu', 'clockmaker'])
-    expect(notes).toHaveLength(1)
-    expect(notes[0]?.slug).toBe('fang-gu')
+describe('阵型修正提示（setup-modifier；rulings.md R-0042）', () => {
+  it('方古 / 亡骨魔在已选分配里 → 各提示自己的方括号文案', () => {
+    const notes = setupModifiersOf(['fang-gu', 'clockmaker', 'vigormortis'])
+    expect(notes.map((profile) => profile.slug)).toEqual(['fang-gu', 'vigormortis'])
     expect(notes[0]?.setupModifier).toContain('[+1 外来者]')
+    expect(notes[1]?.setupModifier).toContain('[-1 外来者]')
   })
 
   it('没有带修正的角色（含未知 slug）→ 不编提示', () => {

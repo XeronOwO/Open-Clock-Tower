@@ -3,12 +3,15 @@
  *
  * 与 GameHub 的方法签名逐条对应（src/OpenClockTower.Server/GameHub.cs）。
  * 每条命令调用都带幂等键；幂等键由调用方持有，重试复用同一个键。
+ * 配板建议是**只读查询**（`ProposeSetup`，R-0041 / R-0042）：同样在这里收口——
+ * 传输异常收敛成 `ok:false` 的建议形态，UI 不需要处理两种失败。
  *
  * 零信任口径（D-0012）：命令的**第一个参数**永远是当前连接的凭据；
  * 连接与凭据必须成对出现——所以这里用 `CommandSender` 把两者绑在一起，
  * 不提供"只给连接"的发命令入口。
  */
 import type { HubConnection } from '@microsoft/signalr'
+import type { SetupProposalDto } from '@/contracts/game'
 import { asBoolean, asNumber, asText } from '@/display/format'
 
 /** 一条命令的两个必要条件：连接 + 该连接的凭据（D-0012）。 */
@@ -101,6 +104,38 @@ export function assignCharacters(
   idempotencyKey: string,
 ): Promise<CommandOutcome> {
   return invokeCommand(sender, 'AssignCharacters', assignments, idempotencyKey)
+}
+
+/**
+ * 查询配板建议（只读、不落账；R-0041 / R-0042）：种子由服务端生成并回传。
+ * 建议只是建议——说书人可重摇 / 手改，提交仍走 {@link assignCharacters}（D-0017）。
+ */
+export async function proposeSetup(
+  sender: CommandSender,
+  seed: string | null,
+): Promise<SetupProposalDto> {
+  if (sender.credential.length === 0) {
+    return failedProposal('setup.no_credential', '尚未加入：没有连接凭据')
+  }
+
+  try {
+    return await sender.connection.invoke<SetupProposalDto>('ProposeSetup', sender.credential, seed)
+  } catch (error) {
+    return failedProposal('setup.transport', error instanceof Error ? error.message : String(error))
+  }
+}
+
+/** 建议查询的失败形态：字段齐备，UI 不必区分 null / undefined。 */
+function failedProposal(code: string, message: string): SetupProposalDto {
+  return {
+    ok: false,
+    seed: '',
+    assignments: [],
+    distribution: [],
+    notes: [],
+    failureCode: code,
+    failureMessage: message,
+  }
 }
 
 /** 开夜（口径是引擎输入，R-0014）。 */

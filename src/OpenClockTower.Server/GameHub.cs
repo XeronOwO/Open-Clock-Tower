@@ -364,6 +364,17 @@ public sealed class GameHub : Hub<IGameClient>
             Commands().RemoveSeatAnnotation(annotationId),
             idempotencyKey);
 
+    /// <summary>
+    /// 说书人查询开局配板建议（只读、不落账）：按官方分布表 + 在场角色的设置调整生成建议。
+    /// 随机只作显式输入——种子可由客户端传入、缺省由服务端生成并回传（R-0041 / R-0042）。
+    /// </summary>
+    public async Task<SetupProposalDto> ProposeSetup(string credential, string? seed)
+    {
+        _ = ResolveStorytellerActor(credential);
+        var result = await _session.ProposeSetupAsync(seed, Context.ConnectionAborted);
+        return ProjectionMapper.ToDto(result);
+    }
+
     /// <summary>说书人查询当前视图（变更时同时会推送，客户端不需要轮询）。</summary>
     public StorytellerViewDto GetStorytellerView(string credential)
     {
