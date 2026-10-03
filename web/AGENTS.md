@@ -78,3 +78,6 @@ node tools/verify-storyteller-panel.mjs        # 主装置：退出码 0 = 全�
   不做本地增量补齐、不加延迟窗口。
 - **文案**：角色与枚举的中文名在 `display/labels.ts`，来源 `docs/standard/terminology.md` §9；
   未知取值原样回显，不猜、不吞。
+- **控制字符清洗不用正则**：ESLint `no-control-regex` 会拦下 `[\u0000-\u001f]` 这类字面量
+  （2026-10-03 实测报错）；逐字符判定 `codePoint < 0x20 || === 0x7f`，见 `display/format.ts` 的
+  `replaceControlCharacters`。
