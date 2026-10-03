@@ -276,6 +276,56 @@
 - 本批后 `in-progress/`、`review/` 清空；`todo/` 留两张本轮新登记的用户待办（`replay-auto-review` 自动化复盘 /
   `ui-layout-and-onboarding` 排版与引导），不属本批判定范围；`done/` 新增 `retrospective-info-family.md`。
 
+## 批次 E24：死亡触发族（贤者 / 心上人）
+
+冻结版本：`main` @ `d5cf109`（四笔提交：实现 `128ab67` → 用例 `22cfb05` → 文档 `c38b252` → 装置 `d5cf109`）。
+本批等待判定的票据一张：`sage-and-sweetheart`。
+
+本批改动含**事件触发管线的新收口路径**（触发型 / 触发格裁定结清后的续推）与**顺序表条目改换**
+（`sweetheart` / `sage` 由行动格改触发格），故按「本票装置 + 通用回归 + 激活路径 + 零信任」四面对齐
+（四装置全部前台、一次强制构建）：
+
+- `tools/verify-death-triggers.mjs`（**本批新增**，取证档 `--quota 2 --screenshots-all --build`）：
+  **56 项全部通过 / 0 跳过、退出码 0**。白天处决 3 号心上人 → 触发型裁定挂起（开夜被拒
+  `phase.trigger_choice_pending`）→ 指定 4 号持续醉酒（跨阶段不清除、操作台可见效果来源）→
+  次夜恶魔击杀 2 号贤者 → 当夜触发格裁定按击杀记录推演 → 展示两名玩家 → 信息只到本人、
+  其余席位零下发（五席 126 帧全量扫描无说书人字段 + 阳性对照）。截图 `deathtrigger-01…06` 均为本次
+  运行写入并**逐张复核**（处决心上人 / 触发型裁定 + 开夜被拒 / 醉酒标记与效果来源 / 贤者裁定推演 /
+  2 号玩家页信息 / 5 号无关席位空态）。
+- 主装置 `tools/verify-storyteller-panel.mjs`（同档）：**判定 194 项 / 0 跳过、退出码 0**；
+- 角色变更族 `tools/verify-character-change.mjs`（同档）：**59 项全部通过**——顺序表改换后
+  哲学家代行 / 理发师换角 / 方古侵染路径回归；
+- 零信任 `tools/verify-zero-trust.mjs`：**43 项全部通过**——触发型裁定与醉酒维度不进玩家面。
+
+真宿主用例 `DeathTriggerHostTests` **1/1**（真 SQLite + 真 SignalR：处决心上人 → 触发型裁定 → 开夜被拒 →
+指定醉酒；次夜击杀贤者 → 当夜裁定 → 信息只到本人 + 无关席位零下发 + 裁定结清后夜晚继续推进到收口）。
+
+冻结版门禁：`dotnet build` 0 警告 0 错误；`dotnet test` **703 通过 / 0 失败**；`dotnet format` 就地通过。
+
+诚实记录：
+
+- **提交前独立对抗性自检发现 HIGH-1 并已修复**：触发型 / 触发格裁定（贤者展示 / 心上人醉酒）结清后
+  当晚不再推进——裁定 id 不属于当前槽位时内核只落裁定，而挂起期间配额已走完，结清后没有任何推进入口
+  （自检真宿主探针：12.1 秒 / 约 240 次节拍 `SlotIndex` 恒 12）。修法在**提交管线**补「重进本格」
+  （`SessionCommit.BuildDecisionContinuation`：有挂起不补、计划已走完不补），内核契约不变；
+  回归由 Kernel 两条用例、`DeathTriggerHostTests` 第 ⑦ 断言与装置第 56 项共同固定。
+- **自检同时发现 MEDIUM-2 恒真断言**（`TestServerHost.WaitForViewAsync` 超时返回最后视图 →
+  其后 `Assert.NotNull` 永真），已修本票三处并整族对齐 E23 的 `RetrospectiveInfoHostTests`；
+  `InformationResultDto` 的「不含 Note」断言改为键集合断言（这才是防"将来加字段"的保护）。
+- 矩阵行 12（心上人离场解除）与行 16（真重启 / 重连）为**组合证据**（通用效果生命周期 / 快照往返
+  加既有真重启用例），本批未跑针对性真机 / 重启用例——残余逐条登记在票据里，扩装置时优先补。
+- 装置侧产品疑点三条（触发格裁定无席位归属 / 白天计划收口读数越界 2 / 1 / 候选不标生死）
+  已登记为 `todo/storyteller-decision-affordances.md`，不属本批判定范围。
+- 一次全量 `dotnet test` 曾出现 1 条未复现的红（并行构建期间跑全量），随后同命令连跑两次全绿；
+  按"陈旧产物导致的假红"纪律判定为产物时序抖动，非产品缺陷。
+
+批次 E24 判出：
+
+- **死亡触发族票验收矩阵 17 行全部判出**（17 行通过：15 行直接证据 + 行 12 / 16 组合证据，逐行注明性质；
+  逐行证据见 `done/sage-and-sweetheart.md` 的「E24 验收判定」）→ 移入 `done/`。
+- 本批后 `in-progress/`、`review/` 清空；`todo/` 三张（两张既有用户待办 + 本批新登记的面板票据）；
+  `done/` 新增 `sage-and-sweetheart.md`。
+
 ## 相关阅读
 
 - 验收规程：`docs/acceptance/AGENTS.md`

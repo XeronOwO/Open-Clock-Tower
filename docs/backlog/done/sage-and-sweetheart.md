@@ -1,10 +1,10 @@
 # 死亡触发族：贤者 / 心上人
 
-- Status: In progress（实现已落地、待验证与批次判定；判定记录在本票内追加）
+- Status: Done（E24 判定通过；判定记录见文末「E24 验收判定」）
 - Priority: High
 - Depends on: 触发管线（`IEventTrigger` 已就位：理发师 / 呆瓜 / 女巫 / 洗脑师）；
   死亡事件的来源归因（`SeatStateChangedEvent.CausedBy` / `EffectId`）；持续效果账与维度对账；
-  夜晚顺序表（两套口径均已含 `sweetheart` / `sage` 条目，当前是 `Action`）
+  夜晚顺序表（两套口径均已含 `sweetheart` / `sage` 条目，本票由 `Action` 改为 `Trigger`）
 
 ## 要解决的问题
 
@@ -119,3 +119,56 @@ S&V 剩余 7 个未实现角色里的两名**死亡触发**角色，入场即被
   判定时逐行注明证据性质；将来扩装置时优先补「离场解除」与「选已死亡玩家」。
 - 界面侧：触发格 / 触发型裁定在说书人圆环上暂无席位归属、白天计划收口后读数越界（2 / 1）、
   裁定候选不标生死——登记为 `todo/storyteller-decision-affordances.md`，随面板迭代同批处理。
+
+## E24 验收判定（冻结版本 `d5cf109`）
+
+本票装置 `tools/verify-death-triggers.mjs`（**本批新增**）取证档 `--quota 2 --screenshots-all --build`：
+**56 项全部通过 / 0 跳过、退出码 0**；截图 `deathtrigger-01…06` 为本次运行写入并**逐张复核**
+（处决心上人 / 触发型裁定 + 开夜被拒 / 醉酒标记与效果来源 / 贤者裁定按击杀记录推演 /
+2 号玩家页信息 / 5 号无关席位空态）。
+
+矩阵逐行（证据性质逐条注明）：
+
+| # | 判定 | 证据 |
+|---|---|---|
+| 1 | 通过 | 装置（贤者裁定 + 信息只到本人）+ `DeathTriggerHostTests` |
+| 2 | 通过（规则级） | `SageNightTriggerTests` 处决路径 |
+| 3 | 通过（规则级） | 同上（女巫 / 处罚处决 / 麻脸巫婆三条死因各一例） |
+| 4 | 通过（规则级） | `Resolve_IneffectiveSage_MarksMayBeFalse` |
+| 5 | 通过（规则级） | `Resolve_WithVortox_MarksMustBeFalse` |
+| 6 | 通过 | 装置（6 组 pair、不含贤者）+ 规则用例（候选含已死亡者） |
+| 7 | 通过（内核级） | `SageNightTests`（夜末「过时不候」收口；跨阶段携带显式失败） |
+| 8 | 通过（组合证据） | 规则用例覆盖夜杀批；装置覆盖白天处决批（同一触发器路径） |
+| 9 | 通过 | 装置 + `DeathTriggerHostTests`（处决 → 触发型裁定 → 指定醉酒） |
+| 10 | 通过（规则级） | `Skips_WhenIneffective` |
+| 11 | 通过 | 装置（跨阶段仍标醉酒）+ `DeathTriggerHostTests` |
+| 12 | 通过（组合证据） | 效果终止走 E13 的通用生命周期：`EffectAttributionTests.SourceCharacterChange_TerminatesItsEffects`（来源换角 → `SourceLostAbility`）+ `DimensionEffectReconcilerTests`（终止 → 维度解除）+ 本票 `SweetheartDeathTriggerTests` 断言效果 `SourceCharacter = sweetheart`；**未跑**针对性真机离场用例——见残余 |
+| 13 | 通过 | Kernel 幂等用例（重复开启 / 关闭抛错、跳过账）+ `DeathTriggerStateJsonTests` |
+| 14 | 通过 | 装置（`phase.trigger_choice_pending` 拒绝被界面读出）+ `DeathTriggerHostTests` |
+| 15 | 通过 | 装置（五席 126 帧零说书人字段 + 无关席位零下发）+ `DeathTriggerHostTests` |
+| 16 | 通过（组合证据） | `DeathTriggerStateJsonTests`（含新字段非空的快照往返）+ 比较器等价 + 既有真重启用例 `PitHagResidueHostTests`（同一序列化 / 重建路径）；**未跑**含新字段非空的真重启——见残余 |
+| 17 | 通过 | 主装置 194 / 角色变更族 59 / 零信任 43 / 全量 703 通过 |
+
+回归面：主装置 `verify-storyteller-panel.mjs` **194 项**、角色变更族 `verify-character-change.mjs` **59 项**、
+零信任 `verify-zero-trust.mjs` **43 项**（三项全过、退出码 0）；
+冻结版门禁：`dotnet build` 0 警告 0 错误、`dotnet test` **703 通过 / 0 失败**、`dotnet format` 就地通过。
+
+诚实记录（本批真实发生的事）：
+
+- **独立对抗性自检发现 HIGH-1 并已修复**：触发型 / 触发格裁定（贤者展示、心上人醉酒）结清后当晚不再推进——
+  裁定 id 不属于当前槽位时内核只落裁定，而挂起期间配额已走完，结清后没有任何推进入口
+  （自检真宿主探针：12.1 秒 / 约 240 次节拍 `SlotIndex` 恒 12）。修法：**提交管线**在触发管线之后补一步
+  「重进本格」复位配额（`SessionCommit.BuildDecisionContinuation`：有挂起一律不补，避免清掉未了结请求；
+  计划已走完不补）；内核契约保持不变（理发师路径与既有用例不受影响）。回归证据：
+  `TriggerSourcedDecisionResolution_LeavesContinuationToCommitPipeline` /
+  `..._WithPendingRequest_KeepsRequest`（Kernel）、`DeathTriggerHostTests` 第 ⑦ 断言（真宿主夜晚收口）、
+  装置第 56 项「贤者裁定结清后夜晚继续自动推进到收口」。
+- **自检同时发现 MEDIUM-2 恒真断言并已修**：`TestServerHost.WaitForViewAsync` 超时返回最后视图，
+  其后跟 `Assert.NotNull` 永真——本票三处改用条件断言；`InformationResultDto` 序列化「不含 Note」同属恒真，
+  改为键集合断言（`["ability","content","sequence"]`，Web defaults 口径）。**整族对齐**：E23 的
+  `RetrospectiveInfoHostTests` 同病三处 + `AssertInfo` 一并修正。
+- **架构门禁真实拦截两次**：`StepMachineFolder.cs` 加完两族账后 713 行超限 → 拆出 `DeathTriggerFolder.cs`
+  （472 + 172 行）；`GameSession.cs` 因续推调用一度 605 行 → 两步合成
+  `SessionCommit.AppendDerivedWithContinuation` 一次调用（546 行）。
+- 装置未覆盖的边界（残余已逐条登记）：处决 / 非恶魔死因的**真机**路径、涡流在场、死亡时醉酒 / 中毒、
+  心上人离场解除（行 12）、真重启 / 重连（行 16）、裁定候选选已死亡玩家。
