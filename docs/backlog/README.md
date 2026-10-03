@@ -67,9 +67,9 @@ todo/  →  in-progress/  →  review/  →  done/
 
 ### Review
 
-- [涡流干扰计数：R-0004 的引擎级口径（数学家）](review/vortox-interference-counting.md) — **Medium** — 涡流在场的「能力未正常生效」落失效账本（`MalfunctionKind.Vortox`）+ R-0004 逐条口径闭合（按玩家去重、组合原因逐条并列）；待验收批次判真会话与面板行
-
 ### Done
+
+- [涡流干扰计数：R-0004 的引擎级口径（数学家）](done/vortox-interference-counting.md) — **Medium** — 涡流在场的「能力未正常生效」落失效账本（`MalfunctionKind.Vortox`）+ R-0004 逐条口径闭合（按玩家去重、组合原因逐条并列）；批次 E18 逐行判定 1–5 全部通过（主装置 177 项 + 涡流段截图 35–38）
 
 - [角色变更族其余角色：舞蛇人 / 理发师 / 方古 / 哲学家（含上报路径槽位激活）](done/character-change-family.md) — **High** — 麻脸巫婆票之后的同族四角色实现 + 说书人手工上报换角不触发槽位激活的残余收口；批次 E17 逐行判定 46 行全部通过
 

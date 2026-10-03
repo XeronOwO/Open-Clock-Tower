@@ -98,6 +98,35 @@
 - 本批后 `review/` 清空；`todo/` 剩 `vortox-interference-counting`（Medium）、
   `storyteller-annotation` / `terminal-hold-residue`（Low）。
 
+## 批次 E18（2026-10-03）
+
+冻结版本：`main` @ `899eb8f`（先提交主装置涡流场景段，再冻结跑批；跑批期间工作树干净、未改产品代码）。
+七装置同批跑完（一次强制构建 + 真宿主会话，全部前台，取证档）。跑批期间机器异常重启一次：主装置已完成，
+六个辅助装置在同一冻结版本上重跑（全部通过，结果如下）。
+
+- 主装置 `tools/verify-storyteller-panel.mjs`：**177 项断言 / 0 跳过**（`--quota 2 --screenshots-all --build`；
+  39 张截图均为本次运行写入）；
+- 胜负链路 `tools/verify-winloss.mjs`：**20 项 + 3 张截图**；
+- 麻脸巫婆之夜 `tools/verify-pit-hag.mjs`：**34 项 + 8 张截图**；
+- 女巫链路 `tools/verify-witch.mjs`：**28 项 + 5 张截图**；
+- 处罚处决链路 `tools/verify-madness.mjs`：**28 项 + 5 张截图**；
+- 零信任负向 `tools/verify-zero-trust.mjs`：**44 项**（无截图档）；
+- 角色变更族 `tools/verify-character-change.mjs`：**43 项 + 10 张截图**。
+
+冻结版门禁复跑：`dotnet build` 0 警告 / 0 错误；`dotnet test` **590 通过 / 0 失败**
+（Kernel 264 · Rules 208 · Integration 95 · NormativeGates 23）；`dotnet format` 退出码 0。
+
+批次 E18 判出：
+
+- **涡流干扰计数票（Medium）验收矩阵 1–5 全部通过** → 移入 `done/`。行 1 / 4 首次拿到界面级证据：
+  涡流存活 + 健康筑梦师结算 → 裁定点「涡流在场：信息必须为假（真角色不得出现）」、账本
+  「正常生效 + 原因：涡流」+ 失效账本「2 号 dreamer 涡流」、无关玩家看不到归因；截图
+  `35-vortox-dreamer-decision` / `36-storyteller-vortox-ledger` / `37-player-vortox-info` /
+  `38-unrelated-player-clean` 逐张复核。行 5 由同一次运行的重启 + 修复重建段给出（前后同为 `2 号 dreamer 涡流@245`）。
+- 装置补充：主装置新增 `vortox` 段（快档第 3 夜 / 取证档第 4 夜）；重建段补「重启后失效账本行与序号原样」；
+  落盘断言加「本次运行写入」时间校验（提交 `899eb8f`）。
+- 本批后 `review/` 清空；`todo/` 剩 `storyteller-annotation` / `terminal-hold-residue`（Low）。
+
 ## 相关阅读
 
 - 验收规程：`docs/acceptance/AGENTS.md`
