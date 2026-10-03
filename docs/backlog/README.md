@@ -60,7 +60,13 @@ todo/  →  in-progress/  →  review/  →  done/
 
 ### Todo
 
+- [自动化复盘：在圆盘上逐步回放每一个原子步骤](todo/replay-auto-review.md) — **High** — 结束批次之后对局内玩家开放的逐步回放：圆盘上按原子步骤可视化（恶魔击杀红箭头 / 死亡标记 / 换角等）+ 上部步骤说明，进行中零泄露（零信任）
+
+- [排版与上手引导优化：让版块自解释、信息降密度](todo/ui-layout-and-onboarding.md) — **Medium** — 版块标题自解释 + 「?」悬停说明 + 文案通俗化与数据拼接连贯化；只动呈现层，信息隔离红线不变
+
 ### In progress
+
+- [回溯型信息族：卖花女孩 / 城镇公告员 / 神谕者](in-progress/retrospective-info-family.md) — **High** — 三个「读记录」的信息角色：白天事实按**动作时刻的角色快照**入账（R-0037），除首夜外每夜由说书人给出「是 / 否 / 数字」，信息只到本人
 
 ### Review
 
