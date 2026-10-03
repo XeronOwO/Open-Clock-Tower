@@ -816,6 +816,33 @@
   `NightPlanBuilder` / `EffectDto.GrantedCharacter`；回归见 `PhilosopherNightActionTests` /
   `PhilosopherDrunkSourceTests` / `NightPlanBuilderTests` / `SlotEntryLedgerTests` / `PhilosopherHostTests`。
 
+### R-0037 · 回溯型信息能力的读数口径：动作时刻快照与「举手」语义
+
+- **状态**：Decided（第 1 / 3 条是百科规则的落法；第 2 条是平台口径）
+- **问题**：卖花女孩 / 城镇公告员 / 神谕者要在夜里读「白天已经发生的事」，三件事需要定口径：
+  ① 「恶魔投过票」按**什么时候**的恶魔身份算；② 在线投票窗口允许改票 / 撤回（R-0017），
+  线下的「举手」对应窗口里的哪个动作；③ 白天账里的角色事实怎么进夜晚的推演提示与结算。
+- **依据**（均为 2026-10-01 抓取）：
+  - 百科《卖花女孩》· 角色简介 2——「无论被提名的玩家是否被处决，恶魔的投票都会被卖花女孩计算在内」；
+    · 3——反例是"因为**其他原因**举手"（即：记的是举手这个动作）；· 4——「如果在原恶魔投票之后，
+    卖花女孩得知该信息之前，恶魔玩家发生了改变，卖花女孩的能力还是会检测到**原恶魔**是否投票」；
+    · 5——多名恶魔（含已死亡的恶魔）里任何一人投票都算「是」。
+  - 百科《城镇公告员》· 角色简介 1、3——「得知爪牙是否提名」「只会得知今天白天是否有爪牙**发起了**提名」。
+  - 百科《神谕者》· 角色简介 2–4——信息以当晚黎明时的状态为基准、按魔典上**当前**阵营计算。
+- **处理（默认行为，代码注释必须引用本条）**：
+  1. **动作时刻的角色快照**：`NominationMadeEvent` / `VoteCastEvent` 各带「动作发生时的角色」字段
+     （未观测为 null），白天账折叠出「提名者角色」与**投票动作表**；判定只看快照——投票 / 提名之后
+     换角（R-0032）不改写已发生的事实。事件流是唯一事实来源，重放 / 重启 / 重建都得到同一答案。
+  2. **「投过票」= 曾投赞成（举手）**：撤回不撤销该动作；窗口期内的举手是公开面（R-0017 第 5 条），
+     说书人在线下也是「看到举手就落标记」。
+  3. **不猜**：角色快照缺失 / 席位维度未观测时，推演读数返回「无法判定」，提示里如实写明；
+     但只要有确定项（例如某次举手当时确为恶魔），结论就是确定的。
+  4. **读数只是说书人裁定点的提示**：信息内容仍由说书人给出（D-0002）；首夜不唤醒三者由夜晚顺序表承载。
+- **影响面**：`DayVoteAttempt` / `NominationRecord.NominatorCharacter` / `DayRecord.VoteAttempts` /
+  `DayMachine` / `DayLedgerFolder` / `StepMachineStateComparer`；`AbilityResolutionContext.LastDay` /
+  `SlotPromptRequest.LastDay` / `NightActionContext.LastDay` / `NightPlanRequest.LastDay`；
+  `RetrospectiveReadings` / `FlowergirlNightAction` / `TownCrierNightAction` / `OracleNightAction`。
+
 ## 维护规则
 
 1. 新增任何机制时，先扫一遍本表：**已有条目能覆盖吗？** 不能就新增。

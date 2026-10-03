@@ -80,6 +80,7 @@ internal static class DayLedgerFolder
                         Index = made.NominationIndex,
                         Nominator = made.Nominator,
                         Nominee = made.Nominee,
+                        NominatorCharacter = made.NominatorCharacter,
                         Status = NominationStatus.Voting,
                     },
                 ],
@@ -96,7 +97,22 @@ internal static class DayLedgerFolder
                 ? InsertSeat(nomination.Ballot, cast.Voter)
                 : [.. nomination.Ballot.Where(seat => seat != cast.Voter)];
 
-            return ReplaceNomination(day, nomination with { Ballot = ballot });
+            // 动作表按发生顺序追加：撤回同样进表（它是一条"发生过"的事实，R-0037），
+            // 票面才是"现在算谁"（R-0017）。
+            return ReplaceNomination(day, nomination with { Ballot = ballot }) with
+            {
+                VoteAttempts =
+                [
+                    .. day.VoteAttempts,
+                    new DayVoteAttempt
+                    {
+                        NominationIndex = cast.NominationIndex,
+                        Voter = cast.Voter,
+                        VoterCharacter = cast.VoterCharacter,
+                        Voted = cast.Voted,
+                    },
+                ],
+            };
         });
     }
 

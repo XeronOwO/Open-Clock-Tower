@@ -216,6 +216,7 @@ public static class NightPlanBuilder
             Actor = actor.Seat,
             Seats = request.Seats,
             State = request.State,
+            LastDay = request.LastDay,
         });
 
         return (StepSlot.Action(
@@ -295,6 +296,7 @@ public static class NightPlanBuilder
             Actor = grant.Philosopher,
             Seats = request.Seats,
             State = request.State,
+            LastDay = request.LastDay,
         });
 
         return StepSlot.GrantedAction(

@@ -25,6 +25,12 @@ public sealed record NominationRecord
     /// <summary>被提名的席位（死亡玩家也可以被提名）。</summary>
     public required SeatId Nominee { get; init; }
 
+    /// <summary>
+    /// 提名发生时的提名者角色快照；该维度未观测时为 null（不猜）。
+    /// </summary>
+    /// <remarks>城镇公告员按它推演「今天有没有爪牙发起提名」；口径见 R-0037。</remarks>
+    public CharacterId? NominatorCharacter { get; init; }
+
     /// <summary>投票窗口状态。</summary>
     public required NominationStatus Status { get; init; }
 

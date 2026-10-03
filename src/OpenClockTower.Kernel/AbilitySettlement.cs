@@ -67,6 +67,7 @@ internal static class AbilitySettlement
             Choice = choice,
             Decision = decision,
             DaysStarted = state.Day?.Days.Count ?? 0,
+            LastDay = state.Day?.Days.LastOrDefault(),
             Plan = state.Plan,
             SlotIndex = state.SlotIndex,
             PitHagNightActive = state.PitHagNight is not null,

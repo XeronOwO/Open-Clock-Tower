@@ -23,6 +23,7 @@ public sealed class NightSlotActivationTests
             actor: new SeatId(2),
             character: new CharacterId("vortox"),
             state: GameState.Empty,
+            lastDay: null,
             seats: [new SeatId(1), new SeatId(2), new SeatId(3)],
             catalog: NightActions.Default);
 
@@ -51,6 +52,7 @@ public sealed class NightSlotActivationTests
             actor: new SeatId(2),
             character: new CharacterId("vortox"),
             state: GameState.Empty,
+            lastDay: null,
             seats: [new SeatId(1), new SeatId(2)],
             catalog: NightActions.Default);
 
@@ -71,6 +73,7 @@ public sealed class NightSlotActivationTests
             actor: new SeatId(1),
             character: new CharacterId("sage"),
             state: GameState.Empty,
+            lastDay: null,
             seats: [new SeatId(1), new SeatId(2)],
             catalog: NightActions.Default);
 
@@ -87,6 +90,7 @@ public sealed class NightSlotActivationTests
             actor: new SeatId(1),
             character: new CharacterId("vortox"),
             state: GameState.Empty,
+            lastDay: null,
             seats: [new SeatId(1)],
             catalog: NightActions.Default);
 
@@ -111,6 +115,7 @@ public sealed class NightSlotActivationTests
             actor: new SeatId(2),
             character: new CharacterId("vortox"),
             state: GameState.Empty,
+            lastDay: null,
             seats: [new SeatId(1), new SeatId(2)],
             catalog: NightActions.Default);
 
@@ -140,6 +145,7 @@ public sealed class NightSlotActivationTests
             actor: new SeatId(2),
             character: new CharacterId("vortox"),
             state: GameState.Empty,
+            lastDay: null,
             seats: [new SeatId(1), new SeatId(2)],
             catalog: NightActions.Default);
 

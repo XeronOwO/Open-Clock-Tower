@@ -17,4 +17,10 @@ public sealed record NightActionContext
 
     /// <summary>当前状态账。</summary>
     public required GameState State { get; init; }
+
+    /// <summary>
+    /// 最近一个白天的账目（首夜 / 还没有白天时为 null）：回溯型信息能力（卖花女孩 / 城镇公告员）
+    /// 要按它推演"今天发生过什么"（R-0037）。
+    /// </summary>
+    public DayRecord? LastDay { get; init; }
 }

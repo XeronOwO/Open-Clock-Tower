@@ -23,6 +23,12 @@ public sealed record NightPlanRequest
     /// <summary>状态账（角色 / 生死等已知态）。</summary>
     public required GameState State { get; init; }
 
+    /// <summary>
+    /// 最近一个白天的账目（首夜 / 还没有白天时为 null）：回溯型信息能力的计划期提示按它推演。
+    /// </summary>
+    /// <remarks>入槽时同一条记录经 <see cref="SlotPromptRequest.LastDay"/> 再送一次（实时重建）。</remarks>
+    public DayRecord? LastDay { get; init; }
+
     /// <summary>角色夜间行动契约目录。</summary>
     public required INightActionCatalog Actions { get; init; }
 }

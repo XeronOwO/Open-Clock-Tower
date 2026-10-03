@@ -436,6 +436,7 @@ internal static class BarberSwapInteraction
                 seat,
                 character,
                 context.State,
+                machine.Day?.Days.LastOrDefault(),
                 context.Seats,
                 NightActions.Default) is { } rebound)
         {

@@ -77,6 +77,10 @@ public static class DayMachine
                 $"席位 {input.Nominee.Value} 今天已经被提名过：每名玩家每天只能被提名一次（百科《提名》）");
         }
 
+        // 提名者此刻的角色**快照**随事件落账：城镇公告员要按"提名当时"判定爪牙提名（R-0037），
+        // 之后换角（R-0032）不再改写这条事实。未观测就记 null，不猜（D-0015）。
+        var nominatorCharacter = context.State.Seat(input.Nominator)?.CharacterValue;
+
         return DayOutcome.Accepted(
         [
             new NominationMadeEvent
@@ -85,6 +89,7 @@ public static class DayMachine
                 NominationIndex = day.Nominations.Count + 1,
                 Nominator = input.Nominator,
                 Nominee = input.Nominee,
+                NominatorCharacter = nominatorCharacter,
             },
         ]);
     }
@@ -134,6 +139,10 @@ public static class DayMachine
                 $"席位 {input.Voter.Value} 死后的一次投票权已经用掉了（百科《投票》）");
         }
 
+        // 投票者此刻的角色**快照**随事件落账：卖花女孩按"投票当时"判定恶魔是否参与（R-0037），
+        // 之后换角不再改写这条事实（百科《卖花女孩》· 角色简介 4）。未观测就记 null，不猜。
+        var voterCharacter = context.State.Seat(input.Voter)?.CharacterValue;
+
         return DayOutcome.Accepted(
         [
             new VoteCastEvent
@@ -142,6 +151,7 @@ public static class DayMachine
                 NominationIndex = open.Index,
                 Voter = input.Voter,
                 Voted = input.Voted,
+                VoterCharacter = voterCharacter,
             },
         ]);
     }

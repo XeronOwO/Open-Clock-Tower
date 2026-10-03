@@ -214,7 +214,7 @@ internal static class StepSlotEntry
                 });
                 break;
             case DecisionPointOutcome.StorytellerDecides:
-                var livePrompt = LivePrompt(slot, ledger, seats, prompts, events);
+                var livePrompt = LivePrompt(slot, state.Day?.Days.LastOrDefault(), ledger, seats, prompts, events);
                 events.Add(new DecisionPointRaisedEvent
                 {
                     SlotId = slot.Id,
@@ -245,9 +245,14 @@ internal static class StepSlotEntry
     /// 没有来源、槽位缺行动者 / 归属角色、角色没有契约，或重建结果已不是「说书人裁定点」时返回 null——
     /// 调用方退回计划快照，**本步语义不变**（求值分支仍由快照的求值结果决定）。
     /// </para>
+    /// <para>
+    /// <paramref name="lastDay"/> 是最近的白天账：回溯型信息能力（卖花女孩 / 城镇公告员）
+    /// 的提示要按它推演（R-0037），与建表 / 结算取同一份记录。
+    /// </para>
     /// </remarks>
     private static ChoicePrompt? LivePrompt(
         StepSlot slot,
+        DayRecord? lastDay,
         GameState ledger,
         IReadOnlyList<SeatId> seats,
         ISlotPromptSource? prompts,
@@ -271,6 +276,7 @@ internal static class StepSlotEntry
             Actor = actor,
             Seats = seats,
             State = live,
+            LastDay = lastDay,
         });
 
         return rebuilt?.Evaluate() == DecisionPointOutcome.StorytellerDecides ? rebuilt : null;

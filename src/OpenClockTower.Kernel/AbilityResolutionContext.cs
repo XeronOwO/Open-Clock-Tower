@@ -91,4 +91,15 @@ public sealed record AbilityResolutionContext
     /// 下一个黎明撤下（<c>docs/standard/rulings.md</c> R-0021）。
     /// </summary>
     public required int DaysStarted { get; init; }
+
+    /// <summary>
+    /// 最近一个白天的账目（首夜 / 还没有白天时为 null）；读"已经发生的事"的信息能力用它推演。
+    /// </summary>
+    /// <remarks>
+    /// 卖花女孩（恶魔今天投过票吗）与城镇公告员（爪牙今天提名过吗）读它：白天账属于**步骤机视图**，
+    /// 由结算调度从 <see cref="StepMachineState.Day"/> 的末条记录送进来——与 <see cref="DaysStarted"/> /
+    /// <see cref="PitHagNightActive"/> / <see cref="FangGuInfectionConsumed"/> 同一姿态（步骤机事实按需送给契约）。
+    /// 建表与入槽提示重建走同一份记录，避免"建表看得到、重建看不到"的分叉。
+    /// </remarks>
+    public DayRecord? LastDay { get; init; }
 }

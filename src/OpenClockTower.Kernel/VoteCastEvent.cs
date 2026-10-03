@@ -18,4 +18,13 @@ public sealed record VoteCastEvent : GameEvent
 
     /// <summary>true = 投赞成（举手）；false = 撤回。</summary>
     public required bool Voted { get; init; }
+
+    /// <summary>
+    /// 这次投票动作发生时的投票者角色快照（未观测为 null）。
+    /// </summary>
+    /// <remarks>
+    /// 卖花女孩要读「恶魔今天有没有参与投票」（百科《卖花女孩》· 2026-10-01 抓取 · 角色简介 1），
+    /// 且**换人之后仍按原恶魔算**（同页 4）；撤回语义见 <c>docs/standard/rulings.md</c> R-0037。
+    /// </remarks>
+    public CharacterId? VoterCharacter { get; init; }
 }

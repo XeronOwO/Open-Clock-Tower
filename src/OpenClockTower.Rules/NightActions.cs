@@ -39,6 +39,9 @@ public static class NightActions
         {
             [new CharacterId("clockmaker")] = new ClockmakerNightAction(),
             [new CharacterId("dreamer")] = new DreamerNightAction(),
+            [new CharacterId("flowergirl")] = new FlowergirlNightAction(),
+            [new CharacterId("town-crier")] = new TownCrierNightAction(),
+            [new CharacterId("oracle")] = new OracleNightAction(),
             [new CharacterId("mathematician")] = new MathematicianNightAction(),
             [new CharacterId("no-dashii")] = new NoDashiiNightAction(),
             [new CharacterId("vortox")] = new VortoxNightAction(),

@@ -21,4 +21,9 @@ public sealed record SlotPromptRequest
 
     /// <summary>入槽时刻的状态账（已提交账 + 本批已产出事件）。</summary>
     public required GameState State { get; init; }
+
+    /// <summary>
+    /// 最近一个白天的账目（首夜 / 还没有白天时为 null）：回溯型信息能力的提示要按它推演。
+    /// </summary>
+    public DayRecord? LastDay { get; init; }
 }

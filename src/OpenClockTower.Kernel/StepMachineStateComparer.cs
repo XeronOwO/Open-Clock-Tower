@@ -191,7 +191,8 @@ public static class StepMachineStateComparer
                 || dayLeft.AboutToBeExecuted != dayRight.AboutToBeExecuted
                 || dayLeft.Executed != dayRight.Executed
                 || dayLeft.ExecutedKind != dayRight.ExecutedKind
-                || dayLeft.Nominations.Count != dayRight.Nominations.Count)
+                || dayLeft.Nominations.Count != dayRight.Nominations.Count
+                || dayLeft.VoteAttempts.Count != dayRight.VoteAttempts.Count)
             {
                 return false;
             }
@@ -203,8 +204,24 @@ public static class StepMachineStateComparer
                 if (nominationLeft.Index != nominationRight.Index
                     || nominationLeft.Nominator != nominationRight.Nominator
                     || nominationLeft.Nominee != nominationRight.Nominee
+                    || nominationLeft.NominatorCharacter != nominationRight.NominatorCharacter
                     || nominationLeft.Status != nominationRight.Status
                     || !SeatsEquivalent(nominationLeft.Ballot, nominationRight.Ballot))
+                {
+                    return false;
+                }
+            }
+
+            // 投票动作表（含角色快照）是回溯型信息能力的推演输入（R-0037）：漏比会让重建校验
+            // 在"谁举过手"上失明——票面相同、动作表不同的两份账不该判等价。
+            for (var attemptIndex = 0; attemptIndex < dayLeft.VoteAttempts.Count; attemptIndex++)
+            {
+                var attemptLeft = dayLeft.VoteAttempts[attemptIndex];
+                var attemptRight = dayRight.VoteAttempts[attemptIndex];
+                if (attemptLeft.NominationIndex != attemptRight.NominationIndex
+                    || attemptLeft.Voter != attemptRight.Voter
+                    || attemptLeft.VoterCharacter != attemptRight.VoterCharacter
+                    || attemptLeft.Voted != attemptRight.Voted)
                 {
                     return false;
                 }

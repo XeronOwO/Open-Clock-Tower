@@ -133,10 +133,11 @@ public sealed class MathematicianTests
 
         Assert.NotNull(rebuilt);
         Assert.Contains("推演：1", rebuilt!.Context, StringComparison.Ordinal);
+        // 「没有契约的角色返回 null」用仍未实现的贤者做样本：卖花女孩已随回溯型信息族实现（E23）。
         Assert.Null(NightActions.Prompts.Rebuild(new SlotPromptRequest
         {
             SlotId = new StepSlotId("unknown"),
-            Character = new CharacterId("flowergirl"),
+            Character = new CharacterId("sage"),
             Actor = MathematicianSeat,
             Seats = [MathematicianSeat],
             State = State(sinceDawnStart: 0),

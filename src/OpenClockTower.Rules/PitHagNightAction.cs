@@ -148,6 +148,7 @@ internal sealed class PitHagNightAction : INightAction, IAbilityResolution
                 target,
                 character,
                 context.State,
+                context.LastDay,
                 context.Seats,
                 NightActions.Default) is { } activation)
         {

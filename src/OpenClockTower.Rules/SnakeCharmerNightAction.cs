@@ -150,6 +150,7 @@ internal sealed class SnakeCharmerNightAction : INightAction, IAbilityResolution
                 context.Actor,
                 targetCharacter,
                 context.State,
+                context.LastDay,
                 context.Seats,
                 NightActions.Default) is { } rebound)
         {

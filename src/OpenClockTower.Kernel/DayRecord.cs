@@ -19,6 +19,15 @@ public sealed record DayRecord
     public IReadOnlyList<NominationRecord> Nominations { get; init; } = [];
 
     /// <summary>
+    /// 当天全部投票动作（含撤回与重复动作），按发生顺序——「谁举过手」的原始事实。
+    /// </summary>
+    /// <remarks>
+    /// 与 <see cref="NominationRecord.Ballot"/>（当前票面）分工：票面回答"现在算谁"，动作表回答
+    /// "这一天发生过什么"（卖花女孩要读的是后者，且要按动作发生时的角色判定，R-0037）。
+    /// </remarks>
+    public IReadOnlyList<DayVoteAttempt> VoteAttempts { get; init; } = [];
+
+    /// <summary>
     /// 当前「即将被处决」的玩家；null = 当前没有人（无人提名 / 票数不够 / 最高票平局）。
     /// 只由计票改写（《投票》：计票后不再重判）。
     /// </summary>

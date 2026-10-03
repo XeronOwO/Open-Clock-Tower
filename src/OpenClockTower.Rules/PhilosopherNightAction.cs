@@ -114,6 +114,7 @@ internal sealed class PhilosopherNightAction : INightAction, IAbilityResolution
                 context.Actor,
                 granted,
                 context.State,
+                context.LastDay,
                 context.Seats,
                 NightActions.Default) is { } activation)
         {

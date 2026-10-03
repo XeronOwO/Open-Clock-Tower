@@ -40,6 +40,7 @@ public static class NightSlotActivation
         SeatId actor,
         CharacterId character,
         GameState state,
+        DayRecord? lastDay,
         IReadOnlyList<SeatId> seats,
         INightActionCatalog catalog)
     {
@@ -96,6 +97,7 @@ public static class NightSlotActivation
                     Actor = actor,
                     Seats = seats,
                     State = state,
+                    LastDay = lastDay,
                 }),
                 Dependencies =
                 [
@@ -134,6 +136,7 @@ public static class NightSlotActivation
         SeatId actor,
         CharacterId grantedCharacter,
         GameState state,
+        DayRecord? lastDay,
         IReadOnlyList<SeatId> seats,
         INightActionCatalog catalog)
     {
@@ -186,6 +189,7 @@ public static class NightSlotActivation
                     Actor = actor,
                     Seats = seats,
                     State = state,
+                    LastDay = lastDay,
                 }),
                 Dependencies =
                 [

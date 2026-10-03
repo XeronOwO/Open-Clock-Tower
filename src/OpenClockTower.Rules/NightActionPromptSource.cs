@@ -31,6 +31,7 @@ internal sealed class NightActionPromptSource : ISlotPromptSource
             Actor = request.Actor,
             Seats = request.Seats,
             State = request.State,
+            LastDay = request.LastDay,
         });
     }
 }
