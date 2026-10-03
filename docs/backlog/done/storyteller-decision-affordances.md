@@ -97,4 +97,6 @@
 1. 多存活恶魔的「选哪名恶魔」裁定分支未在真机覆盖（规则级 `BarberNightTriggerTests` 覆盖归属填值）；
 2. 心上人触发型裁定的「无挂起 → 回退 `currentSlotContext`」第二分支未单独取证（`decisionSeatOf` 回退链有 web 单测）；
 3. 旧事件流 `AttributionSeat = null` 的界面回退路径未真机覆盖（内核有容忍用例，`decisionSeatOf` 有回退单测）；
-4. 迭代档下角色变更族「换手后尚未进入的格重绑」断言偶发窗口（E24 已登记、以取证档为准；本批取证档 67 项全绿）。
+4. 迭代档下角色变更族「换手后尚未进入的格重绑」断言偶发窗口——**已闭合**（E25 判出后定位为产品缺陷并修复：
+   配额输入幂等键改为按本次槽位进入区分；回归 `BarberHostTests` / `DeathTriggerHostTests`，
+   见 `done/sage-and-sweetheart.md`「残余补证」）。

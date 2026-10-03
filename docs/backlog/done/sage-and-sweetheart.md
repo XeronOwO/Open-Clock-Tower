@@ -114,9 +114,10 @@ S&V 剩余 7 个未实现角色里的两名**死亡触发**角色，入场即被
 - 贤者展示「任意两名玩家」不做「必须含真恶魔」的硬校验（信息内容由说书人给出，D-0002），
   只在提示里写明推演；能力生效时是否合规由说书人自检。
 - 相克条目（陌客可能被当作杀死贤者的恶魔）涉及非首版角色，不在本票范围（R-0002 双角色口径）。
-- 装置未覆盖的边界：处决 / 非恶魔死因、涡流在场、死亡时醉酒 / 中毒、心上人离场解除、
-  重放 / 重连——由 Rules 用例与 `DeathTriggerHostTests` / `DeathTriggerStateJsonTests` 组合覆盖，
-  判定时逐行注明证据性质；将来扩装置时优先补「离场解除」与「选已死亡玩家」。
+- 装置未覆盖的边界：处决 / 非恶魔死因、涡流在场、死亡时醉酒 / 中毒、重放 / 重连——
+  由 Rules 用例与 `DeathTriggerHostTests` / `DeathTriggerStateJsonTests` 组合覆盖，判定时逐行注明证据性质。
+  「心上人离场解除」与「选已死亡玩家」已由 `DeathTriggerResidueHostTests` 补上针对性宿主级运行证据
+  （见文末「残余补证」）；装置仍不覆盖这两条（要真机覆盖需另开一局 / 另一套夹具），不再声称"将来优先补"。
 - 界面侧：触发格 / 触发型裁定在说书人圆环上暂无席位归属、白天计划收口后读数越界（2 / 1）、
   裁定候选不标生死——登记为 `done/storyteller-decision-affordances.md`（当轮在 `todo/`），随面板迭代同批处理。
 
@@ -142,11 +143,11 @@ S&V 剩余 7 个未实现角色里的两名**死亡触发**角色，入场即被
 | 9 | 通过 | 装置 + `DeathTriggerHostTests`（处决 → 触发型裁定 → 指定醉酒） |
 | 10 | 通过（规则级） | `Skips_WhenIneffective` |
 | 11 | 通过 | 装置（跨阶段仍标醉酒）+ `DeathTriggerHostTests` |
-| 12 | 通过（组合证据） | 效果终止走 E13 的通用生命周期：`EffectAttributionTests.SourceCharacterChange_TerminatesItsEffects`（来源换角 → `SourceLostAbility`）+ `DimensionEffectReconcilerTests`（终止 → 维度解除）+ 本票 `SweetheartDeathTriggerTests` 断言效果 `SourceCharacter = sweetheart`；**未跑**针对性真机离场用例——见残余 |
+| 12 | 通过（针对性宿主用例） | `DeathTriggerResidueHostTests.SweetheartLeavesPlay_ReleasesDrunkEffect`：白天处决 3 号心上人 → 指定 4 号醉酒 → 次夜理发师换角（3 / 4 号角色互换）→ 效果由折叠推导终止（`SourceLostAbility`）、醉酒维度由对账解除，事件流留一笔链接回原效果的状态变化；底层仍有 E13 通用生命周期用例。装置不覆盖此路径（见「残余补证」） |
 | 13 | 通过 | Kernel 幂等用例（重复开启 / 关闭抛错、跳过账）+ `DeathTriggerStateJsonTests` |
 | 14 | 通过 | 装置（`phase.trigger_choice_pending` 拒绝被界面读出）+ `DeathTriggerHostTests` |
 | 15 | 通过 | 装置（五席 126 帧零说书人字段 + 无关席位零下发）+ `DeathTriggerHostTests` |
-| 16 | 通过（组合证据） | `DeathTriggerStateJsonTests`（含新字段非空的快照往返）+ 比较器等价 + 既有真重启用例 `PitHagResidueHostTests`（同一序列化 / 重建路径）；**未跑**含新字段非空的真重启——见残余 |
+| 16 | 通过（针对性宿主用例） | `DeathTriggerResidueHostTests.PendingTriggerDecision_WithNewFields_SurvivesRealRestart`：裁定挂起（`AttributionSeat = 3`、触发能力非空）时同库真重启 → 判定点 / 归属 / 上下文等价、事件流条数不变、开夜仍被 `phase.trigger_choice_pending` 拒；重启后完成裁定并落账 `SourceStateIndependent = true` 的效果。`DeathTriggerStateJsonTests` 快照往返与比较器等价仍作底层回归 |
 | 17 | 通过 | 主装置 194 / 角色变更族 59 / 零信任 43 / 全量 703 通过 |
 
 回归面：主装置 `verify-storyteller-panel.mjs` **194 项**、角色变更族 `verify-character-change.mjs` **59 项**、
@@ -172,3 +173,29 @@ S&V 剩余 7 个未实现角色里的两名**死亡触发**角色，入场即被
   `SessionCommit.AppendDerivedWithContinuation` 一次调用（546 行）。
 - 装置未覆盖的边界（残余已逐条登记）：处决 / 非恶魔死因的**真机**路径、涡流在场、死亡时醉酒 / 中毒、
   心上人离场解除（行 12）、真重启 / 重连（行 16）、裁定候选选已死亡玩家。
+
+## 残余补证（E25 判出之后）
+
+E24 判定时登记的两条「组合证据」残余（行 12 / 行 16）与「选已死亡玩家」，已由
+`tests/OpenClockTower.Integration.Tests/DeathTriggerResidueHostTests.cs`（真宿主 + 真 SignalR + 真 SQLite）
+逐条补上针对性运行证据。夹具与 `DeathTriggerHostTests` 同源（5 席：1 诺-达鲺 / 2 贤者 / 3 心上人 / 4 呆瓜 / 5 理发师），
+恶魔换用诺-达鲺而不是方古：方古首次击杀外来者即侵染，而本场景要杀的理发师正是外来者（侵染链由 E17 覆盖）。
+
+| # | 用例 | 它证明什么 |
+|---|---|---|
+| 12 | `SweetheartLeavesPlay_ReleasesDrunkEffect` | 白天处决 3 号心上人 → 触发型裁定 → `seat:4` 醉酒；次夜击杀 5 号理发师 → 恶魔 `pair:3+4` 换角（心上人离场）→ 效果终止 `SourceLostAbility` + 醉酒维度解除，且只动醉酒一维（生死 / 阵营不牵连）；事件流里的解除是一笔带原效果链接的可归因状态变化 |
+| 16 | `PendingTriggerDecision_WithNewFields_SurvivesRealRestart` | 裁定挂起（`DecisionPointRaisedEvent.AttributionSeat` / `TriggerAbility` 非空）时同库真重启：判定点 / 归属 / 上下文等价、事件流条数不变（恢复不重算）、开夜闸门仍在；重启后仍能完成裁定，落账效果 `SourceStateIndependent = true` |
+| 残余 1 | `SweetheartDrunkTarget_MayBeDeadSeat` | 目标指到已死亡的 3 号本人：效果照常落账、死亡席位进入醉酒维度（六维独立；百科「任一玩家」无存活限制） |
+
+装置缺口如实保留：`tools/verify-death-triggers.mjs` 仍未覆盖这两条（5 席夹具在杀理发师后只剩 3 人存活，
+要真机覆盖需另开一局 / 另一套夹具）。本补证只把证据性质从「组合证据」升为「针对性宿主用例」，不声称装置已覆盖。
+
+**同轮修复（根因，纠正 E17 / E24 的旧结论）**：E17 起登记的「换手后尚未进入的格重绑请求时有时无」
+被判定为**产品缺陷**——配额输入的幂等键原来只按「计划 + 槽位」区分，触发格应答重进本格后的第二次配额
+会撞上挂起期间那条收据、被当成重复命令回放（`CommandGatePipeline` 收据去重），计划永久停在原槽位
+（贤者触发型裁定「重进本格」的续推同理）。修法：幂等键带上**本次槽位进入的事件序号**
+（`SessionTrackers.SlotEntrySequence`），并把配额输入构造拆到 `SlotQuotaPacer`
+（顺带把 `GameSession.cs` 从 603 行拉回 600 行门禁内）。回归（先红后绿）：
+`BarberHostTests.BarberSwapAnsweredAfterQuotaElapsed_PlanStillAdvances`（把应答延后到配额到点之后，
+修复前 100% 卡死在理发师格）、`DeathTriggerHostTests.SageDecisionResolvedAfterQuotaElapsed_PlanStillAdvances`、
+`SessionTrackersSlotEntryTests`。全量 `dotnet test` **709 通过 / 0 失败**。

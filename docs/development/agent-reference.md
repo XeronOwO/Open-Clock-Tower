@@ -92,6 +92,9 @@ dotnet format OpenClockTower.slnx
   `waitForAttribute` / `waitForLocatorContains`。
 - 装置报告红时，先分辨是**产品缺陷**还是**夹具节拍假设**：迭代档下靠近节拍窗口的断言会时有时无，
   先看 `--quota` 与分段重跑，再下结论（口径见 `AGENTS.local.md`「验证成本纪律」）。
+- **窄窗口 ≠ 夹具噪声**：能把时序前置（如把"应答"延后到配额到点之后）就变成**确定性复现**的，是产品缺陷——
+  先写确定性复现，再改代码。实例：配额输入幂等键按「计划 + 槽位」→ 改为按「每次进入」
+  （见 `backlog/done/sage-and-sweetheart.md`「残余补证」）。
 
 ## 相关阅读
 
