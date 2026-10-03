@@ -83,4 +83,7 @@ public sealed record StorytellerViewDto
 
     /// <summary>麻脸巫婆之夜的死亡裁量窗口；null = 今晚没有（R-0030）。只说书人可见。</summary>
     public PitHagNightDto? PitHagNight { get; init; }
+
+    /// <summary>说书人注记（D-0019）：自由文本提示标记，按发生顺序；玩家投影里没有它。</summary>
+    public required SeatAnnotationDto[] Annotations { get; init; }
 }

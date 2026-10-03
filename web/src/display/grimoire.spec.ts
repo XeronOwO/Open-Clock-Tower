@@ -51,6 +51,7 @@ function viewOf(overrides: Partial<StorytellerViewDto> = {}): StorytellerViewDto
     outcome: null,
     klutzChoices: [],
     pitHagNight: null,
+    annotations: [],
     ...overrides,
   }
 }
@@ -277,5 +278,27 @@ describe('注意力归属（卡点 / 裁定 / 当前槽位）', () => {
     expect(decisionSeatOf(withDigest)).toBe(5)
     expect(decisionSeatOf(withoutActor)).toBeNull()
     expect(attentionSeatOf(withoutActor)).toBeNull()
+  })
+})
+
+describe('说书人注记（D-0019）', () => {
+  it('注记只挂在它所属席位的牌面上', () => {
+    const view = viewOf({
+      annotations: [
+        { id: 1, seat: 2, text: '18 不共边' },
+        { id: 2, seat: 3, text: '被哲学家获得' },
+      ],
+    })
+
+    expect(buildSeatCard(view, 2).annotations).toEqual([{ id: 1, seat: 2, text: '18 不共边' }])
+    expect(buildSeatCard(view, 3).annotations).toEqual([{ id: 2, seat: 3, text: '被哲学家获得' }])
+    expect(buildSeatCard(view, 1).annotations).toEqual([])
+  })
+
+  it('全文进可访问名称 / title（牌面只显示截断 token，由渲染层做）', () => {
+    const view = viewOf({ annotations: [{ id: 1, seat: 2, text: '18 不共边' }] })
+
+    expect(seatTitleOf(buildSeatCard(view, 2))).toContain('注记：18 不共边')
+    expect(seatTitleOf(buildSeatCard(view, 1))).not.toContain('不共边')
   })
 })

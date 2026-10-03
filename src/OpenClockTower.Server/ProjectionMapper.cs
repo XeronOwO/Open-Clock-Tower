@@ -310,6 +310,15 @@ public static class ProjectionMapper
                 ],
             }
             : null,
+        Annotations = [.. view.Annotations.Select(ToDto)],
+    };
+
+    /// <summary>说书人注记 → DTO（D-0019）：只说书人视图下发，玩家投影里没有它。</summary>
+    public static SeatAnnotationDto ToDto(SeatAnnotation annotation) => new()
+    {
+        Id = annotation.Id.Value,
+        Seat = annotation.Seat.Value,
+        Text = annotation.Text,
     };
 
     /// <summary>房间健康位 → DTO。</summary>

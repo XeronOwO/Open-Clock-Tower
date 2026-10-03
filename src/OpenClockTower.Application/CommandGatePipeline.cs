@@ -20,13 +20,19 @@ namespace OpenClockTower.Application;
 public static class CommandGatePipeline
 {
     /// <summary>按顺序跑四道闸。</summary>
+    /// <param name="annotations">
+    /// 当前注记账（D-0019）：注记的改 / 删要按它核对存在性与每席上限；其余命令不读。
+    /// </param>
     public static GateDecision Evaluate(
         CommandEnvelope envelope,
         StepMachineState? machine,
         CommandReceipt? receipt,
-        GameSetup? setup = null)
+        GameSetup? setup = null,
+        SeatAnnotationLedger? annotations = null)
     {
         ArgumentNullException.ThrowIfNull(envelope);
+
+        var ledger = annotations ?? SeatAnnotationLedger.Empty;
 
         var identity = CheckIdentity(envelope);
         if (identity is not null)
@@ -55,7 +61,7 @@ public static class CommandGatePipeline
             return GateDecision.Reject(phase);
         }
 
-        var legality = CheckLegality(envelope, machine, setup);
+        var legality = CheckLegality(envelope, machine, setup, ledger);
         if (legality is not null)
         {
             return GateDecision.Reject(legality);
@@ -158,6 +164,25 @@ public static class CommandGatePipeline
             ResolveDeferredDeathCommand => Reject(
                 "identity.storyteller_only",
                 "只有说书人或宿主可以裁定待定的死亡",
+                "identity"),
+
+            // 说书人注记（D-0019）：只说书人（或宿主）可写，玩家零参与。
+            AddSeatAnnotationCommand when actor.Kind is ActorKind.Host or ActorKind.Storyteller => null,
+            AddSeatAnnotationCommand => Reject(
+                "identity.storyteller_only",
+                "只有说书人或宿主可以写注记",
+                "identity"),
+
+            UpdateSeatAnnotationCommand when actor.Kind is ActorKind.Host or ActorKind.Storyteller => null,
+            UpdateSeatAnnotationCommand => Reject(
+                "identity.storyteller_only",
+                "只有说书人或宿主可以改注记",
+                "identity"),
+
+            RemoveSeatAnnotationCommand when actor.Kind is ActorKind.Host or ActorKind.Storyteller => null,
+            RemoveSeatAnnotationCommand => Reject(
+                "identity.storyteller_only",
+                "只有说书人或宿主可以删注记",
                 "identity"),
 
             _ when actor.Kind == ActorKind.Storyteller => null,
@@ -306,6 +331,11 @@ public static class CommandGatePipeline
                 // 而未分配角色的席位只能靠上报补全（否则永远开不了夜）。
                 return null;
 
+            // 说书人注记（D-0019）：不参与阶段推进，任何时候都能写（含首个阶段之前）；
+            // "本局已结束"由上面的统一拒绝拦下（R-0024）。
+            case AddSeatAnnotationCommand or UpdateSeatAnnotationCommand or RemoveSeatAnnotationCommand:
+                return null;
+
             default:
                 if (machine is null)
                 {
@@ -319,7 +349,8 @@ public static class CommandGatePipeline
     private static CommandRejection? CheckLegality(
         CommandEnvelope envelope,
         StepMachineState? machine,
-        GameSetup? setup) =>
+        GameSetup? setup,
+        SeatAnnotationLedger annotations) =>
         envelope.Command switch
         {
             AssignCharactersCommand assign => CheckAssignments(assign, setup),
@@ -336,6 +367,13 @@ public static class CommandGatePipeline
             VoidRequestCommand voidRequest => IsManuallySelectableVoidReason(voidRequest.Reason)
                 ? null
                 : Reject("legality.reason_invalid", $"不能手动使用的作废原因：{voidRequest.Reason}", "legality"),
+
+            // 说书人注记（D-0019）：席位必须在本局名单里、文本合规、每席不超上限；
+            // 改 / 删必须先存在（已删除的标识不再接受）。
+            AddSeatAnnotationCommand add => CheckAddAnnotation(add, setup, annotations),
+            UpdateSeatAnnotationCommand update =>
+                CheckAnnotationTarget(update.Id, annotations) ?? CheckAnnotationText(update.Text),
+            RemoveSeatAnnotationCommand remove => CheckAnnotationTarget(remove.Id, annotations),
             _ => null,
         };
 
@@ -353,6 +391,62 @@ public static class CommandGatePipeline
         return setup.Seats.Any(item => item.Seat == seat)
             ? null
             : Reject("legality.seat_unknown", $"席位 {seat.Value} 不在本局席位名单里", "legality");
+    }
+
+    /// <summary>加注记的合法性（D-0019）：席位属于本局、文本合规、每席不超上限。</summary>
+    private static CommandRejection? CheckAddAnnotation(
+        AddSeatAnnotationCommand command,
+        GameSetup? setup,
+        SeatAnnotationLedger annotations)
+    {
+        var seat = CheckSeatExists(command.Seat, setup);
+        if (seat is not null)
+        {
+            return seat;
+        }
+
+        var text = CheckAnnotationText(command.Text);
+        if (text is not null)
+        {
+            return text;
+        }
+
+        return annotations.CountOn(command.Seat) >= SeatAnnotationText.MaxPerSeat
+            ? Reject(
+                "legality.annotation_limit",
+                $"席位 {command.Seat.Value} 的注记已达上限（每席最多 {SeatAnnotationText.MaxPerSeat} 条）",
+                "legality")
+            : null;
+    }
+
+    /// <summary>改 / 删注记的合法性：注记必须还存在（已删除的标识不再接受）。</summary>
+    private static CommandRejection? CheckAnnotationTarget(
+        SeatAnnotationId id,
+        SeatAnnotationLedger annotations) =>
+        annotations.Find(id) is null
+            ? Reject("legality.annotation_unknown", $"注记 {id} 不存在（可能已被删除）", "legality")
+            : null;
+
+    /// <summary>
+    /// 注记文本的合法性（D-0019）：归一化后非空、不超长、不含控制字符。
+    /// 归一化本身在分派时做（同一把尺子 <see cref="SeatAnnotationText.TryNormalize"/>）。
+    /// </summary>
+    private static CommandRejection? CheckAnnotationText(string? raw)
+    {
+        if (SeatAnnotationText.TryNormalize(raw, out _, out var failure))
+        {
+            return null;
+        }
+
+        return failure switch
+        {
+            "empty" => Reject("legality.annotation_empty", "注记不能为空", "legality"),
+            "too_long" => Reject(
+                "legality.annotation_too_long",
+                $"注记最多 {SeatAnnotationText.MaxLength} 个字符",
+                "legality"),
+            _ => Reject("legality.annotation_control", "注记不能包含控制字符", "legality"),
+        };
     }
 
     /// <summary>开局分配的合法性：席位属于本局、角色在首版花名册里、同批不重复（角色唯一）。</summary>

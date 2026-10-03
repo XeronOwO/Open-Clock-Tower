@@ -57,7 +57,7 @@
  *   --build / --skip-build   强制重建 / 显式复用（默认自动：产物缺失或 src/ 源码更新时重建）
  *
  * 段落（按序执行；--only 与 --from 互斥；前面段作为必要前置照跑，但只有选中段计入判定）：
- *   boot · tickets · join · assign · opening · night1-clockmaker · night1-dreamer-request
+ *   boot · tickets · join · assign · opening · annotation · night1-clockmaker · night1-dreamer-request
  *   · night1-dreamer-resolution · night1-finish · day1 · night2-3 · vortox · rebuild · reconnect · final
  *
  * 外部耦合（换机器前先核对，见 web/AGENTS.md §3.1）：
@@ -98,6 +98,7 @@ const SECTIONS = [
   { id: 'join', title: '说书人与各玩家加入（每席一个独立浏览器上下文）' },
   { id: 'assign', title: '说书人分配角色（席位全分配）' },
   { id: 'opening', title: '开局状态：诺-达鲺常驻中毒 + 说书人上报醉酒' },
+  { id: 'annotation', title: '说书人注记：加 / 改 / 删 + 牌面 token + 玩家零下发（D-0019）' },
   { id: 'night1-clockmaker', title: '开夜 → 钟表匠裁定点（无玩家选项）→ 1 号玩家收信息' },
   { id: 'night1-dreamer-request', title: '筑梦师槽位：2 号玩家收到定向请求（无关玩家零活动）' },
   { id: 'night1-dreamer-resolution', title: '2 号玩家作答 → 说书人自由裁定（能力未生效）→ 信息单播' },
@@ -410,6 +411,110 @@ async function main() {
   await screenshot(storyteller.page, '18-grimoire-seat-console')
   await setDataDrawer(storyteller.page, true)
   await screenshot(storyteller.page, '02-pre-night')
+
+  if (!runner.begin('annotation')) return
+  // —— 说书人注记（D-0019）：本局级自由文本 token；只说书人可见、不进状态账 ——
+  // 用末席（默认 5 号呆瓜）做载体：注记不参与任何规则判定，不影响后面的夜晚 / 白天链路。
+  const noteSeat = options.assign.length
+  const noteText = '批次取证-注记：18 不共边'
+  const noteEditedText = '批次取证-注记：18 与 5 不共边'
+  const noteRestartText = '批次取证-注记：重启后仍在'
+  const annotationInput = storyteller.page.locator('[data-testid="annotation-input"]')
+  const annotationTokens = cardOf(noteSeat).locator('[data-testid="seat-notes"] [data-note-id]')
+
+  await setDataDrawer(storyteller.page, false)
+  await cardOf(noteSeat).click()
+  await storyteller.page.locator('[data-testid="seat-console"]').waitFor({ state: 'visible', timeout: 15_000 })
+  check(
+    '注记：选中席位后操作台出现注记区，且初始为空',
+    (await storyteller.page.locator('[data-testid="annotation-control"]').count()) === 1
+      && (await storyteller.page.locator('[data-testid="annotation-empty"]').count()) === 1,
+  )
+
+  // 行 1：新增 → 牌面出现 token（全文进 title）；状态账面板里没有这条自由文本（D-0015）。
+  await annotationInput.fill(noteText)
+  const noteAdded = await runCommand(storyteller.page, '添加注记', () =>
+    storyteller.page.locator('[data-testid="annotation-submit"]').click(),
+  )
+  check('注记行 1：新增被受理', noteAdded.kind === 'Accepted', noteAdded.raw)
+  await annotationTokens.first().waitFor({ state: 'visible', timeout: 15_000 })
+  const noteTokenText = (await annotationTokens.first().innerText()).trim()
+  const noteTokenTitle = await annotationTokens.first().getAttribute('title')
+  check(
+    '注记行 1：牌面出现自由文本 token，全文进 title（牌面只显示有界文本）',
+    noteTokenText.length > 0 && noteTokenTitle === noteText,
+    `token=${noteTokenText} title=${noteTokenTitle}`,
+  )
+  check(
+    '注记行 1：操作台列出全文',
+    (await storyteller.page.locator('[data-testid="annotation-item"]').first().innerText()).includes('不共边'),
+  )
+
+  await setDataDrawer(storyteller.page, true)
+  const ledgerPanelWithNote = await panelText(storyteller.page, '状态账')
+  await setDataDrawer(storyteller.page, false)
+  check(
+    '注记行 1：状态账面板里没有这条自由文本（不进状态账，D-0015 / D-0019）',
+    !ledgerPanelWithNote.includes('不共边'),
+    ledgerPanelWithNote.replace(/\s+/g, ' ').slice(0, 200),
+  )
+  await screenshot(storyteller.page, '39-grimoire-annotation')
+
+  // 行 3：改 → 同一条注记原地更新（data-note-id 不变），牌面 token 跟着变。
+  const noteId = await annotationTokens.first().getAttribute('data-note-id')
+  await storyteller.page.locator('[data-testid="annotation-edit"]').first().click()
+  await storyteller.page.locator('[data-testid="annotation-edit-input"]').fill(noteEditedText)
+  const noteUpdated = await runCommand(storyteller.page, '改注记', () =>
+    storyteller.page.locator('[data-testid="annotation-save"]').click(),
+  )
+  check('注记行 3：修改被受理', noteUpdated.kind === 'Accepted', noteUpdated.raw)
+  const updatedTokenTitle = await annotationTokens.first().getAttribute('title')
+  check(
+    '注记行 3：同一条注记原地更新（标识不变、全文跟着变）',
+    updatedTokenTitle === noteEditedText
+      && (await cardOf(noteSeat)
+        .locator(`[data-testid="seat-notes"] [data-note-id="${noteId}"]`)
+        .count()) === 1,
+    `title=${updatedTokenTitle}`,
+  )
+  await screenshot(storyteller.page, '40-grimoire-annotation-edited')
+
+  // 行 4：玩家侧零下发、零活动（反方向断言）。
+  const annotationLeaks = []
+  for (const [seat, client] of players) {
+    const shellText = await client.page.locator('.shell').innerText()
+    if (shellText.includes('不共边') || shellText.includes('注记')) {
+      annotationLeaks.push(`${seat} 号文案`)
+    }
+
+    if ((await client.page.locator('[data-testid="annotation-control"]').count()) > 0) {
+      annotationLeaks.push(`${seat} 号锚点`)
+    }
+  }
+
+  check(
+    '注记行 4：玩家端没有注记字段 / 锚点（不下发，不靠前端不显示）',
+    annotationLeaks.length === 0,
+    annotationLeaks.join('，') || `${players.size} 席已扫描`,
+  )
+  await screenshot(players.get(noteSeat).page, '41-annotation-player-clean')
+  await sampleUnrelatedIdle(players, [...players.keys()], '注记窗口', 2)
+
+  // 行 3：删 → token 消失；再补一条留给"重启后仍在"（矩阵行 5）。
+  const noteRemoved = await runCommand(storyteller.page, '删注记', () =>
+    storyteller.page.locator('[data-testid="annotation-delete"]').first().click(),
+  )
+  check('注记行 3：删除被受理', noteRemoved.kind === 'Accepted', noteRemoved.raw)
+  check(
+    '注记行 3：删除后牌面 token 消失',
+    await waitForGone(annotationTokens.first(), 15_000),
+  )
+  await annotationInput.fill(noteRestartText)
+  const noteReAdded = await runCommand(storyteller.page, '再添加注记', () =>
+    storyteller.page.locator('[data-testid="annotation-submit"]').click(),
+  )
+  check('注记行 5 前置：重启前再写一条注记', noteReAdded.kind === 'Accepted', noteReAdded.raw)
+  await annotationTokens.first().waitFor({ state: 'visible', timeout: 15_000 })
 
   if (!runner.begin('night1-clockmaker')) return
   const nightStarted = await runCommand(storyteller.page, '开夜', () =>
@@ -1553,6 +1658,17 @@ async function main() {
     `重启前=${vortoxRowBeforeRestart ?? '（无行）'}@${vortoxSequenceBeforeRestart ?? '?'}`
       + `；重启后=${recoveredMalfunctionRow ?? '（无行）'}@${recoveredResolutionSequence ?? '?'}`,
   )
+
+  // 注记票行 5：宿主真实重启 + 修复重建之后，注记仍在牌面上（按事件流恢复，不靠内存；D-0019）。
+  const noteAfterRestart = cardOf(noteSeat).locator('[data-testid="seat-notes"] [data-note-id]').first()
+  await noteAfterRestart.waitFor({ state: 'visible', timeout: 20_000 })
+  const noteTitleAfterRestart = await noteAfterRestart.getAttribute('title')
+  check(
+    '注记行 5：宿主重启 + 修复重建后注记仍在（按事件流恢复，不靠内存）',
+    noteTitleAfterRestart === noteRestartText,
+    `title=${noteTitleAfterRestart ?? '（无）'}`,
+  )
+  await screenshot(storyteller.page, '42-grimoire-annotation-after-restart')
 
   // 行 5（健康票）另一面：房间恢复后同一玩家页重载能正常加入，且仍然看不到任何健康位。
   const joinsBeforeReload = seatJoinLogLines(probeSeat).length

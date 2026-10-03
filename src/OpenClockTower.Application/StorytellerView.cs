@@ -93,4 +93,10 @@ public sealed record StorytellerView
     /// 说书人据此看到待定死亡与关闭点，并用「追加死亡 / 裁定待定死亡」两条命令收口。
     /// </summary>
     public PitHagNight? PitHagNight { get; init; }
+
+    /// <summary>
+    /// 说书人注记（D-0019）：自由文本提示标记，按发生顺序。
+    /// 它是独立注记账的投影（D-0015：自由文本不进状态账），玩家投影里没有它（D-0012 §4.3）。
+    /// </summary>
+    public IReadOnlyList<SeatAnnotation> Annotations { get; init; } = [];
 }

@@ -3,7 +3,6 @@ using Microsoft.AspNetCore.SignalR;
 using OpenClockTower.Application;
 using OpenClockTower.Contracts;
 using OpenClockTower.Kernel;
-using OpenClockTower.Rules;
 
 namespace OpenClockTower.Server;
 
@@ -142,11 +141,7 @@ public sealed class GameHub : Hub<IGameClient>
         long clientSequence) =>
         ExecuteAsync(
             ResolveActor(credential),
-            new SubmitResponseCommand
-            {
-                RequestId = new OperationRequestId(requestId),
-                OptionValue = optionValue,
-            },
+            Commands().SubmitResponse(requestId, optionValue),
             idempotencyKey,
             clientSequence);
 
@@ -159,12 +154,7 @@ public sealed class GameHub : Hub<IGameClient>
         string idempotencyKey) =>
         ExecuteAsync(
             ResolveActor(credential),
-            new VoidRequestCommand
-            {
-                RequestId = new OperationRequestId(requestId),
-                Reason = ParseVoidReason(reason),
-                Note = note,
-            },
+            Commands().VoidRequest(requestId, reason, note),
             idempotencyKey);
 
     /// <summary>说书人代填。</summary>
@@ -176,12 +166,7 @@ public sealed class GameHub : Hub<IGameClient>
         string idempotencyKey) =>
         ExecuteAsync(
             ResolveActor(credential),
-            new ProxyFillCommand
-            {
-                RequestId = new OperationRequestId(requestId),
-                OptionValue = optionValue,
-                Note = note,
-            },
+            Commands().ProxyFill(requestId, optionValue, note),
             idempotencyKey);
 
     /// <summary>说书人强推当前槽位（D-0014 兜底）。</summary>
@@ -205,12 +190,7 @@ public sealed class GameHub : Hub<IGameClient>
         string idempotencyKey) =>
         ExecuteAsync(
             ResolveActor(credential),
-            new ResolveDecisionPointCommand
-            {
-                DecisionPointId = new DecisionPointId(decisionPointId),
-                Decision = decision,
-                Note = note,
-            },
+            Commands().ResolveDecisionPoint(decisionPointId, decision, note),
             idempotencyKey);
 
     /// <summary>
@@ -232,33 +212,9 @@ public sealed class GameHub : Hub<IGameClient>
         // 先过凭据闸再解析参数：未认证连接不该用畸形参数触发异常与日志噪声。
         var actor = ResolveActor(credential);
 
-        var parsedLife = ParseDimension<LifeState>(life, "生死");
-        var parsedAlignment = ParseDimension<Alignment>(alignment, "阵营");
-        var parsedDrunk = ParseDimension<DrunkState>(drunk, "醉酒状态");
-        var parsedPoison = ParseDimension<PoisonState>(poison, "中毒状态");
-
-        if (parsedLife is null
-            && character is null
-            && parsedAlignment is null
-            && parsedDrunk is null
-            && parsedPoison is null)
-        {
-            throw InvalidPayload("至少需要给出一个观测到的状态维度（生死 / 角色 / 阵营 / 醉酒 / 中毒）");
-        }
-
         return ExecuteAsync(
             actor,
-            new ApplySeatStateCommand
-            {
-                Seat = new SeatId(seat),
-                Life = parsedLife,
-                Character = character is null ? null : new CharacterId(character),
-                Alignment = parsedAlignment,
-                Drunk = parsedDrunk,
-                Poison = parsedPoison,
-                Reason = reason,
-                CausedBy = causedBySeat is { } causer ? new SeatId(causer) : null,
-            },
+            Commands().ReportSeatState(seat, life, character, alignment, drunk, poison, reason, causedBySeat),
             idempotencyKey);
     }
 
@@ -275,24 +231,7 @@ public sealed class GameHub : Hub<IGameClient>
         string idempotencyKey)
     {
         var actor = ResolveActor(credential);
-
-        if (assignments is null)
-        {
-            throw InvalidPayload("分配列表不能为空");
-        }
-
-        var mapped = assignments
-            .Select(item => new SeatCharacterAssignment
-            {
-                Seat = new SeatId(item.Seat),
-                Character = new CharacterId(item.Character),
-            })
-            .ToArray();
-
-        return ExecuteAsync(
-            actor,
-            new AssignCharactersCommand { Assignments = mapped },
-            idempotencyKey);
+        return ExecuteAsync(actor, Commands().AssignCharacters(assignments), idempotencyKey);
     }
 
     /// <summary>说书人 / 宿主开启夜晚：服务端按规则表建表（口径是引擎输入，R-0014）。</summary>
@@ -303,18 +242,7 @@ public sealed class GameHub : Hub<IGameClient>
         string idempotencyKey)
     {
         var actor = ResolveActor(credential);
-
-        // 只认名字不认数字：给 Enum.TryParse 传数字会把序号当口径（与零信任相悖）。
-        if (!Enum.TryParse<NightOrderVariant>(variant, ignoreCase: false, out var parsed)
-            || !Enum.IsDefined(parsed))
-        {
-            throw InvalidPayload($"未知的夜晚顺序口径：{variant}（只接受 Original / Recommended）");
-        }
-
-        return ExecuteAsync(
-            actor,
-            new StartNightCommand { NightNumber = nightNumber, Variant = parsed },
-            idempotencyKey);
+        return ExecuteAsync(actor, Commands().StartNight(nightNumber, variant), idempotencyKey);
     }
 
     /// <summary>说书人 / 宿主开启白天：天数由服务端按已开始的白天数推导（R-0014 同族的做法）。</summary>
@@ -362,23 +290,7 @@ public sealed class GameHub : Hub<IGameClient>
         string idempotencyKey)
     {
         var actor = ResolveActor(credential);
-
-        // 只认名字不认数字：给 Enum.TryParse 传数字会把序号当来源（与零信任相悖，同 StartNight 的口径）。
-        if (!Enum.TryParse<MadnessPunishmentSource>(source, ignoreCase: false, out var parsed)
-            || !Enum.IsDefined(parsed))
-        {
-            throw InvalidPayload($"未知的处罚来源：{source}（只接受 Cerenovus / Mutant）");
-        }
-
-        return ExecuteAsync(
-            actor,
-            new PunishExecutionCommand
-            {
-                Seat = new SeatId(seat),
-                Source = parsed,
-                Note = note,
-            },
-            idempotencyKey);
+        return ExecuteAsync(actor, Commands().PunishExecution(seat, source, note), idempotencyKey);
     }
 
     /// <summary>
@@ -390,14 +302,7 @@ public sealed class GameHub : Hub<IGameClient>
         int seat,
         string? note,
         string idempotencyKey) =>
-        ExecuteAsync(
-            ResolveActor(credential),
-            new PitHagCasualtyCommand
-            {
-                Seat = new SeatId(seat),
-                Note = note,
-            },
-            idempotencyKey);
+        ExecuteAsync(ResolveActor(credential), Commands().PitHagCasualty(seat, note), idempotencyKey);
 
     /// <summary>
     /// 说书人 / 宿主**裁定一条待定死亡**：确认（该玩家死亡）或阻止（免死）——麻脸巫婆之夜（R-0030 第 2 条）。
@@ -410,17 +315,44 @@ public sealed class GameHub : Hub<IGameClient>
         string idempotencyKey) =>
         ExecuteAsync(
             ResolveActor(credential),
-            new ResolveDeferredDeathCommand
-            {
-                Seat = new SeatId(seat),
-                Killed = killed,
-                Note = note,
-            },
+            Commands().ResolveDeferredDeath(seat, killed, note),
             idempotencyKey);
 
     /// <summary>说书人 / 宿主按事件日志重建房间（D-0014 恢复）。</summary>
     public Task<CommandResultDto> RebuildRoom(string credential, string reason, string idempotencyKey) =>
         ExecuteAsync(ResolveActor(credential), new RebuildRoomCommand { Reason = reason }, idempotencyKey);
+
+    /// <summary>
+    /// 说书人 / 宿主给某席加一条自由文本注记（D-0019）。
+    /// 文本的归一化与有界化在 Application / Kernel 做（客户端数据不可信，D-0012）；玩家侧没有入口。
+    /// </summary>
+    public Task<CommandResultDto> AddSeatAnnotation(
+        string credential,
+        int seat,
+        string text,
+        string idempotencyKey) =>
+        ExecuteAsync(ResolveActor(credential), Commands().AddSeatAnnotation(seat, text), idempotencyKey);
+
+    /// <summary>说书人 / 宿主改一条注记的文本（D-0019）；席位与标识不变。</summary>
+    public Task<CommandResultDto> UpdateSeatAnnotation(
+        string credential,
+        int annotationId,
+        string text,
+        string idempotencyKey) =>
+        ExecuteAsync(
+            ResolveActor(credential),
+            Commands().UpdateSeatAnnotation(annotationId, text),
+            idempotencyKey);
+
+    /// <summary>说书人 / 宿主删一条注记（D-0019）：写删除事件，不抹历史。</summary>
+    public Task<CommandResultDto> RemoveSeatAnnotation(
+        string credential,
+        int annotationId,
+        string idempotencyKey) =>
+        ExecuteAsync(
+            ResolveActor(credential),
+            Commands().RemoveSeatAnnotation(annotationId),
+            idempotencyKey);
 
     /// <summary>说书人查询当前视图（变更时同时会推送，客户端不需要轮询）。</summary>
     public StorytellerViewDto GetStorytellerView(string credential)
@@ -525,42 +457,10 @@ public sealed class GameHub : Hub<IGameClient>
         return validation;
     }
 
-    /// <summary>参数层拒绝：同样写审计（矩阵行 11：每次拒绝都有可定位记录），且不触达 Application。</summary>
-    private HubException InvalidPayload(string reason, [CallerMemberName] string method = "")
-    {
-        _logger.LogWarning(
-            "命令被拒绝（参数）：connection={ConnectionId} 方法={Method} 原因={Reason}",
-            Context.ConnectionId,
-            method,
-            reason);
-        return new HubException(reason);
-    }
-
-    /// <summary>把客户端传来的维度字符串解析成枚举；null = 本次未观测，非法值当场拒绝（并写审计）。</summary>
-    private TEnum? ParseDimension<TEnum>(string? raw, string label)
-        where TEnum : struct, Enum
-    {
-        if (raw is null)
-        {
-            return null;
-        }
-
-        // 只认名字不认数字：Enum.TryParse 会把 "0" 解析成首个枚举值，那是"客户端说了算"，与零信任相悖。
-        if (raw.Length == 0 || char.IsAsciiDigit(raw[0]))
-        {
-            throw InvalidPayload($"未知的{label}：{raw}（只接受枚举名）");
-        }
-
-        if (!Enum.TryParse<TEnum>(raw, ignoreCase: false, out var value) || !Enum.IsDefined(value))
-        {
-            throw InvalidPayload($"未知的{label}：{raw}");
-        }
-
-        return value;
-    }
-
-    private static OperationRequestVoidReason ParseVoidReason(string reason) =>
-        Enum.TryParse<OperationRequestVoidReason>(reason, ignoreCase: false, out var parsed)
-            ? parsed
-            : (OperationRequestVoidReason)(-1);
+    /// <summary>
+    /// 本次调用的命令翻译器（wire 参数 → 应用层命令；参数层拒绝按调用者写审计）。
+    /// 凭据闸先过、参数再解析：未认证连接不该用畸形参数触发异常与日志噪声。
+    /// </summary>
+    private GameCommandFactory Commands([CallerMemberName] string method = "") =>
+        new(_logger, Context.ConnectionId, method);
 }

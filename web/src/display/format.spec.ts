@@ -1,12 +1,16 @@
 import { describe, expect, it } from 'vitest'
 import {
+  MAX_ANNOTATION_LENGTH,
+  annotationTokenTextOf,
   asArray,
   asCount,
   asCredential,
   asSizedText,
   clockTimeOf,
   normalizeRoomHealth,
+  normalizeSeatAnnotation,
   normalizeStorytellerView,
+  replaceControlCharacters,
   seatLabelOf,
   waitingSecondsTextOf,
 } from '@/display/format'
@@ -220,5 +224,42 @@ describe('不可信输入的有界化（长度 / 范围，架构 §4.4）', () =
 
     expect(view.seats[0]?.madnesses).toHaveLength(1)
     expect(view.seats[0]?.madnesses[0]?.length).toBe(200)
+  })
+})
+
+describe('说书人注记的归一化（D-0019）', () => {
+  it('缺省退化成空集合；坏条目只丢自己，不炸渲染', () => {
+    expect(normalizeStorytellerView(null).annotations).toEqual([])
+
+    const view = normalizeStorytellerView({
+      annotations: [
+        { id: 1, seat: 2, text: '甲' },
+        { id: 'x', seat: 2, text: '乙' },
+        { id: 2, seat: 0, text: '丙' },
+        { id: 3, seat: 2, text: '' },
+      ],
+    })
+
+    expect(view.annotations).toEqual([{ id: 1, seat: 2, text: '甲' }])
+  })
+
+  it('文本超长按上限截断（服务端已限一次，这里仍防一手）', () => {
+    const note = normalizeSeatAnnotation({
+      id: 1,
+      seat: 1,
+      text: '甲'.repeat(MAX_ANNOTATION_LENGTH + 10),
+    })
+
+    expect(note?.text.length).toBe(MAX_ANNOTATION_LENGTH)
+  })
+
+  it('牌面 token 文案：控制字符 / 换行折成空格，超长截断并带省略号', () => {
+    expect(annotationTokenTextOf('甲\n\n乙')).toBe('甲 乙')
+    expect(annotationTokenTextOf('短')).toBe('短')
+    expect(annotationTokenTextOf('很长'.repeat(20))).toBe(`${'很长'.repeat(8)}…`)
+  })
+
+  it('控制字符逐字符折成空格（刻意不用控制字符正则）', () => {
+    expect(replaceControlCharacters('甲\u0000乙\u007f丙')).toBe('甲 乙 丙')
   })
 })

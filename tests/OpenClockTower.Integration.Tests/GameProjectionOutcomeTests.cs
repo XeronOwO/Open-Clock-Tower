@@ -48,7 +48,8 @@ public sealed class GameProjectionOutcomeTests
             sequence: 7,
             pendingSince: null,
             now: DateTimeOffset.UnixEpoch,
-            recentSeatChanges: []);
+            recentSeatChanges: [],
+            annotations: []);
         Assert.Contains("醉酒", Assert.Single(storyteller.KlutzChoices).Detail, StringComparison.Ordinal);
     }
 

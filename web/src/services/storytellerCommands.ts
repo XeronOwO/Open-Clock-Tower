@@ -267,6 +267,38 @@ export function reportSeatState(
   )
 }
 
+/**
+ * 给某席加一条自由文本注记（D-0019）。
+ * 文本的归一化与长度上限由服务端强制（`SeatAnnotationText`）；玩家侧没有这条命令的入口。
+ */
+export function addSeatAnnotation(
+  sender: CommandSender,
+  seat: number,
+  text: string,
+  idempotencyKey: string,
+): Promise<CommandOutcome> {
+  return invokeCommand(sender, 'AddSeatAnnotation', seat, text, idempotencyKey)
+}
+
+/** 改一条注记的文本（标识与席位不变；不存在的标识由服务端拒绝）。 */
+export function updateSeatAnnotation(
+  sender: CommandSender,
+  annotationId: number,
+  text: string,
+  idempotencyKey: string,
+): Promise<CommandOutcome> {
+  return invokeCommand(sender, 'UpdateSeatAnnotation', annotationId, text, idempotencyKey)
+}
+
+/** 删一条注记（写删除事件，不抹历史）。 */
+export function removeSeatAnnotation(
+  sender: CommandSender,
+  annotationId: number,
+  idempotencyKey: string,
+): Promise<CommandOutcome> {
+  return invokeCommand(sender, 'RemoveSeatAnnotation', annotationId, idempotencyKey)
+}
+
 /** 按事件日志重建房间（D-0014 恢复）。 */
 export function rebuildRoom(
   sender: CommandSender,

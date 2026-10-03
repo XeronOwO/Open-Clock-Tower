@@ -48,6 +48,7 @@ public sealed partial class PlayerProjectionLeakGateTests
         "PendingRequestDto.cs",
         "PitHagNightDto.cs",
         "RoomHealthDto.cs",
+        "SeatAnnotationDto.cs",
         "SeatChangeDto.cs",
         "SeatCharacterAssignmentDto.cs",
         "SeatStateDto.cs",
@@ -108,6 +109,9 @@ public sealed partial class PlayerProjectionLeakGateTests
         "lastResolution",
         "terminationKind",
         "madness",
+
+        // 说书人注记（D-0019）：自由文本只说书人可见，玩家投影里没有这条字段
+        "annotations",
 
         // 说书人专属判定面与模块
         "awaitingDecision",
@@ -341,6 +345,7 @@ public sealed partial class PlayerProjectionLeakGateTests
         "AbilityResolutionDto",
         "SeatChangeDto",
         "PendingRequestDto",
+        "SeatAnnotationDto",
         "normalizeStorytellerView",
     ];
 

@@ -71,6 +71,7 @@ public static class GameProjection
         DateTimeOffset? pendingSince,
         DateTimeOffset now,
         IReadOnlyList<SeatChangeSnapshot> recentSeatChanges,
+        IReadOnlyList<SeatAnnotation> annotations,
         AbilityResolutionSnapshot? lastResolution = null,
         StepDigest? stepDigest = null,
         VoidedRequestSnapshot? lastVoidedRequest = null)
@@ -120,6 +121,9 @@ public static class GameProjection
             // 麻脸巫婆之夜的死亡裁量窗口（R-0030）：说书人要据此裁定待定死亡、
             // 并在窗口内追加死亡——玩家投影里没有它（D-0012 §4.3）。
             PitHagNight = machine?.PitHagNight,
+
+            // 说书人注记（D-0019）：自由文本提示标记只说书人可见；玩家投影里没有这条字段。
+            Annotations = annotations,
         };
     }
 }

@@ -278,7 +278,7 @@ public sealed class GameSession
         {
             var receipt = await _store.FindReceiptAsync(GameId, envelope.IdempotencyKey, cancellationToken);
             var setup = await EnsureSetupAsync(cancellationToken);
-            var decision = CommandGatePipeline.Evaluate(envelope, _machine, receipt, setup);
+            var decision = CommandGatePipeline.Evaluate(envelope, _machine, receipt, setup, _trackers.AnnotationLedger);
 
             switch (decision.Kind)
             {
@@ -311,6 +311,7 @@ public sealed class GameSession
                 envelope,
                 _machine,
                 setup,
+                _trackers.AnnotationLedger,
                 settlement,
                 GameId,
                 _logger);

@@ -48,6 +48,7 @@ public static class StorytellerViewBuilder
             trackers.PendingRequestSince,
             now,
             trackers.RecentSeatChanges,
+            trackers.AnnotationLedger.Annotations,
             trackers.LastResolution,
             StepDigestProjection.Build(
                 machine,

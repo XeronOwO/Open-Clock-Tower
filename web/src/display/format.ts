@@ -18,6 +18,7 @@ import type {
   PitHagNightDto,
   PlayerLifeDto,
   RoomHealthDto,
+  SeatAnnotationDto,
   SeatChangeDto,
   SeatStateDto,
   SeatStateFactDto,
@@ -85,6 +86,64 @@ export function asCount(value: unknown, max = 1_000_000): number | null {
 /** 席位号 → 「N 号」。非法值退化成占位符。 */
 export function seatLabelOf(seat: number | null | undefined): string {
   return typeof seat === 'number' && Number.isFinite(seat) ? `${seat} 号` : '—'
+}
+
+/** 单条注记的文本上限（与服务端 `SeatAnnotationText.MaxLength` 同一口径，D-0019）。 */
+export const MAX_ANNOTATION_LENGTH = 120
+
+/** 每席注记条数上限（与服务端 `SeatAnnotationText.MaxPerSeat` 同一口径）。 */
+export const MAX_ANNOTATIONS_PER_SEAT = 5
+
+/** 说书人视图里注记条数的防御上限：坏载荷不撑爆面板（每席上限 × 座位数的同阶）。 */
+export const MAX_ANNOTATIONS = 64
+
+/** 牌面 token 显示的字符上限：超长截断，全文仍留在 title 与操作台。 */
+export const ANNOTATION_TOKEN_LENGTH = 16
+
+/**
+ * 一条注记：id / 席位必须是有界正整数、文本非空；形状不对就丢掉这一条（宁可少一条，不猜）。
+ * 文本按 `MAX_ANNOTATION_LENGTH` 截断——服务端本就不会超，这里是"不可信输入"的第二道防线。
+ */
+export function normalizeSeatAnnotation(raw: unknown): SeatAnnotationDto | null {
+  if (raw === null || typeof raw !== 'object') {
+    return null
+  }
+
+  const annotation = raw as Record<string, unknown>
+  const id = asCount(annotation['id'], 100_000)
+  const seat = asCount(annotation['seat'], 1_000)
+  const text = asSizedText(annotation['text'], MAX_ANNOTATION_LENGTH)
+  if (id === null || id < 1 || seat === null || seat < 1 || text === null) {
+    return null
+  }
+
+  return { id, seat, text }
+}
+
+/**
+ * 控制字符（含换行 / 制表）折成空格。
+ * 刻意不用控制字符正则：ESLint 的 `no-control-regex` 会拦下这类字面量，逐字符判定等价且更清楚。
+ */
+export function replaceControlCharacters(text: string): string {
+  let result = ''
+  for (const character of text) {
+    const code = character.codePointAt(0) ?? 0
+    result += code < 0x20 || code === 0x7f ? ' ' : character
+  }
+
+  return result
+}
+
+/**
+ * 牌面 token 的文案：控制字符（含换行）与连续空白折成单个空格，再截断到上限。
+ * 服务端已归一化过一次，这里仍按不可信输入处理（架构 §4.4）。
+ */
+export function annotationTokenTextOf(
+  text: string,
+  maxLength: number = ANNOTATION_TOKEN_LENGTH,
+): string {
+  const cleaned = replaceControlCharacters(text).replace(/\s+/g, ' ').trim()
+  return cleaned.length <= maxLength ? cleaned : `${cleaned.slice(0, maxLength)}…`
 }
 
 /** 归因方 → 「N 号」；无人可归因时 null（调用方决定怎么显示）。 */
@@ -489,6 +548,10 @@ export function normalizeStorytellerView(raw: unknown): StorytellerViewDto {
       .map(normalizeKlutzChoice)
       .filter((choice): choice is KlutzChoiceDto => choice !== null),
     pitHagNight: normalizePitHagNight(view['pitHagNight']),
+    annotations: asArray<unknown>(view['annotations'])
+      .map(normalizeSeatAnnotation)
+      .filter((annotation): annotation is SeatAnnotationDto => annotation !== null)
+      .slice(0, MAX_ANNOTATIONS),
   }
 }
 

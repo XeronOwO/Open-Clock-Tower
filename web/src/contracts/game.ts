@@ -259,6 +259,16 @@ export interface PlayerDayDto {
   candidates: number[]
 }
 
+/** 一条说书人注记（D-0019）：魔典上挂在席位旁的自由文本提示标记。只说书人视图下发。 */
+export interface SeatAnnotationDto {
+  /** 签发标识（一局内唯一、只增不减）；改 / 删按它定位。 */
+  id: number
+  /** 挂在哪一席。 */
+  seat: number
+  /** 自由文本（服务端已归一化）。 */
+  text: string
+}
+
 /** 说书人视图：完整看板 + 兜底所需的一切（D-0014）。 */
 export interface StorytellerViewDto {
   sequence: number
@@ -292,6 +302,8 @@ export interface StorytellerViewDto {
   klutzChoices: KlutzChoiceDto[]
   /** 麻脸巫婆之夜的死亡裁量窗口；null = 今晚没有（R-0030）。 */
   pitHagNight: PitHagNightDto | null
+  /** 说书人注记（D-0019）：自由文本提示标记，按发生顺序；玩家投影里没有它。 */
+  annotations: SeatAnnotationDto[]
 }
 
 /** 命令回执。 */

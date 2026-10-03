@@ -60,11 +60,11 @@ todo/  →  in-progress/  →  review/  →  done/
 
 ### Todo
 
-- [说书人注记：魔典上的自由文本提示标记](todo/storyteller-annotation.md) — **Low** — 魔典上的自由文本 token；首版刻意不做，待定归属 / 持久化 / 审计边界
-
 ### In progress
 
 ### Review
+
+- [说书人注记：魔典上的自由文本提示标记](review/storyteller-annotation.md) — **Low** — 魔典上的自由文本 token：本局级、进事件流、独立注记账（D-0019）；席位锚定 + 有界化呈现；等批次 E22 取证档判定
 
 ### Done
 

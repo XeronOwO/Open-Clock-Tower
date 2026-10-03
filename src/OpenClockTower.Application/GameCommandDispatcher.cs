@@ -17,13 +17,16 @@ internal static class GameCommandDispatcher
     private const string SetupAssignmentReason = "setup.assignment";
 
     /// <summary>
-    /// 分派一条命令；步骤机尚未开启时，只有开始阶段 / 开局分配 / <b>状态观测</b> / 开夜这些命令会走到这里。
+    /// 分派一条命令；步骤机尚未开启时，只有开始阶段 / 开局分配 / <b>状态观测</b> / 开夜 / <b>注记</b>
+    /// 这些命令会走到这里。
     /// <paramref name="settlement"/> 携带当前账、座次与结算契约目录——行动槽位结算要靠它。
+    /// <paramref name="annotations"/> 是当前注记账（D-0019）：注记的签发标识与改 / 删目标按它定位。
     /// </summary>
     internal static CommandDispatchResult Dispatch(
         CommandEnvelope envelope,
         StepMachineState? machine,
         GameSetup? setup,
+        SeatAnnotationLedger annotations,
         SettlementContext settlement,
         GameId gameId,
         ILogger logger)
@@ -44,6 +47,12 @@ internal static class GameCommandDispatcher
             // 预阶段的状态观测：状态账本来就是"观测即记账"（D-0015），开局分配走的也是这条通路（D-0017）。
             // 注意：建表要求每一席都有角色（plan.seat_unassigned），所以这里不是"补角色"的旁路。
             return DispatchPrePhaseSeatState(applySeatState);
+        }
+
+        if (envelope.Command is AddSeatAnnotationCommand or UpdateSeatAnnotationCommand or RemoveSeatAnnotationCommand)
+        {
+            // 注记不参与阶段推进：首个阶段之前也能写（与状态观测同一姿态，D-0019）。
+            return DispatchAnnotation(envelope.Command, machine, annotations);
         }
 
         if (envelope.Command is StartNightCommand startNight)
@@ -380,6 +389,112 @@ internal static class GameCommandDispatcher
 
         return new CommandDispatchResult(null, events, null);
     }
+
+    /// <summary>
+    /// 说书人注记（D-0019）：把命令翻译成事件。文本在这里归一化（与合法性闸同一把尺子
+    /// <see cref="SeatAnnotationText.TryNormalize"/>）；新增标识由注记账递增签发；
+    /// 注记**不改步骤机、不改状态账**，所以步骤机状态原样透传。
+    /// </summary>
+    private static CommandDispatchResult DispatchAnnotation(
+        GameCommand command,
+        StepMachineState? machine,
+        SeatAnnotationLedger annotations) =>
+        command switch
+        {
+            AddSeatAnnotationCommand add => AddAnnotation(add, machine, annotations),
+            UpdateSeatAnnotationCommand update => UpdateAnnotation(update, machine, annotations),
+            RemoveSeatAnnotationCommand remove => RemoveAnnotation(remove, machine, annotations),
+            _ => CommandDispatchResult.Rejected(new CommandRejection
+            {
+                Code = "kernel.unsupported",
+                Message = $"未支持的注记命令：{command.GetType().Name}",
+                Gate = "kernel",
+            }),
+        };
+
+    private static CommandDispatchResult AddAnnotation(
+        AddSeatAnnotationCommand command,
+        StepMachineState? machine,
+        SeatAnnotationLedger annotations)
+    {
+        if (!SeatAnnotationText.TryNormalize(command.Text, out var normalized, out _))
+        {
+            return AnnotationTextRejected();
+        }
+
+        return new CommandDispatchResult(
+            machine,
+            [
+                new SeatAnnotationAddedEvent
+                {
+                    Annotation = new SeatAnnotation(annotations.NextId, command.Seat, normalized),
+                },
+            ],
+            null);
+    }
+
+    private static CommandDispatchResult UpdateAnnotation(
+        UpdateSeatAnnotationCommand command,
+        StepMachineState? machine,
+        SeatAnnotationLedger annotations)
+    {
+        if (annotations.Find(command.Id) is not { } existing)
+        {
+            return AnnotationTargetMissing(command.Id);
+        }
+
+        if (!SeatAnnotationText.TryNormalize(command.Text, out var normalized, out _))
+        {
+            return AnnotationTextRejected();
+        }
+
+        return new CommandDispatchResult(
+            machine,
+            [
+                new SeatAnnotationUpdatedEvent
+                {
+                    Annotation = existing with { Text = normalized },
+                },
+            ],
+            null);
+    }
+
+    private static CommandDispatchResult RemoveAnnotation(
+        RemoveSeatAnnotationCommand command,
+        StepMachineState? machine,
+        SeatAnnotationLedger annotations)
+    {
+        if (annotations.Find(command.Id) is not { } existing)
+        {
+            return AnnotationTargetMissing(command.Id);
+        }
+
+        return new CommandDispatchResult(
+            machine,
+            [new SeatAnnotationRemovedEvent { Annotation = existing }],
+            null);
+    }
+
+    /// <summary>
+    /// 文本不合规的兜底拒绝：合法性闸（<see cref="CommandGatePipeline"/>）本应先拦下，
+    /// 这里保留一条显式失败，避免"闸门漏了"变成静默写入（防御性，不重复文案）。
+    /// </summary>
+    private static CommandDispatchResult AnnotationTextRejected() =>
+        CommandDispatchResult.Rejected(new CommandRejection
+        {
+            Code = "legality.annotation_invalid",
+            Message = "注记文本不合规（空 / 超长 / 含控制字符）",
+            Gate = "legality",
+        });
+
+    /// <summary>注记不存在（已被删除）的兜底拒绝：合法性闸本应先拦下。</summary>
+    private static CommandDispatchResult AnnotationTargetMissing(SeatAnnotationId id) =>
+        CommandDispatchResult.Rejected(new CommandRejection
+        {
+            Code = "legality.annotation_unknown",
+            Message = $"注记 {id} 不存在（可能已被删除）",
+            Gate = "legality",
+        });
 
     /// <summary>开夜：用会话席位名单 + 当前状态账按规则表建表，然后交给步骤机开启阶段。</summary>
     /// <remarks>

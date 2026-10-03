@@ -131,6 +131,12 @@ internal static class StepMachineFolder
             AbilityResolvedEvent => state,
             InformationResultIssuedEvent => state,
 
+            // 说书人注记（D-0019）：第三条派生视图（SeatAnnotationMachine）的事件，
+            // 步骤机状态不由它们改变；它们同样可以先于任何阶段出现（步骤机保持 null）。
+            SeatAnnotationAddedEvent => state,
+            SeatAnnotationUpdatedEvent => state,
+            SeatAnnotationRemovedEvent => state,
+
             _ => throw new InvalidOperationException($"未知事件类型：{gameEvent.GetType().Name}"),
         };
     }

@@ -7,6 +7,7 @@
  * 卡点 / 裁定 / 上报与旧面板是同一批命令，只是入口按席位就近呈现，不再有第二份实现。
  */
 import type { StorytellerViewDto } from '@/contracts/game'
+import GrimoireAnnotationControl from '@/features/storyteller/GrimoireAnnotationControl.vue'
 import { ROSTER, characterLabelOf, dimensionLabelOf, labelOf } from '@/display/labels'
 import { causedByLabelOf, seatLabelOf, waitingSecondsTextOf } from '@/display/format'
 import { buildSeatCard, decisionSeatOf, seatNumbersOf, seatTitleOf } from '@/display/grimoire'
@@ -141,6 +142,11 @@ function engage(): void {
 /** 一键把圆环与操作台定位到某个"当前待办"的归属席位。 */
 function locate(seat: number): void {
   emit('locate', seat)
+}
+
+/** 子组件的命令回执原样上传给宿主（回执出口仍然只有 `StorytellerPanel` 一处）。 */
+function forwardOutcome(value: CommandOutcome): void {
+  emit('outcome', value)
 }
 
 async function fill(): Promise<void> {
@@ -403,6 +409,14 @@ async function submitReport(): Promise<void> {
           <span class="tag warn">疯狂要求</span>
           <span v-for="requirement in model.madnesses" :key="requirement">{{ requirement }}</span>
         </div>
+
+        <GrimoireAnnotationControl
+          :view="view"
+          :sender="sender"
+          :seat="seat"
+          @outcome="forwardOutcome"
+          @engage="engage()"
+        />
 
         <div class="punish">
           <div class="line">

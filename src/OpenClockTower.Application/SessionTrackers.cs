@@ -3,7 +3,8 @@ using OpenClockTower.Kernel;
 namespace OpenClockTower.Application;
 
 /// <summary>
-/// 会话级派生跟踪器：最近状态变化、最近一次能力结算、发给各席位的信息结果、公开生死面、卡点起算与槽位起算。
+/// 会话级派生跟踪器：最近状态变化、最近一次能力结算、发给各席位的信息结果、公开生死面、
+/// 说书人注记账（D-0019）、卡点起算与槽位起算。
 /// </summary>
 /// <remarks>
 /// <para>
@@ -22,6 +23,7 @@ public sealed class SessionTrackers
     private readonly List<(SeatId Recipient, InformationResultSnapshot Result)> _informationResults = [];
     private readonly Dictionary<StepSlotId, AbilityResolutionSnapshot> _slotResolutions = [];
     private PublicLifeBoard _publicLife = PublicLifeBoard.Empty;
+    private SeatAnnotationLedger _annotations = SeatAnnotationLedger.Empty;
 
     /// <summary>当前槽位的起算时刻；没有起点信息（异常数据）时为 null，此时宁可不动。</summary>
     public DateTimeOffset? SlotStartedAt { get; private set; }
@@ -31,6 +33,12 @@ public sealed class SessionTrackers
 
     /// <summary>公开生死面（生命标记等价物 + 本日生死公告）；由事件流按 `rulings.md` R-0022 折叠。</summary>
     public PublicLifeBoard PublicLife => _publicLife;
+
+    /// <summary>
+    /// 说书人注记账（D-0019）：与状态账同源折叠、但独立成账——自由文本不进六维度（D-0015）。
+    /// 说书人视图按它投影；玩家投影里没有它（D-0012 §4.3）。
+    /// </summary>
+    public SeatAnnotationLedger AnnotationLedger => _annotations;
 
     /// <summary>最近的状态变化（最新在后）；说书人视图的「刚发生了什么」。</summary>
     public IReadOnlyList<SeatChangeSnapshot> RecentSeatChanges => [.. _recentSeatChanges];
@@ -93,6 +101,13 @@ public sealed class SessionTrackers
                 case InformationResultIssuedEvent information:
                     AppendInformationResult(information, draft.Sequence);
                     break;
+
+                // 说书人注记（D-0019）：独立注记账，与状态账同源折叠。
+                case SeatAnnotationAddedEvent:
+                case SeatAnnotationUpdatedEvent:
+                case SeatAnnotationRemovedEvent:
+                    _annotations = SeatAnnotationMachine.Apply(_annotations, draft.Event);
+                    break;
             }
         }
 
@@ -110,6 +125,7 @@ public sealed class SessionTrackers
         _informationResults.Clear();
         _slotResolutions.Clear();
         _publicLife = PublicLifeBoard.Empty;
+        _annotations = SeatAnnotationLedger.Empty;
         LastResolution = null;
         LastVoidedRequest = null;
         SlotStartedAt = null;
@@ -147,6 +163,13 @@ public sealed class SessionTrackers
                 case InformationResultIssuedEvent information:
                     AppendInformationResult(information, stored.Sequence);
                     break;
+
+                // 说书人注记（D-0019）：重启 / 重建按事件流恢复同一本账。
+                case SeatAnnotationAddedEvent:
+                case SeatAnnotationUpdatedEvent:
+                case SeatAnnotationRemovedEvent:
+                    _annotations = SeatAnnotationMachine.Apply(_annotations, stored.Event);
+                    break;
             }
         }
 
@@ -166,6 +189,7 @@ public sealed class SessionTrackers
         _informationResults.Clear();
         _slotResolutions.Clear();
         _publicLife = PublicLifeBoard.Empty;
+        _annotations = SeatAnnotationLedger.Empty;
         LastResolution = null;
         LastVoidedRequest = null;
         SlotStartedAt = null;

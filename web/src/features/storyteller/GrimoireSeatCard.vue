@@ -13,6 +13,7 @@ import {
   LIFE_DEAD,
   seatTitleOf,
 } from '@/display/grimoire'
+import { annotationTokenTextOf } from '@/display/format'
 import { characterNameOf, characterTypeOf, labelOf } from '@/display/labels'
 
 const props = defineProps<{
@@ -143,6 +144,18 @@ function typeText(): string {
       </span>
     </span>
     <span v-else class="marks"><span class="mark empty">无标记</span></span>
+
+    <span v-if="model.annotations.length > 0" class="notes" data-testid="seat-notes">
+      <span
+        v-for="annotation in model.annotations"
+        :key="annotation.id"
+        class="mark mark-note"
+        :data-note-id="annotation.id"
+        :title="annotation.text"
+      >
+        {{ annotationTokenTextOf(annotation.text) }}
+      </span>
+    </span>
   </button>
 </template>
 
@@ -334,6 +347,21 @@ function typeText(): string {
   border-color: var(--night);
   background: #e2e7f2;
   color: var(--night);
+}
+
+/* 说书人注记（D-0019）：自由文本 token，颜色与派生标记区分开 */
+.mark-note {
+  border-color: #8a6d3b;
+  background: #fbf3dc;
+  color: #6b4f1d;
+}
+
+.notes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  justify-content: center;
+  max-width: 132px;
 }
 
 .mark.empty {

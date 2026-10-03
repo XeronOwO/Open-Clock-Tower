@@ -74,6 +74,12 @@ public static class GameStateMachine
             OperationRequestVoidedEvent => current,
             InformationResultIssuedEvent => current,
 
+            // 说书人注记（D-0019）：自由文本**不进状态账**（D-0015）——它折进独立的注记账
+            // （SeatAnnotationMachine），只说书人可见；改 / 删同样不改六维度与效果。
+            SeatAnnotationAddedEvent => current,
+            SeatAnnotationUpdatedEvent => current,
+            SeatAnnotationRemovedEvent => current,
+
             // 胜负结论与呆瓜选择：它们改变的是步骤机状态里的结束态 / 选择账（StepMachineFolder），
             // 不改六维度与效果；胜负求值直接读本批事件 + 当前账（R-0024 / R-0027）。
             GameEndedEvent => current,

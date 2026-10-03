@@ -305,6 +305,13 @@ StepMachine（步骤机）
 | 房间健康位 | `RoomHealth`（会话态，不进事件流）：恢复 / 重建失败置位（原因 + 首次发生时间），显式重建成功清除；只说书人视图（`StorytellerView.Health`），玩家侧由门禁与投影锁死 |
 | 说书人视图 | `StorytellerView.Seats` / `PersistentEffects` / `InstantaneousEffects` / `StepDigest`（每步摘要）；玩家投影里**没有**它（D-0012） |
 
+**说书人注记（2026-10-03，批次 E22）**：同一事件流上的**第三本账**（`SeatAnnotationLedger`），
+与状态账刻意分开——自由文本不是事实，不进 `GameState`（D-0015 的边界）。
+增 / 改 / 删各一条说书人专属事件（`SeatAnnotationAdded` / `Updated` / `RemovedEvent`），
+由 `SeatAnnotationMachine` 折叠、`SessionTrackers` 持有；说书人视图按它投影（`StorytellerView.Annotations`），
+玩家投影里没有这条字段（D-0012 §4.3）。文本口径（折叠空白、120 字符上限、控制字符拒绝、每席 5 条）
+由 `SeatAnnotationText` 一处定义，合法性闸与分派共用；重连 / 重启 / 撤销都走既有事件流机制（D-0010）。
+
 ### 2.9 胜负判定与结束态（R-0024）
 
 | 关注点 | 落点 |

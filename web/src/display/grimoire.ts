@@ -7,7 +7,7 @@
  * - **未观测 ≠ 默认值**：缺维度就是 null，绝不画成"存活 / 健康"；
  * - 服务端数据是不可信输入：坏值只降级该格，不炸渲染（架构 §4.4）。
  */
-import type { EffectDto, SeatStateFactDto, StorytellerViewDto } from '@/contracts/game'
+import type { EffectDto, SeatAnnotationDto, SeatStateFactDto, StorytellerViewDto } from '@/contracts/game'
 import { characterLabelOf, characterNameOf, effectMarkNameOf } from '@/display/labels'
 
 /** 六维度里可在牌面上呈现的五个；疯狂要求另列（`SeatStateDto.madnesses`）。 */
@@ -46,6 +46,8 @@ export interface SeatCardModel {
   facts: readonly SeatStateFactDto[]
   /** 以该席为作用对象的效果（含已终止——"因为什么解毒"要查得到）。 */
   effects: readonly EffectDto[]
+  /** 挂在该席上的说书人注记（D-0019）：自由文本提示标记，只说书人可见。 */
+  annotations: readonly SeatAnnotationDto[]
   marks: readonly SeatMark[]
 }
 
@@ -113,6 +115,7 @@ export function buildSeatCard(view: StorytellerViewDto, seat: number): SeatCardM
   const facts = entry?.facts ?? []
   const madnesses = entry?.madnesses ?? []
   const effects = view.effects.filter((effect) => effect.target === seat)
+  const annotations = view.annotations.filter((annotation) => annotation.seat === seat)
 
   return {
     seat,
@@ -125,6 +128,7 @@ export function buildSeatCard(view: StorytellerViewDto, seat: number): SeatCardM
     madnesses,
     facts,
     effects,
+    annotations,
     marks: buildSeatMarks(facts, madnesses, effects),
   }
 }
@@ -209,6 +213,11 @@ export function seatTitleOf(model: SeatCardModel): string {
 
   for (const mark of model.marks) {
     parts.push(mark.detail === null ? mark.label : `${mark.label}（${mark.detail}）`)
+  }
+
+  // 注记（D-0019）也算席位的可读状态：全文进 title / 无障碍名称，牌面只显示截断 token。
+  for (const annotation of model.annotations) {
+    parts.push(`注记：${annotation.text}`)
   }
 
   return parts.join('，')
