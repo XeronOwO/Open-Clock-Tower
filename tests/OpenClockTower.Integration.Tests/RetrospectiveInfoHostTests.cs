@@ -66,7 +66,7 @@ public sealed class RetrospectiveInfoHostTests
             "test-retro-night-1");
         Assert.Equal("Accepted", nightOne.Kind);
         var nightOneDone = await TestServerHost.WaitForViewAsync(storyteller, view => view.PlanCompleted, Wait);
-        Assert.NotNull(nightOneDone);
+        Assert.True(nightOneDone!.PlanCompleted, "首夜没有自然走完（配额未推进到收口）");
 
         // 白天：2 号（麻脸巫婆，爪牙）自我提名；1 号（诺-达鲺，恶魔）投赞成 ⇒ 两条白天事实入账。
         var dayStarted = await storyteller.InvokeAsync<CommandResultDto>("StartDay", "test-retro-day-start");
@@ -75,7 +75,7 @@ public sealed class RetrospectiveInfoHostTests
             storyteller,
             view => view.Day is { Status: "Open", DayNumber: 1 },
             Wait);
-        Assert.NotNull(dayOpen);
+        Assert.True(dayOpen!.Day is { Status: "Open", DayNumber: 1 }, "白天没有进入 Open 状态");
 
         var nominated = await pitHag.InvokeAsync<CommandResultDto>("Nominate", 2, "test-retro-nominate");
         Assert.Equal("Accepted", nominated.Kind);
@@ -94,7 +94,7 @@ public sealed class RetrospectiveInfoHostTests
             storyteller,
             view => view.Day is { Status: "Closed", Executed: 2 },
             Wait);
-        Assert.NotNull(dayClosed);
+        Assert.True(dayClosed!.Day is { Status: "Closed", Executed: 2 }, "白天没有收口到处决 2 号");
 
         // 次夜：1 号恶魔先行动（顺序表在信息角色之前），击杀 6 号（对推演无影响的善良席位）。
         var nightTwo = await storyteller.InvokeAsync<CommandResultDto>(
@@ -150,10 +150,16 @@ public sealed class RetrospectiveInfoHostTests
         Assert.Equal(ability, info.Ability);
         Assert.Equal(content, info.Content);
 
-        // 说书人专属字段（可能为假 / 说明）不随玩家投影下发（D-0012）。
-        var wire = JsonSerializer.Serialize(info);
-        Assert.DoesNotContain("MayBeFalse", wire, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("Note", wire, StringComparison.OrdinalIgnoreCase);
+        // 玩家投影 DTO 的字段面必须**恰好**是这三项：说书人专属字段（可能为假 / 说明）
+        // 不进 DTO（D-0012）——键集合断言给"将来有人加字段"留下回归保护。
+        // 序列化口径与宿主一致（Web defaults → camelCase）。
+        using var document = JsonDocument.Parse(
+            JsonSerializer.Serialize(info, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+        var keys = document.RootElement.EnumerateObject()
+            .Select(property => property.Name)
+            .OrderBy(name => name)
+            .ToArray();
+        Assert.Equal(["ability", "content", "sequence"], keys);
     }
 
     private static async Task<StorytellerViewDto> WaitForSlotDecisionAsync(GameClient storyteller, string slotId)
@@ -162,7 +168,10 @@ public sealed class RetrospectiveInfoHostTests
             storyteller,
             candidate => candidate.AwaitingDecisionId is not null && candidate.CurrentSlotId == slotId,
             Wait);
-        Assert.NotNull(view);
+        Assert.True(
+            view is { AwaitingDecisionId: not null } && view.CurrentSlotId == slotId,
+            $"没有等到槽位 {slotId} 上的裁定（最后视图 slot={view?.CurrentSlotId ?? "无"} "
+                + $"挂起={view?.AwaitingDecisionId ?? "无"}）");
         return view!;
     }
 
