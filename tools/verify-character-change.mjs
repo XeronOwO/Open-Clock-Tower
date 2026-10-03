@@ -1,7 +1,7 @@
 /**
- * 角色变更族（理发师 / 方古 / 哲学家）批次装置 —— 票据 docs/backlog/review/character-change-family.md 的验收矩阵。
+ * 角色变更族（理发师 / 方古 / 哲学家）批次装置 —— 票据 docs/backlog/done/character-change-family.md 的验收矩阵。
  *
- * 它回答：**「获得能力 → 被选角色持有者醉酒 → 代行获得的能力」「首次成功杀外来者 → 侵染」
+ * **第一局**回答：**「获得能力 → 被选角色持有者醉酒 → 代行获得的能力」「首次成功杀外来者 → 侵染」
  * 「理发师死亡 → 当夜换角 + 尚未进入的格重绑」这三条链路，在同一局真机上跑得通吗？**
  * 场景（固定 6 席：1 哲学家 / 2 筑梦师 / 3 方古 / 4 理发师 / 5 呆瓜 / 6 畸形秀演员）：
  *   1) 分配 → 开首夜；1 号在**真玩家页面**上拿到镇民 / 外来者清单（16 项 + 摇头）→ 选「筑梦师」；
@@ -16,12 +16,18 @@
  *   9) 1 号失去角色能力 → 「获得能力」事实与醉酒一并终止（来源失去能力）；
  *  10) 视角隔离：1 号自己的页面上没有说书人词汇；2 / 4 / 6 号的全部推送无越权字段。
  *
+ * **第二局**（E17 残余②，R-0036 第 4 条的「被选角色不在场」路径）：6 席花名册不变，但 1 号哲学家改选
+ * **不在场**的钟表匠——顺序表上钟表匠的格在哲学家之后、且这一格没有行动者，因此**当夜**就地激活由他代行；
+ * 断言：不变身 / 没有醉酒对象（效果链无 `philosopher.grant.drunk`）/ 同夜开出钟表匠的说书人裁定点 /
+ * 结清后账本记「1 号 · clockmaker · 正常生效」/ 信息结果下发到 1 号玩家端。
+ * 第二局另起真宿主（独立临时库）与第二套 Vite，端口 = 第一局 +1。
+ *
  * 与主批次的分工：主批次跑五席固定花名册的通用玩法回归；本装置只跑这三条能力链路。
  * 前置：Node >= 22.5（node:sqlite）、本机已构建 web/node_modules（playwright + @microsoft/signalr）。
- * 用法（在仓库根运行；默认迭代档 = 快节拍 + 不落盘截图 + 复用产物）：
+ * 用法（在仓库根运行；默认迭代档 = 快节拍 + 不落盘截图 + 复用产物；两局都会跑）：
  *   node tools/verify-character-change.mjs                                        # 迭代档
  *   node tools/verify-character-change.mjs --quota 2 --screenshots-all --build    # 取证档（一批一次）
- *   node tools/verify-character-change.mjs --port 5414 --vite-port 5294           # 自定端口
+ *   node tools/verify-character-change.mjs --port 5500 --vite-port 5400           # 自定端口（第二局 +1）
  *
  * 外部耦合（换机器先核对 web/AGENTS.md §3.1）：宿主编译产物路径、SQLite 表 Games 的
  * StorytellerTicket / SeatsJson 列形状。退出码：0 = 全过；1 = 有失败；2 = 环境缺依赖。
@@ -118,11 +124,17 @@ try {
 
 
 async function main() {
-  console.log('=== 1/10 构建并启动真宿主（独立临时库，6 席）===')
-  await ensureServerArtifacts({ repositoryRoot, buildMode: config.buildMode })
-  await startServer()
+  await runPresentGrantScene()
+  await runAbsentGrantScene()
+}
 
-  console.log('=== 2/10 取票据并起 Vite ===')
+/** 第一局：被获得角色**在场**（筑梦师）——代行落在哲学家自己的格上（R-0036 第 4 条后半）。 */
+async function runPresentGrantScene() {
+  console.log('=== 1/14 构建并启动真宿主（独立临时库，6 席）===')
+  await ensureServerArtifacts({ repositoryRoot, buildMode: config.buildMode })
+  await startServer({ serverUrl, databasePath, seatCount: ASSIGN.length })
+
+  console.log('=== 2/14 取票据并起 Vite ===')
   const ticket = readStorytellerTicket(databasePath)
   const seatTickets = readSeatTickets(databasePath)
   check('席位票据齐备（6 席）', seatTickets.length === 6, `数据库 ${seatTickets.length} 张`)
@@ -144,7 +156,7 @@ async function main() {
   children.push(vite)
   await waitForHttp(viteUrl, 'Vite 开发服务器', 60_000)
 
-  console.log('=== 3/10 说书人 + 哲学家（1 号）/ 方古（3 号）/ 呆瓜（5 号）加入真浏览器 ===')
+  console.log('=== 3/14 说书人 + 哲学家（1 号）/ 方古（3 号）/ 呆瓜（5 号）加入真浏览器 ===')
   const browser = await playwright.chromium.launch()
   const consoleErrors = []
   const storytellerPage = await newPage(browser, { width: 1600, height: 1100 }, consoleErrors)
@@ -176,7 +188,7 @@ async function main() {
     await connectSeat(seatTickets[MUTANT_SEAT - 1]),
   ]
 
-  console.log('=== 4/10 分配 → 开首夜 ===')
+  console.log('=== 4/14 分配 → 开首夜 ===')
   const assignmentSelects = storytellerPage.locator('section', { hasText: '开局分配' }).locator('select')
   for (const [index, slug] of ASSIGN.entries()) {
     await assignmentSelects.nth(index).selectOption(slug)
@@ -190,7 +202,7 @@ async function main() {
   const firstNight = await startNightWhenReady(storytellerPage, 1)
   check('开首夜被受理', firstNight.kind === 'Accepted', firstNight.raw)
 
-  console.log('=== 5/10 首夜 · 哲学家在真界面上选要获得的能力（镇民 / 外来者清单）===')
+  console.log('=== 5/14 首夜 · 哲学家在真界面上选要获得的能力（镇民 / 外来者清单）===')
   const philosopherOptions = philosopherPage.locator('[data-testid="player-request-options"] [data-option-value]')
   await philosopherOptions.first().waitFor({ timeout: 90_000 })
   const optionValues = await philosopherOptions.evaluateAll((nodes) =>
@@ -248,7 +260,7 @@ async function main() {
   await screenshot(storytellerPage, 'cc-03-effect-chain-grant')
   await setDataDrawer(storytellerPage, false)
 
-  console.log('=== 6/10 首夜 · 醉酒的筑梦师照常被唤醒（信息由说书人裁定）===')
+  console.log('=== 6/14 首夜 · 醉酒的筑梦师照常被唤醒（信息由说书人裁定）===')
   const dreamerRequests = await waitForSeatRequest(unrelatedSeats[0], 90_000)
   check('醉酒的筑梦师照常拿到请求（不因醉酒而不被唤醒）', dreamerRequests.length >= 1, `收到 ${dreamerRequests.length} 条`)
   const drunkAnswer = await unrelatedSeats[0].invoke(
@@ -264,7 +276,7 @@ async function main() {
   const settledDrunk = await settleFreeDecision(storytellerPage, '批次取证：本条信息由说书人裁定')
   check('该裁定被受理', settledDrunk.kind === 'Accepted', settledDrunk.raw)
 
-  console.log('=== 7/10 第二夜 · 哲学家在**自己的格**上代行获得的能力；方古侵染外来者 ===')
+  console.log('=== 7/14 第二夜 · 哲学家在**自己的格**上代行获得的能力；方古侵染外来者 ===')
   const secondNight = await startNightWhenReady(storytellerPage, 2)
   check('开第二夜被受理', secondNight.kind === 'Accepted', secondNight.raw)
 
@@ -331,7 +343,7 @@ async function main() {
   )
   check('第二夜的筑梦师槽位可被强制作废（夜继续走）', nightTwoVoid.kind === 'Accepted', nightTwoVoid.raw)
 
-  console.log('=== 8/10 第三夜 · 「限一次」已用 → 击杀理发师（普通死亡）→ 理发师格开换角请求 ===')
+  console.log('=== 8/14 第三夜 · 「限一次」已用 → 击杀理发师（普通死亡）→ 理发师格开换角请求 ===')
   const thirdNight = await startNightWhenReady(storytellerPage, 3)
   check('开第三夜被受理', thirdNight.kind === 'Accepted', thirdNight.raw)
 
@@ -438,7 +450,7 @@ async function main() {
   await screenshot(storytellerPage, 'cc-10-grant-terminated')
   await setDataDrawer(storytellerPage, false)
 
-  console.log('=== 9/10 视角隔离：玩家端没有这些说书人专属事实 ===')
+  console.log('=== 9/14 视角隔离：玩家端没有这些说书人专属事实 ===')
   const philosopherPageText = compact(await philosopherPage.locator('body').innerText())
   check(
     '哲学家自己的页面上没有能力事实字段（获得能力 / philosopher.grant）',
@@ -455,8 +467,159 @@ async function main() {
       `已扫描 ${unrelatedSeats.reduce((total, client) => total + client.messages.length, 0)} 条推送`,
   )
 
-  console.log('=== 10/10 收口 ===')
+  console.log('=== 10/14 收口 ===')
   check('浏览器控制台没有报错', consoleErrors.length === 0, consoleErrors.slice(0, 3).join(' | '))
+  await browser.close()
+}
+
+/**
+ * 第二局（E17 残余②，R-0036 第 4 条的另一条路径）：被获得角色**不在场**时，当夜那一格就地激活由他代行。
+ * 与第一局只差一处：1 号选的钟表匠不在 6 席花名册里（它的格没有行动者），因此落格落在**它的格**上。
+ */
+async function runAbsentGrantScene() {
+  const absentServerUrl = `http://localhost:${options.port + 1}`
+  const absentViteUrl = `http://localhost:${options.vitePort + 1}`
+  const absentDatabasePath = path.join(workspace, 'philosopher-absent.db')
+
+  console.log('=== 11/14 第二局：起第二个真宿主（独立临时库）+ 第二套 Vite ===')
+  // 宿主产物第一局已经备好（ensureServerArtifacts 跑在更前面），这里只起进程。
+  await startServer({ serverUrl: absentServerUrl, databasePath: absentDatabasePath, seatCount: ASSIGN.length })
+  const ticket = readStorytellerTicket(absentDatabasePath)
+  const seatTickets = readSeatTickets(absentDatabasePath)
+  check('第二局：席位票据齐备（6 席）', seatTickets.length === 6, `数据库 ${seatTickets.length} 张`)
+
+  const vite = spawn(
+    process.execPath,
+    [
+      path.join(webRoot, 'node_modules', 'vite', 'bin', 'vite.js'),
+      '--port',
+      String(options.vitePort + 1),
+      '--strictPort',
+    ],
+    {
+      cwd: webRoot,
+      env: { ...process.env, VITE_SERVER_TARGET: absentServerUrl, VITE_SEAT_COUNT: String(ASSIGN.length) },
+      stdio: 'ignore',
+    },
+  )
+  children.push(vite)
+  await waitForHttp(absentViteUrl, '第二套 Vite 开发服务器', 60_000)
+
+  console.log('=== 12/14 第二局：说书人 + 哲学家（1 号）加入 → 分配 → 开首夜 ===')
+  const browser = await playwright.chromium.launch()
+  const consoleErrors = []
+  const storytellerPage = await newPage(browser, { width: 1600, height: 1100 }, consoleErrors)
+  await storytellerPage.goto(absentViteUrl)
+  await storytellerPage.getByPlaceholder('说书人票据').fill(ticket)
+  await storytellerPage.getByRole('button', { name: '加入' }).click()
+  await storytellerPage.locator('[data-testid="grimoire"]').waitFor({ timeout: 30_000 })
+  check('第二局：说书人加入后看板可见（魔典主视图）', (await storytellerPage.locator('[data-testid="grimoire"]').count()) === 1)
+
+  const philosopherPage = await newPage(browser, { width: 900, height: 1100 }, consoleErrors)
+  await philosopherPage.goto(`${absentViteUrl}/#player`)
+  await philosopherPage.getByPlaceholder('席位票据').fill(seatTickets[PHILOSOPHER_SEAT - 1].ticket)
+  await philosopherPage.getByRole('button', { name: '加入' }).click()
+  const absentBadge = await waitForText(
+    philosopherPage.locator('[data-testid="player-seat"]'),
+    String(PHILOSOPHER_SEAT),
+    30_000,
+  )
+  check('第二局：哲学家席（1 号）加入玩家端', absentBadge.includes(String(PHILOSOPHER_SEAT)), absentBadge)
+
+  const assignmentSelects = storytellerPage.locator('section', { hasText: '开局分配' }).locator('select')
+  for (const [index, slug] of ASSIGN.entries()) {
+    await assignmentSelects.nth(index).selectOption(slug)
+  }
+
+  const assigned = await runCommand(storytellerPage, '分配', () =>
+    storytellerPage.getByRole('button', { name: '提交分配' }).click(),
+  )
+  check('第二局：分配 6 个角色被受理', assigned.kind === 'Accepted', assigned.raw)
+  const firstNight = await startNightWhenReady(storytellerPage, 1)
+  check('第二局：开首夜被受理', firstNight.kind === 'Accepted', firstNight.raw)
+
+  console.log('=== 13/14 第二局：哲学家选**不在场**的钟表匠（不变身、没有醉酒对象）===')
+  const absentOptions = philosopherPage.locator('[data-testid="player-request-options"] [data-option-value]')
+  await absentOptions.first().waitFor({ timeout: 90_000 })
+  const absentValues = await absentOptions.evaluateAll((nodes) =>
+    nodes.map((node) => node.getAttribute('data-option-value')),
+  )
+  check(
+    '第二局：清单含钟表匠——它不在场上（6 席花名册里没有 clockmaker）',
+    absentValues.includes('clockmaker'),
+    `${absentValues.length} 项`,
+  )
+  await screenshot(philosopherPage, 'cc-11-absent-grant-choice')
+
+  await philosopherPage.locator('[data-testid="player-request-options"] [data-option-value="clockmaker"]').click()
+  await philosopherPage.getByTestId('player-submit').click()
+
+  const philosopherCard = storytellerPage.locator(`[data-testid="grimoire-seat"][data-seat="${PHILOSOPHER_SEAT}"]`)
+  const stillPhilosopher = await waitForAttribute(philosopherCard, 'data-character', 'philosopher', 30_000)
+  check('第二局：哲学家**不变身**（角色维度仍是 philosopher）', stillPhilosopher === 'philosopher', `data-character=${stillPhilosopher}`)
+  const absentGrantMark = await waitForLocatorContains(philosopherCard, '获得能力', 30_000)
+  check('第二局：牌面出现「获得能力」标记（不变身地获得）', absentGrantMark.includes('获得能力'), compact(absentGrantMark))
+
+  const absentSeatCards = storytellerPage.locator('[data-testid="grimoire-seat"]')
+  const absentSeatTexts = await absentSeatCards.evaluateAll((nodes) => nodes.map((node) => node.innerText))
+  const drunkSeats = absentSeatTexts.filter((text) => text.includes('醉酒'))
+  check(
+    '第二局：被选角色不在场 → 没有醉酒对象（6 席牌面都没有「醉酒」标记）',
+    drunkSeats.length === 0,
+    drunkSeats.length === 0 ? `已扫描 ${absentSeatTexts.length} 席` : drunkSeats.map(compact).join(' | '),
+  )
+
+  await setDataDrawer(storytellerPage, true)
+  const absentChain = await panelText(storytellerPage, '效果归因链')
+  check(
+    '第二局：效果链的获得能力事实带「钟表匠」',
+    absentChain.includes('philosopher.grant') && absentChain.includes('钟表匠'),
+    compact(absentChain),
+  )
+  check(
+    '第二局：效果链里没有常驻醉酒（philosopher.grant.drunk）',
+    !absentChain.includes('philosopher.grant.drunk'),
+    compact(absentChain),
+  )
+  await screenshot(storytellerPage, 'cc-12-absent-grant-chain')
+  await setDataDrawer(storytellerPage, false)
+
+  console.log('=== 14/14 第二局：同一夜钟表匠的格就地激活由他代行 → 裁定 → 账本与玩家端 ===')
+  const absentDecision = await waitForDecision(storytellerPage, (text) => text.includes('钟表匠'), 90_000)
+  check(
+    '第二局：同一夜（本局从未开第二夜）钟表匠的格就地激活为代行槽位',
+    absentDecision.includes('钟表匠获得信息'),
+    compact(absentDecision),
+  )
+  await screenshot(storytellerPage, 'cc-13-absent-delegated-decision')
+
+  const absentSettled = await settleFreeDecision(storytellerPage, '最近距离 3')
+  check('第二局：钟表匠的信息由说书人裁定并受理', absentSettled.kind === 'Accepted', absentSettled.raw)
+
+  await setDataDrawer(storytellerPage, true)
+  const ledgerSection = storytellerPage.locator('[data-testid="data-drawer-body"] section.panel', {
+    hasText: '账本与结算结论',
+  })
+  const absentLedger = await waitForText(ledgerSection, 'clockmaker', 30_000)
+  check(
+    '第二局：账本记行动者哲学家（1 号）· 能力钟表匠 · 正常生效',
+    absentLedger.includes('1 号') && absentLedger.includes('clockmaker') && absentLedger.includes('正常生效'),
+    compact(absentLedger),
+  )
+  await screenshot(storytellerPage, 'cc-14-absent-ledger')
+  await setDataDrawer(storytellerPage, false)
+
+  const absentInfo = await waitForText(
+    philosopherPage.locator('[data-testid="player-information"]'),
+    '最近距离 3',
+    30_000,
+  )
+  check(
+    '第二局：信息结果下发到哲学家本人（能力名 clockmaker）',
+    absentInfo.includes('clockmaker') && absentInfo.includes('最近距离 3'),
+    compact(absentInfo),
+  )
+  check('第二局：浏览器控制台没有报错', consoleErrors.length === 0, consoleErrors.slice(0, 3).join(' | '))
   await browser.close()
 }
 
@@ -702,7 +865,8 @@ function compact(text) {
   return String(text ?? '').replace(/\s+/g, ' ').trim()
 }
 
-async function startServer() {
+/** 起一个真宿主进程（同一份 Release 产物；第二局换独立临时库与端口）。 */
+async function startServer({ serverUrl, databasePath, seatCount }) {
   const executableSuffix = process.platform === 'win32' ? '.exe' : ''
   const serverExecutable = path.join(
     repositoryRoot,
@@ -719,7 +883,7 @@ async function startServer() {
       ...process.env,
       ASPNETCORE_URLS: serverUrl,
       GameServer__DatabasePath: databasePath,
-      GameServer__SeatCount: String(ASSIGN.length),
+      GameServer__SeatCount: String(seatCount),
       GameServer__SlotQuotaSeconds: String(config.quotaSeconds),
       GameServer__PacerIntervalMilliseconds: '200',
       DOTNET_ENVIRONMENT: 'Production',
@@ -800,6 +964,11 @@ function parseArguments(argv) {
     if (!Number.isFinite(value) || value <= 0) {
       throw new Error(`${name} 非法：${value}`)
     }
+  }
+
+  // 第二局用「第一局端口 +1」（见文件头）：两对端口交叉相等时，两套宿主 / Vite 会互相抢端口。
+  if (parsed.vitePort === parsed.port + 1 || parsed.vitePort + 1 === parsed.port) {
+    throw new Error(`端口组合与「第二局 = 第一局 +1」冲突：--port ${parsed.port} / --vite-port ${parsed.vitePort}`)
   }
 
   return parsed
