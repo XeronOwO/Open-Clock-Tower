@@ -163,7 +163,8 @@ public sealed class TerminalHoldResidueTests
 
     /// <summary>
     /// 矩阵行 2：结束批次**没有**阻塞报警时不产生多余事件（幂等）。
-    /// 同一个夹具计划的阻塞面被拆掉——计划里绑的角色没有任何存活持有者，这一格安静地空着。
+    /// 同一个夹具计划的阻塞面被拆掉——计划里绑的角色（dreamer）没分配给任何席位，
+    /// <c>OrphanReason</c> 找不到"恰好一名存活持有者"，这一格安静地空着。
     /// </summary>
     [Fact]
     public async Task EndingWithoutBlock_EmitsNoUnblockEvent()

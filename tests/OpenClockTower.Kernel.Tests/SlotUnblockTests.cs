@@ -72,6 +72,21 @@ public sealed class SlotUnblockTests
     }
 
     /// <summary>
+    /// 计划已走完（<see cref="StepMachineState.CurrentSlot"/> 为空）却还带着阻塞 → 同样按顺序损坏抛错。
+    /// 生产路径走不到这种状态（推进到计划末尾的事件本身就会清掉阻塞），这里是防御性契约：
+    /// 顺序损坏时显式失败，不静默继续（D-0014 能力 3）。
+    /// </summary>
+    [Fact]
+    public void Unblock_AfterPlanCompleted_Throws()
+    {
+        var blocked = Blocked().State!;
+        var completed = blocked with { SlotIndex = blocked.Plan.Slots.Count };
+
+        Assert.Null(completed.CurrentSlot);
+        Assert.Throws<InvalidOperationException>(() => StepMachine.Apply(completed, Unblock(blocked)));
+    }
+
+    /// <summary>
     /// 状态账折叠保持无操作：它改的是步骤机状态，不进六维度与效果；
     /// 登记在案才不会被当成"未知事件类型"拒绝（恢复链路的第二个折叠器）。
     /// </summary>

@@ -136,10 +136,12 @@
 - 主装置 `tools/verify-storyteller-panel.mjs`（取证档 `--quota 2 --screenshots-all --build`）：
   **177 项断言 / 0 跳过**（39 张截图均为本次运行写入，113.5s，退出码 0）——终局面（`final`）与重连面
   （`reconnect`）作为本票回归；
-- 真宿主用例（真宿主 + 真 SignalR + 真 SQLite）：`TerminalHoldResidueTests` **2/2**、`SlotUnblockTests` **5/5**；
-- 冻结版门禁：`dotnet build` 0 警告 / 0 错误；`dotnet test` **597 通过 / 0 失败**
-  （Kernel 269 · Rules 208 · Integration 97 · NormativeGates 23）；`dotnet format` 退出码 0（未改写任何文件）；
+- 真宿主用例（真宿主 + 真 SignalR + 真 SQLite）：`TerminalHoldResidueTests` **2/2**、`SlotUnblockTests` **6/6**；
+- 冻结版门禁：`dotnet build` 0 警告 / 0 错误；`dotnet test` **598 通过 / 0 失败**
+  （Kernel 270 · Rules 208 · Integration 97 · NormativeGates 23）；`dotnet format` 退出码 0（未改写任何文件）；
 - `npm run gate` 未跑：本票无 `web/` 改动，按门禁规则跳过。
+- 本票产品代码提交为 `fc9a41f`；其后一笔提交只含独立对抗性复核后的**测试与文档**增补（不改产品代码），
+  故本批真机证据对产品面继续有效。
 
 批次 E19 判出：
 

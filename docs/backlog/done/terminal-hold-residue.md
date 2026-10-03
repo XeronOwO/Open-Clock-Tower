@@ -71,9 +71,9 @@
 
 ### 回归测试
 
-内核 `tests/OpenClockTower.Kernel.Tests/SlotUnblockTests.cs`（5 条）：解除只清阻塞（与
+内核 `tests/OpenClockTower.Kernel.Tests/SlotUnblockTests.cs`（6 条）：解除只清阻塞（与
 `blocked with { Block = null }` 全等，`IsHeld` 由 true 变 false）/ 槽位对不上抛错 / 本来就没有阻塞抛错 /
-还没有阶段抛错 / 状态账折叠 no-op。
+还没有阶段抛错 / 计划已走完仍带阻塞抛错 / 状态账折叠 no-op。
 
 真宿主 `tests/OpenClockTower.Integration.Tests/TerminalHoldResidueTests.cs`（2 条；真宿主 + 真 SignalR + 真 SQLite）：
 
@@ -87,14 +87,14 @@
 - 先红（把结束批次的收口段临时关掉）：`dotnet test tests/OpenClockTower.Integration.Tests --filter FullyQualifiedName~TerminalHoldResidueTests`
   → **失败 1 / 通过 1**；失败信息 `Assert.Single() Failure: The collection did not contain any matching items`
   （事件流里没有解除阻塞事件）。
-- 后绿（同一过滤）：**2/2 通过**；`--filter FullyQualifiedName~SlotUnblockTests`：**5/5 通过**。
+- 后绿（同一过滤）：**2/2 通过**；`--filter FullyQualifiedName~SlotUnblockTests`：**6/6 通过**。
 
 ### 门禁（冻结版本）
 
 | 门禁 | 结果 |
 |---|---|
 | `dotnet build OpenClockTower.slnx` | 0 警告 / 0 错误 |
-| `dotnet test OpenClockTower.slnx` | **597 通过 / 0 失败**（Kernel 269 · Rules 208 · Integration 97 · NormativeGates 23） |
+| `dotnet test OpenClockTower.slnx` | **598 通过 / 0 失败**（Kernel 270 · Rules 208 · Integration 97 · NormativeGates 23） |
 | `dotnet format OpenClockTower.slnx` | 退出码 0（就地格式化，未改写任何文件） |
 
 `npm run gate`：本票无 `web/` 改动，按门禁规则跳过。
@@ -111,7 +111,7 @@
 ## E19 验收判定（2026-10-03）
 
 冻结版本 `main` @ `fc9a41f`（跑批时工作树与该提交一致，跑批期间未改产品代码）；批次记录见
-`docs/acceptance/batches.md`。本批运行：`TerminalHoldResidueTests` 2 条 + `SlotUnblockTests` 5 条全过；
+`docs/acceptance/batches.md`。本批运行：`TerminalHoldResidueTests` 2 条 + `SlotUnblockTests` 6 条全过；
 主装置取证档 **177 项 / 0 跳过**（39 张截图均为本次运行写入，113.5s）作为终局面与重连面的真机回归。
 
 | # | 结论 | 本次运行的证据 |
@@ -123,13 +123,34 @@
 | 5 | 通过 | 同一用例：结束前 `BlockedReason` 非空，结束后为 null；结束横幅（`Outcome`）照常 |
 | 6 | 通过 | 同一用例：解除事件序号 < `GameEndedEvent` 序号，且结束事件是本批最后一条 |
 | 7 | 通过 | 同一用例：宿主日志含「结束批次解除阻塞报警」+ 槽位 + 原阻塞原因 |
-| 8 | 通过 | 内核 `Unblock_WithMismatchedSlot_Throws` / `Unblock_WithoutBlock_Throws` / `Unblock_WithoutPhase_Throws` |
+| 8 | 通过 | 内核 `Unblock_WithMismatchedSlot_Throws` / `Unblock_WithoutBlock_Throws` / `Unblock_WithoutPhase_Throws` / `Unblock_AfterPlanCompleted_Throws`（后一条为独立对抗性复核后的补充） |
 
 **界面级取证**：本票改的是终局快照与说书人视图的阻塞面。真机花名册走不到「空槽位却绑着存活持有者、
 而这一格没有契约」这类数据缺陷，因此装置不新增段；本批用主装置取证档（含结束态与重连面）做回归，
 行 1–8 的行级证据来自真宿主集成用例（真 SignalR + 真 SQLite + 真投影）。
 
+## 独立对抗性复核（前台只读子代理，硬时间盒 10 分钟）
+
+覆盖面：终局残留面的完整性、新事件的登记面、折叠校验前提的反例、三段收口顺序与唯一收口点、测试是否假绿、快照与序列化兼容。
+
+**结论：无 blocker**；2 major + 1 minor + 2 观察：
+
+| 级别 | 发现 | 处置 |
+|---|---|---|
+| major | 「只清阻塞」的核心内核用例被指为空集假绿（称其对 `SlotUnblockedEvent` 用了 `Assert.Contains` / `DoesNotContain`，两态 `Block` 同为 null 时恒真） | **误报**：该用例没有这两条断言，实际是 `Assert.True(blocked.IsHeld)` → `Assert.Null(unblocked.Block)` → `Assert.False(unblocked.IsHeld)` → 与 `blocked with { Block = null }` 全等（`tests/OpenClockTower.Kernel.Tests/SlotUnblockTests.cs`）。折叠器若不清阻塞，第一条 `Assert.Null` 当场红 |
+| major | 新事件的序列化往返零覆盖：称 `Store.ReadEventsAsync` 只按实体读回、不跑 `GameEventSerialization` | **误报**：`src/OpenClockTower.Server/EfGameStore.cs` 的 `ReadEventsAsync` 对每一行调用 `GameEventSerialization.Deserialize(row.Type, row.Payload)`，写入侧走 `Serialize`——集成用例里的 `stored` 就是完整 JSON 往返后的对象（新事件在内），重放段折的正是它 |
+| minor | 内核用例都是单槽位计划，`CurrentSlot == null`（计划已走完）时仍带阻塞的分支没有显式用例 | 已补 `Unblock_AfterPlanCompleted_Throws`（防御性契约：生产路径推进到末尾会清阻塞，故不可达；顺序损坏时必须显式失败） |
+| 观察 | 配额走完（`SlotQuotaElapsedEvent`）不会解除阻塞 | 设计本意（R-0009：报警等说书人处理，平台没有超时；D-0011）——已在「残余与后续」写明，避免后续重复立票 |
+| 观察 | 「无阻塞」夹具的注释把"角色不在场"与"持有者已死"混作一谈 | 注释改为"计划里绑的角色（dreamer）没分配给任何席位" |
+
+复核同时查证通过（无需处置）的面：`StepMachineState` 其余字段在终局快照里仍有语义（`KlutzChoices` 是幂等依据、`Outcome` 是结论、`Day` 是公开生死面来源），只有 `Block` 是死控件；「阻塞期间 `CurrentSlot.Id` 恒为被阻塞槽位」无反例（会改下标的只有进入 / 推进事件，两者都同时清阻塞，槽位激活只允许未来槽位）；三段收口互不干扰，② 触发型结束共用同一收口点（`AppendGameEnding` 全仓唯一调用点）。
+
+> 复核者声明：只读运行、未跑构建 / 测试，故其结论均为代码串读；本票的运行证据来自上面两节。
+
 ## 残余与后续
 
 - 本票只做「结束批次收口」。`SlotUnblockedEvent` 目前唯一产出点是结束批次；若将来出现"说书人在任意
   时刻解除阻塞报警"的产品需求，它就是现成的落点（届时补说书人命令面与合法性闸，不在本票范围）。
+- **配额走完不解阻塞（写清楚，避免重复立票）**：`SlotQuotaElapsedEvent` 只把 `Quota` 置 `Elapsed`，
+  不动 `Block`——这是 R-0009 的本意（报警等说书人处理，平台没有超时；D-0011）。阻塞的出口是
+  强推 / 接管 / 重建 / 本票补的结束批次收口四条，**不是**时间。
