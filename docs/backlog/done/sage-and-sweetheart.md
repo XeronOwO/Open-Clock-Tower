@@ -196,6 +196,6 @@ E24 判定时登记的两条「组合证据」残余（行 12 / 行 16）与「�
 （贤者触发型裁定「重进本格」的续推同理）。修法：幂等键带上**本次槽位进入的事件序号**
 （`SessionTrackers.SlotEntrySequence`），并把配额输入构造拆到 `SlotQuotaPacer`
 （顺带把 `GameSession.cs` 从 603 行拉回 600 行门禁内）。回归（先红后绿）：
-`BarberHostTests.BarberSwapAnsweredAfterQuotaElapsed_PlanStillAdvances`（把应答延后到配额到点之后，
-修复前 100% 卡死在理发师格）、`DeathTriggerHostTests.SageDecisionResolvedAfterQuotaElapsed_PlanStillAdvances`、
-`SessionTrackersSlotEntryTests`。全量 `dotnet test` **709 通过 / 0 失败**。
+`BarberHostTests.BarberSwapAnsweredAfterQuotaElapsed_PlanStillAdvances`（等到本夜理发师格的「配额到点」事件落库后再应答，
+修复前确定性卡死在理发师格）、`DeathTriggerHostTests.SageDecisionResolvedAfterQuotaElapsed_PlanStillAdvances`、
+`SessionTrackersSlotEntryTests`。全量 `dotnet test` **710 通过 / 0 失败**。
