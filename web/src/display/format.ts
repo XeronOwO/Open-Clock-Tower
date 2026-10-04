@@ -517,8 +517,9 @@ export function seatDisplayOf(seat: number, seatNames: readonly SeatDisplayNameD
 }
 
 /**
- * 选项文案本地化（D-0021）：选项值形如 `seat:N` / `pair:A+B` 时改用统一席位口径重写；
- * 其余（decline / 角色 slug / 未知编码）回退服务端原文，不猜、不吞。
+ * 选项文案本地化（D-0021）：选项值形如 `seat:N` / `pair:A+B` 且**这一席已经有玩家名**时，
+ * 用统一席位口径（「N 号 · 玩家名」）取代服务端原文；没名字一律保留服务端原文
+ * （服务端那句带语境，如「3 号玩家」，比光秃秃的「3 号」更有用——游客面上不动它）。
  */
 export function optionDisplayOf(
   option: DecisionOptionDto,
@@ -527,14 +528,26 @@ export function optionDisplayOf(
   const value = option.value
   if (value.startsWith('seat:')) {
     const seat = Number.parseInt(value.slice('seat:'.length), 10)
-    return Number.isInteger(seat) && seat > 0 ? seatDisplayOf(seat, seatNames) : option.preview
+    if (Number.isInteger(seat) && seat > 0 && displayNameOf(seat, seatNames) !== null) {
+      return seatDisplayOf(seat, seatNames)
+    }
+
+    return option.preview
   }
 
   if (value.startsWith('pair:')) {
     const parts = value.slice('pair:'.length).split('+')
     const first = Number.parseInt(parts[0] ?? '', 10)
     const second = Number.parseInt(parts[1] ?? '', 10)
-    if (parts.length === 2 && Number.isInteger(first) && Number.isInteger(second) && first > 0 && second > 0) {
+    if (
+      parts.length === 2
+      && Number.isInteger(first)
+      && Number.isInteger(second)
+      && first > 0
+      && second > 0
+      && displayNameOf(first, seatNames) !== null
+      && displayNameOf(second, seatNames) !== null
+    ) {
       return `${seatDisplayOf(first, seatNames)} + ${seatDisplayOf(second, seatNames)}`
     }
   }

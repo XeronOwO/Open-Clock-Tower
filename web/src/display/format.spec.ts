@@ -53,13 +53,26 @@ describe('不可信输入规范化（架构 §4.4）', () => {
     expect(seatDisplayOf(3, names)).toBe('3 号')
   })
 
-  it('选项文案按值格式本地化（D-0021）：seat:N / pair:A+B 走同一口径，其余回退服务端预览', () => {
+  it('选项文案按值格式本地化（D-0021）：有名字才改写，没名字保留服务端原文', () => {
     const names: SeatDisplayNameDto[] = [{ seat: 2, displayName: '小明' }]
 
     expect(optionDisplayOf({ value: 'seat:2', preview: '2 号玩家' }, names)).toBe('2 号 · 小明')
-    expect(optionDisplayOf({ value: 'pair:2+5', preview: '2 号 + 5 号' }, names)).toBe('2 号 · 小明 + 5 号')
+    expect(optionDisplayOf({ value: 'pair:2+5', preview: '2 号 + 5 号' }, names)).toBe('2 号 + 5 号')
+    expect(optionDisplayOf({ value: 'seat:3', preview: '3 号玩家' }, names)).toBe('3 号玩家')
+    expect(optionDisplayOf({ value: 'pair:3+4', preview: '3 号 + 4 号' }, names)).toBe('3 号 + 4 号')
     expect(optionDisplayOf({ value: 'clockmaker', preview: '钟表匠' }, names)).toBe('钟表匠')
     expect(optionDisplayOf({ value: 'seat:x', preview: '坏值原样' }, names)).toBe('坏值原样')
+  })
+
+  it('两名玩家都有名字时，配对选项同样换成统一席位口径', () => {
+    const names: SeatDisplayNameDto[] = [
+      { seat: 2, displayName: '小明' },
+      { seat: 5, displayName: '小红' },
+    ]
+
+    expect(optionDisplayOf({ value: 'pair:2+5', preview: '2 号 + 5 号' }, names)).toBe(
+      '2 号 · 小明 + 5 号 · 小红',
+    )
   })
 
   it('等待秒数未知时不编数字', () => {
