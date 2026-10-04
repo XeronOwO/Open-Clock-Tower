@@ -62,13 +62,14 @@ todo/  →  in-progress/  →  review/  →  done/
 
 - [夜晚顺序默认值对齐：命令层默认改为官方魔典顺序](todo/night-order-variant-default.md) — **Low** — 面板已默认 Recommended（= 官方魔典顺序，R-0014 已定案）；只剩命令层 `StartNightCommand.Variant` 默认值仍是 Original
 - [印刷规则书原件回核：R-0005 / R-0012 / R-0013 / R-0018 引文（R-0029 顺带）](todo/rulebook-original-crosscheck.md) — **Medium** — 三条裁定依第三方逐字提取文本收口，官方原件不在手；拿到实物后回核引文
-- [文档日期偏移核查](todo/doc-date-offset-audit.md) — **Low** — 多处记录写 2026-10-05（E31/E32 等），git 时间戳与外部服务器时间均为 2026-10-04；需统一核查
 
 ### In progress
 
 ### Review
 
 ### Done
+
+- [文档日期偏移核查：50 处「未来日期」记录按 git 时间线回填](done/doc-date-offset-audit.md) — 全仓扫描「记录日期晚于写入提交」的硬矛盾 56 处，50 处逐条回填真实日期（E14/E15/E16 → 10-02、E25 → 10-03、E31/E32 → 10-04；另含 madness / player-death / step-insights / rulings 等），其余 6 处为描述性叙述与合成夹具并写明；复扫脚本与输出随票留档
 
 - [旅行者与流放流程（首版纳入）](done/traveller-and-exile.md) — **High** — 《梦殒春宵》5 名旅行者（怪咖 / 集骨者 / 咖啡师 / 流莺 / 屠夫）+ 流放流程 + 加入 / 离开；范围决策 D-0022；批次 E34 判出矩阵 13 行全过（主装置取证档 284 项 + 零信任 51；冻结版门禁 1076 通过）
 
