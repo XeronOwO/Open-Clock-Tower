@@ -67,11 +67,11 @@ todo/  →  in-progress/  →  review/  →  done/
 
 ### In progress
 
-- [钟盘投票形态：设计与实现](in-progress/clock-vote-flow.md) — **Medium** — R-0017 目标形态（蓝针提名者 / 红针被提名者、倒计时默认 3s、分针旋转逐席收票默认 1s，可调）；落地前 R-0017 保持 Open
-
 ### Review
 
 ### Done
+
+- [钟盘投票形态：设计与实现](done/clock-vote-flow.md) — R-0017 目标形态落地：内核逐席严格时点收票 + 控制面时间轴 + 两端钟盘；批次 E33 判出 7 行验收矩阵全过（主装置取证档 202 项；winloss 28 / witch 28 / death-triggers 73 / retro-info 56；门禁 861 + 前端 163）
 
 - [角色图热链：席位牌显示百科角色图，失败降级为文字 + 阵营色环](done/character-art-hotlink.md) — **Medium** — 席位牌接入 25 人百科角色图（运行期热链、仓库无位图）；失败撤图降级、未知不请求；R-0006 实测收口为 Decided；主装置取证档 194 通过、12 装置迭代档全绿
 
@@ -140,7 +140,7 @@ todo/  →  in-progress/  →  review/  →  done/
 
 - [自我提名口径取证](resolved/self-nomination-source.md) — 已收口（2026-10-04）— R-0018 依印刷规则书 FAQ 转 `Decided`（允许自我提名）；现有实现与回归用例保留，无需改代码
 - [R-0041 的 6 人分布行取证](resolved/setup-distribution-6p-source.md) — 已收口（2026-10-04）— 需求方拍板 6 人行按 3 / 1 / 1 / 1 采纳，R-0041 转 `Decided`；实物素材出现时按复核路径可选回填
-- [R-0017 在线投票口径收口](resolved/online-vote-ruling-followup.md) — 已收口（2026-10-04）— 需求方给出目标形态「钟盘投票」；实现改造另立 `in-progress/clock-vote-flow.md`
+- [R-0017 在线投票口径收口](resolved/online-vote-ruling-followup.md) — 已收口（2026-10-04）— 需求方给出目标形态「钟盘投票」；实现改造另立 `done/clock-vote-flow.md`
 
 ### Watchlist
 

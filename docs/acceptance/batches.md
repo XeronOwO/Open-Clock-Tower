@@ -657,6 +657,34 @@ Integration 188 · NormativeGates 24）；`dotnet format` 就地通过；`npm ru
   跑批期间未改代码；本批记录本身是纯文档改动，按门禁规则跳过重跑。
 - 本批后 `in-progress/` 清空，`todo/` 余一张（装置属性读取收口，见票据索引）。
 
+## 批次 E33（2026-10-04，钟盘投票：R-0017 目标形态落地）
+
+冻结版本：`main` @ `be4d403`（实现 + 装置脚本；取证完成后只补了一条旧日志回放用例与文档，
+产品代码 / 装置脚本未再改动）。跑批期间未并行改代码。
+
+- 门禁（冻结版）：`dotnet build` 0 警告 0 错误；`dotnet test` **861 通过 / 0 失败**
+  （Kernel 335 · Rules 314 · Integration 188 · NormativeGates 24）；`dotnet format` 就地通过；
+  `npm run gate` 全绿（typecheck + lint + **163** 前端单测 + build）；收尾
+  `dotnet build-server shutdown`（常驻节点归零）。
+- 装置取证档（全部 `--quota 2 --screenshots-all`，各一次完整取证档运行）：
+  - 主装置 `verify-storyteller-panel.mjs`：**202 项全部通过、退出码 0**（day1 19/19；合计 116.2s；截图 39 张）；
+  - `verify-winloss.mjs` **28**、`verify-witch.mjs` **28**、`verify-death-triggers.mjs` **73**、
+    `verify-retro-info.mjs` **56**，全部通过、退出码 0。
+- 判出：**R-0017 这张票的 7 行验收矩阵全部通过** → 票据 `clock-vote-flow` 移入 `done/`
+  （R-0017 已按「落地后转 Decided」更新；设计定稿 5 条见票据，需求方如要改口径先改 R-0017 再改代码）。
+- 截图复核：`32-day-dial-countdown.png`（蓝针 2 号、红针 1 号、倒计时 2）、
+  `33-day-sweep-collecting.png`（当前指向 3 号、已收 2 席）；其余 37 张为同一次运行写入、未逐张复核（如实记录）。
+
+诚实记录：
+
+- **装置计时基线更新**：主装置迭代档本轮 44.3s（历史 27.0s——白天钟盘收票固定约 5s + 冷启动
+  Release 重建），取证档 116.2s；四个辅助装置白天段各加约 4s。
+- 本轮只改了 5 个装置（主装置 day1 段 + winloss / witch / death-triggers / retro-info 的白天段）：
+  迭代档先全绿、再跑取证档；其余装置与白天无关，未重跑。
+- 旧日志兼容（`VoteCastEvent` 无 `Sweep` 时按旧形态折叠）只有内核回放用例覆盖，没有真机旧库样本。
+- E31 / E32 标题里的 10-05 属日期偏移（真实日期 2026-10-04，见 `todo/doc-date-offset-audit.md`）；
+  本批按真实日期记录。
+
 ## 相关阅读
 
 - 验收规程：`docs/acceptance/AGENTS.md`

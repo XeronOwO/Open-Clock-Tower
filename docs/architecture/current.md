@@ -192,7 +192,7 @@ DecisionPoint
 逐角色实现（25 个角色）仍按票分批补，残余事项见
 `docs/backlog/done/settlement-engine.md`。
 
-**白天阶段（2026-10-02 落地）**：
+**白天阶段（2026-10-02 落地；2026-10-04 钟盘收票替换投票窗口）**：
 
 | 环节 | 实现 | 依据 |
 |---|---|---|
@@ -200,9 +200,9 @@ DecisionPoint
 | 白天账 | `DayState`（在 `StepMachineState.Day`，随快照持久化、随事件折叠、**跨阶段保留**）：逐日提名 / 票面 / 即将被处决 / 处决，以及死亡玩家已消耗的投票权 | D-0010 |
 | 事件 | `DayStarted` / `NominationMade` / `VoteCast` / `VoteCounted` / `Executed` / `DayClosed`；计票结论随事件携带（阈值依赖计票当刻的存活人数，折叠层不重算） | D-0010 |
 | 提名 | 仅存活者可发起、同日一次、被提名一次、同一时间一项；死亡玩家可被提名；自我提名暂取允许 | 百科《提名》· 2026-10-01 抓取；R-0018 |
-| 投票与计票 | 投票窗口内可改票（平台口径）；计票以快照为准：票数**严格最多** + ≥ 存活人数一半 + ≥1；平局取消，后来者须超过打平票数 | 百科《投票》· 2026-10-01 抓取；R-0017 |
+| 钟盘收票与计票 | 说书人点「开始」→ 倒计时 → 分针按席位升序逐席收票（严格时点：先举也算、过时不候）；收票全部完成后计票，票面 = 逐席冻结结论：票数**严格最多** + ≥ 存活人数一半 + ≥1；平局取消，后来者须超过打平票数。节奏参数只属呈现、不参与判定；服务端重启 / 重建后的中断收票由说书人「继续收票」续收、不追补 | 百科《投票》· 2026-10-01 抓取；R-0017（2026-10-04 钟盘形态） |
 | 处决 | 提名阶段结束时处决当前「即将被处决」者；`ExecutedEvent` 与死亡 `SeatStateChangedEvent` **分开记录**（处决 ≠ 死亡）；每白天最多一次；无人够票则白天以无人被处决收尾。**处罚处决**（说书人主动处决，R-0020）与常规处决共用这条上限：白天形态立即收口白天，夜晚形态不占任何白天的上限 | 百科《规则概要》三-3 /《处决》；R-0020 |
-| 命令与投影 | `StartDay` / `Nominate` / `CastVote` / `CountVotes` / `CloseDay` / `PunishExecution` 六条命令；白天是公开信息，按席位投影后广播（`ReceiveDayChanged`），重连由 `PlayerView.Day` 快照覆盖同一份事实 | D-0012 §4.3 |
+| 命令与投影 | `StartDay` / `Nominate` / `CastVote` / `StartVoteSweep` / `ResumeVoteSweep` / `CountVotes` / `CloseDay` / `PunishExecution` 命令；逐席到点由控制面 `VoteSweepPacer` 送系统输入（时间只在应用层）；白天是公开信息（含举手与收票相位），按席位投影后广播（`ReceiveDayChanged`），重连由 `PlayerView.Day` 快照覆盖同一份事实 | D-0012 §4.3 / R-0017 |
 | 边界 | 与白天相关但契约未实现的角色（博学者 / 杂耍艺人）在场时，开白天显式拒绝（`legality.day_contract_missing`）；女巫、洗脑师、畸形秀演员、呆瓜、镜像双子、涡流、理发师、心上人、**艺术家**已覆盖（见下） | 架构 §2.6 能力边界同族 |
 | 事件触发与能力存续 | `IEventTrigger`（「本轮新事件 + 当前账」→ 后果，**有界级联**，超限显式抛错）+ `IAbilityPresence`（能力在特定局势下失去 → 解除它名下的效果）；应用层在同一次原子提交里编排「触发 → 常驻 / 存续 / 维度」。首位消费者：女巫的「被诅咒者提名即死」 | 票据 `done/witch-curse.md`；D-0010 / D-0015 |
 | 疯狂与处罚处决 | 洗脑师夜晚做**两维原子选择**（玩家 × 善良角色，`ChoicePrompt.SecondaryOptions`，R-0021）并写入疯狂要求、私密告知目标；说书人用 `PunishExecution` 主动处决（白天占上限 + 立即入夜 / 夜晚不占次日上限 / 已死亡目标只记被处决，R-0020）；要求在下个黎明到期，来源死亡 / 换角立即撤下 | 票据 `done/madness-and-adjudicated-execution.md`；R-0020 / R-0021 |
@@ -254,7 +254,7 @@ StepMachine（步骤机）
 | 事件与重放 | 50 种 `GameEvent`（覆盖阶段 / 槽位 / 请求 / 裁定 / 阻塞、状态账与效果、白天、胜负、裁决与死亡触发各事件族）；`StepMachine.Handle` 产事件、`StepMachineFolder` 折叠重建；**账事件可先于任何阶段**（开局分配），此时步骤机保持"尚未开始"；重启 = 重放，恢复 = 重放后替换快照 |
 | 开局分配 | `AssignCharactersCommand`：每席一条 `SeatStateChangedEvent`（角色 + 初始生死 = 存活），只允许在首个阶段开始前使用（D-0017 / R-0015） |
 | 建表 | `NightPlanBuilder` + `StartNightCommand`：口径进 `StepPlan.Variant`；缺事实显式拒绝，不猜（R-0014 / D-0013） |
-| 白天阶段 | `StartDayCommand` 开白天（单 `DayWindow` 槽位）→ `Nominate` / `CastVote` / `CountVotes` → `CloseDay` 处决并走完计划；`ForceAdvance` 兜底立即结束白天（未计票的提名先被要求计票，`docs/backlog/done/day-phase.md` / R-0017） |
+| 白天阶段 | `StartDayCommand` 开白天（单 `DayWindow` 槽位）→ `Nominate` / `CastVote` / `StartVoteSweep`（说书人）→ 控制面 `VoteSweepPacer` 逐席送 `CollectSeatVoteCommand` → `ResumeVoteSweep` 续收 → `CountVotes` → `CloseDay` 处决并走完计划；`ForceAdvance` 兜底立即结束白天（未计票的提名先被要求计票，`docs/backlog/done/day-phase.md` / R-0017） |
 | 状态变化归因 | `SeatStateChangedEvent`（座位 + 实际观测维度 + 原因 + 导致方）；说书人视图给 `RecentSeatChanges` / `CurrentSlotActor` / `CurrentSlotContext` / `StepDigest`（每步摘要：状态 + 能力判定 + 作废说明） |
 | 玩家可见事件 | 重连补齐只下发 `PlayerEvent` **白名单投影**（公开阶段 + 发给自己的请求 / 响应 / 作废），**绝不下发原始事件流**；**在线推送的覆盖面与它一一对应**（五类事件各有通知，`PlayerNotificationBuilderTests` 锁住） |
 | 控制模式 | `ControlMode.Automatic` / `StorytellerTakeover`；接管时节拍器不自动推进，交还后恢复 |

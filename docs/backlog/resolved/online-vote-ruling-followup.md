@@ -2,7 +2,7 @@
 
 - Status: Resolved（2026-10-04）
 - Priority: Low
-- Depends on: `docs/standard/rulings.md` R-0017（目标形态已定：钟盘投票；实现见 `in-progress/clock-vote-flow.md`）
+- Depends on: `docs/standard/rulings.md` R-0017（目标形态已定：钟盘投票；实现见 `done/clock-vote-flow.md`）
 
 ## 要解决的问题
 
@@ -14,7 +14,7 @@ R-0017 的默认口径已完整实现（投票开放窗口、可反复改票、�
 
 需求方给出**目标形态**：线上投票按钟盘意象实现（蓝时针 = 提名者、红分针 = 被提名者；
 发言结束后说书人点开始 → 倒计时默认 3s → 分针旋转逐席收票、间隔默认 1s，两个参数可调）。
-方向已定，本票关闭（resolved）；**实现改造跟进另立 `in-progress/clock-vote-flow.md`**，
+方向已定，本票关闭（resolved）；**实现改造跟进另立 `done/clock-vote-flow.md`**，
 R-0017 在新形态落地前保持 `Open`（现行默认口径仍有效）。
 
 ## 验收矩阵
