@@ -448,3 +448,50 @@ export interface PlayerEventDto {
   voidNote: string | null
   information: InformationResultDto | null
 }
+
+/**
+ * -------- 复盘（终局后玩家面 / 说书人实时面；R-0043 / D-0020）--------
+ * 这些契约只在 `GameEndedEvent` 之后下发给对局内玩家；进行中玩家收包零复盘字段
+ * （服务端闸在 `GameSession.GetReplayAsync`，反方向由集成用例与零信任装置断言）。
+ */
+
+/** 复盘标记：圆盘上的可视化（术语表 slug）。 */
+export interface ReplayMarkerDto {
+  kind: string
+  seat: number | null
+  from: number | null
+  to: number | null
+  text: string | null
+}
+
+/** 复盘步骤引发的一条席位事实增量（未观测维度为 null，不是默认值）。 */
+export interface ReplaySeatDeltaDto {
+  seat: number
+  life: string | null
+  character: string | null
+  previousCharacter: string | null
+  alignment: string | null
+  drunk: string | null
+  poison: string | null
+  reason: string | null
+  causedBy: number | null
+}
+
+/** 复盘时间轴上的一个原子步骤：一条事件一个步骤，顺序 = 事件序号。 */
+export interface ReplayStepDto {
+  sequence: number
+  kind: string
+  phase: string | null
+  summary: string
+  detail: string | null
+  seats: ReplaySeatDeltaDto[]
+  markers: ReplayMarkerDto[]
+}
+
+/** 复盘视图（一页）：按事件序号懒加载。 */
+export interface ReplayViewDto {
+  sequence: number
+  ended: boolean
+  hasMore: boolean
+  steps: ReplayStepDto[]
+}

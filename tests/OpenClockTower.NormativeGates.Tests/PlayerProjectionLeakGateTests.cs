@@ -64,6 +64,24 @@ public sealed partial class PlayerProjectionLeakGateTests
         "StorytellerViewDto.cs",
     };
 
+    /// <summary>
+    /// **终局后可见**的玩家面契约（R-0043 / D-0020）：只在 <c>GameEndedEvent</c> 之后下发给对局内玩家。
+    /// </summary>
+    /// <remarks>
+    /// 它们刻意不进 <see cref="ScannedFiles"/>——那份名单的禁词（Seats / Effects / Facts…）正是复盘
+    /// 终局后要呈现的内容；也不进 <see cref="StorytellerOnlyContracts"/>——它们不是说书人专属。
+    /// 这是把「终局揭示」从 D-0012 的默认禁词扫描里**显式分出来**，不是给玩家面开后门：
+    /// 服务端闸在 `GameSession.GetReplayAsync`（进行中玩家调用直接拒绝并记审计），
+    /// 反方向由集成用例与零信任装置断言「进行中零复盘字段」。
+    /// </remarks>
+    private static readonly HashSet<string> PostEndPlayerContracts = new(StringComparer.Ordinal)
+    {
+        "ReplayViewDto.cs",
+        "ReplayStepDto.cs",
+        "ReplaySeatDeltaDto.cs",
+        "ReplayMarkerDto.cs",
+    };
+
     private static readonly string[] ForbiddenTokens =
     [
         // 轮次 / 进度（D-0013 §5）
@@ -160,14 +178,23 @@ public sealed partial class PlayerProjectionLeakGateTests
 
         var scanned = FileNamesOf(ScannedFiles);
         var uncovered = contractFiles
-            .Where(name => !scanned.Contains(name) && !StorytellerOnlyContracts.Contains(name))
+            .Where(name => !scanned.Contains(name)
+                && !StorytellerOnlyContracts.Contains(name)
+                && !PostEndPlayerContracts.Contains(name))
             .OrderBy(name => name, StringComparer.Ordinal)
             .ToArray();
 
         Assert.True(
             uncovered.Length == 0,
-            "契约文件既不在玩家投影扫描面、也不在说书人专属豁免清单里——新增 DTO 必须显式登记："
+            "契约文件既不在玩家投影扫描面、也不在说书人专属 / 终局后玩家面清单里——新增 DTO 必须显式登记："
             + string.Join(", ", uncovered));
+
+        // 三份清单互斥：终局后玩家面既不是"进行中玩家可见"（禁词扫描会误伤），也不是"说书人专属"。
+        Assert.Empty(
+            ScannedFiles
+                .Select(path => Path.GetFileName(path) ?? string.Empty)
+                .Intersect(PostEndPlayerContracts));
+        Assert.Empty(StorytellerOnlyContracts.Intersect(PostEndPlayerContracts));
     }
 
     /// <summary>相对路径集合 → 文件名集合（用于覆盖自检）。</summary>
@@ -335,6 +362,10 @@ public sealed partial class PlayerProjectionLeakGateTests
         "@/services/ticketStore",
         // 玩家侧自己的子组件（白天操作区）；新增依赖必须显式登记并复核（见上方注释）。
         "@/features/player/PlayerDayPanel.vue",
+        // 复盘（终局后玩家面，R-0043 / D-0020）：新契约类别由服务端闸门控制——进行中玩家收包
+        // 零复盘字段（反方向由集成用例与零信任装置断言），这里显式登记依赖，不做静默绕过。
+        "@/display/replay",
+        "@/features/replay/ReplayPanel.vue",
     };
 
     /// <summary>说书人专属的 DTO 类型名；玩家侧出现任何一个都说明越界。</summary>

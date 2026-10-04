@@ -25,6 +25,7 @@ public sealed class GameHub : Hub<IGameClient>
     private readonly IGameCatalog _catalog;
     private readonly GameId _gameId;
     private readonly GameSession _session;
+    private readonly ReplayQueryService _replay;
     private readonly ConnectionRegistry _registry;
     private readonly NotificationDispatcher _dispatcher;
     private readonly ILogger<GameHub> _logger;
@@ -34,6 +35,7 @@ public sealed class GameHub : Hub<IGameClient>
         IGameCatalog catalog,
         GameId gameId,
         GameSession session,
+        ReplayQueryService replay,
         ConnectionRegistry registry,
         NotificationDispatcher dispatcher,
         ILogger<GameHub> logger)
@@ -41,6 +43,7 @@ public sealed class GameHub : Hub<IGameClient>
         _catalog = catalog;
         _gameId = gameId;
         _session = session;
+        _replay = replay;
         _registry = registry;
         _dispatcher = dispatcher;
         _logger = logger;
@@ -380,6 +383,37 @@ public sealed class GameHub : Hub<IGameClient>
     {
         _ = ResolveStorytellerActor(credential);
         return ProjectionMapper.ToDto(_session.GetStorytellerView());
+    }
+
+    /// <summary>
+    /// 查询一页复盘（D-0020 / R-0043）：说书人随时可看（实时面），玩家只有本局结束之后才允许——
+    /// 可见性闸在 Application 强制；Server 只翻译身份与拒绝。
+    /// </summary>
+    /// <param name="credential">连接级凭据（D-0012）。</param>
+    /// <param name="afterSequence">客户端已拿到的最大事件序号；首次传 0。</param>
+    /// <param name="pageSize">本页最多返回的步骤数（Application 侧钳制）。</param>
+    public async Task<ReplayViewDto> GetReplay(string credential, long afterSequence, int pageSize)
+    {
+        var actor = ResolveActor(credential);
+        try
+        {
+            var replay = await _replay.ReadAsync(
+                actor,
+                afterSequence,
+                pageSize,
+                Context.ConnectionAborted);
+            return ProjectionMapper.ToDto(replay);
+        }
+        catch (ReplayAccessDeniedException exception)
+        {
+            // 中性文案：只说明什么时候可以看，不泄露任何局面信息（R-0043）。
+            _logger.LogInformation(
+                "复盘查询被拒：connection={ConnectionId} kind={Kind} 原因={Reason}",
+                Context.ConnectionId,
+                actor.Kind,
+                exception.Message);
+            throw new HubException(exception.Message);
+        }
     }
 
     /// <inheritdoc />

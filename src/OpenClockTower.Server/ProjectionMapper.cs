@@ -464,4 +464,49 @@ public static class ProjectionMapper
         Sequence = change.Sequence,
         RecordedAt = change.RecordedAt,
     };
+
+    /// <summary>复盘视图 → DTO（一页步骤；文案与标记都是服务端口径，前端只呈现）。</summary>
+    public static ReplayViewDto ToDto(ReplayView view) => new()
+    {
+        Sequence = view.Sequence,
+        Ended = view.Ended,
+        HasMore = view.HasMore,
+        Steps = [.. view.Steps.Select(step => ToDto(step))],
+    };
+
+    /// <summary>复盘步骤 → DTO。</summary>
+    public static ReplayStepDto ToDto(ReplayStep step) => new()
+    {
+        Sequence = step.Sequence,
+        Kind = step.Kind.ToString(),
+        Phase = step.Phase?.ToString(),
+        Summary = step.Summary,
+        Detail = step.Detail,
+        Seats = [.. step.Seats.Select(delta => ToDto(delta))],
+        Markers = [.. step.Markers.Select(marker => ToDto(marker))],
+    };
+
+    /// <summary>复盘席位增量 → DTO。</summary>
+    public static ReplaySeatDeltaDto ToDto(ReplaySeatDelta delta) => new()
+    {
+        Seat = delta.Seat.Value,
+        Life = delta.Life?.ToString(),
+        Character = delta.Character?.Value,
+        PreviousCharacter = delta.PreviousCharacter?.Value,
+        Alignment = delta.Alignment?.ToString(),
+        Drunk = delta.Drunk?.ToString(),
+        Poison = delta.Poison?.ToString(),
+        Reason = delta.Reason,
+        CausedBy = delta.CausedBy?.Value,
+    };
+
+    /// <summary>复盘标记 → DTO（kind 直接透传术语表 slug）。</summary>
+    public static ReplayMarkerDto ToDto(ReplayMarker marker) => new()
+    {
+        Kind = marker.Kind,
+        Seat = marker.Seat?.Value,
+        From = marker.From?.Value,
+        To = marker.To?.Value,
+        Text = marker.Text,
+    };
 }

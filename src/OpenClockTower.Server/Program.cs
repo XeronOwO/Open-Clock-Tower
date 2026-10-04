@@ -34,6 +34,11 @@ builder.Services.AddSingleton(provider => new GameSession(
     provider.GetRequiredService<IClock>(),
     provider.GetRequiredService<PacingOptions>(),
     provider.GetRequiredService<ILogger<GameSession>>()));
+// 复盘读侧（D-0020 / R-0043）：只读事件流 + 可见性闸，不依赖宿主内存态，因此独立于 GameSession 注册。
+builder.Services.AddSingleton(provider => new ReplayQueryService(
+    provider.GetRequiredService<GameId>(),
+    provider.GetRequiredService<IGameStore>(),
+    provider.GetRequiredService<ILogger<ReplayQueryService>>()));
 builder.Services.AddSingleton<ConnectionRegistry>();
 builder.Services.AddSingleton<NotificationDispatcher>();
 builder.Services.AddHostedService<GameBootstrapHostedService>();
