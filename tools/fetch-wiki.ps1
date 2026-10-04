@@ -91,6 +91,14 @@ $Pages = @(
     '亡骨魔'
     '诺-达鲺'
     '涡流'
+    # --- 旅行者（5 名，D-0022 / R-0007：首版范围含剧本自带的旅行者）---
+    # 咖啡师此前单独补抓过（2026-10-04 的索引里有记录）却漏在本表；补进来，
+    # 免得整表重抓时把它的快照从索引里挤掉（页表与索引必须同源）。
+    '怪咖'
+    '集骨者'
+    '咖啡师'
+    '流莺'
+    '屠夫'
     # --- Correction-evidence pages ---
     # Matched the old 431-page name check but are NOT Sects & Violets roles:
     # Spirit of Ivory is a Fabled, Zombuul is a Bad Moon Rising demon.

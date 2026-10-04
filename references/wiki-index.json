@@ -1,7 +1,7 @@
 {
   "source": "https://clocktower-wiki.gstonegames.com",
   "generatedAt": "2026-10-04",
-  "pageCount": 88,
+  "pageCount": 92,
   "pages": [
     {
       "page": "梦殒春宵",
@@ -191,6 +191,41 @@
       "fetchedAt": "2026-10-04",
       "bytes": 9941,
       "sha256": "36716eb890bd93b2fed5d27f67ccdc6c7a13fa67900a4a11a685580c0c3608ff"
+    },
+    {
+      "page": "怪咖",
+      "file": "怪咖.wiki",
+      "fetchedAt": "2026-10-04",
+      "bytes": 4221,
+      "sha256": "2945e2fc31ae06d720620ed0c634254662fcd78355a297957e885a9fcab5efdf"
+    },
+    {
+      "page": "集骨者",
+      "file": "集骨者.wiki",
+      "fetchedAt": "2026-10-04",
+      "bytes": 8254,
+      "sha256": "59ee9d978cc77b2a392cfa47417e7bcf467dcb0dd10b3ac369a698897c9f271e"
+    },
+    {
+      "page": "咖啡师",
+      "file": "咖啡师.wiki",
+      "fetchedAt": "2026-10-04",
+      "bytes": 8204,
+      "sha256": "6704d6c14aa620d0ddb3dd2588701c01033a56d18ea0bf36e1e1257ef6f95372"
+    },
+    {
+      "page": "流莺",
+      "file": "流莺.wiki",
+      "fetchedAt": "2026-10-04",
+      "bytes": 12436,
+      "sha256": "833e442fe4799bdbe861d27f74a62ee4a39e04cfe51d6c83fb2f0a573c9dd8f5"
+    },
+    {
+      "page": "屠夫",
+      "file": "屠夫.wiki",
+      "fetchedAt": "2026-10-04",
+      "bytes": 7074,
+      "sha256": "01e3a6076bc7dcd2eaed6b989c74761e046261a80e8abe45b257b2aafe4dd64e"
     },
     {
       "page": "圣洁之魂",
@@ -611,13 +646,6 @@
       "fetchedAt": "2026-10-04",
       "bytes": 1818,
       "sha256": "6da2b4bbea4a8ed318f0a87924ee57b9a60984f3d0e42e25de8bb1e9484a7a18"
-    },
-    {
-      "page": "咖啡师",
-      "file": "咖啡师.wiki",
-      "fetchedAt": "2026-10-04",
-      "bytes": 8204,
-      "sha256": "6704d6c14aa620d0ddb3dd2588701c01033a56d18ea0bf36e1e1257ef6f95372"
     }
   ]
 }
