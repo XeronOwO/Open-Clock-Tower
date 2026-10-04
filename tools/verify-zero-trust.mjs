@@ -59,6 +59,7 @@ const workspace = mkdtempSync(path.join(tmpdir(), 'oct-zero-trust-'))
 const databasePath = path.join(workspace, 'verify.db')
 const serverUrl = `http://localhost:${options.port}`
 const hubUrl = `${serverUrl}/hub/game`
+const accountHubUrl = `${serverUrl}/hub/account`
 
 /** 越权字段名（说书人专属；扫描玩家客户端收到的**全部消息**）：一个精确键名命中就是泄密。 */
 const FORBIDDEN_PLAYER_KEYS = [
@@ -500,6 +501,107 @@ async function main() {
     dayPushTexts.map(({ text }) => text.slice(0, 160)).join(' | ') || '没有客户端收到白天推送',
   )
 
+  console.log('=== 5.8/6 账号会话负向（D-0021）：账号会话不是游戏凭据，票据才是授权 ===')
+  // 账号会话与连接凭据是**两套**凭据面（D-0012 / D-0021）：这一段取证"账号会话既不能当连接凭据，
+  // 也不能被伪造 / 过期后蒙混过关"，反方向取证"票据仍然是唯一的入座授权"。
+  const accounts = await connectTo(accountHubUrl)
+  const registered = await accounts.invoke('Register', 'zt-account', '零信任玩家名', 'zt-account-password-1')
+  const accountSession = registered.accountSession
+  const seat1Ticket = seatTickets.find((seatTicket) => seatTicket.seat === 1)
+
+  // 伪造（或已过期）的账号会话：必须显式拒绝，不得静默降级成游客入座。
+  const forgedJoin = await expectRejected(
+    () => anonymous.invoke('JoinSeatWithAccount', seat1Ticket.ticket, '伪造账号会话-不存在的随机串', 0),
+    '账号会话无效',
+  )
+  check('行 账号：伪造 / 过期账号会话调 JoinSeatWithAccount 被拒（不静默降级成游客）', forgedJoin.ok, forgedJoin.message)
+
+  // 被拒的连接不得因此进房：1 号的原连接凭据仍然有效（没被顶替），被拒的连接也拿不到任何凭据。
+  const afterForged = await player1.connection.invoke(
+    'ForceAdvance',
+    player1.credential,
+    '零信任取证：伪造会话尝试之后确认 1 号原连接仍然有效',
+    'zt-after-forged-1',
+  )
+  check(
+    '行 账号：伪造尝试没有顶替 1 号原连接、也没有给被拒连接签发凭据',
+    afterForged.kind === 'Rejected' && afterForged.rejectionCode === 'identity.storyteller_only',
+    describeOutcome(afterForged),
+  )
+
+  // 账号会话不能当连接级凭据用：拿它去调一条游戏命令，必须被凭据闸拒。
+  const sessionAsCredential = await expectRejected(
+    () =>
+      anonymous.invoke(
+        'SubmitResponse',
+        accountSession,
+        'zt-request',
+        'seat:1',
+        'zt-account-as-credential-1',
+        0,
+      ),
+    '连接凭据无效',
+  )
+  check(
+    '行 账号：账号会话不能当连接级凭据用（拿它调游戏命令被凭据闸拒绝）',
+    sessionAsCredential.ok,
+    sessionAsCredential.message,
+  )
+
+  // 已登出（会话已失效）的账号会话同样进不了房。
+  const loggedOut = await accounts.invoke('Logout', accountSession)
+  const revokedJoin = await expectRejected(
+    () => anonymous.invoke('JoinSeatWithAccount', seat1Ticket.ticket, accountSession, 0),
+    '账号会话无效',
+  )
+  check(
+    '行 账号：已登出的账号会话进不了房（登出即失效，不靠客户端自觉）',
+    loggedOut.ok === true && revokedJoin.ok,
+    `登出 code=${loggedOut.code}；入座被拒：${revokedJoin.message}`,
+  )
+
+  // 正向对照：带**有效**账号会话 + 票据才能入座并拿到玩家名——证明上面的拒绝不是"路径没实现"。
+  const relogin = await accounts.invoke('Login', 'zt-account', 'zt-account-password-1')
+  const accountSeat = await joinSeatWithAccount(seat1Ticket.ticket, relogin.accountSession)
+  const ownName = (accountSeat.view.seatNames ?? []).find((entry) => entry.seat === 1)?.displayName ?? ''
+  check(
+    '行 账号：有效账号会话 + 票据入座成功，且玩家名进入公开席位名投影（正向对照）',
+    accountSeat.view.seat === 1 && ownName === '零信任玩家名',
+    `seat=${accountSeat.view.seat} seatNames=${JSON.stringify(accountSeat.view.seatNames)}`,
+  )
+
+  // 反方向：票据换不来账号身份——拿席位票据去改玩家名（账号 Hub 的账号会话面）必须被拒。
+  const ticketAsSession = await accounts.invoke('ChangeDisplayName', seat1Ticket.ticket, '票据冒充账号会话')
+  check(
+    '行 账号：席位票据不能当账号会话用（拿它去改玩家名被账号 Hub 拒绝）',
+    ticketAsSession.ok === false && ticketAsSession.code === 'invalid_session',
+    `ok=${ticketAsSession.ok} code=${ticketAsSession.code} message=${ticketAsSession.message}`,
+  )
+
+  // 同一张票据、但没有账号会话的第三方：入座成功也只是**游客连接**——入座结果里不含任何账号会话
+  // （拿不到账号凭据），窗口内零定向推送。席位名是**公开映射**（D-0021「姓名是公开信息」），
+  // 第三方照样看得见 1 号的名字：它改变的是"看得见"，不是"拿得到"——所以这里断言凭据与推送面，不断言"看不见名字"。
+  const guestThird = await joinAsSeat(seat1Ticket)
+  const guestMark = guestThird.inbox.length
+  await sleep(600)
+  const guestTargeted = guestThird.inbox
+    .slice(guestMark)
+    .filter((message) => TARGETED_METHODS.includes(message.method))
+    .map((message) => message.method)
+  const joinPayload = JSON.stringify(guestThird.inbox.find((message) => message.method === 'JoinSeat')?.payload ?? {})
+  check(
+    '行 账号：没有账号会话的第三方入座结果里没有账号凭据、窗口内零定向推送（票据 ≠ 账号身份）',
+    guestThird.view.seat === 1
+      && relogin.accountSession.length > 0
+      && !joinPayload.includes(relogin.accountSession)
+      && guestTargeted.length === 0,
+    `seat=${guestThird.view.seat}；入座结果含账号会话=${joinPayload.includes(relogin.accountSession)}`
+      + `；窗口内定向推送=${guestTargeted.join('|') || '无'}；公开席位名=${JSON.stringify(guestThird.view.seatNames)}`,
+  )
+  await guestThird.connection.stop()
+  await accountSeat.connection.stop()
+  await accounts.stop()
+
   console.log('=== 6/6 审计：拒绝有记录，凭据明文不在日志里（行 11）===')
   const logText = serverLog.join('')
   check('行 11：凭据闸拒绝有审计记录', logText.includes('凭据闸'), '')
@@ -527,7 +629,22 @@ async function joinAsSeat(seatTicket) {
 
   const joined = await connection.invoke('JoinSeat', seatTicket.ticket, 0)
   inbox.push({ method: 'JoinSeat', payload: joined })
-  return { connection, credential: joined.credential, inbox }
+  return { connection, credential: joined.credential, view: joined.bundle.view, inbox }
+}
+
+/** 带账号会话的入座（D-0021）：票据用于首次认领；返回视图供"玩家名是否进投影"取证。 */
+async function joinSeatWithAccount(ticket, accountSession) {
+  const connection = await connect()
+  const inbox = []
+  for (const method of PUSH_METHODS) {
+    connection.on(method, (payload) => {
+      inbox.push({ method, payload })
+    })
+  }
+
+  const joined = await connection.invoke('JoinSeatWithAccount', ticket, accountSession, 0)
+  inbox.push({ method: 'JoinSeatWithAccount', payload: joined })
+  return { connection, credential: joined.credential, view: joined.bundle.view, inbox }
 }
 
 async function joinAsStoryteller(ticket) {
@@ -536,13 +653,18 @@ async function joinAsStoryteller(ticket) {
   return { connection, credential: joined.credential }
 }
 
-async function connect() {
+/** 连到指定 Hub（游戏 / 账号是两条独立的连接与凭据面）。 */
+async function connectTo(url) {
   const connection = new signalR.HubConnectionBuilder()
-    .withUrl(hubUrl)
+    .withUrl(url)
     .configureLogging(signalR.LogLevel.Error)
     .build()
   await connection.start()
   return connection
+}
+
+async function connect() {
+  return connectTo(hubUrl)
 }
 
 /** 轮询说书人视图直到条件成立；超时返回 null（不猜、不吞）。 */

@@ -91,6 +91,19 @@ describe('补齐往返窗口：推送与快照按序号合并', () => {
     expect(merge.snapshot().informationResults.map((item) => item.sequence)).toEqual([5])
   })
 
+  it('同序号的整视图推送仍会更新席位名（认领 / 改名不产生事件，D-0021）', () => {
+    const merge = new PlayerViewMerge()
+    merge.applySnapshot(snapshotView({ seatNames: [{ seat: 1, displayName: '爱丽丝' }] }), 7)
+
+    const changed = merge.applySnapshot(
+      snapshotView({ seatNames: [{ seat: 1, displayName: '爱丽丝二世' }] }),
+      7,
+    )
+
+    expect(changed).toBe(true)
+    expect(merge.snapshot().seatNames).toEqual([{ seat: 1, displayName: '爱丽丝二世' }])
+  })
+
   it('同一条推送重复到达：按序号幂等（不重复）', () => {
     const merge = new PlayerViewMerge()
     merge.applyPush(infoPush(6, 'dreamer'))

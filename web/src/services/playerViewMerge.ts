@@ -120,7 +120,10 @@ export class PlayerViewMerge {
       changed = true
     }
 
-    if (sequence > this.seatNamesSequence) {
+    // 席位名是**读时状态**：认领 / 改名 / 解除都不产生事件，推送带的是同一个事件序号。
+    // 因此这里必须用 `>=`——用 `>` 会把整份改名推送当成"旧数据"丢掉（装置 E30 实测踩到）。
+    // 同序号的两份整视图都是服务端在同一事件位置的最新读取，先到先得、后到覆盖，谈不上新旧。
+    if (sequence >= this.seatNamesSequence) {
       this.seatNames = [...view.seatNames]
       this.seatNamesSequence = sequence
       changed = true
