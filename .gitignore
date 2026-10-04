@@ -26,8 +26,9 @@ pnpm-debug.log*
 npm-debug.log*
 yarn-error.log*
 
-# ---- 本地百科快照（正文不提交，只提交索引与哈希，见 docs/standard/sources.md）----
+# ---- 本地百科 / 规则书快照（正文不提交，只提交索引与哈希，见 docs/standard/sources.md）----
 references/wiki/
+references/rulebook/
 references/images/
 
 # ---- 运行期产物 ----

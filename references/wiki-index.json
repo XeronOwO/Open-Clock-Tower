@@ -1,7 +1,7 @@
 {
   "source": "https://clocktower-wiki.gstonegames.com",
   "generatedAt": "2026-10-04",
-  "pageCount": 87,
+  "pageCount": 88,
   "pages": [
     {
       "page": "梦殒春宵",
@@ -611,6 +611,13 @@
       "fetchedAt": "2026-10-04",
       "bytes": 1818,
       "sha256": "6da2b4bbea4a8ed318f0a87924ee57b9a60984f3d0e42e25de8bb1e9484a7a18"
+    },
+    {
+      "page": "咖啡师",
+      "file": "咖啡师.wiki",
+      "fetchedAt": "2026-10-04",
+      "bytes": 8204,
+      "sha256": "6704d6c14aa620d0ddb3dd2588701c01033a56d18ea0bf36e1e1257ef6f95372"
     }
   ]
 }
