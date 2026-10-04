@@ -134,6 +134,8 @@ Application（命令面 / 闸 / 投影 / 节拍器 / 会话）· Contracts + web
 ### 实施时定（悬而未决，不许静默）
 
 1. 离场用「账上集合」还是「座次表过滤」的最终形态（倾向账上集合）；
+   — **第二批已收口**：账上集合 `GameState.DepartedSeats` + 唯一派生入口 `InGameSeats.Derive`
+   （座次表过滤读账；见下方第二批记录）。
 2. 提名 / 流放钟盘串行时的显式拒绝码与提示文案；
 3. 怪咖裁定点的提问时机（达线时 vs 当日一次性）与当日缓存；
 4. 集骨者「重获能力」与 `IAbilityPresence` / 夜计划的接线方式；
@@ -177,8 +179,60 @@ Application（命令面 / 闸 / 投影 / 节拍器 / 会话）· Contracts + web
 3. 本批只覆盖「开局声明 + 配板」：16 席 = 15 人行 + 1 名旅行者的**第 16 席**还不能真正入局
    （加入流程未实现），因此 16 席局在加入切片落地前不能开夜——这是预期边界，不是缺陷。
 
-未做（下一批起）：D1 加入 / 离开与「在局座次」统一构造、D2 流放流程、D3 免死收口、D4 屠夫窗口、
-D5 黄昏夜序与 5 能力、D7 投影 / 前端 / 复盘、D8 批次 E34 取证。
+## 实施进度（2026-10-04，第二批：D1 加入 / 离开与「在局座次」）
+
+已落地（代码 + 测试同一提交；口径按设计定稿 D1，未改任何已登记裁定）：
+
+- **命令面（Server + Application）**：`JoinTravellerCommand`（`Seat` 可空：null = 服务端追加新席位并
+  签发新票据；指定席位 = 落在本局**尚未分配**的席位，如 15+ 开局提前占好的高号席）、
+  `RemoveTravellerCommand`；Hub 方法 `JoinTraveller` / `RemoveTraveller`（说书人 / 宿主，任意时刻——
+  含开局前与阶段中）。角色由说书人按玩家自选结果录入、阵营由说书人私下裁定；邪恶旅行者的揭示目标
+  由说书人指定（一名或全部存活恶魔，百科口径允许二选一）。
+- **内核事件与账**：`TravellerJoinedEvent`（事实 + 公开宣告；六维度初始条件由同批
+  `SeatStateChangedEvent` 落地，与方古「事实 + 配套账事件」同款）与 `TravellerDepartedEvent`
+  （席位账移除、`GameState.DepartedSeats` 登记、以该席位为来源 / 目标的持续型效果与它下达的疯狂要求
+  以新 `EffectTerminationKind.SeatLeftGame` 终止）；公开生死面同步撤下该席位。
+- **在局座次**：`InGameSeats.Derive(setup, state)` = 会话席位名单 − 离场账（R-0044 第 6 条），统一改造
+  调用点：结算上下文（`SessionSettlement`）、胜负求值（`SessionCommit.EvaluateOutcome`）、投影座位
+  （`GameSession.SeatList`）、开夜 / 开白天建表（`GameCommandDispatcher`）。
+- **胜负口径**：`IWinConditionFacts.IsTraveller` + `OutcomeEvaluator.TwoPlayersAlive` 排除旅行者
+  （R-0045 第 4 条：「除旅行者外仅剩两名存活」）。
+- **私密揭示**：邪恶旅行者的 `InformationResultIssuedEvent` 只投影给本人（收件人白名单）；校验目标必须
+  是**在局存活恶魔**；其他玩家只收到公开事实（席位 + 角色，无阵营）。
+- **公开与复盘**：`PlayerEventKind.TravellerJoined` / `TravellerDeparted`（重连补齐的公开面）+ 视图刷新
+  推送；`TravellerReplayPresenter` 把加入 / 离场登记为原子复盘步骤（D-0020 覆盖率门禁绿）。
+  D7 仍需补：说书人控制台与玩家端的加入 / 离场入口与公告呈现、复盘圆盘标记。
+- **票据签发**：追加席位走 `GameSetupFactory.AppendSeat`（席位号 = 当前最大 + 1，票据格式与开局一致）；
+  `GameSession` 在同一把锁里「先存目录 → 再提交事件」，提交失败按补偿回滚目录；重复投递（同幂等键）
+  按首次落库的 `TravellerJoinedEvent` 回填同一张票，不生成第二张。
+
+验证证据（2026-10-04，冻结工作树）：
+
+- `dotnet build` 0 警告 0 错误；`dotnet test` **885 通过 / 0 失败**（门禁 24 / 内核 342 / 规则 316 /
+  集成 203）；`dotnet format` 退出 0；
+- 新增用例（逐条在跑）：`TravellerSeatLedgerTests`（加入事实 vs 账、离场终止源 / 目标效果与疯狂要求、
+  重复离场显式抛错、加入 / 离场不启动步骤机）、
+  `OutcomeEvaluatorTests.TwoPlayersAlive_DoesNotCountTravellers`、
+  `PublicLifeBoardFolderTests.TravellerDeparture_RemovesTheSeatFromThePublicBoard`、
+  `GameStateComparerTests.DepartedSeats_AreComparedInOrder`、`InGameSeatsTests` 三条、
+  `TravellerHostTests` 九条（16 席加入后可开夜、阶段中加入 / 离场保住步骤机、追加席位票据可加入且
+  重复投递同票、邪恶揭示只到本人、离场后票据可重连且重建等价、加入 / 离场 / 揭示三组护栏拒绝）。
+
+实施口径澄清（供复核）：
+
+1. 「加入」支持两种落点（既有未分配席位 / 追加新席位 + 新票据）：16 席开局的第 16 席在创建时就已存在
+   席位与票据，追加路径只服务真正的新到场玩家；两种落点共用同一个 `TravellerJoinedEvent`。
+2. 离场用**账上集合**（`GameState.DepartedSeats`）：座次表过滤读它（`InGameSeats` 是唯一的派生入口），
+   「离场者不计任何人数口径」不靠各处自觉。
+3. 邪恶揭示由说书人给席位列表（一名或全部），平台只校验「在局 + 存活 + 恶魔」并转达——与 D-0002
+   「平台不替说书人拍板」一致。
+
+顺带记录（本轮的门禁处理）：`GameHub` 触到 600 行门禁——把 `ReleaseSeatBinding` 的编排拆进
+`SeatJoinCoordinator.ReleaseBindingAsync`（行为不变：同样的存在性校验与日志，席位名读模型照旧更新），
+Hub 只保留凭据闸与推送。这是门禁要求的「先拆再改」，不是顺手的重构。
+
+未做（下一批起）：D2 流放流程、D3 免死收口、D4 屠夫窗口、D5 黄昏夜序与 5 能力、
+D7 控制台 / 玩家端呈现与复盘圆盘、D8 批次 E34 取证。
 
 顺带记录（本轮发现的接缝，留给 D5 / 加入切片）：
 
