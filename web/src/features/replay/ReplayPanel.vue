@@ -9,6 +9,7 @@
  */
 import type { ReplayStepDto, ReplayViewDto, SeatDisplayNameDto } from '@/contracts/game'
 import { labelOf } from '@/display/labels'
+import { displayNameOf } from '@/display/format'
 import {
   boardAt,
   markerLabelOf,
@@ -46,7 +47,9 @@ let timer: number | null = null
 const current = computed(() => steps.value[cursor.value] ?? null)
 const board = computed(() => boardAt(steps.value, cursor.value))
 const cards = computed(() =>
-  seatNumbersOf(steps.value, props.fallbackSeat ?? null).map((seat) => seatCardOf(board.value, seat)),
+  seatNumbersOf(steps.value, props.fallbackSeat ?? null).map((seat) =>
+    seatCardOf(board.value, seat, displayNameOf(seat, seatNames.value)),
+  ),
 )
 const currentSeat = computed(() => {
   const step = current.value

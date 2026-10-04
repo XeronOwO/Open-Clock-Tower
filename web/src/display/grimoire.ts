@@ -15,6 +15,7 @@ import type {
   StorytellerViewDto,
 } from '@/contracts/game'
 import { characterLabelOf, characterNameOf, effectMarkNameOf } from '@/display/labels'
+import { displayNameOf } from '@/display/format'
 
 /** 六维度里可在牌面上呈现的五个；疯狂要求另列（`SeatStateDto.madnesses`）。 */
 export const DIMENSION_LIFE = 'Life'
@@ -41,6 +42,8 @@ export interface SeatMark {
 /** 一个席位的牌面模型：全部为 null 表示"该维度还没被观测到"。 */
 export interface SeatCardModel {
   seat: number
+  /** 玩家名（D-0021）：账号认领后非 null；游客席位为 null（呈现层回退席位号）。 */
+  displayName: string | null
   /** 状态账里有没有这一席（没有 = 还没观测到任何东西）。 */
   observed: boolean
   character: string | null
@@ -133,6 +136,7 @@ export function buildSeatCard(view: StorytellerViewDto, seat: number): SeatCardM
 
   return {
     seat,
+    displayName: displayNameOf(seat, view.seatNames),
     observed: entry !== null,
     character: factValueOf(facts, DIMENSION_CHARACTER),
     alignment: factValueOf(facts, DIMENSION_ALIGNMENT),

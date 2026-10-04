@@ -80,6 +80,8 @@ export class PlayerGateway {
   private readonly connection: HubConnection
   private readonly merge = new PlayerViewMerge()
   private ticket = ''
+  /** 账号会话（D-0021）：只存内存，用于认领席位 / 只凭账号重连；不落盘、不渲染。 */
+  private accountSession: string | null = null
   /** 连接级凭据：只在内存中；票据才进 TicketStore，凭据绝不落盘。 */
   private credentialValue = ''
 
@@ -183,8 +185,9 @@ export class PlayerGateway {
    * 真实的事件位置，拿它当已知序号会把缺口事件窗口截断（架构 §5）。
    * 零信任口径（D-0012）：加入结果里的连接级凭据是后续发命令的唯一凭据；拿不到就显式失败。
    */
-  async joinSeat(ticket: string): Promise<PlayerViewDto> {
+  async joinSeat(ticket: string, accountSession: string | null = null): Promise<PlayerViewDto> {
     this.ticket = ticket
+    this.accountSession = accountSession
     if (this.connection.state === HubConnectionState.Disconnected) {
       await this.connection.start()
     }
@@ -192,7 +195,9 @@ export class PlayerGateway {
     this.callbacks.onState('connected')
     const known = this.merge.eventAt
     const joined = normalizeSeatJoin(
-      await this.connection.invoke<unknown>('JoinSeat', ticket, known),
+      accountSession === null
+        ? await this.connection.invoke<unknown>('JoinSeat', ticket, known)
+        : await this.connection.invoke<unknown>('JoinSeatWithAccount', ticket, accountSession, known),
     )
     if (joined === null) {
       throw new Error('服务端没有下发连接凭据：加入结果不可识别（D-0012）')
@@ -295,7 +300,7 @@ export class PlayerGateway {
 
   /** 主动补齐：以自身序号重新加入，取回缺口事件。 */
   async resync(): Promise<PlayerViewDto> {
-    return this.joinSeat(this.ticket)
+    return this.joinSeat(this.ticket, this.accountSession)
   }
 
   async stop(): Promise<void> {
@@ -324,7 +329,7 @@ export class PlayerGateway {
 
   private async rejoin(): Promise<void> {
     try {
-      await this.joinSeat(this.ticket)
+      await this.joinSeat(this.ticket, this.accountSession)
     } catch (error) {
       this.callbacks.onDiagnostic(`重连后重新加入失败：${error instanceof Error ? error.message : String(error)}`)
     }

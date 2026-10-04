@@ -126,6 +126,7 @@ function typeText(): string {
 
     <span class="nameplate">
       <span class="seat-no">{{ model.seat }} 号</span>
+      <span v-if="model.displayName !== null" class="player-name" data-testid="seat-display-name">{{ model.displayName }}</span>
       <span class="align">{{ alignmentText() }}</span>
     </span>
 

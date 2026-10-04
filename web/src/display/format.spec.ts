@@ -8,15 +8,19 @@ import {
   asSeatNumber,
   asSizedText,
   clockTimeOf,
+  displayNameOf,
   normalizeBarberNight,
   normalizeFangGuInfection,
   normalizeRoomHealth,
   normalizeSeatAnnotation,
   normalizeStorytellerView,
+  optionDisplayOf,
   replaceControlCharacters,
+  seatDisplayOf,
   seatLabelOf,
   waitingSecondsTextOf,
 } from '@/display/format'
+import type { SeatDisplayNameDto } from '@/contracts/game'
 
 describe('不可信输入规范化（架构 §4.4）', () => {
   it('非数组一律退化成空集合，不炸渲染', () => {
@@ -38,6 +42,24 @@ describe('不可信输入规范化（架构 §4.4）', () => {
     expect(seatLabelOf(3)).toBe('3 号')
     expect(seatLabelOf(null)).toBe('—')
     expect(seatLabelOf(Number.NaN)).toBe('—')
+  })
+
+  it('席位显示文本带玩家名（D-0021）：有名字「N 号 · 玩家名」，没名字回退「N 号」', () => {
+    const names: SeatDisplayNameDto[] = [{ seat: 2, displayName: '小明' }]
+
+    expect(displayNameOf(2, names)).toBe('小明')
+    expect(displayNameOf(3, names)).toBeNull()
+    expect(seatDisplayOf(2, names)).toBe('2 号 · 小明')
+    expect(seatDisplayOf(3, names)).toBe('3 号')
+  })
+
+  it('选项文案按值格式本地化（D-0021）：seat:N / pair:A+B 走同一口径，其余回退服务端预览', () => {
+    const names: SeatDisplayNameDto[] = [{ seat: 2, displayName: '小明' }]
+
+    expect(optionDisplayOf({ value: 'seat:2', preview: '2 号玩家' }, names)).toBe('2 号 · 小明')
+    expect(optionDisplayOf({ value: 'pair:2+5', preview: '2 号 + 5 号' }, names)).toBe('2 号 · 小明 + 5 号')
+    expect(optionDisplayOf({ value: 'clockmaker', preview: '钟表匠' }, names)).toBe('钟表匠')
+    expect(optionDisplayOf({ value: 'seat:x', preview: '坏值原样' }, names)).toBe('坏值原样')
   })
 
   it('等待秒数未知时不编数字', () => {

@@ -497,12 +497,49 @@ export function normalizeSeatNames(raw: unknown): SeatDisplayNameDto[] {
 }
 
 /**
+ * 席位对应的玩家名（D-0021）；这一席没有名字（游客 / 未认领）时返回 null。
+ * 呈现层据此回退席位号，不编一个人名。
+ */
+export function displayNameOf(
+  seat: number,
+  seatNames: readonly SeatDisplayNameDto[],
+): string | null {
+  return seatNames.find((item) => item.seat === seat)?.displayName ?? null
+}
+
+/**
  * 席位显示文本（D-0021 的**唯一口径**）：「N 号 · 玩家名」；这一席没有名字时回退「N 号」。
  * 席位牌 / 提名 / 投票 / 归属 / 复盘共用这一份拼接口径（票据矩阵行 5）。
  */
 export function seatDisplayOf(seat: number, seatNames: readonly SeatDisplayNameDto[]): string {
-  const entry = seatNames.find((item) => item.seat === seat)
-  return entry === undefined ? `${seat} 号` : `${seat} 号 · ${entry.displayName}`
+  const name = displayNameOf(seat, seatNames)
+  return name === null ? `${seat} 号` : `${seat} 号 · ${name}`
+}
+
+/**
+ * 选项文案本地化（D-0021）：选项值形如 `seat:N` / `pair:A+B` 时改用统一席位口径重写；
+ * 其余（decline / 角色 slug / 未知编码）回退服务端原文，不猜、不吞。
+ */
+export function optionDisplayOf(
+  option: DecisionOptionDto,
+  seatNames: readonly SeatDisplayNameDto[],
+): string {
+  const value = option.value
+  if (value.startsWith('seat:')) {
+    const seat = Number.parseInt(value.slice('seat:'.length), 10)
+    return Number.isInteger(seat) && seat > 0 ? seatDisplayOf(seat, seatNames) : option.preview
+  }
+
+  if (value.startsWith('pair:')) {
+    const parts = value.slice('pair:'.length).split('+')
+    const first = Number.parseInt(parts[0] ?? '', 10)
+    const second = Number.parseInt(parts[1] ?? '', 10)
+    if (parts.length === 2 && Number.isInteger(first) && Number.isInteger(second) && first > 0 && second > 0) {
+      return `${seatDisplayOf(first, seatNames)} + ${seatDisplayOf(second, seatNames)}`
+    }
+  }
+
+  return option.preview
 }
 
 /** 归一化整个说书人视图。任何缺失都退化成空集合 / null，不编造状态。 */

@@ -250,7 +250,11 @@ export function seatNumbersOf(steps: readonly ReplayStepDto[], fallbackSeat: num
 }
 
 /** 由盘面构造一个席位牌模型（复用实时魔典的 SeatCardModel 与标记口径，票据矩阵行 9）。 */
-export function seatCardOf(board: ReplayBoard, seat: number): SeatCardModel {
+export function seatCardOf(
+  board: ReplayBoard,
+  seat: number,
+  displayName: string | null = null,
+): SeatCardModel {
   const entry = board.get(seat)
   const facts: SeatStateFactDto[] = []
   const push = (dimension: string, fact: ReplayFact | null | undefined): void => {
@@ -273,6 +277,7 @@ export function seatCardOf(board: ReplayBoard, seat: number): SeatCardModel {
 
   return {
     seat,
+    displayName,
     observed: entry !== undefined,
     character: entry?.character?.value ?? null,
     alignment: entry?.alignment?.value ?? null,

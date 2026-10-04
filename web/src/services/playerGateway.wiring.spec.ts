@@ -276,6 +276,54 @@ describe('玩家网关接线：补齐窗口', () => {
   })
 })
 
+describe('账号加入路径（D-0021）', () => {
+  it('带账号会话走 JoinSeatWithAccount；补齐重连继续带同一会话', async () => {
+    const fake = new FakeConnection()
+    const record = recorder()
+    const gateway = gatewayWith(fake, record.callbacks)
+
+    fake.response = joinResult(3, view())
+    await gateway.joinSeat('ticket-1', 'session-9')
+
+    expect(fake.invocations[0]).toEqual({
+      method: 'JoinSeatWithAccount',
+      args: ['ticket-1', 'session-9', 0],
+    })
+
+    await gateway.resync()
+
+    expect(fake.invocations.at(-1)).toEqual({
+      method: 'JoinSeatWithAccount',
+      args: ['ticket-1', 'session-9', 3],
+    })
+  })
+
+  it('不带账号会话仍是原来的 JoinSeat（游客路径不受影响）', async () => {
+    const fake = new FakeConnection()
+    const record = recorder()
+    const gateway = gatewayWith(fake, record.callbacks)
+
+    fake.response = joinResult(1, view())
+    await gateway.joinSeat('ticket-1')
+
+    expect(fake.invocations[0]).toEqual({ method: 'JoinSeat', args: ['ticket-1', 0] })
+  })
+
+  it('只凭账号（票据留空）也能加入：空票据原样下发，服务端按绑定解出席位', async () => {
+    const fake = new FakeConnection()
+    const record = recorder()
+    const gateway = gatewayWith(fake, record.callbacks)
+
+    fake.response = joinResult(0, view())
+    await gateway.joinSeat('', 'session-9')
+
+    expect(fake.invocations[0]).toEqual({
+      method: 'JoinSeatWithAccount',
+      args: ['', 'session-9', 0],
+    })
+  })
+})
+
 describe('normalizeRequest 的两维选择（R-0021）', () => {
   it('保留第二维；字段缺失或损坏时降级为空数组，不编造第二维', () => {
     const twoDimensional = normalizeRequest({

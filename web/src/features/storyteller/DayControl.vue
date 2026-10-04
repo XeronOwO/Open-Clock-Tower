@@ -6,7 +6,7 @@
  * 与服务端四道闸同口径，真正的拒绝在服务端（这里只做"别让你点空"的呈现）。
  */
 import type { StorytellerViewDto } from '@/contracts/game'
-import { seatLabelOf } from '@/display/format'
+import { seatDisplayOf } from '@/display/format'
 import { newIdempotencyKey } from '@/services/idempotency'
 import {
   closeDay,
@@ -19,6 +19,13 @@ import { computed, ref } from 'vue'
 
 const props = defineProps<{ view: StorytellerViewDto; sender: CommandSender }>()
 const emit = defineEmits<{ outcome: [CommandOutcome] }>()
+
+/** 席位显示文本（D-0021 统一口径）；空值 / 坏值退化成占位符。 */
+function seatText(seat: number | null | undefined): string {
+  return typeof seat === 'number' && Number.isFinite(seat)
+    ? seatDisplayOf(seat, props.view.seatNames)
+    : '—'
+}
 
 const busy = ref(false)
 const day = computed(() => props.view.day)
@@ -93,10 +100,10 @@ async function run(action: () => Promise<CommandOutcome>): Promise<void> {
         {{ day.status === 'Open' ? '进行中' : '已结束' }}
       </p>
       <p v-if="day.aboutToBeExecuted !== null" data-testid="st-about-to-be-executed" :data-seat="day.aboutToBeExecuted">
-        即将被处决：{{ seatLabelOf(day.aboutToBeExecuted) }}
+        即将被处决：{{ seatText(day.aboutToBeExecuted) }}
       </p>
       <p v-if="day.executed !== null" data-testid="st-executed" :data-seat="day.executed">
-        已处决：{{ seatLabelOf(day.executed) }}
+        已处决：{{ seatText(day.executed) }}
       </p>
       <ul
         class="nominations"
@@ -111,8 +118,8 @@ async function run(action: () => Promise<CommandOutcome>): Promise<void> {
           :data-nomination-status="nomination.status"
           :data-nomination-votes="nomination.votes"
         >
-          {{ nomination.index }}. {{ seatLabelOf(nomination.nominator) }} 提名
-          {{ seatLabelOf(nomination.nominee) }} —— {{ nomination.votes }} 票（{{ nomination.status === 'Counted' ? '已计票' : '投票中' }}）
+          {{ nomination.index }}. {{ seatText(nomination.nominator) }} 提名
+          {{ seatText(nomination.nominee) }} —— {{ nomination.votes }} 票（{{ nomination.status === 'Counted' ? '已计票' : '投票中' }}）
         </li>
       </ul>
     </div>

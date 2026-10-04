@@ -72,6 +72,8 @@ public sealed class CredentialSecurityGateTests
                  {
                      Path.Combine("web", "src", "services", "playerGateway.ts"),
                      Path.Combine("web", "src", "services", "storytellerGateway.ts"),
+                     // 账号会话凭据（D-0021）同一把尺子：只存内存，不落盘、不进 DOM。
+                     Path.Combine("web", "src", "services", "accountGateway.ts"),
                  })
         {
             var code = File.ReadAllText(RepositoryLayout.PathOf(relativePath));

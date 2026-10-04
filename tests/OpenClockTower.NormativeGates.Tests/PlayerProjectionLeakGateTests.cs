@@ -370,6 +370,10 @@ public sealed partial class PlayerProjectionLeakGateTests
         // 零复盘字段（反方向由集成用例与零信任装置断言），这里显式登记依赖，不做静默绕过。
         "@/display/replay",
         "@/features/replay/ReplayPanel.vue",
+        // 账号（D-0021）：账号会话是**玩家层**凭据（只用于认领席位与账号自助），与说书人面无关；
+        // 面板与网关显式登记，新增依赖仍必须复核。
+        "@/services/accountGateway",
+        "@/features/account/AccountPanel.vue",
     };
 
     /// <summary>说书人专属的 DTO 类型名；玩家侧出现任何一个都说明越界。</summary>

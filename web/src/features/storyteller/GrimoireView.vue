@@ -8,6 +8,7 @@
  * - 选中态是呈现态（本地 ref），不发命令、不改任何游戏数据。
  */
 import type { StorytellerViewDto } from '@/contracts/game'
+import { seatDisplayOf } from '@/display/format'
 import { labelOf } from '@/display/labels'
 import {
   attentionSeatOf,
@@ -91,7 +92,7 @@ function pick(seat: number): void {
           type="button"
           @click="pick(attentionSeat)"
         >
-          定位到 {{ attentionSeat }} 号（{{ attentionReason }}）
+          定位到 {{ seatDisplayOf(attentionSeat, view.seatNames) }}（{{ attentionReason }}）
         </button>
       </div>
 
@@ -106,7 +107,7 @@ function pick(seat: number): void {
             v-if="view.fangGuInfection"
             class="hub-token"
             data-testid="hub-once-marker"
-            :title="`限一次：${view.fangGuInfection.source} 号方古侵染了 ${view.fangGuInfection.seat} 号；标记持续至整局结束（R-0034）`"
+            :title="`限一次：${seatDisplayOf(view.fangGuInfection.source, view.seatNames)} 方古侵染了 ${seatDisplayOf(view.fangGuInfection.seat, view.seatNames)}；标记持续至整局结束（R-0034）`"
           >
             限一次
           </span>
@@ -114,7 +115,7 @@ function pick(seat: number): void {
             v-if="view.barberNight"
             class="hub-token"
             data-testid="hub-barber-night"
-            :title="`今晚理发：${view.barberNight.source} 号理发师死亡，恶魔当夜可选择两名玩家交换角色（R-0033）`"
+            :title="`今晚理发：${seatDisplayOf(view.barberNight.source, view.seatNames)} 理发师死亡，恶魔当夜可选择两名玩家交换角色（R-0033）`"
           >
             今晚理发
           </span>

@@ -87,8 +87,8 @@ public sealed class AccountHub : Hub
         return Accept(outcome.Account, session.Value, recoveryCode: null);
     }
 
-    /// <summary>登出：撤销这条账号会话（重复登出返回 false，语义明确）。</summary>
-    public Task<bool> Logout(string accountSession)
+    /// <summary>登出：撤销这条账号会话（幂等：已失效也返回成功，只是说明不同）。</summary>
+    public Task<AccountDto> Logout(string accountSession)
     {
         var revoked = _sessions.Revoke(accountSession);
         _logger.LogInformation(
@@ -96,7 +96,12 @@ public sealed class AccountHub : Hub
             Context.ConnectionId,
             revoked,
             AccountSessionCredential.FingerprintOf(accountSession));
-        return Task.FromResult(revoked);
+        return Task.FromResult(new AccountDto
+        {
+            Ok = true,
+            Code = revoked ? "ok" : "already_signed_out",
+            Message = revoked ? "已登出" : "会话已失效，无需再次登出",
+        });
     }
 
     /// <summary>改玩家名（D-0021）：账号设置里随时可改；改名即时同步给本局已绑定席位。</summary>

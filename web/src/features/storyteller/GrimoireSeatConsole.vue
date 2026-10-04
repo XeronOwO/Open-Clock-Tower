@@ -9,7 +9,7 @@
 import type { StorytellerViewDto } from '@/contracts/game'
 import GrimoireAnnotationControl from '@/features/storyteller/GrimoireAnnotationControl.vue'
 import { ROSTER, characterLabelOf, dimensionLabelOf, labelOf } from '@/display/labels'
-import { causedByLabelOf, seatLabelOf, waitingSecondsTextOf } from '@/display/format'
+import { causedByLabelOf, seatDisplayOf, waitingSecondsTextOf } from '@/display/format'
 import {
   buildSeatCard,
   decisionSeatOf,
@@ -293,13 +293,13 @@ async function submitReport(): Promise<void> {
     <div v-if="view.pending" class="block pending" data-testid="console-pending">
       <div class="line">
         <span class="tag warn">卡点</span>
-        <strong>{{ seatLabelOf(view.pending.seat) }}</strong>
+        <strong>{{ seatDisplayOf(view.pending.seat, view.seatNames) }}</strong>
         <span class="mono">{{ view.pending.requestId }}</span>
         <span v-if="waitingSecondsTextOf(view.pending.waitingSeconds)" class="hint">
           已等待 {{ waitingSecondsTextOf(view.pending.waitingSeconds) }}
         </span>
         <button v-if="seat !== view.pending.seat" type="button" @click="locate(view.pending.seat)">
-          定位到 {{ view.pending.seat }} 号
+          定位到 {{ seatDisplayOf(view.pending.seat, view.seatNames) }}
         </button>
       </div>
       <p class="hint">请求正文在玩家端；说书人这里只能代填或作废，看不到玩家的选择界面。</p>
@@ -324,7 +324,7 @@ async function submitReport(): Promise<void> {
         <span class="tag warn">待裁定的裁定点</span>
         <span class="mono">{{ view.awaitingDecisionId }}</span>
         <span v-if="decisionSeat !== null" class="hint" data-testid="console-decision-seat">
-          归属：{{ seatLabelOf(decisionSeat) }}
+          归属：{{ seatDisplayOf(decisionSeat, view.seatNames) }}
         </span>
         <span v-else class="hint">（归属席位未知，就近在操作台处理）</span>
         <button
@@ -332,7 +332,7 @@ async function submitReport(): Promise<void> {
           type="button"
           @click="locate(decisionSeat)"
         >
-          定位到 {{ decisionSeat }} 号
+          定位到 {{ seatDisplayOf(decisionSeat, view.seatNames) }}
         </button>
       </div>
       <p class="context">{{ view.awaitingDecisionContext ?? '（服务端未提供上下文）' }}</p>
@@ -378,7 +378,7 @@ async function submitReport(): Promise<void> {
 
     <template v-if="model">
       <div class="detail">
-        <h3>{{ seatLabelOf(model.seat) }} · {{ characterLabelOf(model.character) }}</h3>
+        <h3>{{ seatDisplayOf(model.seat, view.seatNames) }} · {{ characterLabelOf(model.character) }}</h3>
         <p class="hint">{{ seatTitleOf(model) }}</p>
 
         <table v-if="model.facts.length > 0">
@@ -443,7 +443,7 @@ async function submitReport(): Promise<void> {
               <option value="Mutant">畸形秀演员：疯狂地证明自己是外来者</option>
             </select>
             <button type="button" :disabled="busy" data-testid="console-punish" @click="punish()">
-              处罚处决 {{ seatLabelOf(model.seat) }}
+              处罚处决 {{ seatDisplayOf(model.seat, view.seatNames) }}
             </button>
           </div>
           <input v-model="punishNote" placeholder="执行说明（可选，会记进事件流）" />
@@ -455,13 +455,13 @@ async function submitReport(): Promise<void> {
         <div class="report" @focusin="engage()">
           <div class="line">
             <span class="tag">上报到</span>
-            <strong>{{ seatLabelOf(model.seat) }}</strong>
+            <strong>{{ seatDisplayOf(model.seat, view.seatNames) }}</strong>
             <label class="inline">
               归因到
               <select v-model="causedBy">
                 <option value="">（无人可归因）</option>
                 <option v-for="number in seatNumbers" :key="number" :value="number">
-                  {{ number }} 号
+                  {{ seatDisplayOf(number, view.seatNames) }}
                 </option>
               </select>
             </label>

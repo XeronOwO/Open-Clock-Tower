@@ -15,11 +15,13 @@ import type {
   ReplayViewDto,
 } from '@/contracts/game'
 import { labelOf, voidReasonLabelOf } from '@/display/labels'
-import { seatLabelOf } from '@/display/format'
+import { optionDisplayOf, seatDisplayOf } from '@/display/format'
+import { AccountGateway, type AccountProfile } from '@/services/accountGateway'
 import { PlayerGateway, type PlayerCallbacks } from '@/services/playerGateway'
 import { TicketStore } from '@/services/ticketStore'
 import { newIdempotencyKey } from '@/services/idempotency'
 import type { GatewayState } from '@/services/connectionState'
+import AccountPanel from '@/features/account/AccountPanel.vue'
 import PlayerDayPanel from '@/features/player/PlayerDayPanel.vue'
 import ReplayPanel from '@/features/replay/ReplayPanel.vue'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
@@ -55,6 +57,134 @@ const artistQuestionSubmitting = ref(false)
 
 let gateway: PlayerGateway | null = null
 let clientSequence = 0
+
+/** 账号（D-0021）：会话凭据只在 AccountGateway 内存里；面板只持有展示资料。 */
+const accountProfile = ref<AccountProfile | null>(null)
+const accountBusy = ref(false)
+const accountNotice = ref('')
+const accountRecoveryCode = ref('')
+let accountGateway: AccountGateway | null = null
+
+/** 同桌名单：有玩家名的席位 + 自己（自己还没名字时也列出来，显示回退的席位号）。 */
+const roster = computed(() => {
+  const current = view.value
+  if (current === null) {
+    return []
+  }
+
+  const named = new Set<number>(current.seatNames.map((entry) => entry.seat))
+  named.add(current.seat)
+  return [...named].sort((left, right) => left - right)
+})
+
+function ensureAccountGateway(): AccountGateway {
+  accountGateway ??= new AccountGateway()
+  return accountGateway
+}
+
+function accountFailureText(code: string, message: string): string {
+  return message.length > 0 ? `账号操作未成功（${code}）：${message}` : `账号操作未成功（${code}）`
+}
+
+async function registerAccount(username: string, displayName: string, password: string): Promise<void> {
+  accountBusy.value = true
+  accountRecoveryCode.value = ''
+  try {
+    const result = await ensureAccountGateway().register(username, displayName, password)
+    if (!result.ok) {
+      accountNotice.value = accountFailureText(result.code, result.message)
+      return
+    }
+
+    accountProfile.value = ensureAccountGateway().profile
+    accountNotice.value = '注册成功，已登录；凭票据加入即可认领席位'
+    accountRecoveryCode.value = result.recoveryCode ?? ''
+  } catch (error) {
+    accountNotice.value = `注册失败：${error instanceof Error ? error.message : String(error)}`
+  } finally {
+    accountBusy.value = false
+  }
+}
+
+async function loginAccount(username: string, password: string): Promise<void> {
+  accountBusy.value = true
+  accountRecoveryCode.value = ''
+  try {
+    const result = await ensureAccountGateway().login(username, password)
+    if (!result.ok) {
+      accountNotice.value = accountFailureText(result.code, result.message)
+      return
+    }
+
+    accountProfile.value = ensureAccountGateway().profile
+    accountNotice.value = '已登录；凭票据加入即可认领席位'
+  } catch (error) {
+    accountNotice.value = `登录失败：${error instanceof Error ? error.message : String(error)}`
+  } finally {
+    accountBusy.value = false
+  }
+}
+
+async function logoutAccount(): Promise<void> {
+  accountBusy.value = true
+  try {
+    await ensureAccountGateway().logout()
+    accountProfile.value = null
+    accountNotice.value = '已登出（席位票据仍然有效）'
+    accountRecoveryCode.value = ''
+  } catch (error) {
+    accountNotice.value = `登出失败：${error instanceof Error ? error.message : String(error)}`
+  } finally {
+    accountBusy.value = false
+  }
+}
+
+async function renameAccount(displayName: string): Promise<void> {
+  if (displayName.length === 0) {
+    accountNotice.value = '玩家名不能为空'
+    return
+  }
+
+  accountBusy.value = true
+  try {
+    const result = await ensureAccountGateway().changeDisplayName(displayName)
+    if (!result.ok) {
+      accountNotice.value = accountFailureText(result.code, result.message)
+      return
+    }
+
+    accountProfile.value = ensureAccountGateway().profile
+    accountNotice.value = `玩家名已改为「${result.displayName}」，已同步给同桌`
+  } catch (error) {
+    accountNotice.value = `改名失败：${error instanceof Error ? error.message : String(error)}`
+  } finally {
+    accountBusy.value = false
+  }
+}
+
+async function resetAccountPassword(
+  username: string,
+  recoveryCode: string,
+  newPassword: string,
+): Promise<void> {
+  accountBusy.value = true
+  accountRecoveryCode.value = ''
+  try {
+    const result = await ensureAccountGateway().resetPassword(username, recoveryCode, newPassword)
+    if (!result.ok) {
+      accountNotice.value = accountFailureText(result.code, result.message)
+      return
+    }
+
+    accountProfile.value = ensureAccountGateway().profile
+    accountNotice.value = '口令已重置并重新登录；旧会话已失效'
+    accountRecoveryCode.value = result.recoveryCode ?? ''
+  } catch (error) {
+    accountNotice.value = `重置失败：${error instanceof Error ? error.message : String(error)}`
+  } finally {
+    accountBusy.value = false
+  }
+}
 
 const stateText: Record<GatewayState, string> = {
   disconnected: '未连接',
@@ -163,9 +293,11 @@ function pushDiagnostic(message: string): void {
 async function join(): Promise<void> {
   joining.value = true
   try {
-    store.write(ticket.value.trim())
+    const seatTicket = ticket.value.trim()
+    store.write(seatTicket)
     // 视图由网关合并后经 onView 下发；这里只负责发起与报错。
-    await ensureGateway().joinSeat(ticket.value.trim())
+    // 账号（D-0021）：登录后带账号会话，票据用于首次认领；认领之后可以只凭账号（票据留空）。
+    await ensureGateway().joinSeat(seatTicket, accountProfile.value?.accountSession ?? null)
     clientSequence = 0
   } catch (error) {
     pushDiagnostic(`加入失败：${error instanceof Error ? error.message : String(error)}`)
@@ -311,6 +443,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   void gateway?.stop()
+  void accountGateway?.stop()
 })
 </script>
 
@@ -323,6 +456,17 @@ onBeforeUnmount(() => {
         <input v-model="ticket" placeholder="席位票据" spellcheck="false" @keyup.enter="join()" />
         <button type="button" class="primary" :disabled="joining" @click="join()">加入</button>
       </div>
+      <AccountPanel
+        :profile="accountProfile"
+        :busy="accountBusy"
+        :notice="accountNotice"
+        :recovery-code="accountRecoveryCode"
+        @register="registerAccount"
+        @login="loginAccount"
+        @logout="logoutAccount"
+        @rename="renameAccount"
+        @reset="resetAccountPassword"
+      />
       <p class="hint">连接状态：{{ stateText[connectionState] }}</p>
       <ul v-if="diagnostics.length > 0" class="diagnostics">
         <li v-for="message in diagnostics" :key="message">{{ message }}</li>
@@ -332,7 +476,9 @@ onBeforeUnmount(() => {
     <template v-else>
       <header class="panel head">
         <div>
-          <span class="tag" data-testid="player-seat">{{ seatLabelOf(view!.seat) }}</span>
+          <span class="tag" data-testid="player-seat">{{
+            seatDisplayOf(view!.seat, view!.seatNames)
+          }}</span>
           <strong data-testid="player-phase">{{
             labelOf(view!.phase) === '—' ? '阶段未知' : labelOf(view!.phase)
           }}</strong>
@@ -343,6 +489,32 @@ onBeforeUnmount(() => {
           <span class="hint">连接：{{ stateText[connectionState] }}</span>
         </div>
       </header>
+
+      <section class="panel" data-testid="player-account">
+        <h2>账号</h2>
+        <AccountPanel
+          compact
+          :profile="accountProfile"
+          :busy="accountBusy"
+          :notice="accountNotice"
+          :recovery-code="accountRecoveryCode"
+          @register="registerAccount"
+          @login="loginAccount"
+          @logout="logoutAccount"
+          @rename="renameAccount"
+          @reset="resetAccountPassword"
+        />
+      </section>
+
+      <section class="panel" data-testid="player-roster">
+        <h2>同桌</h2>
+        <p v-if="roster.length === 0" class="hint">还没有席位信息。</p>
+        <ul v-else class="roster">
+          <li v-for="seat in roster" :key="seat" :data-seat="seat">
+            {{ seatDisplayOf(seat, view!.seatNames) }}<span v-if="seat === view!.seat">（你）</span>
+          </li>
+        </ul>
+      </section>
 
       <section
         v-if="outcome"
@@ -385,7 +557,7 @@ onBeforeUnmount(() => {
               :data-option-value="option.value"
             >
               <input v-model="selectedOption" type="radio" :value="option.value" />
-              {{ option.preview }}
+              {{ optionDisplayOf(option, view!.seatNames) }}
             </label>
           </div>
           <div
@@ -401,7 +573,7 @@ onBeforeUnmount(() => {
               :data-option-value="option.value"
             >
               <input v-model="selectedSecondary" type="radio" :value="option.value" />
-              {{ option.preview }}
+              {{ optionDisplayOf(option, view!.seatNames) }}
             </label>
           </div>
           <input v-model="note" placeholder="备注（可选）" />
@@ -422,6 +594,7 @@ onBeforeUnmount(() => {
         v-if="day"
         :day="day"
         :seat="view!.seat"
+        :seat-names="view!.seatNames"
         :nominate="nominateSeat"
         :vote="voteOnNomination"
         @diagnostic="pushDiagnostic"

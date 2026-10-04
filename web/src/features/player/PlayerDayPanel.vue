@@ -5,8 +5,8 @@
  * 白天是公开信息（百科《规则概要》三）：提名、票面、处决都公示；
  * 能不能动由服务端的权限位决定，前端只做使能提示——服务端仍会独立校验（D-0012）。
  */
-import type { PlayerDayDto } from '@/contracts/game'
-import { seatLabelOf } from '@/display/format'
+import type { PlayerDayDto, SeatDisplayNameDto } from '@/contracts/game'
+import { seatDisplayOf } from '@/display/format'
 import { newIdempotencyKey } from '@/services/idempotency'
 import { computed, ref } from 'vue'
 
@@ -14,12 +14,19 @@ const props = defineProps<{
   day: PlayerDayDto
   /** 接收者自己的席位：公开生死面上标出"你"，并判断要不要给自己的死亡横幅。 */
   seat: number
+  /** 公开的「席位 → 玩家名」（D-0021）：提名 / 投票 / 公告共用同一份拼接口径。 */
+  seatNames: SeatDisplayNameDto[]
   /** 提名（父组件把网关包成函数传入；这里不直接持有连接）。 */
   nominate: (seat: number, idempotencyKey: string) => Promise<unknown>
   /** 投票 / 撤回。 */
   vote: (nominationIndex: number, voted: boolean, idempotencyKey: string) => Promise<unknown>
 }>()
 const emit = defineEmits<{ diagnostic: [string] }>()
+
+/** 席位显示文本（D-0021 统一口径）；空值 / 坏值退化成占位符。 */
+function seatText(seat: number | null | undefined): string {
+  return typeof seat === 'number' && Number.isFinite(seat) ? seatDisplayOf(seat, props.seatNames) : '—'
+}
 
 /** 公开生死状态 → 人话；未知取值原样回显（不猜、不吞，web/AGENTS §4）。 */
 function lifeLabel(state: string): string {
@@ -115,7 +122,7 @@ async function castVote(voted: boolean): Promise<void> {
         <select v-model.number="nominee" data-testid="player-nominee-select">
           <option :value="null" disabled>选择要提名的席位</option>
           <option v-for="candidate in day.candidates" :key="candidate" :value="candidate">
-            {{ seatLabelOf(candidate) }}
+            {{ seatText(candidate) }}
           </option>
         </select>
         <button
@@ -158,10 +165,10 @@ async function castVote(voted: boolean): Promise<void> {
       data-testid="player-about-to-be-executed"
       :data-seat="day.publicView.aboutToBeExecuted"
     >
-      即将被处决：{{ seatLabelOf(day.publicView.aboutToBeExecuted) }}
+      即将被处决：{{ seatText(day.publicView.aboutToBeExecuted) }}
     </p>
     <p v-if="day.publicView.executed !== null" data-testid="player-executed" :data-seat="day.publicView.executed">
-      已处决：{{ seatLabelOf(day.publicView.executed) }}
+      已处决：{{ seatText(day.publicView.executed) }}
     </p>
 
     <ul
@@ -176,7 +183,7 @@ async function castVote(voted: boolean): Promise<void> {
         :data-nomination-status="nomination.status"
         :data-nomination-votes="nomination.votes"
       >
-        {{ seatLabelOf(nomination.nominator) }} 提名 {{ seatLabelOf(nomination.nominee) }} ——
+        {{ seatText(nomination.nominator) }} 提名 {{ seatText(nomination.nominee) }} ——
         {{ nomination.votes }} 票（{{ nomination.status === 'Counted' ? '已计票' : '投票中' }}）
       </li>
     </ul>
@@ -191,7 +198,7 @@ async function castVote(voted: boolean): Promise<void> {
           :data-life="entry.state"
           :class="{ 'is-self': entry.seat === seat }"
         >
-          {{ seatLabelOf(entry.seat) }}{{ entry.seat === seat ? '（你）' : '' }} —— {{ lifeLabel(entry.state) }}
+          {{ seatText(entry.seat) }}{{ entry.seat === seat ? '（你）' : '' }} —— {{ lifeLabel(entry.state) }}
         </li>
       </ul>
       <p v-if="day.lives.length === 0" class="hint">还没有公开的生死记录。</p>
@@ -210,7 +217,7 @@ async function castVote(voted: boolean): Promise<void> {
           :data-seat="entry.seat"
           :data-state="entry.state"
         >
-          {{ seatLabelOf(entry.seat) }} {{ announcementLabel(entry.state) }}
+          {{ seatText(entry.seat) }} {{ announcementLabel(entry.state) }}
         </li>
       </ul>
       <p v-else class="hint">本日还没有死亡或复活公告。</p>
