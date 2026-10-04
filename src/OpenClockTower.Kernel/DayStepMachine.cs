@@ -16,9 +16,10 @@ namespace OpenClockTower.Kernel;
 /// </remarks>
 internal static class DayStepMachine
 {
-    /// <summary>这条输入是不是白天输入（提名 / 钟盘收票 / 计票 / 流放 / 结束白天）。</summary>
+    /// <summary>这条输入是不是白天输入（提名 / 额外提名 / 钟盘收票 / 计票 / 流放 / 结束白天）。</summary>
     internal static bool IsDayInput(StepMachineInput input) =>
         input is NominateInput
+            or NominateExtraInput
             or CastVoteInput
             or StartVoteSweepInput
             or CollectSeatVoteInput
@@ -96,6 +97,7 @@ internal static class DayStepMachine
         var outcome = input switch
         {
             NominateInput nominate => DayMachine.Nominate(day, context, nominate),
+            NominateExtraInput nominateExtra => ExtraNominationMachine.Nominate(day, context, nominateExtra),
             StartVoteSweepInput startSweep => DayMachine.StartVoteSweep(day, context, startSweep),
             CollectSeatVoteInput collectSeat => DayMachine.CollectSeatVote(day, context, collectSeat),
             ResumeVoteSweepInput resumeSweep => DayMachine.ResumeVoteSweep(day, context, resumeSweep),
@@ -119,6 +121,19 @@ internal static class DayStepMachine
 
         if (input is CloseDayInput)
         {
+            // 屠夫窗口（D4 / R-0050）：首次处决后只开窗、白天保持 Open——计划停在同一个 DayWindow 槽位，
+            // 等额外提名或说书人再次关闭；只有真正产出「白天关闭」事件时才推槽位、收计划。
+            if (!outcome.Events.OfType<DayClosedEvent>().Any())
+            {
+                if (!outcome.Events.OfType<ExtraNominationWindowOpenedEvent>().Any())
+                {
+                    throw new InvalidOperationException(
+                        "结束白天既没有关闭白天、也没有打开额外提名窗口：白天规则的产出形状被破坏");
+                }
+
+                return Applied(state, [.. outcome.Events]);
+            }
+
             // 结束白天 = 走完白天计划（不是强推）：先落白天账，再推槽位、收计划。
             var closeEvents = new List<GameEvent>(outcome.Events);
             var after = StepMachineFolder.ApplyAll(state, closeEvents)

@@ -246,6 +246,10 @@ internal sealed class GameCommandFactory
     internal GameCommand ProposeExile(int targetSeat) =>
         new ProposeExileCommand { Target = new SeatId(targetSeat) };
 
+    /// <summary>玩家（屠夫）在额外提名窗口里发起提名（发起人由凭据推导；R-0050）。</summary>
+    internal GameCommand NominateExtra(int nomineeSeat) =>
+        new NominateExtraCommand { Nominee = new SeatId(nomineeSeat) };
+
     /// <summary>玩家在当前开放的流放提议上举手 / 放下（R-0044 第 4 条）。</summary>
     internal GameCommand CastExileVote(int exileIndex, bool voted) =>
         new CastExileVoteCommand { ExileIndex = exileIndex, Voted = voted };

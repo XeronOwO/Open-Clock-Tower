@@ -8,9 +8,9 @@ namespace OpenClockTower.Kernel;
 /// （Life = Dead）单独记录。已经死亡的席位被处罚处决时只记录本事件，不重复记死亡（R-0020）。
 /// </para>
 /// <para>
-/// 每个白天最多一次（《处决》关于处决；处罚处决计入，详见 <c>docs/standard/rulings.md</c> R-0020）；
-/// 无合适对象时白天以无人被处决收尾。夜晚发生的处罚处决不占任何白天的上限，因此
-/// <see cref="DayNumber"/> 为 null。
+/// 每个白天最多一次常规处决（《处决》关于处决；处罚处决计入，详见 <c>docs/standard/rulings.md</c> R-0020），
+/// 但屠夫窗口用掉后允许第二次（R-0050）；无合适对象时白天以无人被处决收尾。夜晚发生的处罚处决不占任何
+/// 白天的上限，因此 <see cref="DayNumber"/> 为 null。
 /// </para>
 /// </remarks>
 public sealed record ExecutedEvent : GameEvent

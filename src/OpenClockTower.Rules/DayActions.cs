@@ -44,9 +44,8 @@ public static class DayActions
         new("evil-twin"),
         new("vortox"),
 
-        // 旅行者的白天面（票据 `traveller-and-exile`）：怪咖（当天不能被流放，D3，已覆盖）、
-        // 屠夫（处决后的额外提名窗口，D4）。两者都登记为「白天相关」；未实现契约的（屠夫）在场时
-        // 开白天会被显式拒绝——不许"白天照跑、免死 / 额外提名静默不发生"（与其余未实现角色同款）。
+        // 旅行者的白天面（票据 `traveller-and-exile`）：怪咖（当天不能被流放，D3）、屠夫（处决后的额外
+        // 提名窗口，D4）。两者都登记为「白天相关」，并已在 CoveredCharacters 里登记覆盖。
         new("deviant"),
         new("butcher"),
     ];
@@ -96,6 +95,10 @@ public static class DayActions
         // 怪咖：流放达线时的死亡保护（说书人裁定「今天是否有趣」，R-0048）——收口在
         // ExileMachine / DayProtectionMachine；登记覆盖后带怪咖的局可以开白天。
         new("deviant"),
+
+        // 屠夫：当天首次处决后打开额外提名窗口、窗口内由本人额外提名一次（R-0050）——收口在
+        // ExtraNominationMachine；登记覆盖后带屠夫的局可以开白天。
+        new("butcher"),
     ];
 
     /// <summary>该角色是否与白天阶段相关（无论实现与否）。</summary>

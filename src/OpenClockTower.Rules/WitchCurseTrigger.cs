@@ -45,20 +45,33 @@ internal sealed class WitchCurseTrigger : IEventTrigger
         var events = new List<GameEvent>();
         var inForce = WitchAbility.InForce(context.State, context.Seats);
 
-        foreach (var nomination in context.Events.OfType<NominationMadeEvent>())
+        // 额外提名也是提名（R-0050）：对「发起提名」类触发（女巫诅咒）一视同仁——屠夫本人在窗口里
+        // 提名时，若身上带着生效的诅咒，同样立即死亡。
+        foreach (var gameEvent in context.Events)
         {
+            var nominator = gameEvent switch
+            {
+                NominationMadeEvent made => made.Nominator,
+                ExtraNominationMadeEvent extra => extra.Nominator,
+                _ => (SeatId?)null,
+            };
+            if (nominator is not { } seat)
+            {
+                continue;
+            }
+
             if (inForce == false)
             {
                 // 能力已失去：不产生后果（诅咒由存续契约在本次提交内解除）。
                 continue;
             }
 
-            if (FindOperativeCurse(context.State, nomination.Nominator) is not { } curse)
+            if (FindOperativeCurse(context.State, seat) is not { } curse)
             {
                 continue;
             }
 
-            if (context.State.Seat(nomination.Nominator)?.LifeValue != LifeState.Alive)
+            if (context.State.Seat(seat)?.LifeValue != LifeState.Alive)
             {
                 // 已经死了（级联里的重复求值）：不再产出第二条死亡事实。
                 continue;
@@ -66,7 +79,7 @@ internal sealed class WitchCurseTrigger : IEventTrigger
 
             events.Add(new SeatStateChangedEvent
             {
-                Seat = nomination.Nominator,
+                Seat = seat,
                 Life = LifeState.Dead,
                 Reason = WitchAbility.CurseDeathReason,
                 CausedBy = curse.Source,

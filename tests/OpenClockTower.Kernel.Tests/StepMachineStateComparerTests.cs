@@ -8,9 +8,10 @@ namespace OpenClockTower.Kernel.Tests;
 /// </summary>
 public sealed class StepMachineStateComparerTests
 {
-    /// <summary>处决分类不同 = 状态不等价（ExecutedKind 是白天账的一部分：常规 / 洗脑师处罚 / 畸形秀演员处罚）。</summary>
+    /// <summary>处决账（席位 + 来源分类）不同 = 状态不等价（常规 / 洗脑师处罚 / 畸形秀演员处罚；R-0050 起
+    /// 还可能是屠夫窗口里的第二次常规处决）。</summary>
     [Fact]
-    public void ExecutionKind_IsPartOfTheDayLedgerComparison()
+    public void ExecutionLedger_IsPartOfTheDayLedgerComparison()
     {
         var executed = StepMachine.Apply(
             DayPhaseFixture.StartDay(),
@@ -21,11 +22,18 @@ public sealed class StepMachineStateComparerTests
                 Kind = ExecutionKind.CerenovusMadness,
             })!;
 
+        var day = executed.Day!.Days[0];
         var tampered = executed with
         {
             Day = executed.Day! with
             {
-                Days = [executed.Day!.Days[0] with { ExecutedKind = ExecutionKind.Day }],
+                Days =
+                [
+                    day with
+                    {
+                        Executions = [day.Executions[0] with { Kind = ExecutionKind.Day }],
+                    },
+                ],
             },
         };
 

@@ -243,8 +243,9 @@ public static class StepMachineStateComparer
             if (dayLeft.DayNumber != dayRight.DayNumber
                 || dayLeft.Status != dayRight.Status
                 || dayLeft.AboutToBeExecuted != dayRight.AboutToBeExecuted
-                || dayLeft.Executed != dayRight.Executed
-                || dayLeft.ExecutedKind != dayRight.ExecutedKind
+                || dayLeft.Executions.Count != dayRight.Executions.Count
+                || dayLeft.ExtraNomination?.Seat != dayRight.ExtraNomination?.Seat
+                || dayLeft.ExtraNomination?.Status != dayRight.ExtraNomination?.Status
                 || dayLeft.Nominations.Count != dayRight.Nominations.Count
                 || dayLeft.Exiles.Count != dayRight.Exiles.Count
                 || dayLeft.ProtectionDecisions.Count != dayRight.ProtectionDecisions.Count
@@ -253,11 +254,23 @@ public static class StepMachineStateComparer
                 return false;
             }
 
+            // 两次处决的账（D4 / R-0050）：席位 + 来源分类逐条比对；漏比会让重建校验在处决上失明。
+            for (var executionIndex = 0; executionIndex < dayLeft.Executions.Count; executionIndex++)
+            {
+                var executionLeft = dayLeft.Executions[executionIndex];
+                var executionRight = dayRight.Executions[executionIndex];
+                if (executionLeft.Seat != executionRight.Seat || executionLeft.Kind != executionRight.Kind)
+                {
+                    return false;
+                }
+            }
+
             for (var nominationIndex = 0; nominationIndex < dayLeft.Nominations.Count; nominationIndex++)
             {
                 var nominationLeft = dayLeft.Nominations[nominationIndex];
                 var nominationRight = dayRight.Nominations[nominationIndex];
                 if (nominationLeft.Index != nominationRight.Index
+                    || nominationLeft.Kind != nominationRight.Kind
                     || nominationLeft.Nominator != nominationRight.Nominator
                     || nominationLeft.Nominee != nominationRight.Nominee
                     || nominationLeft.NominatorCharacter != nominationRight.NominatorCharacter

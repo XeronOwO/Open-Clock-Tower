@@ -39,11 +39,23 @@ public sealed record DayRecord
     /// </summary>
     public SeatId? AboutToBeExecuted { get; init; }
 
-    /// <summary>本白天实际被处决的玩家；null = 还没有处决（或本白天以无人被处决收尾）。</summary>
-    public SeatId? Executed { get; init; }
+    /// <summary>
+    /// 本白天实际发生的处决，按发生顺序（常规至多一次；屠夫窗口用掉后可以再有第二次，R-0050）。
+    /// </summary>
+    /// <remarks>处决 ≠ 死亡：被处决但未死亡（保护 / 已死亡目标）也进这里（R-0020 / R-0048）。</remarks>
+    public IReadOnlyList<DayExecution> Executions { get; init; } = [];
 
-    /// <summary>本白天处决的来源分类（常规 / 洗脑师处罚 / 畸形秀演员处罚）；null = 还没有处决。</summary>
-    public ExecutionKind? ExecutedKind { get; init; }
+    /// <summary>本白天第一次处决的席位；null = 还没有处决。派生自 <see cref="Executions"/>（读取面兼容）。</summary>
+    public SeatId? Executed => Executions.Count == 0 ? null : Executions[0].Seat;
+
+    /// <summary>本白天第一次处决的来源分类；null = 还没有处决。派生自 <see cref="Executions"/>。</summary>
+    public ExecutionKind? ExecutedKind => Executions.Count == 0 ? null : Executions[0].Kind;
+
+    /// <summary>本白天是否已经发生过处决（含被处决但未死亡；R-0020 / R-0050）。</summary>
+    public bool HasExecution => Executions.Count > 0;
+
+    /// <summary>当天打开的额外提名窗口；null = 从未打开（R-0050）。</summary>
+    public ExtraNominationWindow? ExtraNomination { get; init; }
 
     /// <summary>当前投票窗口开着的提名（同一时间至多一项）；没有则为 null。</summary>
     public NominationRecord? OpenNomination =>

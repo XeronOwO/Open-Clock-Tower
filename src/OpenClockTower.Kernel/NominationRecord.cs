@@ -17,8 +17,11 @@ namespace OpenClockTower.Kernel;
 /// </remarks>
 public sealed record NominationRecord
 {
-    /// <summary>当天第几次提名（从 1 起，进事件流后稳定）。</summary>
+    /// <summary>当天第几次提名（从 1 起，进事件流后稳定；常规与额外提名共用一个序号序列）。</summary>
     public required int Index { get; init; }
+
+    /// <summary>提名来源分类：常规提名 / 屠夫窗口的额外提名（R-0050）。</summary>
+    public NominationKind Kind { get; init; } = NominationKind.Standard;
 
     /// <summary>发起提名的席位（只可能是存活玩家）。</summary>
     public required SeatId Nominator { get; init; }

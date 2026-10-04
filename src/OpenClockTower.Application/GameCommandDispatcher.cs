@@ -93,7 +93,8 @@ internal static class GameCommandDispatcher
 
         // 白天玩家命令要走带行动者席位的形状转换（提名者 / 投票者 / 流放发起者 / 流放表决者
         // 都来自凭据推导，命令面无自称身份）。
-        if (envelope.Command is NominateCommand or CastVoteCommand or ProposeExileCommand or CastExileVoteCommand)
+        if (envelope.Command is NominateCommand or NominateExtraCommand
+            or CastVoteCommand or ProposeExileCommand or CastExileVoteCommand)
         {
             // 结构上不依赖闸门顺序：拿不到席位就在这里显式拒绝，而不是靠 `Seat!` 之后的空引用崩溃。
             if (envelope.Actor.Seat is not { } actor)
@@ -232,6 +233,11 @@ internal static class GameCommandDispatcher
             {
                 Nominator = actor,
                 Nominee = nominate.Nominee,
+            },
+            NominateExtraCommand nominateExtra => new NominateExtraInput
+            {
+                Nominator = actor,
+                Nominee = nominateExtra.Nominee,
             },
             CastVoteCommand castVote => new CastVoteInput
             {

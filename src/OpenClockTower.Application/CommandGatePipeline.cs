@@ -129,6 +129,12 @@ public static class CommandGatePipeline
                 "只有玩家本人可以发起提名",
                 "identity"),
 
+            NominateExtraCommand when actor.Kind == ActorKind.Player && actor.Seat is not null => null,
+            NominateExtraCommand => Reject(
+                "identity.player_only",
+                "只有玩家本人可以发起额外提名",
+                "identity"),
+
             CastVoteCommand when actor.Kind == ActorKind.Player && actor.Seat is not null => null,
             CastVoteCommand => Reject(
                 "identity.player_only",
@@ -288,6 +294,7 @@ public static class CommandGatePipeline
 
             // 白天输入统一要求"白天开着"：具体规则（谁有资格、票数够不够、收票到没到点）在内核里判。
             case NominateCommand
+                or NominateExtraCommand
                 or CastVoteCommand
                 or StartVoteSweepCommand
                 or CollectSeatVoteCommand
@@ -391,6 +398,7 @@ public static class CommandGatePipeline
             StartNightCommand startNight => CheckStartNight(startNight, machine, setup),
             ApplySeatStateCommand seat => SeatGate.CheckExists(seat.Seat, setup),
             NominateCommand nominate => SeatGate.CheckExists(nominate.Nominee, setup),
+            NominateExtraCommand nominateExtra => SeatGate.CheckExists(nominateExtra.Nominee, setup),
             CastVoteCommand castVote => CheckNominationIndex(castVote.NominationIndex),
             // 钟盘收票（R-0017 目标形态）：参数范围与席位形状的闸在 VoteSweepGate（与内核同尺）。
             StartVoteSweepCommand or ResumeVoteSweepCommand or CollectSeatVoteCommand

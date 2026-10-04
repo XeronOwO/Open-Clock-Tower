@@ -160,6 +160,26 @@ public sealed class WitchAbilitiesTests
         Assert.DoesNotContain(events, gameEvent => gameEvent is NominationMadeEvent);
     }
 
+    /// <summary>额外提名也是提名（R-0050）：屠夫窗口里的提名同样触发女巫诅咒。</summary>
+    [Fact]
+    public void Trigger_CursedNominatorDies_OnAnExtraNominationToo()
+    {
+        var state = Cursed(FourSeats(), source: 1, target: 2);
+
+        var events = Trigger.Evaluate(TriggerContext(state, new ExtraNominationMadeEvent
+        {
+            DayNumber = 1,
+            NominationIndex = 2,
+            Nominator = new SeatId(2),
+            Nominee = new SeatId(1),
+        }));
+
+        var death = Assert.Single(events.OfType<SeatStateChangedEvent>());
+        Assert.Equal(new SeatId(2), death.Seat);
+        Assert.Equal(LifeState.Dead, death.Life);
+        Assert.Equal(CurseId, death.EffectId);
+    }
+
     [Fact]
     public void Trigger_UncursedNominator_ProducesNothing()
     {

@@ -80,12 +80,12 @@ internal static class AdjudicatedExecutionMachine
                     "还有提名没有计票：先计票（计票结论本就由说书人掌握），再处罚处决");
             }
 
-            if (day.Executed is not null)
+            if (day.HasExecution)
             {
                 return Reject(
                     state,
                     "day.execution_used",
-                    $"白天 {day.DayNumber} 已经处决过 {day.Executed.Value.Value}：每个白天最多一次处决（R-0020）");
+                    $"白天 {day.DayNumber} 已经处决过 {day.Executions[0].Seat.Value}：每个白天最多一次处决（R-0020）");
             }
         }
 
@@ -96,6 +96,32 @@ internal static class AdjudicatedExecutionMachine
                 state,
                 "punishment.life_unknown",
                 $"席位 {input.Seat.Value} 的生死还没有观测：无法判定处罚处决是否产生死亡（不猜）");
+        }
+
+        // 处决只杀非旅行者（R-0049 第 4 条）：处罚处决（含夜晚形态）同样不杀旅行者——旅行者只能被流放
+        // 杀死（《旅行者》/ 印刷规则书「Travelers are exiled, not executed」）。事实缺失 / 未观测显式拒绝，不猜。
+        if (context.Characters is not { } characters)
+        {
+            return Reject(
+                state,
+                "punishment.character_facts_missing",
+                "本批没有角色事实端口：无法判定处罚目标是不是旅行者（不猜；R-0049）");
+        }
+
+        if (context.State.Seat(input.Seat)?.CharacterValue is not { } targetCharacter)
+        {
+            return Reject(
+                state,
+                "punishment.target_character_unknown",
+                $"席位 {input.Seat.Value} 的角色还没有观测：无法判定处罚目标是不是旅行者（不猜；R-0049）");
+        }
+
+        if (characters.IsTraveller(targetCharacter))
+        {
+            return Reject(
+                state,
+                "punishment.target_is_traveller",
+                "旅行者是被流放、不是被处决（R-0049）：处罚处决不能杀旅行者");
         }
 
         var events = new List<GameEvent>

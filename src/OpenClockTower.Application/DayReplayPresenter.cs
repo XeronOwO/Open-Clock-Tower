@@ -24,6 +24,8 @@ internal sealed class DayReplayPresenter : IReplayStepPresenter
         typeof(ExileSweepResumedEvent),
         typeof(ExileVoteCountedEvent),
         typeof(DayProtectionDecidedEvent),
+        typeof(ExtraNominationWindowOpenedEvent),
+        typeof(ExtraNominationMadeEvent),
     ];
 
     /// <inheritdoc />
@@ -172,6 +174,27 @@ internal sealed class DayReplayPresenter : IReplayStepPresenter
                 + $"{context.SeatText.Seat(protectionDecided.Seat)} "
                 + (protectionDecided.Protected ? "今天受保护（不因流放死亡）" : "不受保护"),
             Detail = protectionDecided.Note,
+        },
+
+        // 屠夫窗口（D4 / R-0050）：首次处决后开窗、窗口内由屠夫本人额外提名，各成一步。
+        ExtraNominationWindowOpenedEvent windowOpened => new ReplayStep
+        {
+            Sequence = context.Stored.Sequence,
+            Kind = ReplayStepKind.Day,
+            Phase = GamePhase.Day,
+            Summary = $"第 {windowOpened.DayNumber} 天首次处决后打开额外提名窗口："
+                + $"{context.SeatText.Seat(windowOpened.Seat)}（屠夫）可以再次发起提名",
+        },
+        ExtraNominationMadeEvent extraMade => new ReplayStep
+        {
+            Sequence = context.Stored.Sequence,
+            Kind = ReplayStepKind.Day,
+            Phase = GamePhase.Day,
+            Summary = $"{context.SeatText.Seat(extraMade.Nominator)} 额外提名 {context.SeatText.Seat(extraMade.Nominee)}"
+                + $"（第 {extraMade.DayNumber} 天第 {extraMade.NominationIndex} 项，屠夫窗口）",
+            Detail = extraMade.NominatorCharacter is { } character
+                ? $"提名时提名者角色：{ReplayText.CharacterValue(character)}"
+                : null,
         },
         _ => throw new InvalidOperationException(
             $"DayReplayPresenter 不认领事件 {context.Stored.Event.GetType().Name}"),

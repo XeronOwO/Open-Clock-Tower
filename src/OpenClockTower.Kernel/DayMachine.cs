@@ -38,6 +38,15 @@ public static class DayMachine
                 "已有一项提名在投票中：先计票（CountVotes）或强推兜底，不能同时提两名玩家");
         }
 
+        // 当天首次处决之后提名阶段即结束（《处决》第 5 步：触发屠夫的能力，或立即宣布白天阶段结束）：
+        // 窗口期内只有屠夫的额外提名这一个入口（R-0050 第 2 / 3 条）。
+        if (day.ExtraNomination is not null)
+        {
+            return DayOutcome.Reject(
+                "day.nomination_window_closed",
+                "当天首次处决之后提名阶段已经结束：现在只能由屠夫发起额外提名，或结束白天（R-0050）");
+        }
+
         if (!context.Seats.Contains(input.Nominator))
         {
             return DayOutcome.Reject("day.nominator_unknown", $"席位 {input.Nominator.Value} 不在本局座次里");
@@ -379,15 +388,50 @@ public static class DayMachine
         var voters = open.Ballot.OrderBy(seat => seat.Value).ToArray();
         var votes = voters.Length;
 
-        // 条件 1：今天所有已被提名者中最多（不得并列）——只跟**已计票**的提名比。
-        var otherMax = day.Nominations
-            .Where(nomination => nomination.Status == NominationStatus.Counted && nomination.Index != open.Index)
-            .Select(nomination => nomination.Ballot.Count)
-            .DefaultIfEmpty(0)
-            .Max();
+        bool qualifies;
+        if (open.Kind == NominationKind.Extra)
+        {
+            // 额外提名（屠夫窗口）：只需「≥ 存活一半 + 至少 1 票」——明文不要求超过此前提名 / 被处决者的票数
+            // （百科《屠夫》· 2026-10-04 抓取 · 角色简介 / 运作方式；R-0050 第 4 条）。
+            qualifies = votes >= 1 && votes * 2 >= alive;
+        }
+        else
+        {
+            // 常规提名，条件 1：今天所有已被提名者中最多（不得并列）——只跟**已计票**的提名比；
+            // 条件 2：等于或超过存活玩家人数的一半；条件 3：至少 1 票。
+            var otherMax = day.Nominations
+                .Where(nomination => nomination.Status == NominationStatus.Counted && nomination.Index != open.Index)
+                .Select(nomination => nomination.Ballot.Count)
+                .DefaultIfEmpty(0)
+                .Max();
 
-        // 条件 2：等于或超过存活玩家人数的一半；条件 3：至少 1 票。
-        var qualifies = votes > otherMax && votes >= 1 && votes * 2 >= alive;
+            qualifies = votes > otherMax && votes >= 1 && votes * 2 >= alive;
+        }
+
+        if (qualifies)
+        {
+            // 条件全满足，但旅行者**永远不会进入「即将被处决」**：处决只杀非旅行者（R-0049 第 2 条）。
+            // 票数照记（已经折进票面），并照常参与后续「当天最多票」比较（otherMax 读的是已计票提名）。
+            // 只有"本来会落靶"的提名才需要旅行者事实；缺失 / 未观测显式拒绝，不按非旅行者默认（R-0049 第 5 条）。
+            if (context.Characters is not { } characters)
+            {
+                return DayOutcome.Reject(
+                    "day.character_facts_missing",
+                    "本批没有角色事实端口：无法判定提名目标是不是旅行者（不猜；R-0049）");
+            }
+
+            if (context.State.Seat(open.Nominee)?.CharacterValue is not { } character)
+            {
+                return DayOutcome.Reject(
+                    "day.nominee_character_unknown",
+                    $"席位 {open.Nominee.Value} 的角色还没有观测：无法判定他是不是旅行者（不猜；R-0049）");
+            }
+
+            if (characters.IsTraveller(character))
+            {
+                qualifies = false;
+            }
+        }
 
         var existing = day.AboutToBeExecuted;
         var existingVotes = existing is { } candidate
@@ -399,9 +443,6 @@ public static class DayMachine
         SeatId? aboutToBeExecuted;
         if (qualifies)
         {
-            // 旅行者与处决路径的接缝（R-0049 · Open）：来源没有直接写「旅行者不得被提名」，
-            // 但《术语汇总》把处决限定为「杀死非旅行者」。收口方案尚未定案，这里暂不排除——
-            // 见 docs/backlog/in-progress/traveller-and-exile.md「D3 期间发现」。
             aboutToBeExecuted = open.Nominee;
         }
         else if (existing is not null && votes >= (existingVotes ?? 0))
@@ -432,80 +473,9 @@ public static class DayMachine
     }
 
     /// <summary>
-    /// 结束白天：处决当前「即将被处决」者（如果有），并关闭白天。
-    /// 处决事件与死亡事件分开产出（处决 ≠ 死亡，百科《处决》）。
+    /// 结束白天：处决当前「即将被处决」者（如果有）——若这是当天首次处决且存在可用屠夫，则打开额外提名
+    /// 窗口、白天保持 Open（R-0050）；否则关闭白天。逻辑见 <see cref="DayCloseMachine"/>（D4 拆出）。
     /// </summary>
-    public static DayOutcome CloseDay(DayState state, SettlementContext context)
-    {
-        ArgumentNullException.ThrowIfNull(state);
-        ArgumentNullException.ThrowIfNull(context);
-
-        if (state.OpenDay is not { } day)
-        {
-            return DayOutcome.Reject("day.not_open", "现在不是白天，或白天已经结束");
-        }
-
-        if (day.OpenNomination is not null)
-        {
-            return DayOutcome.Reject(
-                "day.nomination_not_counted",
-                "还有提名没有计票：先把票计完（或由说书人强推兜底），再结束白天");
-        }
-
-        if (day.OpenExile is not null)
-        {
-            return DayOutcome.Reject(
-                "day.exile_not_counted",
-                "还有流放没有结清：先把流放收完、计票，再结束白天（票据「D2 实施口径」）");
-        }
-
-        var events = new List<GameEvent>(capacity: 3);
-        if (day.AboutToBeExecuted is { } seat)
-        {
-            var life = context.State.Seat(seat)?.LifeValue;
-            if (life is null)
-            {
-                return DayOutcome.Reject(
-                    "day.executed_life_unknown",
-                    $"席位 {seat.Value} 的生死还没有观测：无法判定处决是否产生死亡（不猜）");
-            }
-
-            events.Add(new ExecutedEvent
-            {
-                DayNumber = day.DayNumber,
-                Seat = seat,
-                Kind = ExecutionKind.Day,
-            });
-
-            // 存活者被处决是否产生死亡，先问统一死亡保护查询（R-0048，按死因）：受保护只记「被处决」、
-            // 不产生死亡；待裁定 / 判定不了显式拒绝。已经死亡者只记录「被处决」，不重复记死亡。
-            // 今日没有覆盖处决路径的保护来源 → 行为与既有实现一致（R-0049 的旅行者接缝另计）。
-            if (life == LifeState.Alive)
-            {
-                var protection = DeathProtectionQuery.Resolve(context, day, seat, DeathProtectionCause.Execution);
-                switch (protection.Outcome)
-                {
-                    case DeathProtectionOutcome.Protected:
-                        break;
-                    case DeathProtectionOutcome.NeedsRuling:
-                        return DayOutcome.Reject("day.execution_protection_required", protection.Note);
-                    case DeathProtectionOutcome.Indeterminate:
-                        return DayOutcome.Reject(
-                            "day.execution_protection_indeterminate",
-                            $"{protection.Note}（先补观测，再结束白天；R-0048）");
-                    default:
-                        events.Add(new SeatStateChangedEvent
-                        {
-                            Seat = seat,
-                            Life = LifeState.Dead,
-                            Reason = ExecutionDeathReason,
-                        });
-                        break;
-                }
-            }
-        }
-
-        events.Add(new DayClosedEvent { DayNumber = day.DayNumber });
-        return DayOutcome.Accepted(events);
-    }
+    public static DayOutcome CloseDay(DayState state, SettlementContext context) =>
+        DayCloseMachine.Close(state, context);
 }

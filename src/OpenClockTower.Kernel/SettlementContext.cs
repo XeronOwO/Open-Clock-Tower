@@ -49,6 +49,12 @@ public sealed record SettlementContext
     public IReadOnlyList<IDeathProtectionSource> DeathProtections { get; init; } = [];
 
     /// <summary>
+    /// 额外提名窗口来源（规则层实现，R-0050）：当天首次处决后有没有可用屠夫；没有时不开窗口——
+    /// 行为与 D4 引入前一致。
+    /// </summary>
+    public IReadOnlyList<IExtraNominationSource> ExtraNominations { get; init; } = [];
+
+    /// <summary>
     /// 步骤机状态（可选）：给"需要读游戏流程状态"的触发器用（例如呆瓜选择的幂等判断，R-0027）。
     /// 触发管线只读它、不写它；派生事件折回步骤机由应用层完成。
     /// </summary>

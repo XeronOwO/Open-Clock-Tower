@@ -42,6 +42,10 @@ internal static class DayLedgerFolder
             // 当天的死亡保护裁定（D3）：当天作用域、每席位一条（R-0048）。
             DayProtectionDecidedEvent protectionDecided => ApplyProtectionDecided(current, protectionDecided),
 
+            // 屠夫窗口（D4 / R-0050）：首次处决后开窗、窗口内的额外提名；都折进当天账。
+            ExtraNominationWindowOpenedEvent windowOpened => ApplyExtraNominationWindowOpened(current, windowOpened),
+            ExtraNominationMadeEvent extraMade => ApplyExtraNominationMade(current, extraMade),
+
             _ => throw new InvalidOperationException($"不是白天事件：{gameEvent.GetType().Name}"),
         };
     }
@@ -353,13 +357,44 @@ internal static class DayLedgerFolder
 
         return DayLedgerEdit.UpdateOpenDay(state, dayNumber, day =>
         {
-            if (day.Executed is not null)
+            if (day.Executions.Count == 0)
             {
-                throw new InvalidOperationException(
-                    $"事件流顺序损坏：白天 {day.DayNumber} 已经处决过 {day.Executed.Value.Value}，不能再次处决");
+                // 当天首次处决：常规 / 处罚都允许；执行后「即将被处决」立即清空——D4 起白天可能保持 Open
+                // 等屠夫窗口（R-0050），不清会把同一个人留到下一次 CloseDay。
+                return day with
+                {
+                    Executions =
+                    [
+                        .. day.Executions,
+                        new DayExecution { Seat = executed.Seat, Kind = executed.Kind },
+                    ],
+                    AboutToBeExecuted = null,
+                };
             }
 
-            return day with { Executed = executed.Seat, ExecutedKind = executed.Kind };
+            if (day.ExtraNomination is not { Status: ExtraNominationWindowStatus.Used })
+            {
+                throw new InvalidOperationException(
+                    $"事件流顺序损坏：白天 {day.DayNumber} 已经有 {day.Executions.Count} 次处决"
+                    + $"（首次是 {day.Executions[0].Seat.Value} 号），额外提名窗口没有用掉，不能再产出处决事实"
+                    + "（每个白天至多两次：常规一次 + 屠夫窗口一次；R-0050）");
+            }
+
+            if (day.Executions.Count >= 2 || executed.Kind != ExecutionKind.Day)
+            {
+                throw new InvalidOperationException(
+                    $"事件流顺序损坏：白天 {day.DayNumber} 的第二次处决必须是屠夫窗口用掉后的常规处决（R-0050）");
+            }
+
+            return day with
+            {
+                Executions =
+                [
+                    .. day.Executions,
+                    new DayExecution { Seat = executed.Seat, Kind = executed.Kind },
+                ],
+                AboutToBeExecuted = null,
+            };
         });
     }
 
@@ -413,6 +448,93 @@ internal static class DayLedgerFolder
                         Protected = decided.Protected,
                     },
                 ],
+            };
+        });
+    }
+
+    /// <summary>折叠一次「额外提名窗口打开」：只有当天恰好一次处决、且从未开过窗口时合法（R-0050）。</summary>
+    private static DayState ApplyExtraNominationWindowOpened(
+        DayState state,
+        ExtraNominationWindowOpenedEvent opened)
+    {
+        return DayLedgerEdit.UpdateOpenDay(state, opened.DayNumber, day =>
+        {
+            if (day.ExtraNomination is not null)
+            {
+                throw new InvalidOperationException(
+                    $"事件流顺序损坏：白天 {day.DayNumber} 的额外提名窗口已经打开过（每个白天至多一次，R-0050）");
+            }
+
+            if (day.Executions.Count != 1)
+            {
+                throw new InvalidOperationException(
+                    $"事件流顺序损坏：白天 {day.DayNumber} 在 {day.Executions.Count} 次处决之后打开了额外提名窗口"
+                    + "（窗口只跟在当天首次处决之后，R-0050）");
+            }
+
+            if (day.AboutToBeExecuted is not null)
+            {
+                throw new InvalidOperationException(
+                    $"事件流顺序损坏：白天 {day.DayNumber} 还有「即将被处决」者，却打开了额外提名窗口（R-0050）");
+            }
+
+            return day with
+            {
+                ExtraNomination = new ExtraNominationWindow
+                {
+                    Seat = opened.Seat,
+                    Status = ExtraNominationWindowStatus.Open,
+                },
+            };
+        });
+    }
+
+    /// <summary>折叠一次额外提名：窗口必须开着、发起人必须是授予席位、序号连续（R-0050）。</summary>
+    private static DayState ApplyExtraNominationMade(DayState state, ExtraNominationMadeEvent made)
+    {
+        return DayLedgerEdit.UpdateOpenDay(state, made.DayNumber, day =>
+        {
+            if (day.OpenNomination is not null)
+            {
+                throw new InvalidOperationException(
+                    $"事件流顺序损坏：白天 {day.DayNumber} 已有一项提名在投票，又发起第 {made.NominationIndex} 项");
+            }
+
+            if (day.ExtraNomination is not { Status: ExtraNominationWindowStatus.Open } window)
+            {
+                throw new InvalidOperationException(
+                    $"事件流顺序损坏：白天 {day.DayNumber} 的额外提名窗口没有开着，却收到额外提名（R-0050）");
+            }
+
+            if (made.Nominator != window.Seat)
+            {
+                throw new InvalidOperationException(
+                    $"事件流顺序损坏：白天 {day.DayNumber} 的额外提名不是窗口授予席位 {window.Seat.Value} 发起的"
+                    + "（R-0050）");
+            }
+
+            if (made.NominationIndex != day.Nominations.Count + 1)
+            {
+                throw new InvalidOperationException(
+                    $"事件流顺序损坏：提名序号必须连续，已有 {day.Nominations.Count} 项，收到第 {made.NominationIndex} 项");
+            }
+
+            return day with
+            {
+                Nominations =
+                [
+                    .. day.Nominations,
+                    new NominationRecord
+                    {
+                        Index = made.NominationIndex,
+                        Kind = NominationKind.Extra,
+                        Nominator = made.Nominator,
+                        Nominee = made.Nominee,
+                        NominatorCharacter = made.NominatorCharacter,
+                        Status = NominationStatus.Voting,
+                    },
+                ],
+                ExtraNomination = window with { Status = ExtraNominationWindowStatus.Used },
             };
         });
     }

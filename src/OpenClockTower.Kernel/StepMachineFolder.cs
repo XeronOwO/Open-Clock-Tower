@@ -154,6 +154,9 @@ internal static class StepMachineFolder
             // 死亡保护裁定（D3）：当天作用域的裁定，同样折进白天账（R-0048）。
             DayProtectionDecidedEvent => ApplyDay(state, gameEvent),
 
+            // 屠夫窗口（D4 / R-0050）：首次处决后的开窗与窗口内的额外提名，都折进当天账。
+            ExtraNominationWindowOpenedEvent or ExtraNominationMadeEvent => ApplyDay(state, gameEvent),
+
             // 夜晚处罚处决（DayNumber = null）不写白天账：不把"还没有白天"物化成空账（R-0020）。
             ExecutedEvent { DayNumber: null } => Require(state, gameEvent),
             ExecutedEvent => ApplyDay(state, gameEvent),

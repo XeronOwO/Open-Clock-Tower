@@ -238,10 +238,18 @@ public sealed class OutcomeEvaluatorTests
         Assert.Equal(Alignment.Evil, outcome!.Winner);
         Assert.Equal(OutcomeCondition.VortoxNoExecution, outcome.Condition);
 
-        // 有处决（处决 ≠ 死亡：Executed 有值即可）→ 不触发。
+        // 有处决（处决 ≠ 死亡：Executions 非空即可）→ 不触发。
         var executedDay = day with
         {
-            Days = [new DayRecord { DayNumber = 1, Status = DayStatus.Closed, Executed = new SeatId(3) }],
+            Days =
+            [
+                new DayRecord
+                {
+                    DayNumber = 1,
+                    Status = DayStatus.Closed,
+                    Executions = [new DayExecution { Seat = new SeatId(3), Kind = ExecutionKind.Day }],
+                },
+            ],
         };
         Assert.Null(OutcomeEvaluator.Evaluate(Context(
             state,

@@ -74,6 +74,7 @@ internal static class PendingChoiceGate
             or StartDayCommand
             or StartNightCommand
             or NominateCommand
+            or NominateExtraCommand
             or CastVoteCommand
             or StartVoteSweepCommand
             or CollectSeatVoteCommand

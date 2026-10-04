@@ -53,6 +53,7 @@ internal static class SessionSettlement
             AdjudicatedExecutions = RoleContracts.AdjudicatedExecutions,
             ArtistQuestions = RoleContracts.ArtistQuestions,
             DeathProtections = RoleContracts.DeathProtections,
+            ExtraNominations = RoleContracts.ExtraNominations,
             Machine = machine,
             DayWasOpen = machine?.Day?.OpenDay is not null,
         };

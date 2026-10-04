@@ -285,6 +285,10 @@ public sealed class GameHub : Hub<IGameClient>
             new NominateCommand { Nominee = new SeatId(nomineeSeat) },
             idempotencyKey);
 
+    /// <summary>玩家（屠夫本人）在额外提名窗口里发起提名（R-0050；提名者由凭据推导）。</summary>
+    public Task<CommandResultDto> NominateExtra(string credential, int nomineeSeat, string idempotencyKey) =>
+        ExecuteAsync(ResolveActor(credential), Commands().NominateExtra(nomineeSeat), idempotencyKey);
+
     /// <summary>玩家在当前开放的提名上举手 / 放下（先举也算、过时不候；R-0017 目标形态）。</summary>
     public Task<CommandResultDto> CastVote(
         string credential,

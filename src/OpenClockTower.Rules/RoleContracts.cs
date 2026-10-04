@@ -3,8 +3,8 @@ using OpenClockTower.Kernel;
 namespace OpenClockTower.Rules;
 
 /// <summary>
-/// 规则层的角色契约总目录：把「事件触发器」「能力存续」「处罚处决依据」「艺术家提问」「死亡保护」五族
-/// 契约的注册点收在一处。
+/// 规则层的角色契约总目录：把「事件触发器」「能力存续」「处罚处决依据」「艺术家提问」「死亡保护」
+/// 「额外提名窗口」六族契约的注册点收在一处。
 /// </summary>
 /// <remarks>
 /// <para>
@@ -47,4 +47,8 @@ public static class RoleContracts
     /// <summary>死亡保护来源（R-0048）：怪咖的「当天不能被流放」（流放致死收口读它）。</summary>
     public static IReadOnlyList<IDeathProtectionSource> DeathProtections { get; } =
         [new DeviantProtectionSource()];
+
+    /// <summary>额外提名窗口来源（R-0050）：屠夫的「首次处决后可以再次发起提名」。</summary>
+    public static IReadOnlyList<IExtraNominationSource> ExtraNominations { get; } =
+        [new ButcherExtraNominationSource()];
 }

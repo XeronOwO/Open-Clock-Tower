@@ -13,13 +13,17 @@ internal static class DayPhaseFixture
         Slots = [StepSlot.DayWindow(new StepSlotId("day-window"))],
     };
 
-    /// <summary>按"席位 + 生死"构造状态账（其余维度不观测，白天规则只读生死）。</summary>
+    /// <summary>
+    /// 按"席位 + 生死"构造状态账：每席补一个默认非旅行者角色（D4 起计票 / 关账要判目标是不是旅行者，
+    /// R-0049），其余维度不观测。
+    /// </summary>
     internal static GameState StateOf(params (int Seat, LifeState Life)[] seats)
     {
         var events = seats
             .Select(item => (GameEvent)new SeatStateChangedEvent
             {
                 Seat = new SeatId(item.Seat),
+                Character = new CharacterId(DefaultCharacter),
                 Life = item.Life,
                 Reason = "test.setup",
             })
@@ -28,12 +32,13 @@ internal static class DayPhaseFixture
         return GameStateMachine.Fold(events);
     }
 
-    /// <summary>构造结算上下文：座次就是给定席位的升序列表。</summary>
+    /// <summary>构造结算上下文：座次就是给定席位的升序列表；带默认角色事实端口（非旅行者）。</summary>
     internal static SettlementContext Context(params (int Seat, LifeState Life)[] seats) => new()
     {
         State = StateOf(seats),
         Seats = [.. seats.Select(item => new SeatId(item.Seat)).OrderBy(seat => seat.Value)],
         Abilities = NoAbilities.Instance,
+        Characters = NonTravellerFacts.Instance,
     };
 
     /// <summary>开一个白天并返回步骤机状态。</summary>
@@ -151,10 +156,29 @@ internal static class DayPhaseFixture
     /// <summary>拒绝码（受理时为 null）。</summary>
     internal static string? CodeOf(StepMachineOutcome outcome) => outcome.RejectionCode;
 
+    /// <summary>本夹具默认角色：非旅行者，用来满足 R-0049 的「目标是不是旅行者」判定。</summary>
+    private const string DefaultCharacter = "clockmaker";
+
     private sealed class NoAbilities : IAbilityResolutionCatalog
     {
         internal static readonly NoAbilities Instance = new();
 
         public IAbilityResolution? Find(CharacterId character) => null;
+    }
+
+    /// <summary>角色事实替身：本夹具只造非旅行者；旅行者用例另用带 slug 的夹具（ExilePhaseFixture）。</summary>
+    private sealed class NonTravellerFacts : IWinConditionFacts
+    {
+        internal static readonly NonTravellerFacts Instance = new();
+
+        public bool IsDemon(CharacterId character) => false;
+
+        public bool IsTraveller(CharacterId character) => false;
+
+        public bool IsVortox(CharacterId character) => false;
+
+        public bool IsKlutz(CharacterId character) => false;
+
+        public bool IsEvilTwinPair(AbilityId ability) => false;
     }
 }
