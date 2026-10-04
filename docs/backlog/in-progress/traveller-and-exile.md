@@ -139,6 +139,56 @@ Application（命令面 / 闸 / 投影 / 节拍器 / 会话）· Contracts + web
 4. 集骨者「重获能力」与 `IAbilityPresence` / 夜计划的接线方式；
 5. `MalfunctionKind.Barista` 去留（R-0047 §5）。
 
+## 实施进度（2026-10-05，第一批：D1 数据切片 + D6）
+
+已落地（代码 + 测试 + 文档同一提交）：
+
+- **D1（数据部分）**：`CharacterType.Traveller`；花名册增 5 名旅行者（deviant / bone-collector /
+  barista / harlot / butcher），`AsSetupScript` 仍只出四类型池；术语表 §9 收录 5 人（咖啡师从
+  「非首版」移入正表）、`character-rules.md` 增「旅行者（5）」节（2026-10-04 快照）；
+  前端镜像 `labels.ts` 同步 30 人 + 旅行者类型标签（`RosterMirrorGateTests` 两侧对账）、
+  `character-art.ts` 同步 5 张图，并按 R-0006 全量探活 30/30 通过（`200` + `image/png`）。
+- **D6**：`SetupProposalQuery` 输入改为**非旅行者人数**（`ProposeSetup` 的显式参数，null = 全部席位）；
+  分布表按它取行、求解只覆盖非旅行者；非旅行者 >15 显式失败（`setup.player_count_unsupported`，
+  R-0046）；非旅行者人数越界显式失败（`setup.non_traveller_count_invalid`）；结果 / DTO 回显
+  非旅行者 / 旅行者人数。
+- **护栏**：旅行者不得走开局分配（`legality.character_not_assignable`）——初始阵营不能由类型推导
+  （说书人私下裁定），杜绝分派层抛穿。
+
+验证证据（2026-10-05，冻结工作树）：
+
+- `dotnet build` 0 警告 0 错误；`dotnet test` **866 通过 / 0 失败**
+  （门禁 24 / 内核 335 / 规则 316 / 集成 191）；`dotnet format` 0（未重写工作树）；
+- `npm run gate` 0（typecheck + vitest **163** + vite build）；
+- 装置迭代档 `node tools/verify-setup-randomizer.mjs --build`：**58/58 通过**
+  （真宿主 + 真前端 + 5 席；配板建议 → 手改 → 提交 → 开夜的既有链路未断）；
+- R-0006 热链全量复核：30/30 `200` + `image/png`（含 5 名旅行者；`artifacts/web/wiki-image-probe.log`）；
+- 新增用例逐条在跑（过滤运行确认）：`Roster_ContainsTheFiveTravellers`、
+  `ComposedBag_NeverContainsTravellers`、`ProposeSetup_WithTravellers_CoversNonTravellersOnly`、
+  `ProposeSetup_OverFifteenNonTravellers_FailsExplicitly`、`ProposeSetup_NonTravellerCountBeyondSeats_FailsExplicitly`、
+  `IllegalAssignmentsAndStartNight_AreRejected`（含旅行者分支）。
+
+实现口径澄清（与设计定稿一致，写在这里供复核）：
+
+1. 「旅行者人数在开局配置显式表达」本批以 `ProposeSetup` 的**显式参数**承载（非旅行者人数），
+   暂不落 `GameSetup`；持久化席位模型（加入 = 追加席位 / 离场账）随 D1「加入 / 离开」切片一起定。
+2. 配板建议把非旅行者角色绑在**低号席**（D1：旅行者以「追加席位」进入 = 高号席）；
+   建议只是建议，说书人提交分配时可改绑。
+3. 本批只覆盖「开局声明 + 配板」：16 席 = 15 人行 + 1 名旅行者的**第 16 席**还不能真正入局
+   （加入流程未实现），因此 16 席局在加入切片落地前不能开夜——这是预期边界，不是缺陷。
+
+未做（下一批起）：D1 加入 / 离开与「在局座次」统一构造、D2 流放流程、D3 免死收口、D4 屠夫窗口、
+D5 黄昏夜序与 5 能力、D7 投影 / 前端 / 复盘、D8 批次 E34 取证。
+
+顺带记录（本轮发现的接缝，留给 D5 / 加入切片）：
+
+- 既有角色契约里「不能选旅行者」的目标排除（如筑梦师，见 `character-rules.md`）目前只是文档口径；
+  旅行者真正能入局后，这些契约的目标集合要按 R-0044 / R-0045 复核——本轮旅行者还不能入局，
+  不构成运行时缺陷，但不能忘。
+- `CommandGatePipeline` 触到 600 行门禁：本轮把「开局分配」「说书人注记」两个命令族的合法性拆成
+  `AssignmentGate` / `AnnotationGate`，并抽 `SeatGate` / `GateRejections` 共用（行为不变，同一批用例守）。
+  这是门禁要求的「先拆再改」，不是顺手的重构。
+
 ## 验收矩阵
 
 （维度细化；证据列在实现时逐行落）

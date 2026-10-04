@@ -44,7 +44,7 @@ internal static class VoteSweepGate
             StartVoteSweepCommand startSweep => CheckNominationIndex(startSweep.NominationIndex),
             ResumeVoteSweepCommand resumeSweep => CheckNominationIndex(resumeSweep.NominationIndex),
             CollectSeatVoteCommand collectSeat => CheckNominationIndex(collectSeat.NominationIndex)
-                ?? CheckSeatExists(collectSeat.Seat, setup),
+                ?? SeatGate.CheckExists(collectSeat.Seat, setup),
             _ => Reject("legality", "legality.unknown_sweep_command", "不是钟盘收票命令（防御性兜底）"),
         };
 
@@ -53,18 +53,6 @@ internal static class VoteSweepGate
             ? Reject("legality", "legality.nomination_index_invalid", $"提名序号必须从 1 开始：{index}")
             : null;
 
-    private static CommandRejection? CheckSeatExists(SeatId seat, GameSetup? setup)
-    {
-        if (setup is null)
-        {
-            return Reject("legality", "legality.setup_missing", "本局还没有会话信息（席位名单）");
-        }
-
-        return setup.Seats.Any(item => item.Seat == seat)
-            ? null
-            : Reject("legality", "legality.seat_unknown", $"席位 {seat.Value} 不在本局席位名单里");
-    }
-
     private static CommandRejection Reject(string gate, string code, string message) =>
-        new() { Code = code, Message = message, Gate = gate };
+        GateRejections.Reject(code, message, gate);
 }

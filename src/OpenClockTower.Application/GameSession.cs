@@ -229,20 +229,25 @@ public sealed class GameSession
     }
 
     /// <summary>
-    /// 配板建议（只读）：按官方分布表 + 在场角色的设置调整生成建议，席位按升序绑定。
+    /// 配板建议（只读）：按官方分布表 + 在场角色的设置调整生成建议；输入是**非旅行者人数**（R-0046），
+    /// 席位按升序绑定到低号席（非旅行者部分），旅行者不参与配板。
     /// </summary>
     /// <remarks>
-    /// 口径与求解都在 <see cref="SetupProposalQuery"/>（R-0041 / R-0042）：随机只作**显式输入**（种子），
+    /// 口径与求解都在 <see cref="SetupProposalQuery"/>（R-0041 / R-0042 / R-0046）：随机只作**显式输入**（种子），
     /// 建议不落账——说书人重摇 / 手改后仍走既有分配命令面提交（D-0017）。
     /// </remarks>
-    public async Task<SetupProposalResult> ProposeSetupAsync(string? seed, CancellationToken cancellationToken)
+    /// <param name="nonTravellerCount">本局非旅行者人数；null = 全部席位都是非旅行者（缺省语义）。</param>
+    public async Task<SetupProposalResult> ProposeSetupAsync(
+        string? seed,
+        int? nonTravellerCount,
+        CancellationToken cancellationToken)
     {
         await _gate.WaitAsync(cancellationToken);
         try
         {
             // 席位名单是会话信息；步骤机尚未开始 = 仍在开局设置（与分配闸同一把尺子）。
             var setup = await EnsureSetupAsync(cancellationToken);
-            return SetupProposalQuery.Build(GameId, setup, _machine is not null, seed, _logger);
+            return SetupProposalQuery.Build(GameId, setup, _machine is not null, seed, nonTravellerCount, _logger);
         }
         finally
         {

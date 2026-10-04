@@ -106,7 +106,7 @@
   - B. 支持本地素材包（运行时从本地目录加载）。
   - C. 运行期热链百科图片（不落库）。
 - **选择**：**C**。
-- **落地形态**：`web/src/display/character-art.ts`（25 人 slug → 百科图片地址；路径由角色页首行
+- **落地形态**：`web/src/display/character-art.ts`（30 人 slug → 百科图片地址：25 非旅行者 + 5 旅行者；路径由角色页首行
   `[[File:…]]` 的文件名按 MediaWiki md5 规则派生）+ `web/src/features/grimoire/CharacterArt.vue`
   （`referrerpolicy="no-referrer"`；`@error` 撤图）。探针 `tools/check-character-art.mjs`
   （正常加载 / 阻断降级 / 未知不请求 / 局域网 origin + 移动端仿真）。

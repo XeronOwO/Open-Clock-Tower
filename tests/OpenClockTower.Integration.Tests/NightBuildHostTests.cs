@@ -107,7 +107,7 @@ public sealed class NightBuildHostTests
         Assert.Contains("钟表匠", view.CurrentSlotContext, StringComparison.Ordinal);
     }
 
-    /// <summary>非法分配与非法开夜全部走显式拒绝，且拒绝后不改状态。</summary>
+    /// <summary>非法分配与非法开夜全部走显式拒绝（含旅行者不得走开局分配），且拒绝后不改状态。</summary>
     [Fact]
     public async Task IllegalAssignmentsAndStartNight_AreRejected()
     {
@@ -130,6 +130,14 @@ public sealed class NightBuildHostTests
             "test-build-bad-character");
         Assert.Equal("Rejected", unknownCharacter.Kind);
         Assert.Equal("legality.character_unknown", unknownCharacter.RejectionCode);
+
+        // 旅行者不走开局分配（D1 / R-0046）：初始阵营无法由类型推导，说书人私下裁定。
+        var travellerCharacter = await storyteller.InvokeAsync<CommandResultDto>(
+            "AssignCharacters",
+            new[] { new SeatCharacterAssignmentDto { Seat = 1, Character = "deviant" } },
+            "test-build-traveller-character");
+        Assert.Equal("Rejected", travellerCharacter.Kind);
+        Assert.Equal("legality.character_not_assignable", travellerCharacter.RejectionCode);
 
         var duplicated = await storyteller.InvokeAsync<CommandResultDto>(
             "AssignCharacters",

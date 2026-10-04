@@ -189,7 +189,7 @@ DecisionPoint
 「本夜无行动」空槽、配额照走），艺术家是白天主动提问（玩家命令 → 归属裁定点，R-0040）。
 不在夜晚顺序表上且不在白天名单里的角色不受影响。
 
-逐角色实现（25 个角色）仍按票分批补，残余事项见
+逐角色实现（首版 30 个角色：25 非旅行者 + 5 旅行者）仍按票分批补，残余事项见
 `docs/backlog/done/settlement-engine.md`。
 
 **白天阶段（2026-10-02 落地；2026-10-04 钟盘收票替换投票窗口）**：
@@ -457,7 +457,7 @@ StepMachine（步骤机）
 | 模块 | 说明 | 状态 |
 |---|---|---|
 | `OpenClockTower.Kernel` | 纯规则内核 | 已建（六状态 + 效果生命周期 + 两本账 + 裁定点契约 + 步骤机/操作请求/事件模型 + 状态账与效果归因 + 结算调度 / 生效判定 / 常驻效果与维度对账；角色行为在 Rules） |
-| `OpenClockTower.Rules` | 梦殒春宵角色、剧本、相克数据 | 已建（夜晚顺序表两套口径 + 逐条来源；花名册 25 人与类型 / 中文名 / 设置调整；初始设置分布表（逐行取证等级，R-0041）+ 可重放配板求解 `SetupComposer`（R-0042）；`NightPlanBuilder` 建表；角色契约：钟表匠 / 筑梦师 / 诺-达鲺）；逐角色实现与相克数据待补 |
+| `OpenClockTower.Rules` | 梦殒春宵角色、剧本、相克数据 | 已建（夜晚顺序表两套口径 + 逐条来源；花名册 30 人（25 非旅行者 + 5 旅行者）与类型 / 中文名 / 设置调整；初始设置分布表（逐行取证等级，R-0041）+ 可重放配板求解 `SetupComposer`（R-0042，输入按非旅行者人数，R-0046）；`NightPlanBuilder` 建表；角色契约：钟表匠 / 筑梦师 / 诺-达鲺）；逐角色实现与相克数据待补 |
 | `OpenClockTower.Application` | 命令/查询/裁定编排 | 已建（四道闸、会话编排、结算管线、投影与重连包、房间重建、复盘读侧；`GameSession` + `GameCommandDispatcher` + `SessionSettlement` + `ReplayQueryService` / `ReplayProjection`） |
 | `OpenClockTower.Contracts` | 前后端共享契约（由 OpenAPI 生成前端客户端） | 已建（SignalR 推送与命令回执 DTO） |
 | `OpenClockTower.Server` | ASP.NET Core 宿主、SignalR、EF Core | 已建（定向单播、EF Core + SQLite 事件/快照/回执/票据、服务端节拍器；不再自动开阶段；`AssignCharacters` / `StartNight` / `ProposeSetup`（配板建议，只读）入口；心跳产生的通知照常分发） |

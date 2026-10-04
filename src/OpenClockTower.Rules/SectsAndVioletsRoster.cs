@@ -3,14 +3,15 @@ using OpenClockTower.Kernel;
 namespace OpenClockTower.Rules;
 
 /// <summary>
-/// 《梦殒春宵》首版 25 个角色的花名册：角色 slug、类型、中文名与**设置调整**（服务端权威数据）。
+/// 《梦殒春宵》首版 30 个角色的花名册：角色 slug、类型、中文名与**设置调整**（服务端权威数据）。
 /// </summary>
 /// <remarks>
 /// <para>
-/// 来源：<c>docs/standard/terminology.md</c> §9「首版角色清单」· 2026-10-01 已核对——25 个角色与
-/// 百科《梦殒春宵》剧本页、各角色页「角色信息」节的 `英文名` / `角色类型` 交叉比对一致；
+/// 来源：<c>docs/standard/terminology.md</c> §9「首版角色清单」——25 个非旅行者角色 2026-10-01 已核对
+/// （与百科《梦殒春宵》剧本页、各角色页「角色信息」节的 `英文名` / `角色类型` 交叉比对一致）；
+/// 5 名旅行者 2026-10-04 抓取核对（D-0022 首版纳入；流放与死亡口径见 `rulings.md` R-0044–R-0047）。
 /// 中文名与 slug 成对（术语表 §1：标识用英文 slug，禁止拼音与转写）。顺序即术语表顺序；
-/// 只用于检索与校验，不承载结算语义。
+/// 只用于检索与校验，不承载结算语义。旅行者不参与配板（R-0046），<see cref="AsSetupScript"/> 只出四类型池。
 /// </para>
 /// <para>
 /// 两条设置调整见 <c>docs/standard/rulings.md</c> R-0042 依据（百科《设置调整》· 相关角色，
@@ -56,12 +57,18 @@ public static class SectsAndVioletsRoster
             [new SetupAdjustment(CharacterType.Outsider, -1)]),
         Plain("no-dashii", CharacterType.Demon, "诺-达鲺"),
         Plain("vortox", CharacterType.Demon, "涡流"),
+        // 旅行者（D-0022 首版纳入）；slug / 中文名见术语表 §9（2026-10-04 抓取核对）。
+        Plain("deviant", CharacterType.Traveller, "怪咖"),
+        Plain("bone-collector", CharacterType.Traveller, "集骨者"),
+        Plain("barista", CharacterType.Traveller, "咖啡师"),
+        Plain("harlot", CharacterType.Traveller, "流莺"),
+        Plain("butcher", CharacterType.Traveller, "屠夫"),
     ];
 
     private static Profile Plain(string id, CharacterType type, string displayName) =>
         new(new CharacterId(id), type, displayName, []);
 
-    /// <summary>全部 25 个角色（按术语表顺序）。</summary>
+    /// <summary>全部 30 个角色（按术语表顺序；含 5 名旅行者）。</summary>
     public static IReadOnlyList<CharacterId> All { get; } =
         Array.AsReadOnly(Profiles.Select(profile => profile.Id).ToArray());
 

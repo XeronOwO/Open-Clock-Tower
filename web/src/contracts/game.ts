@@ -385,6 +385,10 @@ export interface SeatCharacterAssignmentDto {
 export interface SetupProposalDto {
   ok: boolean
   seed: string
+  /** 本次配板覆盖的非旅行者人数（R-0046：分布表按它取行）。 */
+  nonTravellerCount: number
+  /** 本局旅行者人数：不参与配板、不占四类型名额（R-0046）。 */
+  travellerCount: number
   assignments: SeatCharacterAssignmentDto[]
   distribution: SetupTypeCountDto[]
   notes: string[]

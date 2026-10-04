@@ -20,11 +20,13 @@ public static class ProjectionMapper
         LedgerEquivalent = result.Rebuild?.LedgerEquivalent,
     };
 
-    /// <summary>配板建议 → DTO（服务端生成的种子、席位映射、净分布与显式说明）。</summary>
+    /// <summary>配板建议 → DTO（服务端生成的种子、非旅行者 / 旅行者人数、席位映射、净分布与显式说明）。</summary>
     public static SetupProposalDto ToDto(SetupProposalResult result) => new()
     {
         Ok = result.Ok,
         Seed = result.Seed,
+        NonTravellerCount = result.NonTravellerCount,
+        TravellerCount = result.TravellerCount,
         Assignments =
         [
             .. result.Assignments.Select(assignment => new SeatCharacterAssignmentDto

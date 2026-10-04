@@ -4,14 +4,15 @@ using OpenClockTower.Rules;
 namespace OpenClockTower.Rules.Tests;
 
 /// <summary>
-/// 花名册档案：25 个角色的类型、中文名与设置调整（术语表 §9 的代码侧落点；修正口径见 R-0042）。
+/// 花名册档案：30 个角色（25 非旅行者 + 5 旅行者）的类型、中文名与设置调整
+/// （术语表 §9 的代码侧落点；修正口径见 R-0042，旅行者见 R-0046）。
 /// </summary>
 public sealed class RosterProfileTests
 {
     [Fact]
-    public void RosterHasTwentyFiveRolesWithTypesAndNames()
+    public void RosterHasThirtyRolesWithTypesAndNames()
     {
-        Assert.Equal(25, SectsAndVioletsRoster.All.Count);
+        Assert.Equal(30, SectsAndVioletsRoster.All.Count);
 
         foreach (var character in SectsAndVioletsRoster.All)
         {
@@ -27,6 +28,7 @@ public sealed class RosterProfileTests
         Assert.Equal(4, SectsAndVioletsRoster.OfType(CharacterType.Outsider).Count);
         Assert.Equal(4, SectsAndVioletsRoster.OfType(CharacterType.Minion).Count);
         Assert.Equal(4, SectsAndVioletsRoster.OfType(CharacterType.Demon).Count);
+        Assert.Equal(5, SectsAndVioletsRoster.OfType(CharacterType.Traveller).Count);
     }
 
     [Fact]
@@ -80,5 +82,17 @@ public sealed class RosterProfileTests
             [new SetupAdjustment(CharacterType.Outsider, 1)],
             script.Demons.Single(entry => entry.Character == new CharacterId("fang-gu")).Adjustments);
         Assert.Empty(script.Townsfolk[0].Adjustments);
+
+        // 旅行者不参与配板（R-0046 第 1 条）：四个池合计仍是 25 名非旅行者，不含旅行者。
+        var pooled = script.Townsfolk
+            .Concat(script.Outsiders)
+            .Concat(script.Minions)
+            .Concat(script.Demons)
+            .Select(entry => entry.Character)
+            .ToList();
+        Assert.Equal(25, pooled.Count);
+        Assert.DoesNotContain(
+            pooled,
+            character => SectsAndVioletsRoster.TypeOf(character) == CharacterType.Traveller);
     }
 }

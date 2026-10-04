@@ -2,7 +2,7 @@
  * 把服务端下发的 slug / 枚举名翻成中文呈现文案。
  *
  * 依据：
- * - 角色名与阵营：docs/standard/terminology.md §9（25 人花名册的权威来源）。
+ * - 角色名与阵营：docs/standard/terminology.md §9（30 人花名册的权威来源：25 非旅行者 + 5 旅行者）。
  *   枚举值本身来自 Kernel：LifeState / Alignment / DrunkState / PoisonState / MalfunctionKind。
  * - 未知取值**不猜**，原样回显：服务端加了新枚举而前端没跟上时，说书人看到的是
  *   清清楚楚的英文名，而不是被吞掉的空白（与「未观测 ≠ 默认值」同一姿态）。
@@ -24,7 +24,7 @@ export interface CharacterProfile {
 }
 
 /**
- * 首版花名册（《梦殒春宵》25 人）。
+ * 首版花名册（《梦殒春宵》30 人 = 25 非旅行者 + 5 旅行者）。
  * 顺序与 docs/standard/terminology.md §9 一致，便于人工核对。
  */
 export const ROSTER: readonly CharacterProfile[] = [
@@ -53,6 +53,12 @@ export const ROSTER: readonly CharacterProfile[] = [
   { slug: 'vigormortis', name: '亡骨魔', type: '恶魔', setupModifier: '[-1 外来者]：初始设置时用一个镇民角色标记替换一个外来者角色标记；没有可移除的外来者时不作调整' },
   { slug: 'no-dashii', name: '诺-达鲺', type: '恶魔' },
   { slug: 'vortox', name: '涡流', type: '恶魔' },
+  // 旅行者（D-0022 首版纳入；阵营由说书人私下裁定，不参与配板，R-0046）。
+  { slug: 'deviant', name: '怪咖', type: '旅行者' },
+  { slug: 'bone-collector', name: '集骨者', type: '旅行者' },
+  { slug: 'barista', name: '咖啡师', type: '旅行者' },
+  { slug: 'harlot', name: '流莺', type: '旅行者' },
+  { slug: 'butcher', name: '屠夫', type: '旅行者' },
 ]
 
 const ROSTER_BY_SLUG = new Map(ROSTER.map((profile) => [profile.slug, profile]))
@@ -170,7 +176,7 @@ export function characterNameOf(slug: string | null | undefined): string {
   return ROSTER_BY_SLUG.get(slug)?.name ?? slug
 }
 
-/** 角色 slug → 类型（镇民 / 外来者 / 爪牙 / 恶魔）；未知返回空串。 */
+/** 角色 slug → 类型（镇民 / 外来者 / 爪牙 / 恶魔 / 旅行者）；未知返回空串。 */
 export function characterTypeOf(slug: string | null | undefined): string {
   if (slug === null || slug === undefined) {
     return ''
@@ -184,6 +190,7 @@ const TYPE_LABELS: Readonly<Record<string, string>> = {
   Outsider: '外来者',
   Minion: '爪牙',
   Demon: '恶魔',
+  Traveller: '旅行者',
 }
 
 /** 角色类型枚举名（Kernel，如 `Townsfolk`）→ 中文；未知取值原样回显，不猜。 */

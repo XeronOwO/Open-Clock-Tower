@@ -24,6 +24,7 @@ public sealed partial class RosterMirrorGateTests
         ["Outsider"] = "外来者",
         ["Minion"] = "爪牙",
         ["Demon"] = "恶魔",
+        ["Traveller"] = "旅行者",
     };
 
     [Fact]
@@ -34,8 +35,8 @@ public sealed partial class RosterMirrorGateTests
         var web = ParseWebRoster(
             File.ReadAllText(RepositoryLayout.PathOf("web", "src", "display", "labels.ts")));
 
-        Assert.True(server.Count == 25, $"服务端花名册解析出 {server.Count} 条，解析器或文件结构变了");
-        Assert.True(web.Count == 25, $"前端花名册解析出 {web.Count} 条，解析器或文件结构变了");
+        Assert.True(server.Count == 30, $"服务端花名册解析出 {server.Count} 条，解析器或文件结构变了");
+        Assert.True(web.Count == 30, $"前端花名册解析出 {web.Count} 条，解析器或文件结构变了");
 
         var mismatches = new List<string>();
 

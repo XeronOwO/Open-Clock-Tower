@@ -1,5 +1,5 @@
 using OpenClockTower.Kernel;
-using OpenClockTower.Rules;
+using static OpenClockTower.Application.GateRejections;
 
 namespace OpenClockTower.Application;
 
@@ -365,18 +365,18 @@ public static class CommandGatePipeline
         SeatAnnotationLedger annotations) =>
         envelope.Command switch
         {
-            AssignCharactersCommand assign => CheckAssignments(assign, setup),
+            AssignCharactersCommand assign => AssignmentGate.Check(assign, setup),
             StartNightCommand startNight => CheckStartNight(startNight, machine, setup),
-            ApplySeatStateCommand seat => CheckSeatExists(seat.Seat, setup),
-            NominateCommand nominate => CheckSeatExists(nominate.Nominee, setup),
+            ApplySeatStateCommand seat => SeatGate.CheckExists(seat.Seat, setup),
+            NominateCommand nominate => SeatGate.CheckExists(nominate.Nominee, setup),
             CastVoteCommand castVote => CheckNominationIndex(castVote.NominationIndex),
             // 钟盘收票（R-0017 目标形态）：参数范围与席位形状的闸在 VoteSweepGate（与内核同尺）。
             StartVoteSweepCommand or ResumeVoteSweepCommand or CollectSeatVoteCommand
                 => VoteSweepGate.LegalityRejection(envelope.Command, setup),
             CountVotesCommand countVotes => CheckNominationIndex(countVotes.NominationIndex),
-            PunishExecutionCommand punish => CheckSeatExists(punish.Seat, setup),
-            PitHagCasualtyCommand casualty => CheckSeatExists(casualty.Seat, setup),
-            ResolveDeferredDeathCommand deferred => CheckSeatExists(deferred.Seat, setup),
+            PunishExecutionCommand punish => SeatGate.CheckExists(punish.Seat, setup),
+            PitHagCasualtyCommand casualty => SeatGate.CheckExists(casualty.Seat, setup),
+            ResolveDeferredDeathCommand deferred => SeatGate.CheckExists(deferred.Seat, setup),
             SubmitResponseCommand submit => CheckOption(machine, submit.RequestId, submit.OptionValue),
             ProxyFillCommand proxy => CheckOption(machine, proxy.RequestId, proxy.OptionValue),
             VoidRequestCommand voidRequest => IsManuallySelectableVoidReason(voidRequest.Reason)
@@ -385,137 +385,12 @@ public static class CommandGatePipeline
 
             // 说书人注记（D-0019）：席位必须在本局名单里、文本合规、每席不超上限；
             // 改 / 删必须先存在（已删除的标识不再接受）。
-            AddSeatAnnotationCommand add => CheckAddAnnotation(add, setup, annotations),
+            AddSeatAnnotationCommand add => AnnotationGate.CheckAdd(add, setup, annotations),
             UpdateSeatAnnotationCommand update =>
-                CheckAnnotationTarget(update.Id, annotations) ?? CheckAnnotationText(update.Text),
-            RemoveSeatAnnotationCommand remove => CheckAnnotationTarget(remove.Id, annotations),
+                AnnotationGate.CheckTarget(update.Id, annotations) ?? AnnotationGate.CheckText(update.Text),
+            RemoveSeatAnnotationCommand remove => AnnotationGate.CheckTarget(remove.Id, annotations),
             _ => null,
         };
-
-    /// <summary>状态观测的合法性：席位必须在本局席位名单里（与开局分配同一把尺子）。</summary>
-    /// <remarks>
-    /// 预阶段与运行期都走这一条：账里写一个不存在的席位，等于让建表读到幽灵数据。
-    /// </remarks>
-    private static CommandRejection? CheckSeatExists(SeatId seat, GameSetup? setup)
-    {
-        if (setup is null)
-        {
-            return Reject("legality.setup_missing", "本局还没有会话信息（席位名单）", "legality");
-        }
-
-        return setup.Seats.Any(item => item.Seat == seat)
-            ? null
-            : Reject("legality.seat_unknown", $"席位 {seat.Value} 不在本局席位名单里", "legality");
-    }
-
-    /// <summary>加注记的合法性（D-0019）：席位属于本局、文本合规、每席不超上限。</summary>
-    private static CommandRejection? CheckAddAnnotation(
-        AddSeatAnnotationCommand command,
-        GameSetup? setup,
-        SeatAnnotationLedger annotations)
-    {
-        var seat = CheckSeatExists(command.Seat, setup);
-        if (seat is not null)
-        {
-            return seat;
-        }
-
-        var text = CheckAnnotationText(command.Text);
-        if (text is not null)
-        {
-            return text;
-        }
-
-        return annotations.CountOn(command.Seat) >= SeatAnnotationText.MaxPerSeat
-            ? Reject(
-                "legality.annotation_limit",
-                $"席位 {command.Seat.Value} 的注记已达上限（每席最多 {SeatAnnotationText.MaxPerSeat} 条）",
-                "legality")
-            : null;
-    }
-
-    /// <summary>改 / 删注记的合法性：注记必须还存在（已删除的标识不再接受）。</summary>
-    private static CommandRejection? CheckAnnotationTarget(
-        SeatAnnotationId id,
-        SeatAnnotationLedger annotations) =>
-        annotations.Find(id) is null
-            ? Reject("legality.annotation_unknown", $"注记 {id} 不存在（可能已被删除）", "legality")
-            : null;
-
-    /// <summary>
-    /// 注记文本的合法性（D-0019）：归一化后非空、不超长、不含控制字符。
-    /// 归一化本身在分派时做（同一把尺子 <see cref="SeatAnnotationText.TryNormalize"/>）。
-    /// </summary>
-    private static CommandRejection? CheckAnnotationText(string? raw)
-    {
-        if (SeatAnnotationText.TryNormalize(raw, out _, out var failure))
-        {
-            return null;
-        }
-
-        return failure switch
-        {
-            "empty" => Reject("legality.annotation_empty", "注记不能为空", "legality"),
-            "too_long" => Reject(
-                "legality.annotation_too_long",
-                $"注记最多 {SeatAnnotationText.MaxLength} 个字符",
-                "legality"),
-            _ => Reject("legality.annotation_control", "注记不能包含控制字符", "legality"),
-        };
-    }
-
-    /// <summary>开局分配的合法性：席位属于本局、角色在首版花名册里、同批不重复（角色唯一）。</summary>
-    private static CommandRejection? CheckAssignments(AssignCharactersCommand command, GameSetup? setup)
-    {
-        if (command.Assignments.Count == 0)
-        {
-            return Reject("legality.assignment_empty", "开局分配至少要给出一名席位的角色", "legality");
-        }
-
-        if (setup is null)
-        {
-            return Reject("legality.setup_missing", "本局还没有会话信息（席位名单）", "legality");
-        }
-
-        var seats = new HashSet<SeatId>();
-        var characters = new HashSet<CharacterId>();
-        foreach (var assignment in command.Assignments)
-        {
-            if (!setup.Seats.Any(item => item.Seat == assignment.Seat))
-            {
-                return Reject(
-                    "legality.seat_unknown",
-                    $"席位 {assignment.Seat.Value} 不在本局席位名单里",
-                    "legality");
-            }
-
-            if (!seats.Add(assignment.Seat))
-            {
-                return Reject(
-                    "legality.seat_duplicated",
-                    $"同一批分配里席位 {assignment.Seat.Value} 出现了多次",
-                    "legality");
-            }
-
-            if (!SectsAndVioletsRoster.Contains(assignment.Character))
-            {
-                return Reject(
-                    "legality.character_unknown",
-                    $"角色 {assignment.Character.Value} 不是《梦殒春宵》首版角色",
-                    "legality");
-            }
-
-            if (!characters.Add(assignment.Character))
-            {
-                return Reject(
-                    "legality.character_duplicated",
-                    $"同一批分配里角色 {assignment.Character.Value} 出现了多次（角色唯一）",
-                    "legality");
-            }
-        }
-
-        return null;
-    }
 
     /// <summary>开夜的合法性：夜晚序号、口径、会话席位名单（建表完整性由建表器校验）。</summary>
     private static CommandRejection? CheckStartNight(
@@ -582,7 +457,4 @@ public static class CommandGatePipeline
     /// </summary>
     private static bool IsManuallySelectableVoidReason(OperationRequestVoidReason reason) =>
         Enum.IsDefined(reason) && reason != OperationRequestVoidReason.GameEnded;
-
-    private static CommandRejection Reject(string code, string message, string gate) =>
-        new() { Code = code, Message = message, Gate = gate };
 }

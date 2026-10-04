@@ -36,6 +36,21 @@ public sealed class SetupComposerTests
         }
     }
 
+    /// <summary>花名册 30 人里只有 25 人参与配板：旅行者不进角色袋（R-0046 第 1 条）。</summary>
+    [Fact]
+    public void ComposedBag_NeverContainsTravellers()
+    {
+        for (var playerCount = 5; playerCount <= 15; playerCount++)
+        {
+            var result = SetupComposer.Compose(playerCount, $"traveller-{playerCount}");
+
+            Assert.True(result.Ok, result.Error?.Message);
+            Assert.DoesNotContain(
+                result.Proposal!.Bag,
+                character => SectsAndVioletsRoster.TypeOf(character) == CharacterType.Traveller);
+        }
+    }
+
     [Fact]
     public void SameSeedProducesTheSameBag()
     {

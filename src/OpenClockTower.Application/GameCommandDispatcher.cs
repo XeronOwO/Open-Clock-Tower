@@ -369,14 +369,16 @@ internal static class GameCommandDispatcher
     }
 
     /// <summary>初始阵营 = 角色类型对应阵营：镇民 / 外来者 → 善良，爪牙 / 恶魔 → 邪恶（R-0023）。</summary>
-    /// <exception cref="InvalidOperationException">角色不在首版花名册里（合法性闸本应拦下，不许静默）。</exception>
+    /// <exception cref="InvalidOperationException">
+    /// 角色不在首版花名册里，或是类型无法推导阵营的旅行者（合法性闸本应拦下，不许静默）。
+    /// </exception>
     private static Alignment InitialAlignmentOf(CharacterId character) =>
         SectsAndVioletsRoster.TypeOf(character) switch
         {
             CharacterType.Townsfolk or CharacterType.Outsider => Alignment.Good,
             CharacterType.Minion or CharacterType.Demon => Alignment.Evil,
             _ => throw new InvalidOperationException(
-                $"角色 {character.Value} 不在首版花名册里，无法给出初始阵营（合法性闸本应拦下）"),
+                $"角色 {character.Value} 不是四类型之一（旅行者阵营由说书人私下裁定），无法推导初始阵营（合法性闸本应拦下）"),
         };
 
     /// <summary>

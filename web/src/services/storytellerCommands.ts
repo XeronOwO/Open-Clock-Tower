@@ -107,19 +107,26 @@ export function assignCharacters(
 }
 
 /**
- * 查询配板建议（只读、不落账；R-0041 / R-0042）：种子由服务端生成并回传。
+ * 查询配板建议（只读、不落账；R-0041 / R-0042 / R-0046）：种子由服务端生成并回传。
  * 建议只是建议——说书人可重摇 / 手改，提交仍走 {@link assignCharacters}（D-0017）。
+ * `nonTravellerCount` = 配板覆盖的**非旅行者人数**（旅行者是叠加角色、不占类型名额）；null = 全部席位。
  */
 export async function proposeSetup(
   sender: CommandSender,
   seed: string | null,
+  nonTravellerCount: number | null = null,
 ): Promise<SetupProposalDto> {
   if (sender.credential.length === 0) {
     return failedProposal('setup.no_credential', '尚未加入：没有连接凭据')
   }
 
   try {
-    return await sender.connection.invoke<SetupProposalDto>('ProposeSetup', sender.credential, seed)
+    return await sender.connection.invoke<SetupProposalDto>(
+      'ProposeSetup',
+      sender.credential,
+      seed,
+      nonTravellerCount,
+    )
   } catch (error) {
     return failedProposal('setup.transport', error instanceof Error ? error.message : String(error))
   }
@@ -130,6 +137,8 @@ function failedProposal(code: string, message: string): SetupProposalDto {
   return {
     ok: false,
     seed: '',
+    nonTravellerCount: 0,
+    travellerCount: 0,
     assignments: [],
     distribution: [],
     notes: [],

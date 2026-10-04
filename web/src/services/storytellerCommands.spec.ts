@@ -146,6 +146,8 @@ describe('配板建议是只读查询（R-0041 / R-0042）', () => {
     const proposal: SetupProposalDto = {
       ok: true,
       seed: 'a'.repeat(32),
+      nonTravellerCount: 2,
+      travellerCount: 0,
       assignments: [
         { seat: 1, character: 'clockmaker' },
         { seat: 2, character: 'dreamer' },
@@ -161,7 +163,7 @@ describe('配板建议是只读查询（R-0041 / R-0042）', () => {
     const result = await proposeSetup(sender, null)
 
     expect(result).toBe(proposal)
-    expect(invoke).toHaveBeenCalledWith('ProposeSetup', credential, null)
+    expect(invoke).toHaveBeenCalledWith('ProposeSetup', credential, null, null)
   })
 
   it('没有凭据就不查：本地先拒绝，UI 拿到的失败形态字段齐备', async () => {

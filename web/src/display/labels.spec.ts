@@ -13,22 +13,26 @@ import {
 } from '@/display/labels'
 
 describe('花名册（docs/standard/terminology.md §9）', () => {
-  it('是 25 人，且 slug 唯一', () => {
-    expect(ROSTER).toHaveLength(25)
-    expect(new Set(ROSTER.map((profile) => profile.slug)).size).toBe(25)
+  it('是 30 人（25 非旅行者 + 5 旅行者），且 slug 唯一', () => {
+    expect(ROSTER).toHaveLength(30)
+    expect(new Set(ROSTER.map((profile) => profile.slug)).size).toBe(30)
   })
 
-  it('三个已实现契约的角色在册且类型正确', () => {
+  it('已实现契约的角色在册且类型正确（含旅行者）', () => {
     expect(characterNameOf('clockmaker')).toBe('钟表匠')
     expect(characterNameOf('dreamer')).toBe('筑梦师')
     expect(characterNameOf('no-dashii')).toBe('诺-达鲺')
     expect(characterTypeOf('no-dashii')).toBe('恶魔')
     expect(characterTypeOf('clockmaker')).toBe('镇民')
+    expect(characterNameOf('deviant')).toBe('怪咖')
+    expect(characterTypeOf('deviant')).toBe('旅行者')
+    expect(characterNameOf('butcher')).toBe('屠夫')
   })
 
   it('角色类型枚举名有中文，未知类型原样回显（配板净分布要用）', () => {
     expect(typeLabelOf('Townsfolk')).toBe('镇民')
     expect(typeLabelOf('Demon')).toBe('恶魔')
+    expect(typeLabelOf('Traveller')).toBe('旅行者')
     expect(typeLabelOf('Unknown')).toBe('Unknown')
     expect(typeLabelOf(null)).toBe('—')
   })

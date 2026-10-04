@@ -18,6 +18,12 @@ public sealed record SetupProposalResult
     /// <summary>本次使用的显式随机输入（种子）：重摇 = 新种子；复现 = 原样传回。</summary>
     public string Seed { get; init; } = string.Empty;
 
+    /// <summary>本次配板覆盖的非旅行者人数（R-0046：分布表按它取行）。</summary>
+    public int NonTravellerCount { get; init; }
+
+    /// <summary>本局旅行者人数（席位总数 − 非旅行者人数）：不参与配板、不占四类型名额（R-0046）。</summary>
+    public int TravellerCount { get; init; }
+
     /// <summary>席位 → 角色（按席位升序）。</summary>
     public IReadOnlyList<SeatCharacterAssignment> Assignments { get; init; } = [];
 
@@ -30,7 +36,17 @@ public sealed record SetupProposalResult
     /// <summary>是否给出建议。</summary>
     public bool Ok => FailureCode is null;
 
-    /// <summary>失败结果。</summary>
-    public static SetupProposalResult Failed(string code, string message) =>
-        new() { FailureCode = code, FailureMessage = message };
+    /// <summary>失败结果；人数已知时一并回显，便于说书人面解释（R-0046）。</summary>
+    public static SetupProposalResult Failed(
+        string code,
+        string message,
+        int nonTravellerCount = 0,
+        int travellerCount = 0) =>
+        new()
+        {
+            FailureCode = code,
+            FailureMessage = message,
+            NonTravellerCount = nonTravellerCount,
+            TravellerCount = travellerCount,
+        };
 }

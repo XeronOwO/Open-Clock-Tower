@@ -426,10 +426,14 @@ public sealed class GameHub : Hub<IGameClient>
     /// 说书人查询开局配板建议（只读、不落账）：按官方分布表 + 在场角色的设置调整生成建议。
     /// 随机只作显式输入——种子可由客户端传入、缺省由服务端生成并回传（R-0041 / R-0042）。
     /// </summary>
-    public async Task<SetupProposalDto> ProposeSetup(string credential, string? seed)
+    /// <param name="nonTravellerCount">
+    /// 配板覆盖的非旅行者人数（R-0046：旅行者是叠加角色，不占镇民 / 外来者 / 爪牙 / 恶魔名额）；
+    /// null = 本局全部席位都是非旅行者（缺省语义）。
+    /// </param>
+    public async Task<SetupProposalDto> ProposeSetup(string credential, string? seed, int? nonTravellerCount)
     {
         _ = ResolveStorytellerActor(credential);
-        var result = await _session.ProposeSetupAsync(seed, Context.ConnectionAborted);
+        var result = await _session.ProposeSetupAsync(seed, nonTravellerCount, Context.ConnectionAborted);
         return ProjectionMapper.ToDto(result);
     }
 
