@@ -18,8 +18,9 @@ import {
   LogLevel,
   type HubConnection,
 } from '@microsoft/signalr'
-import type { StorytellerJoinDto, StorytellerViewDto } from '@/contracts/game'
+import type { ReplayViewDto, StorytellerJoinDto, StorytellerViewDto } from '@/contracts/game'
 import { asCredential, normalizeStorytellerView } from '@/display/format'
+import { normalizeReplayView } from '@/display/replay'
 import { HUB_PATH, type GatewayState } from '@/services/connectionState'
 
 export type { GatewayState } from '@/services/connectionState'
@@ -125,6 +126,30 @@ export class StorytellerGateway {
     )
     this.applyView(view)
     return this.current ?? view
+  }
+
+  /**
+   * 拉取一页复盘（D-0020）：说书人随时可看（实时面）；玩家面只在结束批次之后开放，闸在服务端。
+   * 分页按事件序号推进；坏数据不静默（解析不了就显式失败）。
+   */
+  async fetchReplay(afterSequence: number, pageSize: number): Promise<ReplayViewDto> {
+    if (this.credentialValue.length === 0) {
+      throw new Error('尚未加入：没有连接凭据，不能读取复盘')
+    }
+
+    const replay = normalizeReplayView(
+      await this.connection.invoke<unknown>(
+        'GetReplay',
+        this.credentialValue,
+        afterSequence,
+        pageSize,
+      ),
+    )
+    if (replay === null) {
+      throw new Error('复盘数据不可识别：已停止前进（服务端数据是输入，不是保证）')
+    }
+
+    return replay
   }
 
   /** 断开（保留票据，便于重连）。 */

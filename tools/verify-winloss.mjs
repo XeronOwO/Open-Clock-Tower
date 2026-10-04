@@ -87,7 +87,8 @@ const PUSH_METHODS = [
   'ReceiveKlutzChoiceMade',
 ]
 
-/** 无关玩家端不该出现的词：效果链 / 归因 / 说书人专属字段（D-0012 §4.3 的信息隔离）。 */
+/** 无关玩家端不该出现的词：效果链 / 归因 / 说书人专属字段（D-0012 §4.3 的信息隔离），
+ *  以及复盘字段（R-0043：复盘只在结束批次之后由玩家主动查询，任何推送都不含它）。 */
 const FORBIDDEN_PLAYER_TOKENS = [
   'effects',
   'effectId',
@@ -95,6 +96,9 @@ const FORBIDDEN_PLAYER_TOKENS = [
   'termination',
   'klutz:2',
   'witch.curse',
+  'replay',
+  'markers',
+  'steps',
 ]
 
 process.on('exit', () => killChildren())
@@ -113,11 +117,11 @@ try {
 }
 
 async function main() {
-  console.log('=== 1/6 构建并启动真宿主（独立临时库，5 席）===')
+  console.log('=== 1/7 构建并启动真宿主（独立临时库，5 席）===')
   await ensureServerArtifacts({ repositoryRoot, buildMode: config.buildMode })
   await startServer()
 
-  console.log('=== 2/6 取票据并起 Vite ===')
+  console.log('=== 2/7 取票据并起 Vite ===')
   const ticket = readStorytellerTicket(databasePath)
   const seatTickets = readSeatTickets(databasePath)
   check(`席位票据齐备（${ASSIGN.length} 席）`, seatTickets.length === ASSIGN.length, `数据库 ${seatTickets.length} 张`)
@@ -139,7 +143,7 @@ async function main() {
   children.push(vite)
   await waitForHttp(viteUrl, 'Vite 开发服务器', 60_000)
 
-  console.log('=== 3/6 说书人 + 呆瓜席（2 号）加入真浏览器 ===')
+  console.log('=== 3/7 说书人 + 呆瓜席（2 号）加入真浏览器 ===')
   const browser = await playwright.chromium.launch()
   const consoleErrors = []
   const storytellerPage = await newPage(browser, { width: 1600, height: 1100 }, consoleErrors)
@@ -156,10 +160,16 @@ async function main() {
   const klutzBadge = await waitForText(klutzPage.locator('[data-testid="player-seat"]'), '2', 30_000)
   check('呆瓜席（2 号）加入玩家端', klutzBadge.includes('2'), klutzBadge)
 
+  // R-0043 反方向：结束批次之前，玩家端连复盘入口都不该出现（更不会有复盘数据）。
+  check(
+    '结束批次之前：玩家端没有复盘入口（进行中零复盘面）',
+    (await klutzPage.locator('[data-testid="player-replay-entry"]').count()) === 0,
+  )
+
   // 投票用真 SignalR 席位客户端（3 / 4 号）；1 号（涡流）与 5 号（筑梦师）本场景不需要动作。
   const voterSeats = [await connectSeat(seatTickets[2]), await connectSeat(seatTickets[WITCH_SEAT - 1])]
 
-  console.log('=== 4/6 分配 → 开首夜 → 过夜（女巫 / 筑梦师的请求由说书人作废）===')
+  console.log('=== 4/7 分配 → 开首夜 → 过夜（女巫 / 筑梦师的请求由说书人作废）===')
   const assignmentSelects = storytellerPage.locator('section', { hasText: '开局分配' }).locator('select')
   for (const [index, slug] of ASSIGN.entries()) {
     await assignmentSelects.nth(index).selectOption(slug)
@@ -194,7 +204,7 @@ async function main() {
   })
   check('白天阶段：开白天被受理', dayStarted.kind === 'Accepted', dayStarted.raw)
 
-  console.log('=== 5/6 处决呆瓜 → 公开选择 → 选中邪恶 → 游戏结束 ===')
+  console.log('=== 5/7 处决呆瓜 → 公开选择 → 选中邪恶 → 游戏结束 ===')
   // 2 号自我提名（R-0018 允许）；3 / 4 号投票 → 3 票 ≥ 5 名存活的一半。
   // 玩家端没有命令回执区：判据取**公开账目**（提名条数 / 票数），与主装置同一口径。
   await klutzPage.getByTestId('player-nominee-select').selectOption(String(KLUTZ_SEAT))
@@ -269,7 +279,47 @@ async function main() {
   check('说书人面板出现同一份结束结论', storytellerWinner === 'Evil', `data-outcome-winner=${storytellerWinner}`)
   await screenshot(storytellerPage, 'winloss-03-storyteller-ended')
 
-  console.log('=== 6/6 结束后操作面被冻结 + 收包扫描 ===')
+  console.log('=== 6/7 结束后：玩家端复盘入口 → 逐步回放 → 刷新按序号恢复 ===')
+  const replayOpenButton = klutzPage.getByTestId('player-replay-open')
+  await replayOpenButton.waitFor({ timeout: 30_000 })
+  await replayOpenButton.click()
+  await klutzPage.getByTestId('replay-panel').waitFor({ timeout: 30_000 })
+  // 面板先出现、步骤按序号异步到达：等首屏加载完成再判位置（加载态显示「加载中…」）。
+  const firstProgress = await waitForText(klutzPage.getByTestId('replay-progress'), '第 1 /', 30_000)
+  const firstSummary = compact(await klutzPage.getByTestId('replay-summary').innerText())
+  check(
+    '结束批次之后：玩家端复盘入口出现，面板停在第 1 步',
+    firstProgress.includes('第 1 /') && firstSummary.length > 0,
+    `${firstProgress}｜${firstSummary}`,
+  )
+
+  await klutzPage.getByTestId('replay-next').click()
+  await klutzPage.getByTestId('replay-next').click()
+  const thirdProgress = compact(await klutzPage.getByTestId('replay-progress').innerText())
+  check('「下一步」按原子步骤推进（不跳步、不合并）', thirdProgress.includes('第 3 /'), thirdProgress)
+
+  await klutzPage.getByTestId('replay-prev').click()
+  const secondProgress = compact(await klutzPage.getByTestId('replay-progress').innerText())
+  const positionSequence = /事件序号 (\d+)/.exec(secondProgress)?.[1] ?? ''
+  check(
+    '「上一步」回到第 2 步，进度以事件序号为准',
+    secondProgress.includes('第 2 /') && positionSequence.length > 0,
+    secondProgress,
+  )
+  await screenshot(klutzPage, 'winloss-04-player-replay')
+
+  // 刷新 / 重连：位置来自 URL 里的序号；重连后自动重开复盘并回到同一步（票据矩阵行 7）。
+  await klutzPage.reload()
+  await klutzPage.getByTestId('replay-panel').waitFor({ timeout: 30_000 })
+  const restoredProgress = await waitForText(klutzPage.getByTestId('replay-progress'), '第 2 /', 30_000)
+  check(
+    '刷新 / 重连后回放位置按事件序号恢复（不丢）',
+    restoredProgress.includes('第 2 /') && restoredProgress.includes(`事件序号 ${positionSequence}`),
+    `刷新前 ${secondProgress}｜刷新后 ${restoredProgress}`,
+  )
+  await screenshot(klutzPage, 'winloss-05-player-replay-restored')
+
+  console.log('=== 7/7 结束后操作面被冻结 + 收包扫描 ===')
   const afterEnd = await voterSeats[0].invoke('Nominate', 1, 'test-winloss-after-end')
   check(
     '结束后玩家操作被拒（phase.game_ended）',

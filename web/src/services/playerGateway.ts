@@ -28,6 +28,7 @@ import type {
   PlayerEventDto,
   PlayerLifeDto,
   ReconnectBundleDto,
+  ReplayViewDto,
   PlayerViewDto,
 } from '@/contracts/game'
 import {
@@ -45,6 +46,7 @@ import {
   normalizeOption,
   normalizePlayerLife,
 } from '@/display/format'
+import { normalizeReplayView } from '@/display/replay'
 import { HUB_PATH, type GatewayState } from '@/services/connectionState'
 import { PlayerViewMerge, type PlayerPush } from '@/services/playerViewMerge'
 
@@ -266,6 +268,28 @@ export class PlayerGateway {
       question,
       idempotencyKey,
     )
+  }
+
+  /**
+   * 拉取一页复盘（R-0043 / D-0020）。
+   *
+   * 可见性闸在服务端：结束批次之前玩家调用会被显式拒绝；进行中玩家的任何收包都**不含**复盘字段，
+   * 因此这里没有"提前探一探"的路径。坏数据不静默：解析不了就显式失败（宁可报错）。
+   */
+  async fetchReplay(afterSequence: number, pageSize: number): Promise<ReplayViewDto> {
+    const replay = normalizeReplayView(
+      await this.connection.invoke<unknown>(
+        'GetReplay',
+        this.requireCredential(),
+        afterSequence,
+        pageSize,
+      ),
+    )
+    if (replay === null) {
+      throw new Error('复盘数据不可识别：已停止前进（服务端数据是输入，不是保证）')
+    }
+
+    return replay
   }
 
   /** 主动补齐：以自身序号重新加入，取回缺口事件。 */

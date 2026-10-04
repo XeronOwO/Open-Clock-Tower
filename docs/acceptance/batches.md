@@ -454,6 +454,40 @@ Integration 122 · NormativeGates 24）；`dotnet format` 就地通过；`npm ru
 - 本批后 `in-progress/`、`review/` 清空；`todo/` 两张（`replay-auto-review` / `ui-layout-and-onboarding`）；
   `done/` 新增 `setup-randomizer.md`；装置清单增到 12 个（`docs/acceptance/devices.md`）。
 
+## 批次 E28（2026-10-04，自动化复盘：终局后逐步回放）
+
+冻结版本：`main` 工作树 = 本票全部改动（`ReplayQueryService` / `ReplayProjection` / `ReplayStepCatalog`、
+终局后可见契约与前端 `features/replay`、席位牌共用化、两个装置小改，以及 R-0043 / D-0020 / 术语登记）。
+跑批期间工作树只有本票成果，无并行构建。
+
+本批按「两条装置 + 三个门禁」取证：
+
+- `tools/verify-winloss.mjs`（**本批扩展**，取证档 `--quota 2 --screenshots-all`）：**25 项全绿 / 0 跳过**——
+  新增「结束批次之前玩家端没有复盘入口」「结束后入口出现、面板停在第 1 步」「下一步按原子步骤推进
+  （第 3/26 步、事件序号 3）」「上一步回到第 2 步」「刷新 / 重连后按事件序号恢复位置」；截图
+  `winloss-01…05` 逐张复核（04 = 复盘面板与圆盘、05 = 刷新恢复；与断言一致）。
+- `tools/verify-zero-trust.mjs`（**本批扩展禁词表**）：**43 项全绿**——玩家收包扫描新增
+  `replay` / `markers` / `steps`，进行中零复盘字段。
+- 三个门禁：`dotnet build` 0 警告 0 错误；`dotnet test` **798 通过 / 0 失败**（Kernel 327 · Rules 314 ·
+  Integration 133 · NormativeGates 24）；`dotnet format` 就地通过；`npm run gate` 全绿
+  （typecheck + lint + **125** 前端单测 + build）。
+
+诚实记录：
+
+- 复盘步骤目录由覆盖率门禁锁死：新增 `GameEvent` 类型必须被 presenter 认领或在显式排除清单里，
+  否则 `ReplayStepCatalogTests` 报红；排除项只有说书人注记（D-0019）与步骤机节拍内部事件（D-0013 / D-0014）。
+- `GameSession.cs` 因本轮新增一度超过 600 行被 `SourceFileLengthGateTests` 判红：按职责把复盘读侧拆成
+  `ReplayQueryService`（只读事件流、不依赖宿主内存态），门禁复跑转绿——不是调阈值，是拆文件。
+- 装置首跑 4 项**假红**：面板先渲染、步骤按序号异步到达，断言读到了加载态空文案。修法：前端空白态显示
+  「加载中…」、装置等待首屏步骤再判位置；复跑 25 项全绿。不是产品缺陷。
+
+批次 E28 判出：
+
+- **自动化复盘票：行 1 / 2 / 4 / 5 / 6 / 7 / 9 通过；行 3 与行 8 无法判定**（行 3 缺含换角 / 换手 /
+  中毒 / 醉酒的逐事件族截图；行 8 缺大事件流耗时采样）→ 票据留在 `review/` 并写明缺什么
+  （逐行证据见票据「实施结论」）。
+- 本批后 `todo/` 两张（账号与显示名 / 排版与上手引导）、`review/` 一张（本票）。
+
 ## 相关阅读
 
 - 验收规程：`docs/acceptance/AGENTS.md`

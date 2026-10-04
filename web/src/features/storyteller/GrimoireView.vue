@@ -19,7 +19,7 @@ import {
 } from '@/display/grimoire'
 import type { CommandOutcome, CommandSender } from '@/services/storytellerCommands'
 import { computed, ref } from 'vue'
-import GrimoireSeatCard from '@/features/storyteller/GrimoireSeatCard.vue'
+import GrimoireSeatCard from '@/features/grimoire/GrimoireSeatCard.vue'
 import GrimoireSeatConsole from '@/features/storyteller/GrimoireSeatConsole.vue'
 
 const props = defineProps<{

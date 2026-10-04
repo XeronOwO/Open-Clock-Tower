@@ -12,6 +12,7 @@ import type {
   OperationRequestDto,
   PlayerDayDto,
   PlayerViewDto,
+  ReplayViewDto,
 } from '@/contracts/game'
 import { labelOf, voidReasonLabelOf } from '@/display/labels'
 import { seatLabelOf } from '@/display/format'
@@ -20,6 +21,7 @@ import { TicketStore } from '@/services/ticketStore'
 import { newIdempotencyKey } from '@/services/idempotency'
 import type { GatewayState } from '@/services/connectionState'
 import PlayerDayPanel from '@/features/player/PlayerDayPanel.vue'
+import ReplayPanel from '@/features/replay/ReplayPanel.vue'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 
 const ticket = ref('')
@@ -69,6 +71,19 @@ function ensureGateway(): PlayerGateway {
   return gateway
 }
 
+/** 复盘面板开关：入口只在结束批次之后出现（R-0043）；服务端另有闸，前端只是不显示。 */
+const replayOpen = ref(false)
+
+/** 复盘取数：把共用面板接到本连接（服务端按事件序号分页）。 */
+function fetchReplay(afterSequence: number, pageSize: number): Promise<ReplayViewDto> {
+  const current = gateway
+  if (current === null) {
+    return Promise.reject(new Error('尚未加入：不能读取复盘'))
+  }
+
+  return current.fetchReplay(afterSequence, pageSize)
+}
+
 function buildCallbacks(): PlayerCallbacks {
   return {
     // 视图的唯一写入点：快照与推送已在网关按序号合并，这里只做呈现态同步。
@@ -112,6 +127,11 @@ function applyView(next: PlayerViewDto): void {
   day.value = next.day
   informationResults.value = [...next.informationResults]
   outcome.value = next.outcome
+
+  // 刷新 / 重连后按 URL 里的序号恢复复盘位置（票据矩阵行 7）：只在结束批次之后自动打开。
+  if (next.outcome !== null && !replayOpen.value && /[?&]replay=\d+/.test(window.location.hash)) {
+    replayOpen.value = true
+  }
   klutzChoices.value = [...next.klutzChoices]
   canAskArtistQuestion.value = next.canAskArtistQuestion
   pendingQuestion.value = next.pendingQuestion
@@ -333,6 +353,16 @@ onBeforeUnmount(() => {
         <h2>本局结束</h2>
         <p class="winner">{{ winnerLabelOf(outcome.winner) }}</p>
         <p class="hint" data-testid="player-outcome-detail">{{ outcome.detail }}</p>
+      </section>
+
+      <section v-if="outcome" class="panel" data-testid="player-replay-entry">
+        <button type="button" data-testid="player-replay-open" @click="replayOpen = true">查看复盘</button>
+        <ReplayPanel
+          v-if="replayOpen"
+          :fetch-replay="fetchReplay"
+          :fallback-seat="view?.seat ?? null"
+          @close="replayOpen = false"
+        />
       </section>
 
       <section

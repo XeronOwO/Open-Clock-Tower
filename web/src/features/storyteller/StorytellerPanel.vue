@@ -9,7 +9,7 @@
  * 前端不做领域推断，也不缓存旧值假装"还是那样"——掉线重连后整份重取。
  * 零信任姿态：命令必须带连接级凭据；凭据只在内存里，不渲染、不落盘。
  */
-import type { StorytellerViewDto } from '@/contracts/game'
+import type { ReplayViewDto, StorytellerViewDto } from '@/contracts/game'
 import { clockTimeOf } from '@/display/format'
 import { labelOf } from '@/display/labels'
 import { StorytellerGateway, type GatewayState } from '@/services/storytellerGateway'
@@ -27,6 +27,7 @@ import PitHagNightPanel from '@/features/storyteller/PitHagNightPanel.vue'
 import OperationsControl from '@/features/storyteller/OperationsControl.vue'
 import GrimoireView from '@/features/storyteller/GrimoireView.vue'
 import GrimoireDataDrawer from '@/features/storyteller/GrimoireDataDrawer.vue'
+import ReplayPanel from '@/features/replay/ReplayPanel.vue'
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef } from 'vue'
 
 /** 席位名单是会话信息（服务端持有）。真实服务端的席位数量由配置决定，可用 VITE_SEAT_COUNT 覆盖。 */
@@ -47,6 +48,8 @@ const outcome = ref<CommandOutcome | null>(null)
 /** 回执序号：每次收到新回执自增。它是"这轮回执是不是新的"的判据——kind 可能重复（两次都 Accepted）。 */
 const outcomeSerial = ref(0)
 const joining = ref(false)
+/** 复盘面板开关：说书人是实时面（进行中也能看；R-0043 第 3 条）。 */
+const replayOpen = ref(false)
 
 let gateway: StorytellerGateway | null = null
 
@@ -66,6 +69,16 @@ const sender = computed<CommandSender | null>(() => {
     ? { connection: current.raw, credential: credential.value }
     : null
 })
+
+/** 复盘取数：交给共用面板（服务端按事件序号分页；说书人随时可读，玩家面由服务端闸）。 */
+function fetchReplay(afterSequence: number, pageSize: number): Promise<ReplayViewDto> {
+  const current = gateway
+  if (current === null) {
+    return Promise.reject(new Error('尚未连接：不能读取复盘'))
+  }
+
+  return current.fetchReplay(afterSequence, pageSize)
+}
 
 const stateText: Record<GatewayState, string> = {
   disconnected: '未连接',
@@ -235,6 +248,7 @@ onBeforeUnmount(() => {
             :seat-count="seatCount"
             @outcome="showOutcome"
           />
+          <ReplayPanel v-if="replayOpen" :fetch-replay="fetchReplay" @close="replayOpen = false" />
           <p v-else class="placeholder">已连接，但还没有可用的连接级凭据——先在登录区重新加入。</p>
         </main>
 
@@ -242,6 +256,7 @@ onBeforeUnmount(() => {
           <div class="row">
             <button type="button" @click="refresh()">刷新视图</button>
             <button type="button" @click="disconnect()">断开</button>
+            <button type="button" data-testid="storyteller-replay-open" @click="replayOpen = true">复盘</button>
             <span class="hint">连接：{{ stateText[connectionState] }}</span>
           </div>
           <div

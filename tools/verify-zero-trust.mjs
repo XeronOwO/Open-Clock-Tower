@@ -84,6 +84,10 @@ const FORBIDDEN_PLAYER_KEYS = [
   'planCompleted',
   'control',
   'storytellerTicket',
+  // 复盘（R-0043）：终局后才由玩家主动查询；进行中任何收包里不该出现复盘字段。
+  'replay',
+  'markers',
+  'steps',
 ]
 
 const PUSH_METHODS = [

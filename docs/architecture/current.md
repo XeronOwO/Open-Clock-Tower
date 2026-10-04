@@ -260,6 +260,7 @@ StepMachine（步骤机）
 | 控制模式 | `ControlMode.Automatic` / `StorytellerTakeover`；接管时节拍器不自动推进，交还后恢复 |
 | 作废 | 座位依赖（`SeatDependency`）失效 → 自动作废并写明原因；说书人可强制作废 |
 | 推送 | SignalR 定向单播（请求 / 信息 / 作废 / 响应只到当事连接）；阶段开始与**白天变化**是公开信息，广播给**全部已绑定席位**（白天按席位投影后各发一份 `ReceiveDayChanged`，含公开生死面）；公开生死面实际变化而本批没有白天事件时同样补一条 `DayChanged`（夜晚挂起不算变化，不推——D-0013 §5）；**本人视图**（艺术家提问状态、阶段边界 / 白天收口导致的"我现在能不能动"）经 `ReceivePlayerViewChanged`（序号 + 整视图）推送：带席位时定向到本人、不带席位时按席位各推一份；断线重连 = 快照 + 补齐 + **重投未响应请求**；说书人变更也推送（不需要轮询） |
+| 复盘 | `ReplayQueryService`（只读 `IGameStore` + 可见性闸：玩家仅结束批次之后，R-0043）+ `ReplayProjection` / `ReplayStepCatalog`（同源折叠逐步投影，D-0020：每事件一步、显式排除项除外）；Hub `GetReplay` 按事件序号分页；前端 `features/replay` 与实时魔典共用席位牌（`features/grimoire`） |
 
 ### 2.8 状态账与效果归因链（D-0015）
 
@@ -451,7 +452,7 @@ StepMachine（步骤机）
 |---|---|---|
 | `OpenClockTower.Kernel` | 纯规则内核 | 已建（六状态 + 效果生命周期 + 两本账 + 裁定点契约 + 步骤机/操作请求/事件模型 + 状态账与效果归因 + 结算调度 / 生效判定 / 常驻效果与维度对账；角色行为在 Rules） |
 | `OpenClockTower.Rules` | 梦殒春宵角色、剧本、相克数据 | 已建（夜晚顺序表两套口径 + 逐条来源；花名册 25 人与类型 / 中文名 / 设置调整；初始设置分布表（逐行取证等级，R-0041）+ 可重放配板求解 `SetupComposer`（R-0042）；`NightPlanBuilder` 建表；角色契约：钟表匠 / 筑梦师 / 诺-达鲺）；逐角色实现与相克数据待补 |
-| `OpenClockTower.Application` | 命令/查询/裁定编排 | 已建（四道闸、会话编排、结算管线、投影与重连包、房间重建；`GameSession` + `GameCommandDispatcher` + `SessionSettlement`） |
+| `OpenClockTower.Application` | 命令/查询/裁定编排 | 已建（四道闸、会话编排、结算管线、投影与重连包、房间重建、复盘读侧；`GameSession` + `GameCommandDispatcher` + `SessionSettlement` + `ReplayQueryService` / `ReplayProjection`） |
 | `OpenClockTower.Contracts` | 前后端共享契约（由 OpenAPI 生成前端客户端） | 已建（SignalR 推送与命令回执 DTO） |
 | `OpenClockTower.Server` | ASP.NET Core 宿主、SignalR、EF Core | 已建（定向单播、EF Core + SQLite 事件/快照/回执/票据、服务端节拍器；不再自动开阶段；`AssignCharacters` / `StartNight` / `ProposeSetup`（配板建议，只读）入口；心跳产生的通知照常分发） |
 | `tests/OpenClockTower.Kernel.Tests` | 内核行为测试 | 已建（327 条：六状态 / 效果生命周期 / 两本账 / 裁定点与疯狂 / 步骤机与操作请求 / 状态账与效果归因 / 能力生效判定 / 结算调度 / 维度对账） |
