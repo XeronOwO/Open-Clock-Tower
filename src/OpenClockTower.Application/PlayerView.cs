@@ -38,6 +38,12 @@ public sealed record PlayerView
     /// <summary>呆瓜的公开选择（含"没选"的跳过），按发生顺序；公开事实（R-0027）。</summary>
     public IReadOnlyList<KlutzChoiceRecord> KlutzChoices { get; init; } = [];
 
+    /// <summary>
+    /// 本局公开的「席位 → 玩家名」映射（D-0021）：同桌所有人（含说书人）收到同一份；
+    /// 没有玩家名的席位（游客）不出现。姓名只作公开呈现，不参与授权与判定。
+    /// </summary>
+    public IReadOnlyList<SeatDisplayName> SeatNames { get; init; } = [];
+
     /// <summary>投影对应的事件流序号（重连补齐用）。</summary>
     public required long Sequence { get; init; }
 

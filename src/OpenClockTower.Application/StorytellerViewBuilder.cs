@@ -21,6 +21,7 @@ public static class StorytellerViewBuilder
     /// <param name="trackers">会话级派生跟踪器。</param>
     /// <param name="now">应用层当前时刻（卡点时长用）。</param>
     /// <param name="abilities">角色 → 能力结算契约目录。</param>
+    /// <param name="seatNames">公开的「席位 → 玩家名」映射（D-0021）。</param>
     public static StorytellerView Build(
         StepMachineState? machine,
         GameState state,
@@ -28,7 +29,8 @@ public static class StorytellerViewBuilder
         long sequence,
         SessionTrackers trackers,
         DateTimeOffset now,
-        IAbilityResolutionCatalog abilities)
+        IAbilityResolutionCatalog abilities,
+        IReadOnlyList<SeatDisplayName> seatNames)
     {
         ArgumentNullException.ThrowIfNull(state);
         ArgumentNullException.ThrowIfNull(health);
@@ -49,6 +51,7 @@ public static class StorytellerViewBuilder
             now,
             trackers.RecentSeatChanges,
             trackers.AnnotationLedger.Annotations,
+            seatNames,
             trackers.LastResolution,
             StepDigestProjection.Build(
                 machine,

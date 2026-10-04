@@ -28,6 +28,7 @@ public sealed class GameSession
     private readonly IReadOnlyList<IStandingEffectSource> _standingEffects;
     private readonly IClock _clock;
     private readonly PacingOptions _pacing;
+    private readonly SeatNameDirectory _seatNames;
     private readonly ILogger<GameSession> _logger;
     private readonly SemaphoreSlim _gate = new(initialCount: 1, maxCount: 1);
 
@@ -51,6 +52,7 @@ public sealed class GameSession
     /// <remarks>
     /// 依赖会话目录（<see cref="IGameCatalog"/>）只为开局分配与开夜：这两条命令需要**服务端持有的
     /// 席位名单**（客户端送来的席位声明不可信，D-0012）；其余命令不读目录。
+    /// 席位名读模型（<see cref="SeatNameDirectory"/>）同理只读：它由 Server 在认领 / 改名时更新。
     /// </remarks>
     public GameSession(
         GameId gameId,
@@ -60,6 +62,7 @@ public sealed class GameSession
         IReadOnlyList<IStandingEffectSource> standingEffects,
         IClock clock,
         PacingOptions pacing,
+        SeatNameDirectory seatNames,
         ILogger<GameSession> logger)
     {
         GameId = gameId;
@@ -69,6 +72,7 @@ public sealed class GameSession
         _standingEffects = standingEffects;
         _clock = clock;
         _pacing = pacing;
+        _seatNames = seatNames;
         _logger = logger;
     }
 
@@ -189,7 +193,8 @@ public sealed class GameSession
                 SeatList(),
                 _lastSequence,
                 seat,
-                _trackers);
+                _trackers,
+                _seatNames.Snapshot());
         }
         finally
         {
@@ -210,7 +215,8 @@ public sealed class GameSession
                 _lastSequence,
                 _trackers,
                 _clock.UtcNow,
-                _abilities);
+                _abilities,
+                _seatNames.Snapshot());
         }
         finally
         {
@@ -259,6 +265,7 @@ public sealed class GameSession
                 SeatList(),
                 _lastSequence,
                 _trackers,
+                _seatNames.Snapshot(),
                 seat,
                 Math.Clamp(afterSequence, 0, _lastSequence),
                 cancellationToken);
@@ -318,124 +325,30 @@ public sealed class GameSession
             }
 
             var recordedAt = _clock.UtcNow;
-
-            // 补全「变化前角色」（R-0029）：产出方只报新值，由提交管线用**提交前**的账补齐——
-            // 否则「恶魔 → 非恶魔」在账被覆盖后无从读出，胜负求值只能看见"现在没有恶魔"，
-            // 与"从未配置恶魔"混为一谈（R-0024 第 4 条）。
-            var businessEvents = SessionCommit.FillPreviousCharacters(dispatch.Events, _state);
-            var drafts = new List<StoredEventDraft>(businessEvents.Count);
-            var sequence = SessionCommit.AppendDrafts(drafts, businessEvents, _lastSequence, recordedAt);
-
-            // 先把这一步的账在内存里折出来：折不动就整条命令失败，绝不落库。
-            // 否则会留下"事件已落库、账没折"的中间态，而重投会被当成 Duplicate —— 分叉永远暴露不出来。
-            var nextState = FoldLedger(_state, drafts);
-            var nextMachine = dispatch.Machine;
-            var derivedEvents = new List<GameEvent>();
-
-            // ① 先判一次（《处决》一些相关效果的触发时机第 3 步先于第 4 步）：
-            //    处决这一批如果本身已经满足胜负条件，就不再结算死亡触发能力（呆瓜不需要再选择）。
-            var outcome = SessionCommit.EvaluateOutcome(setup, nextState, nextMachine, businessEvents);
-
-            if (outcome is null)
-            {
-                // 固定点对账：事件触发（女巫 / 呆瓜等）→ 常驻效果 / 能力存续 / 维度重算（D-0015 推论 1）。
-                // 派生事件与业务事件**同一次提交**落库；重放只折事件，恢复不重算。
-                var reconciliation = SessionSettlement.Reconcile(
-                    nextState,
-                    settlement with { Machine = nextMachine },
-                    businessEvents);
-                LogDiagnostics(reconciliation.Diagnostics);
-
-                // 派生事件入账 + 裁定结清后的续推（H-1：触发型 / 触发格裁定结清且无后续挂起时
-                // 重进本格复位配额；内核只落裁定本身、不产推进事件）。
-                (sequence, nextMachine) = SessionCommit.AppendDerivedWithContinuation(
-                    drafts,
-                    derivedEvents,
-                    businessEvents,
-                    reconciliation.Events,
-                    sequence,
-                    recordedAt,
-                    nextMachine);
-                nextState = reconciliation.State;
-
-                // ② 事务提交后统一判定（R-0008）：触发产出的死亡同样可能满足胜负条件。
-                outcome = SessionCommit.EvaluateOutcome(setup, nextState, nextMachine, derivedEvents);
-            }
-            else
-            {
-                // 游戏已经结束：跳过事件触发（第 3 步先于第 4 步），但仍做完账实一致的收尾——
-                // 它不产生规则后果，只保证终局的账与效果链不自相矛盾。
-                var housekeeping = SessionSettlement.ReconcileHousekeeping(
-                    nextState,
-                    settlement with { Machine = nextMachine });
-                LogDiagnostics(housekeeping.Diagnostics);
-                (sequence, nextMachine) = SessionCommit.AppendDerived(
-                    drafts,
-                    derivedEvents,
-                    housekeeping.Events,
-                    sequence,
-                    recordedAt,
-                    nextMachine);
-                nextState = housekeeping.State;
-            }
-
-            if (outcome is not null)
-            {
-                // 结束批次收口：先作废仍挂起的请求（若有），再追加唯一的结束事件（R-0024）。
-                (sequence, nextState, nextMachine) = SessionCommit.AppendGameEnding(
-                    outcome,
-                    drafts,
-                    sequence,
-                    recordedAt,
-                    nextState,
-                    nextMachine,
-                    GameId,
-                    _logger);
-            }
-
-            await _store.CommitAsync(
-                new GameCommit
-                {
-                    GameId = GameId,
-                    Events = drafts,
-                    Snapshot = new StoredSnapshot
-                    {
-                        Sequence = sequence,
-                        Machine = nextMachine,
-                        RecordedAt = recordedAt,
-                    },
-                    Receipt = new CommandReceipt
-                    {
-                        IdempotencyKey = envelope.IdempotencyKey,
-                        FirstSequence = _lastSequence + 1,
-                        LastSequence = sequence,
-                    },
-                },
+            var commit = await SessionPipeline.CommitAsync(
+                _store,
+                GameId,
+                _logger,
+                envelope,
+                dispatch,
+                setup,
+                _state,
+                _machine,
+                _trackers,
+                settlement,
+                _lastSequence,
+                recordedAt,
                 cancellationToken);
 
-            var previousMachine = _machine;
-            _machine = nextMachine;
-            _state = nextState;
-            _lastSequence = sequence;
-            var publicSurfaceChanged = _trackers.Update(drafts, recordedAt);
-            var notifications = GameNotificationBuilder.Build(drafts, previousMachine, publicSurfaceChanged);
-            _logger.LogInformation(
-                "命令已接受：game={GameId} actor={ActorKind} command={Command} 事件数={EventCount} 派生事件数={DerivedCount} 序号={Sequence} 挂起={Held} clientSequence={ClientSequence}",
-                GameId,
-                envelope.Actor.Kind,
-                envelope.Command.GetType().Name,
-                businessEvents.Count,
-                derivedEvents.Count,
-                _lastSequence,
-                _machine?.IsHeld,
-                envelope.ClientSequence);
-
+            _machine = commit.Machine;
+            _state = commit.State;
+            _lastSequence = commit.Sequence;
             return new CommandResult
             {
                 Kind = CommandResultKind.Accepted,
-                Sequence = _lastSequence,
-                Events = businessEvents,
-                Notifications = notifications,
+                Sequence = commit.Sequence,
+                Events = commit.Events,
+                Notifications = commit.Notifications,
             };
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
@@ -570,26 +483,4 @@ public sealed class GameSession
             Rejection = rejection,
         };
     }
-
-    /// <summary>
-    /// 把一批事件折进状态账的**副本**（与步骤机状态同源、同一批事件）。
-    /// </summary>
-    /// <remarks>
-    /// 刻意不改 <see cref="_state"/>：调用方先在内存里折成功，才允许把事件提交落库，
-    /// 提交成功后才把结果赋回去。这样"折不动"等价于"这条命令失败"，不会出现半提交的账。
-    /// </remarks>
-    private static GameState FoldLedger(GameState state, IReadOnlyList<StoredEventDraft> drafts)
-    {
-        var next = state;
-        foreach (var draft in drafts)
-        {
-            next = GameStateMachine.Apply(next, draft.Event);
-        }
-
-        return next;
-    }
-
-    /// <summary>对账诊断落调试日志："本次没有重算"是输入不全时的诚实结论，不是错误。</summary>
-    private void LogDiagnostics(IReadOnlyList<string> diagnostics) =>
-        SessionCommit.LogDiagnostics(diagnostics, _logger, GameId);
 }

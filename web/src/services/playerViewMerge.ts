@@ -32,6 +32,7 @@ import type {
   OperationRequestVoidedDto,
   PlayerDayDto,
   PlayerViewDto,
+  SeatDisplayNameDto,
 } from '@/contracts/game'
 
 /** 一条在线推送：带背书事件序号（或读时状态序号），客户端据此与快照比较先后。 */
@@ -59,6 +60,9 @@ export class PlayerViewMerge {
   private outcomeSequence = -1
   private klutzChoices: KlutzChoiceDto[] = []
   private klutzChoicesSequence = -1
+  /** 公开的「席位 → 玩家名」映射（D-0021）：随快照 / 本人视图推送按序号更新。 */
+  private seatNames: SeatDisplayNameDto[] = []
+  private seatNamesSequence = -1
   /** 艺术家提问（R-0040）：本人进行中的问题与"能不能问"的权限位，随快照按序号更新。 */
   private pendingQuestion: string | null = null
   private pendingQuestionSequence = -1
@@ -116,6 +120,12 @@ export class PlayerViewMerge {
       changed = true
     }
 
+    if (sequence > this.seatNamesSequence) {
+      this.seatNames = [...view.seatNames]
+      this.seatNamesSequence = sequence
+      changed = true
+    }
+
     if (sequence > this.pendingQuestionSequence) {
       this.pendingQuestion = view.pendingQuestion
       this.pendingQuestionSequence = sequence
@@ -161,6 +171,8 @@ export class PlayerViewMerge {
     this.outcomeSequence = -1
     this.klutzChoices = []
     this.klutzChoicesSequence = -1
+    this.seatNames = []
+    this.seatNamesSequence = -1
     this.pendingQuestion = null
     this.pendingQuestionSequence = -1
     this.canAskArtistQuestion = false
@@ -259,6 +271,7 @@ export class PlayerViewMerge {
       day: this.day,
       outcome: this.outcome,
       klutzChoices: [...this.klutzChoices].sort((left, right) => left.sequence - right.sequence),
+      seatNames: [...this.seatNames].sort((left, right) => left.seat - right.seat),
       pendingQuestion: this.pendingQuestion,
       canAskArtistQuestion: this.canAskArtistQuestion,
       exhaustedAbilities: [...this.exhaustedAbilities],

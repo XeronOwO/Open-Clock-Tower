@@ -23,6 +23,7 @@ import type {
   RoomHealthDto,
   SeatAnnotationDto,
   SeatChangeDto,
+  SeatDisplayNameDto,
   SeatStateDto,
   SeatStateFactDto,
   SlotAbilityDto,
@@ -457,6 +458,44 @@ export function normalizePlayerLife(raw: unknown): PlayerLifeDto | null {
   return seat === null || seat < 1 || state === null ? null : { seat, state }
 }
 
+/** 席位名条目的条数上限：一桌人就这么多，超出的一律丢弃（坏数据不撑爆面板）。 */
+export const MAX_SEAT_NAMES = 64
+
+/**
+ * 归一化一条「席位 → 玩家名」（D-0021）：席位必须是 1..1000 的正整数、名字是有界文本；
+ * 坏条目直接丢弃（宁可少一条，不编一个人名）。
+ */
+export function normalizeSeatName(raw: unknown): SeatDisplayNameDto | null {
+  if (raw === null || typeof raw !== 'object') {
+    return null
+  }
+
+  const entry = raw as Record<string, unknown>
+  const seat = asCount(entry['seat'], 1_000)
+  const displayName = asSizedText(entry['displayName'], 64)
+  return seat === null || seat < 1 || displayName === null ? null : { seat, displayName }
+}
+
+/** 归一化整份「席位 → 玩家名」映射：同一席位只留第一条，条数封顶。 */
+export function normalizeSeatNames(raw: unknown): SeatDisplayNameDto[] {
+  const seen = new Set<number>()
+  const result: SeatDisplayNameDto[] = []
+  for (const item of asArray<unknown>(raw)) {
+    const name = normalizeSeatName(item)
+    if (name === null || seen.has(name.seat)) {
+      continue
+    }
+
+    seen.add(name.seat)
+    result.push(name)
+    if (result.length >= MAX_SEAT_NAMES) {
+      break
+    }
+  }
+
+  return result
+}
+
 /** 归一化整个说书人视图。任何缺失都退化成空集合 / null，不编造状态。 */
 export function normalizeStorytellerView(raw: unknown): StorytellerViewDto {
   const view = (raw ?? {}) as Record<string, unknown>
@@ -560,6 +599,7 @@ export function normalizeStorytellerView(raw: unknown): StorytellerViewDto {
     klutzChoices: asArray<unknown>(view['klutzChoices'])
       .map(normalizeKlutzChoice)
       .filter((choice): choice is KlutzChoiceDto => choice !== null),
+    seatNames: normalizeSeatNames(view['seatNames']),
     pitHagNight: normalizePitHagNight(view['pitHagNight']),
     fangGuInfection: normalizeFangGuInfection(view['fangGuInfection']),
     barberNight: normalizeBarberNight(view['barberNight']),

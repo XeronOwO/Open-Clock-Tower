@@ -195,6 +195,7 @@ describe('重连补齐折叠（快照权威）', () => {
       day: null,
       outcome: null,
       klutzChoices: [],
+      seatNames: [],
       pendingQuestion: null,
       canAskArtistQuestion: false,
       exhaustedAbilities: [],

@@ -14,6 +14,8 @@ public sealed class AccountStoreTests : IDisposable
 {
     private static readonly GameId Game = new("store-test-game");
 
+    private static readonly DateTimeOffset Now = new(2026, 10, 4, 9, 0, 0, TimeSpan.FromHours(8));
+
     private readonly string _databasePath =
         Path.Combine(Path.GetTempPath(), $"oct-account-test-{Guid.NewGuid():N}.db");
 
@@ -120,6 +122,36 @@ public sealed class AccountStoreTests : IDisposable
         Assert.True(await store.TryBindAsync(
             new SeatBinding { GameId = Game, Seat = new SeatId(1), AccountId = new AccountId(1), BoundAt = now },
             CancellationToken.None));
+    }
+
+    /// <summary>读模型装载：从绑定表 + 账号表折出「席位 → 玩家名」；账号已不存在的席位不出现。</summary>
+    [Fact]
+    public async Task SeatNameDirectory_ReloadsFromStores()
+    {
+        var accounts = new EfAccountStore(_factory);
+        var bindings = new EfSeatBindingStore(_factory);
+        var alice = await accounts.TryCreateAsync(
+            new NewAccount
+            {
+                Username = "Alice",
+                DisplayName = "爱丽丝",
+                PasswordHash = "hash-1",
+                RecoveryCodeHash = "recovery-1",
+            },
+            CancellationToken.None);
+        await bindings.TryBindAsync(
+            new SeatBinding { GameId = Game, Seat = new SeatId(1), AccountId = alice!.Id, BoundAt = Now },
+            CancellationToken.None);
+        await bindings.TryBindAsync(
+            new SeatBinding { GameId = Game, Seat = new SeatId(2), AccountId = new AccountId(999), BoundAt = Now },
+            CancellationToken.None);
+
+        var directory = new SeatNameDirectory();
+        await directory.ReloadAsync(Game, bindings, accounts, CancellationToken.None);
+
+        var entry = Assert.Single(directory.Snapshot());
+        Assert.Equal(new SeatId(1), entry.Seat);
+        Assert.Equal("爱丽丝", entry.DisplayName);
     }
 
     /// <summary>测试用的 DbContext 工厂：每个上下文直连同一个临时 SQLite 文件。</summary>

@@ -21,6 +21,7 @@ internal static class SessionQueries
         IReadOnlyList<SeatId> seats,
         long sequence,
         SessionTrackers trackers,
+        IReadOnlyList<SeatDisplayName> seatNames,
         SeatId seat,
         long afterSequence,
         CancellationToken cancellationToken)
@@ -46,7 +47,7 @@ internal static class SessionQueries
         return new ReconnectBundle
         {
             Sequence = sequence,
-            View = GameProjection.ForSeat(machine, state, seats, sequence, seat, trackers),
+            View = GameProjection.ForSeat(machine, state, seats, sequence, seat, trackers, seatNames),
             EventsSince = events,
         };
     }

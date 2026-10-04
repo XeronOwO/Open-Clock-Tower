@@ -84,6 +84,9 @@ public sealed record StorytellerViewDto
     /// <summary>呆瓜的公开选择（含跳过），按发生顺序（R-0027）。</summary>
     public required KlutzChoiceDto[] KlutzChoices { get; init; }
 
+    /// <summary>本局公开的「席位 → 玩家名」映射（D-0021；无玩家名的席位不出现，与玩家投影同一份）。</summary>
+    public required SeatDisplayNameDto[] SeatNames { get; init; }
+
     /// <summary>麻脸巫婆之夜的死亡裁量窗口；null = 今晚没有（R-0030）。只说书人可见。</summary>
     public PitHagNightDto? PitHagNight { get; init; }
 

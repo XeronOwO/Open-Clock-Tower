@@ -26,6 +26,9 @@ public sealed record PlayerViewDto
     /// <summary>呆瓜的公开选择（含跳过），按发生顺序（R-0027）。</summary>
     public required KlutzChoiceDto[] KlutzChoices { get; init; }
 
+    /// <summary>本局公开的「席位 → 玩家名」映射（D-0021；无玩家名的席位不出现）。</summary>
+    public required SeatDisplayNameDto[] SeatNames { get; init; }
+
     /// <summary>本人进行中的艺术家提问全文；null = 没有（R-0040）。只对本人生效。</summary>
     public string? PendingQuestion { get; init; }
 

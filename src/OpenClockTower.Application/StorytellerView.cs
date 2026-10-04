@@ -119,6 +119,12 @@ public sealed record StorytellerView
     public IReadOnlyList<SeatAnnotation> Annotations { get; init; } = [];
 
     /// <summary>
+    /// 本局公开的「席位 → 玩家名」映射（D-0021）：与玩家投影同一份会话读模型；
+    /// 没有玩家名的席位（游客）不出现。姓名只作公开呈现，不参与任何判定。
+    /// </summary>
+    public IReadOnlyList<SeatDisplayName> SeatNames { get; init; } = [];
+
+    /// <summary>
     /// 「失去能力」提示标记（R-0040）：限次能力用尽后挂在角色标记旁（由能力使用账本派生）。
     /// 玩家投影里没有它（D-0012 §4.3）；本人"已用尽"走玩家视图的窄字段。
     /// </summary>

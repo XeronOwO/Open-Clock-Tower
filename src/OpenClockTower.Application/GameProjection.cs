@@ -18,17 +18,20 @@ public static class GameProjection
     /// <param name="sequence">投影对应的事件序号。</param>
     /// <param name="seat">接收者席位。</param>
     /// <param name="trackers">会话派生跟踪器：发给该席位的信息结果与公开生死面（R-0022）。</param>
+    /// <param name="seatNames">公开的「席位 → 玩家名」映射（D-0021；无名字的席位不出现）。</param>
     public static PlayerView ForSeat(
         StepMachineState? machine,
         GameState state,
         IReadOnlyList<SeatId> seats,
         long sequence,
         SeatId seat,
-        SessionTrackers trackers)
+        SessionTrackers trackers,
+        IReadOnlyList<SeatDisplayName> seatNames)
     {
         ArgumentNullException.ThrowIfNull(state);
         ArgumentNullException.ThrowIfNull(seats);
         ArgumentNullException.ThrowIfNull(trackers);
+        ArgumentNullException.ThrowIfNull(seatNames);
 
         var pending = machine?.PendingRequest;
         var ended = machine?.Outcome is not null;
@@ -48,6 +51,7 @@ public static class GameProjection
             Day = DayProjection.ForSeat(machine?.Day, state, seats, seat, trackers.PublicLife),
             Outcome = machine?.Outcome,
             KlutzChoices = [.. (machine?.KlutzChoices ?? []).Select(PublicKlutzChoice)],
+            SeatNames = seatNames,
             Sequence = sequence,
 
             // 艺术家的进行中提问（R-0040）：只对本人可见——问题全文不进任何他人投影（D-0012）。
@@ -150,6 +154,7 @@ public static class GameProjection
         DateTimeOffset now,
         IReadOnlyList<SeatChangeSnapshot> recentSeatChanges,
         IReadOnlyList<SeatAnnotation> annotations,
+        IReadOnlyList<SeatDisplayName> seatNames,
         AbilityResolutionSnapshot? lastResolution = null,
         StepDigest? stepDigest = null,
         VoidedRequestSnapshot? lastVoidedRequest = null)
@@ -196,6 +201,7 @@ public static class GameProjection
             Day = machine?.Day?.Days.LastOrDefault(),
             Outcome = machine?.Outcome,
             KlutzChoices = machine?.KlutzChoices ?? [],
+            SeatNames = seatNames,
 
             // 麻脸巫婆之夜的死亡裁量窗口（R-0030）：说书人要据此裁定待定死亡、
             // 并在窗口内追加死亡——玩家投影里没有它（D-0012 §4.3）。

@@ -29,6 +29,8 @@ builder.Services.AddSingleton<ISeatBindingStore, EfSeatBindingStore>();
 builder.Services.AddSingleton<AccountService>();
 builder.Services.AddSingleton<SeatBindingService>();
 builder.Services.AddSingleton<AccountSessionRegistry>();
+// 席位名读模型（D-0021）：姓名是会话信息，由启动装载 + 认领 / 改名 / 解除更新，视图投影只读快照。
+builder.Services.AddSingleton<SeatNameDirectory>();
 // 规则层的角色契约：提示目录与结算目录指向同一批实现（NightActions），常驻效果来源单列。
 builder.Services.AddSingleton<IAbilityResolutionCatalog>(NightActions.Resolutions);
 builder.Services.AddSingleton<IReadOnlyList<IStandingEffectSource>>(NightActions.StandingEffects);
@@ -40,6 +42,7 @@ builder.Services.AddSingleton(provider => new GameSession(
     provider.GetRequiredService<IReadOnlyList<IStandingEffectSource>>(),
     provider.GetRequiredService<IClock>(),
     provider.GetRequiredService<PacingOptions>(),
+    provider.GetRequiredService<SeatNameDirectory>(),
     provider.GetRequiredService<ILogger<GameSession>>()));
 // 复盘读侧（D-0020 / R-0043）：只读事件流 + 可见性闸，不依赖宿主内存态，因此独立于 GameSession 注册。
 builder.Services.AddSingleton(provider => new ReplayQueryService(

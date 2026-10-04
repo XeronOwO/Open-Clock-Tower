@@ -45,6 +45,7 @@ import {
   normalizeKlutzChoice,
   normalizeOption,
   normalizePlayerLife,
+  normalizeSeatNames,
 } from '@/display/format'
 import { normalizeReplayView } from '@/display/replay'
 import { HUB_PATH, type GatewayState } from '@/services/connectionState'
@@ -540,6 +541,7 @@ export function normalizePlayerView(raw: unknown): PlayerViewDto | null {
     klutzChoices: asArray<unknown>(view['klutzChoices'])
       .map(normalizeKlutzChoice)
       .filter((choice): choice is KlutzChoiceDto => choice !== null),
+    seatNames: normalizeSeatNames(view['seatNames']),
     pendingQuestion: asSizedText(view['pendingQuestion'], 200),
     canAskArtistQuestion: asBoolean(view['canAskArtistQuestion']) ?? false,
     exhaustedAbilities: asTextArray(view['exhaustedAbilities']),
@@ -556,6 +558,7 @@ function emptyPlayerView(): PlayerViewDto {
     day: null,
     outcome: null,
     klutzChoices: [],
+    seatNames: [],
     pendingQuestion: null,
     canAskArtistQuestion: false,
     exhaustedAbilities: [],

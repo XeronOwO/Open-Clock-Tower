@@ -327,6 +327,8 @@ export interface StorytellerViewDto {
   outcome: GameOutcomeDto | null
   /** 呆瓜的公开选择（含跳过），按发生顺序（R-0027）。 */
   klutzChoices: KlutzChoiceDto[]
+  /** 本局公开的「席位 → 玩家名」映射（D-0021；无玩家名的席位不出现）。 */
+  seatNames: SeatDisplayNameDto[]
   /** 麻脸巫婆之夜的死亡裁量窗口；null = 今晚没有（R-0030）。 */
   pitHagNight: PitHagNightDto | null
   /** 方古的「限一次」整局事实；null = 还没用掉（R-0034）。 */
@@ -374,6 +376,12 @@ export interface SetupTypeCountDto {
   count: number
 }
 
+/** 席位 → 玩家名（D-0021）：公开呈现信息，同桌所有人收到同一份。 */
+export interface SeatDisplayNameDto {
+  seat: number
+  displayName: string
+}
+
 /** 玩家视图：只有他自己的席位、当前大阶段与他自己的挂起请求。 */
 export interface PlayerViewDto {
   seat: number
@@ -386,6 +394,8 @@ export interface PlayerViewDto {
   outcome: GameOutcomeDto | null
   /** 呆瓜的公开选择（含跳过），按发生顺序（R-0027）。 */
   klutzChoices: KlutzChoiceDto[]
+  /** 本局公开的「席位 → 玩家名」映射（D-0021；无玩家名的席位不出现，与玩家投影同一份）。 */
+  seatNames: SeatDisplayNameDto[]
   /** 本人进行中的艺术家提问全文；null = 没有（R-0040）。只对本人生效。 */
   pendingQuestion: string | null
   /** 本人此刻能不能发起艺术家的白天提问（白天 + 本人是艺术家 + 还没用过）；只对本人生效。 */

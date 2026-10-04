@@ -93,6 +93,7 @@ public static class ProjectionMapper
         Day = view.Day is { } day ? ToDto(day, view.Sequence) : null,
         Outcome = view.Outcome is { } outcome ? ToDto(outcome, view.Sequence) : null,
         KlutzChoices = [.. view.KlutzChoices.Select(record => ToDto(record, view.Sequence))],
+        SeatNames = [.. view.SeatNames.Select(ToDto)],
         PendingQuestion = view.PendingQuestion,
         CanAskArtistQuestion = view.CanAskArtistQuestion,
         ExhaustedAbilities = [.. view.ExhaustedAbilities],
@@ -105,6 +106,13 @@ public static class ProjectionMapper
         Winner = outcome.Winner.ToString(),
         Condition = outcome.Condition.ToString(),
         Detail = outcome.Detail,
+    };
+
+    /// <summary>席位 → 玩家名 → DTO（公开信息，无序号字段：它随视图整份下发）。</summary>
+    public static SeatDisplayNameDto ToDto(SeatDisplayName name) => new()
+    {
+        Seat = name.Seat.Value,
+        DisplayName = name.DisplayName,
     };
 
     /// <summary>呆瓜选择记录 → DTO（序号 = 这份记录被表达时的序号）。</summary>
@@ -318,6 +326,7 @@ public static class ProjectionMapper
         Day = view.Day is { } day ? ToDto(day) : null,
         Outcome = view.Outcome is { } outcome ? ToDto(outcome, view.Sequence) : null,
         KlutzChoices = [.. view.KlutzChoices.Select(record => ToDto(record, view.Sequence))],
+        SeatNames = [.. view.SeatNames.Select(ToDto)],
         PitHagNight = view.PitHagNight is { } night
             ? new PitHagNightDto
             {

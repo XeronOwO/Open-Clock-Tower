@@ -49,7 +49,8 @@ public sealed class GameProjectionOutcomeTests
             pendingSince: null,
             now: DateTimeOffset.UnixEpoch,
             recentSeatChanges: [],
-            annotations: []);
+            annotations: [],
+            seatNames: []);
         Assert.Contains("醉酒", Assert.Single(storyteller.KlutzChoices).Detail, StringComparison.Ordinal);
     }
 
@@ -94,7 +95,8 @@ public sealed class GameProjectionOutcomeTests
             [new SeatId(1), new SeatId(2)],
             sequence: 7,
             seat,
-            new SessionTrackers());
+            new SessionTrackers(),
+            seatNames: []);
 
     private static StepMachineState Machine(params KlutzChoiceRecord[] choices) =>
         new()

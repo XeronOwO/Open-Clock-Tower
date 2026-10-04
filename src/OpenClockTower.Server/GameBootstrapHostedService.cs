@@ -24,6 +24,9 @@ public sealed class GameBootstrapHostedService : IHostedService
     private readonly IGameCatalog _catalog;
     private readonly GameId _gameId;
     private readonly GameSession _session;
+    private readonly SeatNameDirectory _seatNames;
+    private readonly ISeatBindingStore _bindingStore;
+    private readonly IAccountStore _accountStore;
     private readonly GameServerOptions _options;
     private readonly ILogger<GameBootstrapHostedService> _logger;
 
@@ -33,6 +36,9 @@ public sealed class GameBootstrapHostedService : IHostedService
         IGameCatalog catalog,
         GameId gameId,
         GameSession session,
+        SeatNameDirectory seatNames,
+        ISeatBindingStore bindingStore,
+        IAccountStore accountStore,
         IOptions<GameServerOptions> options,
         ILogger<GameBootstrapHostedService> logger)
     {
@@ -40,6 +46,9 @@ public sealed class GameBootstrapHostedService : IHostedService
         _catalog = catalog;
         _gameId = gameId;
         _session = session;
+        _seatNames = seatNames;
+        _bindingStore = bindingStore;
+        _accountStore = accountStore;
         _options = options.Value;
         _logger = logger;
     }
@@ -78,6 +87,12 @@ public sealed class GameBootstrapHostedService : IHostedService
                 setup.StorytellerTicket,
                 string.Join(",", setup.Seats.Select(seat => $"{seat.Seat.Value}:{seat.Ticket}")));
         }
+
+        await _seatNames.ReloadAsync(_gameId, _bindingStore, _accountStore, cancellationToken);
+        _logger.LogInformation(
+            "席位名读模型已装载（D-0021：会话信息，随认领 / 改名 / 解除更新）：game={GameId} 带名席位={Count}",
+            _gameId,
+            _seatNames.Snapshot().Count);
 
         if (restored && _session.GetStorytellerView().Phase is null)
         {
