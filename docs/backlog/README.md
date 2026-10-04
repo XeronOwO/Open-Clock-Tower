@@ -66,7 +66,7 @@ todo/  →  in-progress/  →  review/  →  done/
 
 ### Done
 
-- [角色图热链：席位牌显示百科角色图，失败降级为文字 + 阵营色环](done/character-art-hotlink.md) — **Medium** — 席位牌接入 25 人百科角色图（运行期热链、仓库无位图）；失败撤图降级、未知不请求；R-0006 自动侧实测通过（真机手机确认待做）；主装置取证档 194 通过、12 装置迭代档全绿
+- [角色图热链：席位牌显示百科角色图，失败降级为文字 + 阵营色环](done/character-art-hotlink.md) — **Medium** — 席位牌接入 25 人百科角色图（运行期热链、仓库无位图）；失败撤图降级、未知不请求；R-0006 实测收口为 Decided；主装置取证档 194 通过、12 装置迭代档全绿
 
 - [装置属性读取未收口：轮询/守卫式 `getAttribute` 仍可能吃满 30s](done/device-attribute-poll-unbounded-wait.md) — **Low** — 12 个装置的 `waitForAttribute` / `read*Count` / 日状态 / 标记 `title` 等 37 处守卫式属性读取统一改走 `readAttributeBounded`（单次 500ms），元素脱离不再白等 30s
 
