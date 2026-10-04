@@ -50,6 +50,7 @@ public sealed class GameBootstrapHostedService : IHostedService
         await using (var db = await _dbFactory.CreateDbContextAsync(cancellationToken))
         {
             await db.Database.EnsureCreatedAsync(cancellationToken);
+            await EnsureAccountSchemaAsync(db, cancellationToken);
         }
 
         var restored = true;
@@ -87,4 +88,24 @@ public sealed class GameBootstrapHostedService : IHostedService
 
     /// <inheritdoc />
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+    /// <summary>
+    /// 账号表守卫（D-0021）：现库用 <c>EnsureCreated</c>，不会给已存在的库补表；
+    /// 缺表时**显式失败**并提示换新库 / 新建对局——不做在线迁移、不静默继续。
+    /// </summary>
+    private async Task EnsureAccountSchemaAsync(GameDbContext db, CancellationToken cancellationToken)
+    {
+        try
+        {
+            _ = await db.Users.AsNoTracking().AnyAsync(cancellationToken);
+            _ = await db.SeatBindings.AsNoTracking().AnyAsync(cancellationToken);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            _logger.LogCritical(
+                exception,
+                "旧库缺少账号 / 席位绑定表：本版不做在线迁移，请换新库或新建对局（D-0021）");
+            throw;
+        }
+    }
 }

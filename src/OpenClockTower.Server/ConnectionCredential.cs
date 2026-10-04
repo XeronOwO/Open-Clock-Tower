@@ -1,6 +1,3 @@
-using System.Security.Cryptography;
-using System.Text;
-
 namespace OpenClockTower.Server;
 
 /// <summary>
@@ -8,7 +5,7 @@ namespace OpenClockTower.Server;
 /// </summary>
 /// <remarks>
 /// <para>
-/// 随机来源于 <see cref="RandomNumberGenerator"/>（32 字节 / 256 bit，base64url 无填充）；
+/// 随机来源、哈希存储与短指纹口径见 <see cref="SecretToken"/>（与账号会话凭据共用同一把尺子）；
 /// 服务端只在内存里保存它的 SHA-256 哈希（见 <see cref="ConnectionCredentialRecord"/>），
 /// 比较用固定时间算法——客户端被完全攻陷也无法靠时序猜出凭据。
 /// </para>
@@ -19,24 +16,11 @@ namespace OpenClockTower.Server;
 public readonly record struct ConnectionCredential(string Value)
 {
     /// <summary>生成一枚新的连接凭据。</summary>
-    public static ConnectionCredential CreateNew() =>
-        new(Convert.ToBase64String(RandomNumberGenerator.GetBytes(32))
-            .Replace('+', '-')
-            .Replace('/', '_')
-            .TrimEnd('='));
+    public static ConnectionCredential CreateNew() => new(SecretToken.CreateNew());
 
     /// <summary>凭据的 SHA-256 哈希（存储与比较用；明文不落地）。</summary>
-    public static byte[] HashOf(string value) =>
-        SHA256.HashData(Encoding.UTF8.GetBytes(value));
+    public static byte[] HashOf(string value) => SecretToken.HashOf(value);
 
     /// <summary>短指纹（审计日志用；由哈希截断而来，不能据此反推凭据）。</summary>
-    public static string FingerprintOf(string? value)
-    {
-        if (string.IsNullOrEmpty(value))
-        {
-            return "无";
-        }
-
-        return Convert.ToHexString(HashOf(value))[..12].ToLowerInvariant();
-    }
+    public static string FingerprintOf(string? value) => SecretToken.FingerprintOf(value);
 }

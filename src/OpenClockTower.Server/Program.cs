@@ -22,6 +22,13 @@ builder.Services.AddDbContextFactory<GameDbContext>(options => options.UseSqlite
     $"Data Source={Path.Combine(builder.Environment.ContentRootPath, serverOptions.DatabasePath)}"));
 builder.Services.AddSingleton<IGameStore, EfGameStore>();
 builder.Services.AddSingleton<IGameCatalog, EfGameCatalog>();
+// 账号与席位绑定（D-0021）：账号是全局身份、绑定是会话信息；口令 / 会话凭据只存哈希（SecretToken）。
+builder.Services.AddSingleton<IPasswordHasher, Pbkdf2PasswordHasher>();
+builder.Services.AddSingleton<IAccountStore, EfAccountStore>();
+builder.Services.AddSingleton<ISeatBindingStore, EfSeatBindingStore>();
+builder.Services.AddSingleton<AccountService>();
+builder.Services.AddSingleton<SeatBindingService>();
+builder.Services.AddSingleton<AccountSessionRegistry>();
 // 规则层的角色契约：提示目录与结算目录指向同一批实现（NightActions），常驻效果来源单列。
 builder.Services.AddSingleton<IAbilityResolutionCatalog>(NightActions.Resolutions);
 builder.Services.AddSingleton<IReadOnlyList<IStandingEffectSource>>(NightActions.StandingEffects);

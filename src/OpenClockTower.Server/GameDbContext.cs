@@ -2,7 +2,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace OpenClockTower.Server;
 
-/// <summary>持久化上下文：事件 / 快照 / 回执 / 会话票据。</summary>
+/// <summary>持久化上下文：事件 / 快照 / 回执 / 会话票据 / 账号 / 席位绑定。</summary>
 public sealed class GameDbContext : DbContext
 {
     /// <summary>构造上下文。</summary>
@@ -23,6 +23,12 @@ public sealed class GameDbContext : DbContext
     /// <summary>会话票据。</summary>
     public DbSet<GameSetupEntity> Games => Set<GameSetupEntity>();
 
+    /// <summary>账号（D-0021：全局身份，跨局持久）。</summary>
+    public DbSet<UserEntity> Users => Set<UserEntity>();
+
+    /// <summary>席位绑定（D-0021：会话层的「席位 ↔ 账号」认领关系）。</summary>
+    public DbSet<SeatBindingEntity> SeatBindings => Set<SeatBindingEntity>();
+
     /// <inheritdoc />
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -30,5 +36,11 @@ public sealed class GameDbContext : DbContext
         modelBuilder.Entity<SnapshotEntity>().HasKey(entity => entity.GameId);
         modelBuilder.Entity<ReceiptEntity>().HasKey(entity => new { entity.GameId, entity.IdempotencyKey });
         modelBuilder.Entity<GameSetupEntity>().HasKey(entity => entity.GameId);
+        modelBuilder.Entity<UserEntity>().HasKey(entity => entity.Id);
+        modelBuilder.Entity<UserEntity>().HasIndex(entity => entity.UsernameKey).IsUnique();
+        modelBuilder.Entity<SeatBindingEntity>().HasKey(entity => new { entity.GameId, entity.Seat });
+        modelBuilder.Entity<SeatBindingEntity>()
+            .HasIndex(entity => new { entity.GameId, entity.AccountId })
+            .IsUnique();
     }
 }
