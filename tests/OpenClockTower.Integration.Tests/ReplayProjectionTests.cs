@@ -216,4 +216,82 @@ public sealed class ReplayProjectionTests
         var steps = ReplayProjection.Build(stream, 0, 100).Steps;
         Assert.Equal(new long[] { 1, 3 }, steps.Select(step => step.Sequence).ToArray());
     }
+
+    /// <summary>
+    /// 大事件流（≥ 2000 事件）按默认 200 / 页分页：中间页必为满页、序号严格递增、
+    /// 逐页拉完与整条事件流一比一（不重不漏）——票据矩阵行 8 的服务端侧契约。
+    /// </summary>
+    [Fact]
+    public void LargeStream_PagesInDefaultWindows_WithoutSkippingOrDuplicating()
+    {
+        const int reportCount = 2400;
+        var stream = new List<StoredEvent>(capacity: reportCount + 1)
+        {
+            Assignment(1, 1, "vortox"),
+        };
+        for (var index = 0; index < reportCount; index++)
+        {
+            stream.Add(new StoredEvent
+            {
+                Sequence = index + 2,
+                RecordedAt = DateTimeOffset.UnixEpoch,
+                Event = new SeatStateChangedEvent
+                {
+                    Seat = new SeatId(2),
+                    Poison = index % 2 == 0 ? PoisonState.Poisoned : PoisonState.Healthy,
+                    Reason = "测试：大事件流中毒切换",
+                },
+            });
+        }
+
+        var collected = new List<long>();
+        var afterSequence = 0L;
+        while (true)
+        {
+            var page = ReplayProjection.Build(stream, afterSequence, ReplayProjection.DefaultPageSize);
+            collected.AddRange(page.Steps.Select(step => step.Sequence));
+            if (!page.HasMore)
+            {
+                Assert.True(page.Steps.Count <= ReplayProjection.DefaultPageSize);
+                break;
+            }
+
+            Assert.Equal(ReplayProjection.DefaultPageSize, page.Steps.Count);
+            afterSequence = page.Steps[^1].Sequence;
+        }
+
+        Assert.True(collected.Count >= 2000, $"分页总步数只有 {collected.Count}");
+        Assert.Equal(stream.Select(stored => stored.Sequence).ToArray(), collected.ToArray());
+        Assert.Equal(collected.OrderBy(sequence => sequence).ToArray(), collected.ToArray());
+    }
+
+    /// <summary>
+    /// 自指归因的死亡（方古侵染时原方古死亡，<c>CausedBy</c> = 自己）不是「被恶魔击杀」：
+    /// 只画死亡帷幕，不画红色箭头——否则回放会把"恶魔离场"读成"恶魔刀了自己"。
+    /// </summary>
+    [Fact]
+    public void DemonSelfDeath_HasNoKillArrow()
+    {
+        var stream = new List<StoredEvent>
+        {
+            Assignment(1, 3, "fang-gu"),
+            new()
+            {
+                Sequence = 2,
+                RecordedAt = DateTimeOffset.UnixEpoch,
+                Event = new SeatStateChangedEvent
+                {
+                    Seat = new SeatId(3),
+                    Life = LifeState.Dead,
+                    Reason = "测试：方古侵染，原方古死亡",
+                    CausedBy = new SeatId(3),
+                },
+            },
+        };
+
+        var step = ReplayProjection.Build(stream, 0, 100).Steps.Single(item => item.Sequence == 2);
+
+        Assert.Contains(step.Markers, marker => marker.Kind == "shroud" && marker.Seat == new SeatId(3));
+        Assert.DoesNotContain(step.Markers, marker => marker.Kind == "kill-arrow");
+    }
 }

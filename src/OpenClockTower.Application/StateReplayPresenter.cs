@@ -130,7 +130,8 @@ internal sealed class StateReplayPresenter : IReplayStepPresenter
 
     /// <summary>
     /// 「被恶魔击杀」判据（与 R-0038 同源）：死亡事件的导致方在**死亡时刻**的角色是恶魔。
-    /// 角色未观测一律不画箭头（不猜，D-0015）；处决 / 女巫诅咒 / 说书人追加死亡不画。
+    /// 角色未观测一律不画箭头（不猜，D-0015）；处决 / 女巫诅咒 / 说书人追加死亡不画；
+    /// 自指归因（方古侵染时原方古自死，<c>CausedBy</c> = 自己）也不画——那不是"被击杀"。
     /// </summary>
     private static bool IsDemonKill(
         ReplayStepContext context,
@@ -139,6 +140,12 @@ internal sealed class StateReplayPresenter : IReplayStepPresenter
     {
         killer = changed.CausedBy;
         if (changed.CausedBy is not { } causedBy)
+        {
+            return false;
+        }
+
+        // 自指归因不是"被恶魔击杀"：画箭头会把"恶魔离场"读成"恶魔刀了自己"，与 R-0038 的语义不符。
+        if (causedBy == changed.Seat)
         {
             return false;
         }
