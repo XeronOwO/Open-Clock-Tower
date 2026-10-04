@@ -1218,7 +1218,15 @@ async function main() {
   // ============================================================================================
   if (!runner.begin('traveller')) return
 
-  check('行 4：流放与提名并行不互斥——屠夫窗口已用掉、白天仍开着', (await butcherWindow.count()) >= 1)
+  // 行 3 / 行 4：窗口用掉后状态必须翻 Used（不是"元素还在"就算过），且白天保持 Open 等流放结清。
+  const usedWindowStatus = await waitForAttribute(butcherWindow, 'data-status', 'Used', 20_000)
+  const dayOpenWithWindowUsed = await waitForAttribute(dayPanel, 'data-day-status', 'Open', 15_000)
+  check(
+    '行 4：屠夫窗口用掉后状态翻 Used、白天仍开着（流放与提名并行不互斥）',
+    usedWindowStatus === 'Used' && dayOpenWithWindowUsed === 'Open',
+    `窗口=${usedWindowStatus}；白天=${dayOpenWithWindowUsed}`,
+  )
+  await screenshot(storyteller.page, '31c-day-butcher-window-used')
 
   // —— 第 1 条流放：目标怪咖（7 号）——达线后由说书人裁定「有趣」→ 不死亡（R-0048）——
   const deviantSeat = travellerSeats.get('deviant')
