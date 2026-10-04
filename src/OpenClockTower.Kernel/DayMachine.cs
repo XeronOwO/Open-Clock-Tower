@@ -121,28 +121,20 @@ public static class DayMachine
                 $"当前开放的是第 {open.Index} 项提名，不是第 {input.NominationIndex} 项");
         }
 
-        if (open.Sweep is not null)
+        if (BallotSweep.CheckStart(
+                open.Sweep,
+                context.Seats,
+                $"第 {open.Index} 项提名",
+                input.CountdownMilliseconds,
+                input.IntervalMilliseconds) is { } invalidStart)
         {
-            return DayOutcome.Reject("day.sweep_started", $"第 {open.Index} 项提名的收票已经开始过了");
+            return DayOutcome.Reject(invalidStart.Code, invalidStart.Note);
         }
 
-        if (!VoteSweepLimits.IsCountdownValid(input.CountdownMilliseconds))
+        // 钟盘串行（票据「D2 实施口径」）：另一条收票未收完时，提名收票也不能开。
+        if (BallotSweep.CheckDialFree(day, BallotKind.Nomination, open.Index) is { } busy)
         {
-            return DayOutcome.Reject(
-                "day.sweep_countdown_invalid",
-                $"倒计时必须在 {VoteSweepLimits.MinCountdownMilliseconds}–{VoteSweepLimits.MaxCountdownMilliseconds} 毫秒之间");
-        }
-
-        if (!VoteSweepLimits.IsIntervalValid(input.IntervalMilliseconds))
-        {
-            return DayOutcome.Reject(
-                "day.sweep_interval_invalid",
-                $"逐席间隔必须在 {VoteSweepLimits.MinIntervalMilliseconds}–{VoteSweepLimits.MaxIntervalMilliseconds} 毫秒之间");
-        }
-
-        if (context.Seats.Count == 0)
-        {
-            return DayOutcome.Reject("day.no_seats", "本局座次还没有观测：无法确定收票顺序（不猜）");
+            return DayOutcome.Reject(busy.Code, busy.Note);
         }
 
         return DayOutcome.Accepted(
@@ -151,7 +143,7 @@ public static class DayMachine
             {
                 DayNumber = day.DayNumber,
                 NominationIndex = open.Index,
-                Seats = [.. context.Seats.OrderBy(seat => seat.Value)],
+                Seats = BallotSweep.OrderSeats(context.Seats),
                 CountdownMilliseconds = input.CountdownMilliseconds,
                 IntervalMilliseconds = input.IntervalMilliseconds,
             },
@@ -186,21 +178,9 @@ public static class DayMachine
                 $"当前开放的是第 {open.Index} 项提名，不是第 {input.NominationIndex} 项");
         }
 
-        if (open.Sweep is not { } sweep)
+        if (BallotSweep.CheckCollect(open.Sweep, input.Seat) is { } invalidCollect)
         {
-            return DayOutcome.Reject("day.sweep_not_started", "收票还没有开始：先由说书人点「开始」");
-        }
-
-        if (sweep.NextSeat is not { } nextSeat)
-        {
-            return DayOutcome.Reject("day.sweep_complete", "收票已经全部完成，不能再收");
-        }
-
-        if (nextSeat != input.Seat)
-        {
-            return DayOutcome.Reject(
-                "day.seat_out_of_order",
-                $"下一待收的是 {nextSeat.Value} 号席位，不是 {input.Seat.Value} 号（收票必须按席位升序走完一圈）");
+            return DayOutcome.Reject(invalidCollect.Code, invalidCollect.Note);
         }
 
         // 举手状态是事件流折叠出来的事实（先举也算）；角色快照只用于回溯型能力（R-0037），未观测记 null。
@@ -245,14 +225,9 @@ public static class DayMachine
                 $"当前开放的是第 {open.Index} 项提名，不是第 {input.NominationIndex} 项");
         }
 
-        if (open.Sweep is not { } sweep)
+        if (BallotSweep.CheckResume(open.Sweep) is { } invalidResume)
         {
-            return DayOutcome.Reject("day.sweep_not_started", "收票还没有开始：没有可以继续的收票");
-        }
-
-        if (sweep.IsComplete)
-        {
-            return DayOutcome.Reject("day.sweep_complete", "收票已经全部完成，不能再继续");
+            return DayOutcome.Reject(invalidResume.Code, invalidResume.Note);
         }
 
         return DayOutcome.Accepted(
@@ -472,6 +447,13 @@ public static class DayMachine
             return DayOutcome.Reject(
                 "day.nomination_not_counted",
                 "还有提名没有计票：先把票计完（或由说书人强推兜底），再结束白天");
+        }
+
+        if (day.OpenExile is not null)
+        {
+            return DayOutcome.Reject(
+                "day.exile_not_counted",
+                "还有流放没有结清：先把流放收完、计票，再结束白天（票据「D2 实施口径」）");
         }
 
         var events = new List<GameEvent>(capacity: 3);

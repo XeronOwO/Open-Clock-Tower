@@ -17,6 +17,12 @@ internal sealed class DayReplayPresenter : IReplayStepPresenter
         typeof(VoteCountedEvent),
         typeof(ExecutedEvent),
         typeof(DayClosedEvent),
+        typeof(ExileProposedEvent),
+        typeof(ExileVoteCastEvent),
+        typeof(ExileSweepStartedEvent),
+        typeof(ExileSeatVoteCollectedEvent),
+        typeof(ExileSweepResumedEvent),
+        typeof(ExileVoteCountedEvent),
     ];
 
     /// <inheritdoc />
@@ -92,6 +98,64 @@ internal sealed class DayReplayPresenter : IReplayStepPresenter
             Kind = ReplayStepKind.Day,
             Phase = GamePhase.Day,
             Summary = $"第 {closed.DayNumber} 天结束",
+        },
+
+        // 流放（票据 traveller-and-exile · D2）：与提名同族但各自成步（流放不是提名 / 投票 / 处决，
+        // R-0044 第 1 条）；D7 的复盘圆盘标记在此基础上细化。
+        ExileProposedEvent proposed => new ReplayStep
+        {
+            Sequence = context.Stored.Sequence,
+            Kind = ReplayStepKind.Day,
+            Phase = GamePhase.Day,
+            Summary = $"{context.SeatText.Seat(proposed.Proposer)} 提议流放 {context.SeatText.Seat(proposed.Target)}"
+                + $"（第 {proposed.DayNumber} 天第 {proposed.ExileIndex} 条）",
+        },
+        ExileSweepStartedEvent exileSweepStarted => new ReplayStep
+        {
+            Sequence = context.Stored.Sequence,
+            Kind = ReplayStepKind.Day,
+            Phase = GamePhase.Day,
+            Summary = $"第 {exileSweepStarted.DayNumber} 天第 {exileSweepStarted.ExileIndex} 条流放开始收票"
+                + $"（倒计时 {exileSweepStarted.CountdownMilliseconds / 1000.0:0.#}s，"
+                + $"间隔 {exileSweepStarted.IntervalMilliseconds / 1000.0:0.#}s）",
+        },
+        ExileVoteCastEvent exileVote => new ReplayStep
+        {
+            Sequence = context.Stored.Sequence,
+            Kind = ReplayStepKind.Day,
+            Phase = GamePhase.Day,
+            Summary = $"{context.SeatText.Seat(exileVote.Voter)} "
+                + $"{(exileVote.Voted ? "举起手（赞成流放）" : "放下手（撤回）")}",
+        },
+        ExileSeatVoteCollectedEvent exileCollected => new ReplayStep
+        {
+            Sequence = context.Stored.Sequence,
+            Kind = ReplayStepKind.Day,
+            Phase = GamePhase.Day,
+            Summary = $"第 {exileCollected.DayNumber} 天第 {exileCollected.ExileIndex} 条流放收票："
+                + $"{context.SeatText.Seat(exileCollected.Seat)} {(exileCollected.Voted ? "举手赞成" : "未举手")}",
+        },
+        ExileSweepResumedEvent exileResumed => new ReplayStep
+        {
+            Sequence = context.Stored.Sequence,
+            Kind = ReplayStepKind.Day,
+            Phase = GamePhase.Day,
+            Summary = $"第 {exileResumed.DayNumber} 天第 {exileResumed.ExileIndex} 条流放继续收票"
+                + "（重新起倒计时，从下一未收席位接着收）",
+        },
+        ExileVoteCountedEvent exileCounted => new ReplayStep
+        {
+            Sequence = context.Stored.Sequence,
+            Kind = ReplayStepKind.Day,
+            Phase = GamePhase.Day,
+            Summary = $"第 {exileCounted.DayNumber} 天第 {exileCounted.ExileIndex} 条流放计票："
+                + $"{exileCounted.Voters.Count} 票，"
+                + (exileCounted.Conclusion == ExileConclusion.Exiled
+                    ? "流放成立（目标死亡）"
+                    : "未达线，目标存活"),
+            Detail = exileCounted.Voters.Count == 0
+                ? null
+                : $"赞成：{context.SeatText.SeatList(exileCounted.Voters)}",
         },
         _ => throw new InvalidOperationException(
             $"DayReplayPresenter 不认领事件 {context.Stored.Event.GetType().Name}"),

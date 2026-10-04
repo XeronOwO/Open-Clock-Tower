@@ -40,6 +40,12 @@ public static class GameNotificationBuilder
                 or SeatVoteCollectedEvent
                 or VoteSweepResumedEvent
                 or VoteCountedEvent
+                or ExileProposedEvent
+                or ExileVoteCastEvent
+                or ExileSweepStartedEvent
+                or ExileSeatVoteCollectedEvent
+                or ExileSweepResumedEvent
+                or ExileVoteCountedEvent
                 or ExecutedEvent
                 or DayClosedEvent)
             {

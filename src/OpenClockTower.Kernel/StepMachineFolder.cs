@@ -143,6 +143,14 @@ internal static class StepMachineFolder
             VoteSweepResumedEvent => ApplyDay(state, gameEvent),
             VoteCountedEvent => ApplyDay(state, gameEvent),
 
+            // 流放事件（D2）：与提名同族，都折叠进白天账（各自一册，见 ExileLedgerFolder）。
+            ExileProposedEvent => ApplyDay(state, gameEvent),
+            ExileVoteCastEvent => ApplyDay(state, gameEvent),
+            ExileSweepStartedEvent => ApplyDay(state, gameEvent),
+            ExileSeatVoteCollectedEvent => ApplyDay(state, gameEvent),
+            ExileSweepResumedEvent => ApplyDay(state, gameEvent),
+            ExileVoteCountedEvent => ApplyDay(state, gameEvent),
+
             // 夜晚处罚处决（DayNumber = null）不写白天账：不把"还没有白天"物化成空账（R-0020）。
             ExecutedEvent { DayNumber: null } => Require(state, gameEvent),
             ExecutedEvent => ApplyDay(state, gameEvent),

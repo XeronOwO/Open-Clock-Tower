@@ -45,6 +45,12 @@ public sealed class SessionTrackers
     /// <summary>收票锚点事件的序号（收票命令的幂等键按"这一次收票"区分）。</summary>
     public long? VoteSweepEntrySequence { get; private set; }
 
+    /// <summary>锚点属于哪条选票（提名 / 流放）；没有锚点时为 null。</summary>
+    public BallotKind? VoteSweepBallotKind { get; private set; }
+
+    /// <summary>锚点属于当天第几项提名 / 第几条流放；没有锚点时为 null。与族一起防两条收票串台。</summary>
+    public int? VoteSweepBallotIndex { get; private set; }
+
     /// <summary>当前挂起请求的起算时刻；没有挂起时为 null（说书人视图据此算"卡了多久"）。</summary>
     public DateTimeOffset? PendingRequestSince { get; private set; }
 
@@ -91,25 +97,34 @@ public sealed class SessionTrackers
                 case PhaseStartedEvent:
                     // 新计划开启：槽位标识跨夜复用（如 clockmaker），逐槽位结算只在本计划内有意义。
                     _slotResolutions.Clear();
-                    VoteSweepStartedAt = null;
-                    VoteSweepEntrySequence = null;
+                    ClearBallotAnchor();
                     break;
                 case SlotEnteredEvent:
                     SlotStartedAt = recordedAt;
                     SlotEntrySequence = draft.Sequence;
                     PendingRequestSince = null;
                     break;
-                case VoteSweepStartedEvent:
-                case VoteSweepResumedEvent:
+                case VoteSweepStartedEvent nominationSweep:
                     // 开始 / 继续收票：重锚时间轴，逐席到点由 VoteSweepPacer 按它算（D-0008）。
-                    VoteSweepStartedAt = recordedAt;
-                    VoteSweepEntrySequence = draft.Sequence;
+                    AnchorBallot(BallotKind.Nomination, nominationSweep.NominationIndex, recordedAt, draft.Sequence);
                     break;
-                case VoteCountedEvent:
+                case VoteSweepResumedEvent nominationResumed:
+                    AnchorBallot(BallotKind.Nomination, nominationResumed.NominationIndex, recordedAt, draft.Sequence);
+                    break;
+                case ExileSweepStartedEvent exileSweep:
+                    AnchorBallot(BallotKind.Exile, exileSweep.ExileIndex, recordedAt, draft.Sequence);
+                    break;
+                case ExileSweepResumedEvent exileResumed:
+                    AnchorBallot(BallotKind.Exile, exileResumed.ExileIndex, recordedAt, draft.Sequence);
+                    break;
+                // 收票收口：只退场**属于这条选票**的锚点——另一条收票可能正占着钟盘
+                // （D2 实施口径：收票已收完但未计票的选票不占钟盘，计票可以延后）。
+                case VoteCountedEvent counted when VoteSweepBallotKind == BallotKind.Nomination
+                    && VoteSweepBallotIndex == counted.NominationIndex:
+                case ExileVoteCountedEvent exileCounted when VoteSweepBallotKind == BallotKind.Exile
+                    && VoteSweepBallotIndex == exileCounted.ExileIndex:
                 case DayClosedEvent:
-                    // 收票收口：时间轴退场；再收票是下一项提名的新锚点。
-                    VoteSweepStartedAt = null;
-                    VoteSweepEntrySequence = null;
+                    ClearBallotAnchor();
                     break;
                 case OperationRequestIssuedEvent:
                     PendingRequestSince = recordedAt;
@@ -166,6 +181,8 @@ public sealed class SessionTrackers
         DateTimeOffset? lastSlotEnteredAt = null;
         long? lastSlotEnteredSequence = null;
         long? lastSweepAnchorSequence = null;
+        BallotKind? lastSweepKind = null;
+        int? lastSweepIndex = null;
         OperationRequestId? lastIssuedRequestId = null;
         DateTimeOffset? lastIssuedAt = null;
 
@@ -176,14 +193,43 @@ public sealed class SessionTrackers
             {
                 case PhaseStartedEvent:
                     _slotResolutions.Clear();
+                    lastSweepKind = null;
+                    lastSweepIndex = null;
+                    lastSweepAnchorSequence = null;
                     break;
                 case SlotEnteredEvent:
                     lastSlotEnteredAt = stored.RecordedAt;
                     lastSlotEnteredSequence = stored.Sequence;
                     break;
-                case VoteSweepStartedEvent:
-                case VoteSweepResumedEvent:
+                case VoteSweepStartedEvent nominationSweep:
+                    lastSweepKind = BallotKind.Nomination;
+                    lastSweepIndex = nominationSweep.NominationIndex;
                     lastSweepAnchorSequence = stored.Sequence;
+                    break;
+                case VoteSweepResumedEvent nominationResumed:
+                    lastSweepKind = BallotKind.Nomination;
+                    lastSweepIndex = nominationResumed.NominationIndex;
+                    lastSweepAnchorSequence = stored.Sequence;
+                    break;
+                case ExileSweepStartedEvent exileSweep:
+                    lastSweepKind = BallotKind.Exile;
+                    lastSweepIndex = exileSweep.ExileIndex;
+                    lastSweepAnchorSequence = stored.Sequence;
+                    break;
+                case ExileSweepResumedEvent exileResumed:
+                    lastSweepKind = BallotKind.Exile;
+                    lastSweepIndex = exileResumed.ExileIndex;
+                    lastSweepAnchorSequence = stored.Sequence;
+                    break;
+                // 收口只退场属于这条选票的锚点：另一条收票可能还占着钟盘（D2 实施口径）。
+                case VoteCountedEvent counted when lastSweepKind == BallotKind.Nomination
+                    && lastSweepIndex == counted.NominationIndex:
+                case ExileVoteCountedEvent exileCounted when lastSweepKind == BallotKind.Exile
+                    && lastSweepIndex == exileCounted.ExileIndex:
+                case DayClosedEvent:
+                    lastSweepKind = null;
+                    lastSweepIndex = null;
+                    lastSweepAnchorSequence = null;
                     break;
                 case OperationRequestIssuedEvent issued:
                     lastIssuedRequestId = issued.Request.Id;
@@ -219,6 +265,8 @@ public sealed class SessionTrackers
         // （那时玩家无法举手），未收完的收票由说书人「继续收票」按新事件的记录时刻重锚。
         VoteSweepStartedAt = null;
         VoteSweepEntrySequence = lastSweepAnchorSequence;
+        VoteSweepBallotKind = lastSweepKind;
+        VoteSweepBallotIndex = lastSweepIndex;
 
         var pending = machine?.PendingRequest;
         if (pending is { Status: OperationRequestStatus.Pending } && pending.Id == lastIssuedRequestId)
@@ -239,9 +287,26 @@ public sealed class SessionTrackers
         LastVoidedRequest = null;
         SlotStartedAt = null;
         SlotEntrySequence = null;
+        ClearBallotAnchor();
+        PendingRequestSince = null;
+    }
+
+    /// <summary>重锚钟盘时间轴并记下它属于哪条选票（提名 / 流放；D2 实施口径）。</summary>
+    private void AnchorBallot(BallotKind kind, int index, DateTimeOffset recordedAt, long sequence)
+    {
+        VoteSweepStartedAt = recordedAt;
+        VoteSweepEntrySequence = sequence;
+        VoteSweepBallotKind = kind;
+        VoteSweepBallotIndex = index;
+    }
+
+    /// <summary>收票锚点退场（收口 / 白天关闭 / 计划切换 / 状态清空）。</summary>
+    private void ClearBallotAnchor()
+    {
         VoteSweepStartedAt = null;
         VoteSweepEntrySequence = null;
-        PendingRequestSince = null;
+        VoteSweepBallotKind = null;
+        VoteSweepBallotIndex = null;
     }
 
     private static AbilityResolutionSnapshot ToSnapshot(AbilityResolvedEvent resolved, long sequence) =>

@@ -176,6 +176,25 @@ internal static class TravellerCommandDispatch
                 $"席位 {remove.Seat.Value} 的角色 {character.Value} 不是旅行者：离场流程只适用于旅行者（D-0022 范围）");
         }
 
+        // 流放未结清 / 钟盘收票进行中：不能把人从钟盘下拉走（票据「D2 实施口径」）。
+        // 否则会出现「目标已离场却流放成立」或「离场席位还挂在收票名册上」两种自相矛盾的账。
+        if (machine?.Day?.OpenDay is { } day)
+        {
+            if (day.OpenExile is { } openExile && openExile.Target == remove.Seat)
+            {
+                return Reject(
+                    "legality.traveller_exile_unsettled",
+                    $"席位 {remove.Seat.Value} 正在流放流程里（第 {openExile.Index} 条未结清）：先结清流放，再移出旅行者");
+            }
+
+            if (day.ActiveBallot is { } active && active.Sweep.Seats.Contains(remove.Seat))
+            {
+                return Reject(
+                    "legality.traveller_on_the_dial",
+                    $"钟盘收票还在走（{active.Describe()}）：先把它收完并计票，再移出席位 {remove.Seat.Value}");
+            }
+        }
+
         logger.LogInformation(
             "旅行者已离场：game={GameId} seat={Seat} character={Character} 说明={Note}",
             gameId,

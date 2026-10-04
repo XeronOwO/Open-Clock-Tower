@@ -246,6 +246,7 @@ public static class StepMachineStateComparer
                 || dayLeft.Executed != dayRight.Executed
                 || dayLeft.ExecutedKind != dayRight.ExecutedKind
                 || dayLeft.Nominations.Count != dayRight.Nominations.Count
+                || dayLeft.Exiles.Count != dayRight.Exiles.Count
                 || dayLeft.VoteAttempts.Count != dayRight.VoteAttempts.Count)
             {
                 return false;
@@ -278,6 +279,25 @@ public static class StepMachineStateComparer
                     || attemptLeft.Voter != attemptRight.Voter
                     || attemptLeft.VoterCharacter != attemptRight.VoterCharacter
                     || attemptLeft.Voted != attemptRight.Voted)
+                {
+                    return false;
+                }
+            }
+
+            // 流放账（D2）：提议 / 状态 / 结论 / 票面 / 举手 / 收票进度 逐条比对；漏比会让重建校验
+            // 在流放上失明（同样的席位与票数、不同的流放账不该判等价）。
+            for (var exileIndex = 0; exileIndex < dayLeft.Exiles.Count; exileIndex++)
+            {
+                var exileLeft = dayLeft.Exiles[exileIndex];
+                var exileRight = dayRight.Exiles[exileIndex];
+                if (exileLeft.Index != exileRight.Index
+                    || exileLeft.Proposer != exileRight.Proposer
+                    || exileLeft.Target != exileRight.Target
+                    || exileLeft.Status != exileRight.Status
+                    || exileLeft.Conclusion != exileRight.Conclusion
+                    || !SeatsEquivalent(exileLeft.Ballot, exileRight.Ballot)
+                    || !SeatsEquivalent(exileLeft.HandsRaised, exileRight.HandsRaised)
+                    || !SweepEquivalent(exileLeft.Sweep, exileRight.Sweep))
                 {
                     return false;
                 }

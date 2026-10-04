@@ -23,6 +23,11 @@ public sealed record SettlementContext
     /// <summary>按角色取能力结算契约的目录。</summary>
     public required IAbilityResolutionCatalog Abilities { get; init; }
 
+    /// <summary>
+    /// 角色事实端口（旅行者判定等）：流放目标的合法性判定读它；没有该端口时相关输入显式拒绝（不猜）。
+    /// </summary>
+    public IWinConditionFacts? Characters { get; init; }
+
     /// <summary>常驻效果来源；没有就只做账内的维度重算。</summary>
     public IReadOnlyList<IStandingEffectSource> StandingEffects { get; init; } = [];
 

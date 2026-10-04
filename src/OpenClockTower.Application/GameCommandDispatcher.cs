@@ -52,7 +52,7 @@ internal static class GameCommandDispatcher
         if (envelope.Command is AddSeatAnnotationCommand or UpdateSeatAnnotationCommand or RemoveSeatAnnotationCommand)
         {
             // 注记不参与阶段推进：首个阶段之前也能写（与状态观测同一姿态，D-0019）。
-            return DispatchAnnotation(envelope.Command, machine, annotations);
+            return AnnotationCommandDispatch.Dispatch(envelope.Command, machine, annotations);
         }
 
         // 旅行者加入 / 离场（D1）：任意时刻可用，不能落到下面的 kernel.not_started。
@@ -91,8 +91,9 @@ internal static class GameCommandDispatcher
             });
         }
 
-        // 白天四类输入要走带行动者席位的形状转换（提名者 / 投票者来自凭据推导，命令面无自称身份）。
-        if (envelope.Command is NominateCommand or CastVoteCommand)
+        // 白天玩家命令要走带行动者席位的形状转换（提名者 / 投票者 / 流放发起者 / 流放表决者
+        // 都来自凭据推导，命令面无自称身份）。
+        if (envelope.Command is NominateCommand or CastVoteCommand or ProposeExileCommand or CastExileVoteCommand)
         {
             // 结构上不依赖闸门顺序：拿不到席位就在这里显式拒绝，而不是靠 `Seat!` 之后的空引用崩溃。
             if (envelope.Actor.Seat is not { } actor)
@@ -100,7 +101,7 @@ internal static class GameCommandDispatcher
                 return CommandDispatchResult.Rejected(new CommandRejection
                 {
                     Code = "identity.player_only",
-                    Message = "提名与投票必须由持席位的玩家发出",
+                    Message = "白天的玩家命令必须由持席位的玩家发出",
                     Gate = "identity",
                 });
             }
@@ -128,7 +129,9 @@ internal static class GameCommandDispatcher
             }));
         }
 
-        if (envelope.Command is StartVoteSweepCommand or ResumeVoteSweepCommand or CountVotesCommand or CloseDayCommand)
+        if (envelope.Command is StartVoteSweepCommand or ResumeVoteSweepCommand or CountVotesCommand
+            or StartExileSweepCommand or ResumeExileSweepCommand or CountExileVotesCommand
+            or CloseDayCommand)
         {
             return Translate(StepMachine.Handle(machine, settlement, BuildStorytellerDayInput(envelope.Command)));
         }
@@ -235,6 +238,17 @@ internal static class GameCommandDispatcher
                 NominationIndex = castVote.NominationIndex,
                 Voted = castVote.Voted,
             },
+            ProposeExileCommand proposeExile => new ProposeExileInput
+            {
+                Proposer = actor,
+                Target = proposeExile.Target,
+            },
+            CastExileVoteCommand castExile => new CastExileVoteInput
+            {
+                Voter = actor,
+                ExileIndex = castExile.ExileIndex,
+                Voted = castExile.Voted,
+            },
             _ => throw new InvalidOperationException($"不是玩家白天命令：{command.GetType().Name}"),
         };
 
@@ -255,6 +269,20 @@ internal static class GameCommandDispatcher
             CountVotesCommand countVotes => new CountVotesInput
             {
                 NominationIndex = countVotes.NominationIndex,
+            },
+            StartExileSweepCommand startExile => new StartExileSweepInput
+            {
+                ExileIndex = startExile.ExileIndex,
+                CountdownMilliseconds = startExile.CountdownMilliseconds,
+                IntervalMilliseconds = startExile.IntervalMilliseconds,
+            },
+            ResumeExileSweepCommand resumeExile => new ResumeExileSweepInput
+            {
+                ExileIndex = resumeExile.ExileIndex,
+            },
+            CountExileVotesCommand countExile => new CountExileVotesInput
+            {
+                ExileIndex = countExile.ExileIndex,
             },
             CloseDayCommand => new CloseDayInput(),
             _ => throw new InvalidOperationException($"不是说书人白天命令：{command.GetType().Name}"),
@@ -429,111 +457,6 @@ internal static class GameCommandDispatcher
         return new CommandDispatchResult(null, events, null);
     }
 
-    /// <summary>
-    /// 说书人注记（D-0019）：把命令翻译成事件。文本在这里归一化（与合法性闸同一把尺子
-    /// <see cref="SeatAnnotationText.TryNormalize"/>）；新增标识由注记账递增签发；
-    /// 注记**不改步骤机、不改状态账**，所以步骤机状态原样透传。
-    /// </summary>
-    private static CommandDispatchResult DispatchAnnotation(
-        GameCommand command,
-        StepMachineState? machine,
-        SeatAnnotationLedger annotations) =>
-        command switch
-        {
-            AddSeatAnnotationCommand add => AddAnnotation(add, machine, annotations),
-            UpdateSeatAnnotationCommand update => UpdateAnnotation(update, machine, annotations),
-            RemoveSeatAnnotationCommand remove => RemoveAnnotation(remove, machine, annotations),
-            _ => CommandDispatchResult.Rejected(new CommandRejection
-            {
-                Code = "kernel.unsupported",
-                Message = $"未支持的注记命令：{command.GetType().Name}",
-                Gate = "kernel",
-            }),
-        };
-
-    private static CommandDispatchResult AddAnnotation(
-        AddSeatAnnotationCommand command,
-        StepMachineState? machine,
-        SeatAnnotationLedger annotations)
-    {
-        if (!SeatAnnotationText.TryNormalize(command.Text, out var normalized, out _))
-        {
-            return AnnotationTextRejected();
-        }
-
-        return new CommandDispatchResult(
-            machine,
-            [
-                new SeatAnnotationAddedEvent
-                {
-                    Annotation = new SeatAnnotation(annotations.NextId, command.Seat, normalized),
-                },
-            ],
-            null);
-    }
-
-    private static CommandDispatchResult UpdateAnnotation(
-        UpdateSeatAnnotationCommand command,
-        StepMachineState? machine,
-        SeatAnnotationLedger annotations)
-    {
-        if (annotations.Find(command.Id) is not { } existing)
-        {
-            return AnnotationTargetMissing(command.Id);
-        }
-
-        if (!SeatAnnotationText.TryNormalize(command.Text, out var normalized, out _))
-        {
-            return AnnotationTextRejected();
-        }
-
-        return new CommandDispatchResult(
-            machine,
-            [
-                new SeatAnnotationUpdatedEvent
-                {
-                    Annotation = existing with { Text = normalized },
-                },
-            ],
-            null);
-    }
-
-    private static CommandDispatchResult RemoveAnnotation(
-        RemoveSeatAnnotationCommand command,
-        StepMachineState? machine,
-        SeatAnnotationLedger annotations)
-    {
-        if (annotations.Find(command.Id) is not { } existing)
-        {
-            return AnnotationTargetMissing(command.Id);
-        }
-
-        return new CommandDispatchResult(
-            machine,
-            [new SeatAnnotationRemovedEvent { Annotation = existing }],
-            null);
-    }
-
-    /// <summary>
-    /// 文本不合规的兜底拒绝：合法性闸（<see cref="CommandGatePipeline"/>）本应先拦下，
-    /// 这里保留一条显式失败，避免"闸门漏了"变成静默写入（防御性，不重复文案）。
-    /// </summary>
-    private static CommandDispatchResult AnnotationTextRejected() =>
-        CommandDispatchResult.Rejected(new CommandRejection
-        {
-            Code = "legality.annotation_invalid",
-            Message = "注记文本不合规（空 / 超长 / 含控制字符）",
-            Gate = "legality",
-        });
-
-    /// <summary>注记不存在（已被删除）的兜底拒绝：合法性闸本应先拦下。</summary>
-    private static CommandDispatchResult AnnotationTargetMissing(SeatAnnotationId id) =>
-        CommandDispatchResult.Rejected(new CommandRejection
-        {
-            Code = "legality.annotation_unknown",
-            Message = $"注记 {id} 不存在（可能已被删除）",
-            Gate = "legality",
-        });
 
     /// <summary>开夜：用会话席位名单 + 当前状态账按规则表建表，然后交给步骤机开启阶段。</summary>
     /// <remarks>

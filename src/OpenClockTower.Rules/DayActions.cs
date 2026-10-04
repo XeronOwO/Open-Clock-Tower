@@ -43,6 +43,12 @@ public static class DayActions
         // 处决 / 无人被处决直接决定胜负：镜像双子、涡流
         new("evil-twin"),
         new("vortox"),
+
+        // 旅行者的白天面（票据 `traveller-and-exile`）：怪咖（当天不能被流放，D3）、
+        // 屠夫（处决后的额外提名窗口，D4）。两者契约在各自批次落地前，带它们的局开白天会被
+        // 显式拒绝——不许"白天照跑、免死 / 额外提名静默不发生"（与其余未实现角色同款）。
+        new("deviant"),
+        new("butcher"),
     ];
 
     /// <summary>

@@ -45,6 +45,7 @@ internal static class SessionSettlement
             // 在局座次 = 会话席位名单 − 离场账（R-0044 第 6 条）：离场者不进任何规则计算。
             Seats = InGameSeats.Derive(setup, state),
             Abilities = abilities,
+            Characters = WinConditionFacts.Instance,
             StandingEffects = standingEffects,
             SlotPrompts = NightActions.Prompts,
             EventTriggers = RoleContracts.EventTriggers,

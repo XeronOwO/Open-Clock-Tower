@@ -23,6 +23,8 @@ public sealed class DayActionsTests
     [InlineData("klutz")]
     [InlineData("evil-twin")]
     [InlineData("vortox")]
+    [InlineData("deviant")]
+    [InlineData("butcher")]
     public void KnownDayRelevantCharacters_AreListed(string character)
     {
         Assert.True(DayActions.IsDayRelevant(new OpenClockTower.Kernel.CharacterId(character)));

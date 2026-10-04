@@ -51,6 +51,7 @@ builder.Services.AddSingleton(provider => new ReplayQueryService(
     provider.GetRequiredService<SeatNameDirectory>(),
     provider.GetRequiredService<ILogger<ReplayQueryService>>()));
 builder.Services.AddSingleton<ConnectionRegistry>();
+builder.Services.AddSingleton<HubActorResolver>();
 builder.Services.AddSingleton<NotificationDispatcher>();
 // 加入 / 认领的席位定位与凭据签发（D-0021）：从 GameHub 拆出（单文件 600 行门禁）。
 builder.Services.AddSingleton(provider => new SeatJoinCoordinator(

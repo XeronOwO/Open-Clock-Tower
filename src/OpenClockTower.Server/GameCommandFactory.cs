@@ -242,6 +242,31 @@ internal sealed class GameCommandFactory
             Id = new SeatAnnotationId(annotationId),
         };
 
+    /// <summary>玩家发起流放提议（发起人由凭据推导；R-0044 第 2 条）。</summary>
+    internal GameCommand ProposeExile(int targetSeat) =>
+        new ProposeExileCommand { Target = new SeatId(targetSeat) };
+
+    /// <summary>玩家在当前开放的流放提议上举手 / 放下（R-0044 第 4 条）。</summary>
+    internal GameCommand CastExileVote(int exileIndex, bool voted) =>
+        new CastExileVoteCommand { ExileIndex = exileIndex, Voted = voted };
+
+    /// <summary>说书人 / 宿主开始流放收票（节奏参数只作呈现，判定不读；R-0017 机制）。</summary>
+    internal GameCommand StartExileSweep(int exileIndex, int countdownMilliseconds, int intervalMilliseconds) =>
+        new StartExileSweepCommand
+        {
+            ExileIndex = exileIndex,
+            CountdownMilliseconds = countdownMilliseconds,
+            IntervalMilliseconds = intervalMilliseconds,
+        };
+
+    /// <summary>说书人 / 宿主继续中断的流放收票。</summary>
+    internal GameCommand ResumeExileSweep(int exileIndex) =>
+        new ResumeExileSweepCommand { ExileIndex = exileIndex };
+
+    /// <summary>说书人 / 宿主在收票完成后给流放计票（R-0044 第 5 / 9 条）。</summary>
+    internal GameCommand CountExileVotes(int exileIndex) =>
+        new CountExileVotesCommand { ExileIndex = exileIndex };
+
     /// <summary>把客户端传来的维度字符串解析成枚举；null = 本次未观测，非法值当场拒绝（并写审计）。</summary>
     private TEnum? ParseDimension<TEnum>(string? raw, string label)
         where TEnum : struct, Enum

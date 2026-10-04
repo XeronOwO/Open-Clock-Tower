@@ -82,6 +82,20 @@ Application（命令面 / 闸 / 投影 / 节拍器 / 会话）· Contracts + web
 - 节奏与中断沿用 R-0017：`VoteSweepPacer` 增加「当前开放收票」的统一读取口，或抽出
   `BallotSweepPacer`；幂等键加入 ballot 标识。
 
+**D2 实施口径（2026-10-04 实施前定案；细节以本块为准）**：
+
+- **钟盘串行**：钟盘 =「未收完的那一条收票」。同一时刻至多一条未收完的收票；开始 / 继续收票时
+  另一条未收完 → 显式拒绝 `day.ballot_in_progress`。提案（提名 / 流放）不受钟盘占用限制、随时登记；
+  收票已收完但未计票的选票**不占**钟盘（计票可延后）；`CloseDay` / 强推要求所有未计票的选票都已结清
+  （提名 `day.nomination_not_counted`、流放 `day.exile_not_counted`）。
+- **分母与阈值**：收票席位快照 = 开始收票时的在局座次（R-0044 §6 分母时点）；达线 = 赞成票 × 2
+  ≥ 快照席位数；不与当日其他结果比较（与提名的「严格最多」无关）。
+- **表决资格**：全体在局玩家（按开始时的快照名单），含死者；死者**不查也不耗**投票标记。
+- **收口**：达线且目标存活 → 即时死亡（`reason = day.exile`，进公开生死面、照常获得投票标记）；
+  未达线 → 存活并记结论；死亡保护（怪咖）随 D3 接进同一收口点。
+- **限额与顺序**：每名旅行者每个白天至多被提议一次（成败都算）；同一天可多次流放，顺序进行
+  （同一天至多一条未结清的流放记录）。
+
 ### D3 免死（怪咖）与死亡收口
 
 - 统一「死亡保护」查询：流放收口与 `CloseDay` 处决收口都先问保护（现 `CloseDay` 的注释写明
@@ -137,6 +151,9 @@ Application（命令面 / 闸 / 投影 / 节拍器 / 会话）· Contracts + web
    — **第二批已收口**：账上集合 `GameState.DepartedSeats` + 唯一派生入口 `InGameSeats.Derive`
    （座次表过滤读账；见下方第二批记录）。
 2. 提名 / 流放钟盘串行时的显式拒绝码与提示文案；
+   — **D2 已定案**：钟盘 =「未收完的那一条收票」，冲突一律 `day.ballot_in_progress`（提示里点名
+   当前占着钟盘的是第几项提名 / 第几条流放）；关账时未计票一律 `day.nomination_not_counted` /
+   `day.exile_not_counted`（见上方 D2 实施口径）。
 3. 怪咖裁定点的提问时机（达线时 vs 当日一次性）与当日缓存；
 4. 集骨者「重获能力」与 `IAbilityPresence` / 夜计划的接线方式；
 5. `MalfunctionKind.Barista` 去留（R-0047 §5）。
@@ -231,17 +248,54 @@ Application（命令面 / 闸 / 投影 / 节拍器 / 会话）· Contracts + web
 `SeatJoinCoordinator.ReleaseBindingAsync`（行为不变：同样的存在性校验与日志，席位名读模型照旧更新），
 Hub 只保留凭据闸与推送。这是门禁要求的「先拆再改」，不是顺手的重构。
 
-未做（下一批起）：D2 流放流程、D3 免死收口、D4 屠夫窗口、D5 黄昏夜序与 5 能力、
-D7 控制台 / 玩家端呈现与复盘圆盘、D8 批次 E34 取证。
-
 顺带记录（本轮发现的接缝，留给 D5 / 加入切片）：
 
-- 既有角色契约里「不能选旅行者」的目标排除（如筑梦师，见 `character-rules.md`）目前只是文档口径；
-  旅行者真正能入局后，这些契约的目标集合要按 R-0044 / R-0045 复核——本轮旅行者还不能入局，
-  不构成运行时缺陷，但不能忘。
+- 既有角色契约里「不能选旅行者」的目标排除（如筑梦师）——**第三批已收口**：全族复核见第三批记录，
+  只有筑梦师需要改；女裁缝「可以选择旅行者」与诺-达鲺「跳过非镇民」经代码核对本就正确。
 - `CommandGatePipeline` 触到 600 行门禁：本轮把「开局分配」「说书人注记」两个命令族的合法性拆成
   `AssignmentGate` / `AnnotationGate`，并抽 `SeatGate` / `GateRejections` 共用（行为不变，同一批用例守）。
   这是门禁要求的「先拆再改」，不是顺手的重构。
+
+## 实施进度（2026-10-04，第三批：D2 流放流程）
+
+已落地（代码 + 测试同一提交；口径按上方「D2 实施口径」，未改任何已登记裁定）：
+
+- **内核**：`ExileRecord` / `ExileStatus` / `ExileConclusion` 与 `DayRecord.Exiles` / `OpenExile`；
+  六条输入（`ProposeExile` / `CastExileVote` / `StartExileSweep` / `CollectExileSeatVote` /
+  `ResumeExileSweep` / `CountExileVotes`）与六个事件；`ExileMachine` 负责提议资格、阈值
+  （赞成票 × 2 ≥ 收票开始时在局座次快照）、死者不查不耗票权、达线且目标存活 → 即时死亡
+  （`reason = day.exile`，R-0045）；`BallotSweep` 抽出提名 / 流放共用的「开始校验 / 严格顺序冻结 /
+  继续」原语，提名事件形状未动（旧日志回放零影响）；`ExileLedgerFolder` 独立成册，折叠对损坏流显式抛错。
+- **钟盘串行**（「实施时定」#2 定案）：`DayRecord.ActiveBallot` 是「当前未收完的那条收票」的唯一读取口；
+  开始 / 继续另一条收票显式拒绝 `day.ballot_in_progress`；收票已收完但未计票的选票不占钟盘；
+  `CloseDay` / 强推要求提名与流放都已计票（`day.nomination_not_counted` / `day.exile_not_counted`）。
+- **Application / Server**：六个命令 + `ExileGate`（身份 / 形状，与内核同尺）+ `KernelInputMapper` /
+  `GameCommandDispatcher` / `PendingChoiceGate` 接线 + Hub 五个公开方法；`SessionTrackers` 的收票锚点
+  带上选票身份（族 + 序号），`VoteSweepPacer` 统一读取 `ActiveBallot` 并把到点输入翻译成提名 / 流放
+  两种命令（幂等键前缀 `vote-seat` / `exile-seat`）；`GameNotificationBuilder` 把流放事件纳入白天刷新；
+  `DayReplayPresenter` 认领六个事件（D-0020 覆盖率门禁绿）。
+- **接缝收口**：离场闸拦住「流放未结清 / 钟盘收票进行中」的移出（`legality.traveller_exile_unsettled` /
+  `legality.traveller_on_the_dial`）；`DayActions` 把怪咖 / 屠夫登记为白天相关但**未覆盖**——契约未实现前
+  带它们的局开白天显式拒绝 `legality.day_contract_missing`（不静默跳过；D3 / D4 落地时翻覆盖）。
+- **门禁拆类**：`GameCommandDispatcher` 与 `GameHub` 触到 600 行门禁，按「先拆再改」拆出
+  `AnnotationCommandDispatch` / `HubActorResolver`（行为不变，同一批用例守）。
+- **目标排除复核（D1 留下的接缝）**：筑梦师候选集合排除旅行者（《筑梦师》规则细节 4，
+  `DreamerNightAction` + `InfoResolutionTests.DreamerPrompt_ExcludesTravellerSeats`）；全族复核
+  女裁缝（可选择旅行者）/ 神谕者（计邪恶旅行者）/ 诺-达鲺（按角色类型跳过非镇民）/ 卖花女孩
+  （流放不算投票）均核对无误，无需改动（逐条来源见 `character-rules.md`）。
+
+验证证据（2026-10-04，冻结工作树）：
+
+- `dotnet build` 0 警告 0 错误；`dotnet test` **919 通过 / 0 失败**
+  （门禁 24 / 内核 367 / 规则 319 / 集成 209）；`dotnet format` 退出 0（未重写工作树）；
+- 新增用例（逐类在跑）：`ExileMachineTests`（提议资格 / 钟盘串行双向 / 阈值边界 7 点 / 死者票权 /
+  收票名册与离场 / 目标生死未观测 / 同日多条顺序进行 / 关日与强推闸）、
+  `ExileLedgerTests`（五类损坏流显式失败 + 比较器覆盖流放账）、`DayActionsTests`（怪咖 / 屠夫进白天相关名单）、
+  `InfoResolutionTests.DreamerPrompt_ExcludesTravellerSeats`、`ExileHostTests` 六条（提名中流放 + 串行拒绝 /
+  未实现白天契约显式拒绝 / 死者不耗票且随后提名仍投得出去 / 离场不计分母 + 目标不得中途离场 /
+  重启恢复后继续收票 / 节拍器自动收第 1 席）。
+
+未做（属 D7 / D8）：`DayViewDto` / 玩家投影的流放字段与两端入口、复盘圆盘标记、真机批次取证。
 
 ## 验收矩阵
 

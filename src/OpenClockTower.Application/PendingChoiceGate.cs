@@ -79,6 +79,12 @@ internal static class PendingChoiceGate
             or CollectSeatVoteCommand
             or ResumeVoteSweepCommand
             or CountVotesCommand
+            or ProposeExileCommand
+            or CastExileVoteCommand
+            or StartExileSweepCommand
+            or CollectExileSeatVoteCommand
+            or ResumeExileSweepCommand
+            or CountExileVotesCommand
             or CloseDayCommand
             or PunishExecutionCommand;
 }

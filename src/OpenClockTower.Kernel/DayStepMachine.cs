@@ -16,7 +16,7 @@ namespace OpenClockTower.Kernel;
 /// </remarks>
 internal static class DayStepMachine
 {
-    /// <summary>这条输入是不是白天输入（提名 / 钟盘收票 / 计票 / 结束白天）。</summary>
+    /// <summary>这条输入是不是白天输入（提名 / 钟盘收票 / 计票 / 流放 / 结束白天）。</summary>
     internal static bool IsDayInput(StepMachineInput input) =>
         input is NominateInput
             or CastVoteInput
@@ -24,6 +24,12 @@ internal static class DayStepMachine
             or CollectSeatVoteInput
             or ResumeVoteSweepInput
             or CountVotesInput
+            or ProposeExileInput
+            or CastExileVoteInput
+            or StartExileSweepInput
+            or CollectExileSeatVoteInput
+            or ResumeExileSweepInput
+            or CountExileVotesInput
             or CloseDayInput;
 
     /// <summary>开启白天：校验计划形状与天数，产出阶段 / 白天账 / 槽位事件。</summary>
@@ -94,6 +100,12 @@ internal static class DayStepMachine
             ResumeVoteSweepInput resumeSweep => DayMachine.ResumeVoteSweep(day, context, resumeSweep),
             CastVoteInput castVote => DayMachine.CastVote(day, context, castVote),
             CountVotesInput countVotes => DayMachine.CountVotes(day, context, countVotes),
+            ProposeExileInput proposeExile => ExileMachine.Propose(day, context, proposeExile),
+            StartExileSweepInput startExileSweep => ExileMachine.StartSweep(day, context, startExileSweep),
+            CollectExileSeatVoteInput collectExileSeat => ExileMachine.CollectSeatVote(day, context, collectExileSeat),
+            ResumeExileSweepInput resumeExileSweep => ExileMachine.ResumeSweep(day, context, resumeExileSweep),
+            CastExileVoteInput castExileVote => ExileMachine.CastVote(day, context, castExileVote),
+            CountExileVotesInput countExileVotes => ExileMachine.CountVotes(day, context, countExileVotes),
             CloseDayInput => DayMachine.CloseDay(day, context),
             _ => throw new InvalidOperationException($"不是白天输入：{input.GetType().Name}"),
         };
@@ -142,6 +154,14 @@ internal static class DayStepMachine
                 state,
                 "day.nomination_not_counted",
                 "还有提名没有计票：先计票再结束白天（强推不替说书人拍板计票结论）");
+        }
+
+        if (openDay.OpenExile is not null)
+        {
+            return Reject(
+                state,
+                "day.exile_not_counted",
+                "还有流放没有结清：先把流放收完、计票，再结束白天（强推不替说书人拍板流放结论）");
         }
 
         var events = new List<GameEvent>();

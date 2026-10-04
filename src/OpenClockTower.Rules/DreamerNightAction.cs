@@ -14,7 +14,8 @@ namespace OpenClockTower.Rules;
 /// 对应的错误的邪恶角色可以是爪牙或恶魔……」。
 /// </para>
 /// <para>
-/// 首版不含旅行者（R-0007 未决），目标集合 = 本局席位 − 自己。信息内容**不由引擎判定**（D-0002）：
+/// 目标集合 = 本局在局席位 − 自己 − **旅行者**：《筑梦师》· 2026-10-04 抓取 · 规则细节 4
+/// 「筑梦师不能选择自己和旅行者作为目标」（首个夜晚 / 其他夜晚同款）。信息内容**不由引擎判定**（D-0002）：
 /// 有效时由说书人从「对侧类型」的合法候选里选一枚错误标记，引擎只把「真角色 + 说书人选的那枚」
 /// 如实记成一对；能力未生效时给自由文本，并标「可能错误」——该标记只进说书人视角，不下发玩家
 /// （百科《重要细节》三-1：不要告诉玩家他醉酒或中毒）。
@@ -44,6 +45,7 @@ internal sealed class DreamerNightAction : INightAction, IAbilityResolution
 
         var options = context.Seats
             .Where(seat => seat != context.Actor)
+            .Where(seat => !IsTravellerSeat(context.State, seat))
             .OrderBy(seat => seat.Value)
             .Select(seat => new DecisionOption
             {
@@ -54,7 +56,7 @@ internal sealed class DreamerNightAction : INightAction, IAbilityResolution
 
         return new ChoicePrompt
         {
-            Context = "筑梦师选择一名其他玩家（不能选自己；首版没有旅行者）",
+            Context = "筑梦师选择一名其他玩家（不能选自己和旅行者；百科《筑梦师》规则细节 4）",
             Options = options,
             OnNoOption = NoOptionBehavior.BlockAndAlert,
         };
@@ -189,6 +191,15 @@ internal sealed class DreamerNightAction : INightAction, IAbilityResolution
         string.IsNullOrWhiteSpace(decision)
             ? throw new InvalidOperationException("筑梦师的裁定没有给出错误项角色")
             : new CharacterId(decision);
+
+    /// <summary>该席位此刻是不是旅行者（《筑梦师》规则细节 4：不能选择自己和旅行者）。</summary>
+    /// <remarks>
+    /// 角色未观测时按"不是旅行者"处理：候选集合的完整性由夜间建表（每席角色已观测）保证，
+    /// 这里只做类型过滤，不额外抛错。
+    /// </remarks>
+    private static bool IsTravellerSeat(GameState state, SeatId seat) =>
+        state.Seat(seat)?.CharacterValue is { } character
+        && SectsAndVioletsRoster.TypeOf(character) == CharacterType.Traveller;
 
     private static IReadOnlyList<CharacterId> GoodCharacters() =>
     [

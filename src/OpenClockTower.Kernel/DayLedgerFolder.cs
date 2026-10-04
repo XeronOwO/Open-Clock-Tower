@@ -33,6 +33,12 @@ internal static class DayLedgerFolder
             VoteCountedEvent counted => ApplyVoteCounted(current, counted),
             ExecutedEvent executed => ApplyExecuted(current, executed),
             DayClosedEvent closed => ApplyDayClosed(current, closed),
+
+            // 流放族（D2）：折叠在独立文件里（提名 / 流放各自一册账，共用折叠原语）。
+            ExileProposedEvent or ExileVoteCastEvent or ExileSweepStartedEvent
+                or ExileSeatVoteCollectedEvent or ExileSweepResumedEvent or ExileVoteCountedEvent
+                => ExileLedgerFolder.Apply(current, gameEvent),
+
             _ => throw new InvalidOperationException($"不是白天事件：{gameEvent.GetType().Name}"),
         };
     }
@@ -59,7 +65,7 @@ internal static class DayLedgerFolder
 
     private static DayState ApplyNominationMade(DayState state, NominationMadeEvent made)
     {
-        return UpdateOpenDay(state, made.DayNumber, day =>
+        return DayLedgerEdit.UpdateOpenDay(state, made.DayNumber, day =>
         {
             if (day.OpenNomination is not null)
             {
@@ -93,19 +99,19 @@ internal static class DayLedgerFolder
 
     private static DayState ApplyVoteCast(DayState state, VoteCastEvent cast)
     {
-        return UpdateOpenDay(state, cast.DayNumber, day =>
+        return DayLedgerEdit.UpdateOpenDay(state, cast.DayNumber, day =>
         {
-            var nomination = FindOpenNomination(day, cast.NominationIndex, "投票");
+            var nomination = DayLedgerEdit.FindOpenNomination(day, cast.NominationIndex, "投票");
 
             // 旧形态（Sweep = null）：举手直接改实时票面；钟盘形态：只改"现在谁举着手"，
             // 票面要等逐席收票追加冻结结论（先举也算、过时不候，R-0017）。
             NominationRecord updated;
             if (nomination.Sweep is null)
             {
-                var ballot = cast.Voted
-                    ? InsertSeat(nomination.Ballot, cast.Voter)
-                    : [.. nomination.Ballot.Where(seat => seat != cast.Voter)];
-                updated = nomination with { Ballot = ballot };
+                updated = nomination with
+                {
+                    Ballot = BallotSweep.SetSeat(nomination.Ballot, cast.Voter, cast.Voted),
+                };
             }
             else
             {
@@ -116,14 +122,14 @@ internal static class DayLedgerFolder
                         + $"席位 {cast.Voter.Value} 已被收票，不能再改举手状态（过时不候）");
                 }
 
-                var hands = cast.Voted
-                    ? InsertSeat(nomination.HandsRaised, cast.Voter)
-                    : [.. nomination.HandsRaised.Where(seat => seat != cast.Voter)];
-                updated = nomination with { HandsRaised = hands };
+                updated = nomination with
+                {
+                    HandsRaised = BallotSweep.SetSeat(nomination.HandsRaised, cast.Voter, cast.Voted),
+                };
             }
 
             // 动作表按发生顺序追加：撤回同样进表（它是一条"发生过"的事实，R-0037）。
-            return ReplaceNomination(day, updated) with
+            return DayLedgerEdit.ReplaceNomination(day, updated) with
             {
                 VoteAttempts =
                 [
@@ -142,9 +148,9 @@ internal static class DayLedgerFolder
 
     private static DayState ApplyVoteSweepStarted(DayState state, VoteSweepStartedEvent started)
     {
-        return UpdateOpenDay(state, started.DayNumber, day =>
+        return DayLedgerEdit.UpdateOpenDay(state, started.DayNumber, day =>
         {
-            var nomination = FindOpenNomination(day, started.NominationIndex, "开始收票");
+            var nomination = DayLedgerEdit.FindOpenNomination(day, started.NominationIndex, "开始收票");
             if (nomination.Sweep is not null)
             {
                 throw new InvalidOperationException(
@@ -164,18 +170,24 @@ internal static class DayLedgerFolder
                     $"事件流顺序损坏：白天 {day.DayNumber} 第 {nomination.Index} 项提名的收票参数越界");
             }
 
-            for (var index = 1; index < started.Seats.Count; index++)
+            if (!BallotSweep.IsStrictlyAscending(started.Seats))
             {
-                if (started.Seats[index].Value <= started.Seats[index - 1].Value)
-                {
-                    throw new InvalidOperationException(
-                        $"事件流顺序损坏：白天 {day.DayNumber} 第 {nomination.Index} 项提名的收票席位必须严格升序");
-                }
+                throw new InvalidOperationException(
+                    $"事件流顺序损坏：白天 {day.DayNumber} 第 {nomination.Index} 项提名的收票席位必须严格升序");
+            }
+
+            // 钟盘串行（D2 实施口径）：另一条收票未收完时不允许再开——内核不会产出这种输入，
+            // 出现即事件流损坏（不静默把两条收票同时挂上钟盘）。
+            if (day.ActiveBallot is { } active)
+            {
+                throw new InvalidOperationException(
+                    $"事件流顺序损坏：白天 {day.DayNumber} 的钟盘上还有没走完的收票（{active.Describe()}），"
+                    + $"却又开始第 {nomination.Index} 项提名的收票");
             }
 
             // 开始收票 = 举手窗口重开：旧形态可能留下的实时票面不并入冻结结论（它不属于这一次收票），
             // 玩家在倒计时里重新举手；"今天谁举过手"仍完整留在 VoteAttempts 里（R-0037）。
-            return ReplaceNomination(
+            return DayLedgerEdit.ReplaceNomination(
                 day,
                 nomination with
                 {
@@ -193,9 +205,9 @@ internal static class DayLedgerFolder
 
     private static DayState ApplySeatVoteCollected(DayState state, SeatVoteCollectedEvent collected)
     {
-        return UpdateOpenDay(state, collected.DayNumber, day =>
+        return DayLedgerEdit.UpdateOpenDay(state, collected.DayNumber, day =>
         {
-            var nomination = FindOpenNomination(day, collected.NominationIndex, "收票");
+            var nomination = DayLedgerEdit.FindOpenNomination(day, collected.NominationIndex, "收票");
             if (nomination.Sweep is not { } sweep)
             {
                 throw new InvalidOperationException(
@@ -216,12 +228,13 @@ internal static class DayLedgerFolder
                     + $"却收到 {collected.Seat.Value} 号");
             }
 
-            var ballot = collected.Voted ? InsertSeat(nomination.Ballot, collected.Seat) : nomination.Ballot;
-            var hands = collected.Voted
-                ? InsertSeat(nomination.HandsRaised, collected.Seat)
-                : [.. nomination.HandsRaised.Where(seat => seat != collected.Seat)];
+            var (ballot, hands) = BallotSweep.Freeze(
+                nomination.Ballot,
+                nomination.HandsRaised,
+                collected.Seat,
+                collected.Voted);
 
-            return ReplaceNomination(
+            return DayLedgerEdit.ReplaceNomination(
                 day,
                 nomination with
                 {
@@ -246,9 +259,9 @@ internal static class DayLedgerFolder
 
     private static DayState ApplyVoteSweepResumed(DayState state, VoteSweepResumedEvent resumed)
     {
-        return UpdateOpenDay(state, resumed.DayNumber, day =>
+        return DayLedgerEdit.UpdateOpenDay(state, resumed.DayNumber, day =>
         {
-            var nomination = FindOpenNomination(day, resumed.NominationIndex, "继续收票");
+            var nomination = DayLedgerEdit.FindOpenNomination(day, resumed.NominationIndex, "继续收票");
             if (nomination.Sweep is not { } sweep || sweep.IsComplete)
             {
                 throw new InvalidOperationException(
@@ -278,9 +291,9 @@ internal static class DayLedgerFolder
             }
         }
 
-        return UpdateOpenDay(state, counted.DayNumber, day =>
+        return DayLedgerEdit.UpdateOpenDay(state, counted.DayNumber, day =>
         {
-            var nomination = FindOpenNomination(day, counted.NominationIndex, "计票");
+            var nomination = DayLedgerEdit.FindOpenNomination(day, counted.NominationIndex, "计票");
 
             // 钟盘形态：收票没走完不能计票（R-0017 目标形态）；旧形态（Sweep = null）没有这条。
             if (nomination.Sweep is { IsComplete: false } incomplete)
@@ -301,7 +314,7 @@ internal static class DayLedgerFolder
                     + $"（票面 {nomination.Ballot.Count} 人，计票名单 {voters.Length} 人）");
             }
 
-            var updated = ReplaceNomination(
+            var updated = DayLedgerEdit.ReplaceNomination(
                 day,
                 nomination with
                 {
@@ -335,7 +348,7 @@ internal static class DayLedgerFolder
             return state;
         }
 
-        return UpdateOpenDay(state, dayNumber, day =>
+        return DayLedgerEdit.UpdateOpenDay(state, dayNumber, day =>
         {
             if (day.Executed is not null)
             {
@@ -349,66 +362,7 @@ internal static class DayLedgerFolder
 
     private static DayState ApplyDayClosed(DayState state, DayClosedEvent closed)
     {
-        return UpdateOpenDay(state, closed.DayNumber, day => day with { Status = DayStatus.Closed });
+        return DayLedgerEdit.UpdateOpenDay(state, closed.DayNumber, day => day with { Status = DayStatus.Closed });
     }
 
-    private static DayState UpdateOpenDay(DayState state, int dayNumber, Func<DayRecord, DayRecord> update)
-    {
-        var day = state.OpenDay;
-        if (day is null || day.DayNumber != dayNumber)
-        {
-            throw new InvalidOperationException(
-                $"事件流顺序损坏：白天 {dayNumber} 不是当前进行中的白天（当前：{(day is null ? "无" : day.DayNumber)}）");
-        }
-
-        var days = state.Days.ToArray();
-        days[^1] = update(day);
-        return state with { Days = days };
-    }
-
-    private static NominationRecord FindOpenNomination(DayRecord day, int index, string action)
-    {
-        var nomination = day.Nominations.FirstOrDefault(item => item.Index == index);
-        if (nomination is null)
-        {
-            throw new InvalidOperationException(
-                $"事件流顺序损坏：白天 {day.DayNumber} 没有第 {index} 项提名，却收到{action}事件");
-        }
-
-        if (nomination.Status != NominationStatus.Voting)
-        {
-            throw new InvalidOperationException(
-                $"事件流顺序损坏：白天 {day.DayNumber} 第 {index} 项提名已经计票，不能再次{action}");
-        }
-
-        return nomination;
-    }
-
-    private static DayRecord ReplaceNomination(DayRecord day, NominationRecord nomination)
-    {
-        var nominations = day.Nominations.ToArray();
-        var position = Array.FindIndex(nominations, item => item.Index == nomination.Index);
-        if (position < 0)
-        {
-            throw new InvalidOperationException(
-                $"事件流顺序损坏：白天 {day.DayNumber} 没有第 {nomination.Index} 项提名");
-        }
-
-        nominations[position] = nomination;
-        return day with { Nominations = nominations };
-    }
-
-    /// <summary>把席位插进按席位号升序的票面（重复投票是幂等的，不产生第二条）。</summary>
-    private static IReadOnlyList<SeatId> InsertSeat(IReadOnlyList<SeatId> ballot, SeatId seat)
-    {
-        if (ballot.Contains(seat))
-        {
-            return ballot;
-        }
-
-        var result = ballot.ToList();
-        result.Add(seat);
-        result.Sort((left, right) => left.Value.CompareTo(right.Value));
-        return result;
-    }
 }

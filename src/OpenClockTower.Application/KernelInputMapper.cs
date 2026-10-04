@@ -69,6 +69,11 @@ public static class KernelInputMapper
                 NominationIndex = collectSeat.NominationIndex,
                 Seat = collectSeat.Seat,
             },
+            CollectExileSeatVoteCommand collectExileSeat => new CollectExileSeatVoteInput
+            {
+                ExileIndex = collectExileSeat.ExileIndex,
+                Seat = collectExileSeat.Seat,
+            },
             PunishExecutionCommand punish => new PunishExecutionInput
             {
                 Seat = punish.Seat,

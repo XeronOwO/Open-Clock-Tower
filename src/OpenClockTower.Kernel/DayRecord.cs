@@ -27,6 +27,9 @@ public sealed record DayRecord
     /// </remarks>
     public IReadOnlyList<DayVoteAttempt> VoteAttempts { get; init; } = [];
 
+    /// <summary>当天已发起的流放提议，按发生顺序（D2；同日可多次、顺序进行）。</summary>
+    public IReadOnlyList<ExileRecord> Exiles { get; init; } = [];
+
     /// <summary>
     /// 当前「即将被处决」的玩家；null = 当前没有人（无人提名 / 票数不够 / 最高票平局）。
     /// 只由计票改写（《投票》：计票后不再重判）。
@@ -43,6 +46,45 @@ public sealed record DayRecord
     public NominationRecord? OpenNomination =>
         Nominations.LastOrDefault(nomination => nomination.Status == NominationStatus.Voting);
 
+    /// <summary>当前未结清的流放（同一时间至多一条）；没有则为 null。</summary>
+    public ExileRecord? OpenExile =>
+        Exiles.LastOrDefault(exile => exile.Status == ExileStatus.Voting);
+
+    /// <summary>
+    /// 钟盘上正在收票的那一条（唯一「未收完」的收票；提名 / 流放共用一个读取口）。
+    /// </summary>
+    /// <remarks>
+    /// 口径见票据「D2 实施口径」：钟盘 =「未收完的那一条收票」；收票已收完但未计票的选票不占钟盘。
+    /// 开始 / 继续收票的冲突判定与控制面节拍器都读这里，避免两处各写一套。
+    /// </remarks>
+    public ActiveBallot? ActiveBallot
+    {
+        get
+        {
+            if (OpenNomination is { Sweep: { IsComplete: false } nominationSweep } nomination)
+            {
+                return new ActiveBallot
+                {
+                    Kind = BallotKind.Nomination,
+                    Index = nomination.Index,
+                    Sweep = nominationSweep,
+                };
+            }
+
+            if (OpenExile is { Sweep: { IsComplete: false } exileSweep } exile)
+            {
+                return new ActiveBallot
+                {
+                    Kind = BallotKind.Exile,
+                    Index = exile.Index,
+                    Sweep = exileSweep,
+                };
+            }
+
+            return null;
+        }
+    }
+
     /// <summary>某个席位今天是否已经发起过提名（每天一次）。</summary>
     public bool HasNominated(SeatId seat) =>
         Nominations.Any(nomination => nomination.Nominator == seat);
@@ -50,4 +92,8 @@ public sealed record DayRecord
     /// <summary>某个席位今天是否已经被提名过（每天一次）。</summary>
     public bool HasBeenNominated(SeatId seat) =>
         Nominations.Any(nomination => nomination.Nominee == seat);
+
+    /// <summary>某个旅行者今天是否已经被提议过流放（每天一次，成败都算；R-0044 第 3 条）。</summary>
+    public bool HasExileProposed(SeatId seat) =>
+        Exiles.Any(exile => exile.Target == seat);
 }

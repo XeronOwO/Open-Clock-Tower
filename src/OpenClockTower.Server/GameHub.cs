@@ -27,6 +27,7 @@ public sealed class GameHub : Hub<IGameClient>
     private readonly GameSession _session;
     private readonly ReplayQueryService _replay;
     private readonly ConnectionRegistry _registry;
+    private readonly HubActorResolver _actors;
     private readonly NotificationDispatcher _dispatcher;
     private readonly SeatJoinCoordinator _join;
     private readonly SeatBindingService _bindings;
@@ -40,6 +41,7 @@ public sealed class GameHub : Hub<IGameClient>
         GameSession session,
         ReplayQueryService replay,
         ConnectionRegistry registry,
+        HubActorResolver actors,
         NotificationDispatcher dispatcher,
         SeatJoinCoordinator join,
         SeatBindingService bindings,
@@ -51,6 +53,7 @@ public sealed class GameHub : Hub<IGameClient>
         _session = session;
         _replay = replay;
         _registry = registry;
+        _actors = actors;
         _dispatcher = dispatcher;
         _join = join;
         _bindings = bindings;
@@ -328,6 +331,38 @@ public sealed class GameHub : Hub<IGameClient>
     public Task<CommandResultDto> CloseDay(string credential, string idempotencyKey) =>
         ExecuteAsync(ResolveActor(credential), new CloseDayCommand(), idempotencyKey);
 
+    /// <summary>玩家发起流放提议（R-0044 第 2 条：任意在局玩家、含死者；发起人由凭据推导）。</summary>
+    public Task<CommandResultDto> ProposeExile(string credential, int targetSeat, string idempotencyKey) =>
+        ExecuteAsync(ResolveActor(credential), Commands().ProposeExile(targetSeat), idempotencyKey);
+
+    /// <summary>玩家在当前开放的流放提议上举手 / 放下（R-0044 第 4 条）。</summary>
+    public Task<CommandResultDto> CastExileVote(
+        string credential,
+        int exileIndex,
+        bool voted,
+        string idempotencyKey) =>
+        ExecuteAsync(ResolveActor(credential), Commands().CastExileVote(exileIndex, voted), idempotencyKey);
+
+    /// <summary>说书人 / 宿主开始流放收票：倒计时 + 分针逐席旋转（R-0044 第 10 条沿用 R-0017）。</summary>
+    public Task<CommandResultDto> StartExileSweep(
+        string credential,
+        int exileIndex,
+        int countdownMilliseconds,
+        int intervalMilliseconds,
+        string idempotencyKey) =>
+        ExecuteAsync(
+            ResolveActor(credential),
+            Commands().StartExileSweep(exileIndex, countdownMilliseconds, intervalMilliseconds),
+            idempotencyKey);
+
+    /// <summary>说书人 / 宿主继续中断的流放收票（重新起倒计时，从下一未收席位接着收）。</summary>
+    public Task<CommandResultDto> ResumeExileSweep(string credential, int exileIndex, string idempotencyKey) =>
+        ExecuteAsync(ResolveActor(credential), Commands().ResumeExileSweep(exileIndex), idempotencyKey);
+
+    /// <summary>说书人 / 宿主在流放收票全部完成后计票（R-0044 第 5 / 9 条）。</summary>
+    public Task<CommandResultDto> CountExileVotes(string credential, int exileIndex, string idempotencyKey) =>
+        ExecuteAsync(ResolveActor(credential), Commands().CountExileVotes(exileIndex), idempotencyKey);
+
     /// <summary>
     /// 说书人 / 宿主处罚处决：洗脑师 / 畸形秀演员的"疯狂"后果（R-0020）。
     /// 白天形态占用当天处决上限并立即收口白天；夜晚形态不占任何白天的上限。
@@ -521,54 +556,14 @@ public sealed class GameHub : Hub<IGameClient>
 
     /// <summary>
     /// 凭据 → 身份（唯一的身份来源；D-0012：客户端声明一律不认）。
-    /// 凭据无效直接拒绝，且**不触达 Application**；通过后由四道闸判"这个身份能不能发这条命令"。
     /// </summary>
-    private Actor ResolveActor(string? credential, [CallerMemberName] string method = "")
-    {
-        var validation = ValidateCredential(credential, method);
-        if (!validation.Accepted)
-        {
-            throw new HubException("连接凭据无效：请先用票据加入（D-0012）");
-        }
-
-        return validation.Kind == ActorKind.Player && validation.Seat is { } seat
-            ? Actor.Player(seat)
-            : Actor.Storyteller();
-    }
+    /// <remarks>解析与审计在 <see cref="HubActorResolver"/>（单文件 600 行门禁）；这里只转发当前连接。</remarks>
+    private Actor ResolveActor(string? credential, [CallerMemberName] string method = "") =>
+        _actors.Resolve(credential, Context.ConnectionId, method);
 
     /// <summary>查询类入口要求说书人身份（查询不属于命令，不走四道闸）。</summary>
-    private Actor ResolveStorytellerActor(string? credential, [CallerMemberName] string method = "")
-    {
-        var actor = ResolveActor(credential, method);
-        if (actor.Kind != ActorKind.Storyteller)
-        {
-            _logger.LogWarning(
-                "查询被拒（身份）：connection={ConnectionId} 方法={Method} 原因=玩家连接不能读说书人视图",
-                Context.ConnectionId,
-                method);
-            throw new HubException("当前连接不是有效的说书人连接（D-0012）");
-        }
-
-        return actor;
-    }
-
-    /// <summary>校验凭据并审计失败（谁、哪条连接、什么方法、凭据短指纹、原因）——绝不写凭据明文。</summary>
-    private CredentialValidation ValidateCredential(string? credential, string method)
-    {
-        var presented = new ConnectionCredential(credential ?? string.Empty);
-        var validation = _registry.Validate(presented, Context.ConnectionId);
-        if (!validation.Accepted)
-        {
-            _logger.LogWarning(
-                "命令被拒绝（凭据闸）：connection={ConnectionId} 方法={Method} 指纹={Fingerprint} 原因={Reason}",
-                Context.ConnectionId,
-                method,
-                ConnectionCredential.FingerprintOf(credential),
-                validation.Reason);
-        }
-
-        return validation;
-    }
+    private Actor ResolveStorytellerActor(string? credential, [CallerMemberName] string method = "") =>
+        _actors.ResolveStoryteller(credential, Context.ConnectionId, method);
 
     /// <summary>
     /// 本次调用的命令翻译器（wire 参数 → 应用层命令；参数层拒绝按调用者写审计）。

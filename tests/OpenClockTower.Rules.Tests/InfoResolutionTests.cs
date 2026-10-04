@@ -31,6 +31,44 @@ public sealed class InfoResolutionTests
         Assert.Equal(["seat:2", "seat:3"], prompt.Options.Select(option => option.Value));
     }
 
+    /// <summary>
+    /// 旅行者能入局之后：筑梦师的目标集合必须排除旅行者（《筑梦师》· 2026-10-04 抓取 · 规则细节 4）。
+    /// </summary>
+    [Fact]
+    public void DreamerPrompt_ExcludesTravellerSeats()
+    {
+        var state = GameStateMachine.Fold(
+        [
+            new SeatStateChangedEvent
+            {
+                Seat = new SeatId(1),
+                Character = new CharacterId("dreamer"),
+                Reason = "test.setup",
+            },
+            new SeatStateChangedEvent
+            {
+                Seat = new SeatId(2),
+                Character = new CharacterId("clockmaker"),
+                Reason = "test.setup",
+            },
+            new SeatStateChangedEvent
+            {
+                Seat = new SeatId(3),
+                Character = new CharacterId("barista"),
+                Reason = "test.setup",
+            },
+        ]);
+
+        var prompt = DreamerPrompt.BuildPrompt(new NightActionContext
+        {
+            Actor = new SeatId(1),
+            Seats = [new SeatId(1), new SeatId(2), new SeatId(3)],
+            State = state,
+        });
+
+        Assert.Equal(new[] { "seat:2" }, prompt.Options.Select(option => option.Value));
+    }
+
     [Fact]
     public void DreamerEffective_OffersOppositeTypeCandidates()
     {
