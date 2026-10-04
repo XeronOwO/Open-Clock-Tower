@@ -260,6 +260,8 @@ async function main() {
 
   console.log('=== 6/8 改名：A 自己 / B 的同桌名单 / 说书人魔典三处同步 ===')
   await waitForLocatorContains(grimoireSeatName(storytellerPage, SEAT_A), ALICE.displayName, 30_000)
+  // 账号区登录后默认收成一行摘要（票据 ui-layout-and-onboarding）：先点开「管理账号」再改名。
+  await alicePage.getByTestId('account-fold-toggle').click()
   await alicePage.getByTestId('account-rename-input').fill(RENAMED)
   await alicePage.getByTestId('account-rename').click()
   const aliceRenamed = await waitForLocatorContains(
@@ -360,6 +362,56 @@ async function main() {
   )
   check('刷新复盘面板后文案口径不变（服务端口径，不是前端拼的）', replayRefreshed.includes(`${SEAT_A} 号 · ${RENAMED}`), replayRefreshed)
 
+  // 抽屉面姓名口径（E30 残余①，票据 ui-layout-and-onboarding 同批收口）：八个组件接入后逐面复核
+  // **真机**上的四处（其余面板需要夜间 / 窗口夹具，由组件级渲染回归 `seatDisplay.spec.ts` 覆盖）。
+  console.log('=== 7.5/8 抽屉面姓名口径：数据与审计 / 开局分配 / 席内注记 ===')
+  const drawerToggle = storytellerPage.getByTestId('data-drawer-toggle')
+  if ((await drawerToggle.getAttribute('aria-expanded')) !== 'true') {
+    await drawerToggle.click()
+  }
+
+  const ledgerText = await waitForLocatorContains(
+    storytellerPage.locator('[data-testid="data-drawer-body"] section', { hasText: '状态账' }).first(),
+    `${SEAT_A} 号 · ${RENAMED}`,
+    15_000,
+  )
+  check(
+    `状态账面板用「${SEAT_A} 号 · ${RENAMED}」而不是光秃秃的席位号`,
+    ledgerText.includes(`${SEAT_A} 号 · ${RENAMED}`),
+    ledgerText.slice(0, 160),
+  )
+
+  const timelineText = compact(
+    await storytellerPage
+      .locator('[data-testid="data-drawer-body"] section', { hasText: '最近状态变化' })
+      .first()
+      .innerText(),
+  )
+  check(
+    `最近状态变化面板用「${SEAT_A} 号 · ${RENAMED}」`,
+    timelineText.includes(`${SEAT_A} 号 · ${RENAMED}`),
+    timelineText.slice(0, 160),
+  )
+
+  const assignmentText = compact(
+    await storytellerPage.locator('section', { hasText: '开局分配' }).first().innerText(),
+  )
+  check(
+    `开局分配表用「${SEAT_A} 号 · ${RENAMED}」`,
+    assignmentText.includes(`${SEAT_A} 号 · ${RENAMED}`),
+    assignmentText.slice(0, 160),
+  )
+
+  const annotationText = compact(
+    await storytellerPage.locator('[data-testid="annotation-control"] .line').first().innerText(),
+  )
+  check(
+    `席内注记区用「${SEAT_A} 号 · ${RENAMED}」`,
+    annotationText.includes(`${SEAT_A} 号 · ${RENAMED}`),
+    annotationText.slice(0, 160),
+  )
+  await screenshot(storytellerPage, 'accounts-09-drawer-names')
+
   console.log('=== 8/8 负向：伪造 / 跨账号 / 二次认领 + 会话信息落库 ===')
   const accountClient = await connectHub(accountHubUrl)
   const bobLogin = await accountClient.invoke('Login', BOB.username, BOB.password)
@@ -427,6 +479,25 @@ async function main() {
   )
   await alicePage.getByTestId('player-account').scrollIntoViewIfNeeded()
   await screenshot(alicePage, 'accounts-06-account-panel-recovery-code')
+
+  // 版面量度（票据 `ui-layout-and-onboarding` 矩阵行 3）：固定状态下的整页截图 + 内容高度，
+  // 供"前后对比"引用。量的是 `.shell` 的内容底边——`documentElement.scrollHeight` 会被视口高度钳制；
+  // 说书人页量之前先收起数据抽屉（展开与否是本地呈现态，不能混进量度）。
+  // B 页的账号区保持默认态，正是要量的那个状态；数值只记录、不断言。
+  const drawer = storytellerPage.getByTestId('data-drawer-toggle')
+  if ((await drawer.count()) > 0 && (await drawer.getAttribute('aria-expanded')) === 'true') {
+    await drawer.click()
+  }
+  const contentHeightOf = (page) =>
+    page.evaluate(() => {
+      const shell = document.querySelector('.shell')
+      return shell === null ? 0 : Math.round(shell.getBoundingClientRect().bottom + window.scrollY)
+    })
+  const playerScroll = await contentHeightOf(bobPage)
+  const storytellerScroll = await contentHeightOf(storytellerPage)
+  console.log(`  版面量度：玩家页（B，账号默认态）内容高=${playerScroll}px；说书人页（抽屉收起）内容高=${storytellerScroll}px`)
+  await screenshot(bobPage, 'accounts-07-layout-player')
+  await screenshot(storytellerPage, 'accounts-08-layout-storyteller')
 
   check('浏览器控制台没有报错', consoleErrors.length === 0, consoleErrors.slice(0, 3).join(' | '))
 
@@ -654,7 +725,7 @@ function report() {
 
   const failed = results.filter((result) => !result.pass)
   console.log(`断言总数 ${results.length}`)
-  console.log(config.screenshots ? `截图：${screenshotsDir}（accounts-01…06）` : '截图：未落盘（迭代档）')
+  console.log(config.screenshots ? `截图：${screenshotsDir}（accounts-*）` : '截图：未落盘（迭代档）')
   console.log(failed.length === 0 ? `全部通过（${results.length} 项）` : `失败 ${failed.length} / ${results.length}`)
 }
 
