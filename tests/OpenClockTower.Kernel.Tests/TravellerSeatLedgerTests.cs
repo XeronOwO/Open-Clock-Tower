@@ -9,7 +9,7 @@ namespace OpenClockTower.Kernel.Tests;
 /// </summary>
 /// <remarks>
 /// 来源：百科《旅行者》· 2026-10-04 抓取 · 旅行者运作方式（加入第 2–3 步、离开流程）与
-/// 票据 `docs/backlog/in-progress/traveller-and-exile.md` D1 设计定稿。
+/// 票据 `docs/backlog/done/traveller-and-exile.md` D1 设计定稿。
 /// </remarks>
 public sealed class TravellerSeatLedgerTests
 {

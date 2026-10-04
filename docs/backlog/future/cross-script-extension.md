@@ -2,7 +2,7 @@
 
 - Status: Future
 - Priority: Low
-- Depends on: 首版《梦殒春宵》的胜负与角色实现（进度见 `docs/backlog/README.md`）；旅行者口径 R-0007（Decided：首版纳入，见 D-0022 与 `todo/traveller-and-exile.md`）
+- Depends on: 首版《梦殒春宵》的胜负与角色实现（进度见 `docs/backlog/README.md`）；旅行者口径 R-0007（Decided：首版纳入，见 D-0022 与 `done/traveller-and-exile.md`）
 - 来源：胜负票「不做（本票边界）」；麻脸巫婆票「本票不做 · 跨剧本角色」；`docs/standard/rulings.md` R-0024 第 3 条
 
 ## 要解决的问题
@@ -20,7 +20,7 @@
 
 1. 多恶魔 / 善良恶魔下「所有恶魔均已死亡」怎么读（R-0024 / R-0029 的推广）？
 2. 主谋 / 圣徒 / 小怪宝的胜负条件如何接进既有 `OutcomeEvaluator` 的层级模型？
-3. 旅行者与流放：**已决**（D-0022 纳入首版；实现见 `todo/traveller-and-exile.md`，不再是本票前置问题）？
+3. 旅行者与流放：**已决**（D-0022 纳入首版；实现见 `done/traveller-and-exile.md`，不再是本票前置问题）？
 4. 跨剧本角色与剧本怎么进入开局分配，且不破坏「角色唯一」「六维独立」硬约束？
 5. 相克规则：双角色解析器与三角色「未登记」显式返回（R-0002）、相克规则与「不能最大」的优先序
    （R-0005）——首版零触发面，本票开工时一并落地并核对来源。

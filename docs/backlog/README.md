@@ -66,11 +66,11 @@ todo/  →  in-progress/  →  review/  →  done/
 
 ### In progress
 
-- [旅行者与流放流程（首版纳入）](in-progress/traveller-and-exile.md) — **High** — 《梦殒春宵》5 名旅行者（怪咖 / 集骨者 / 咖啡师 / 流莺 / 屠夫）+ 流放流程 + 加入 / 离开；范围决策 D-0022
-
 ### Review
 
 ### Done
+
+- [旅行者与流放流程（首版纳入）](done/traveller-and-exile.md) — **High** — 《梦殒春宵》5 名旅行者（怪咖 / 集骨者 / 咖啡师 / 流莺 / 屠夫）+ 流放流程 + 加入 / 离开；范围决策 D-0022；批次 E34 判出矩阵 13 行全过（主装置取证档 284 项 + 零信任 51；冻结版门禁 1076 通过）
 
 - [钟盘投票形态：设计与实现](done/clock-vote-flow.md) — R-0017 目标形态落地：内核逐席严格时点收票 + 控制面时间轴 + 两端钟盘；批次 E33 判出 7 行验收矩阵全过（主装置取证档 202 项；winloss 28 / witch 28 / death-triggers 73 / retro-info 56；门禁 861 + 前端 163）
 
