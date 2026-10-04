@@ -416,6 +416,44 @@ Integration 118、全量 **750** 通过，产品代码未变。
 - 本批后 `in-progress/`、`review/` 清空；`todo/` 三张（`replay-auto-review` / `setup-randomizer` /
   `ui-layout-and-onboarding`）；`done/` 新增 `seamstress-and-artist.md`。
 
+## 批次 E27（2026-10-04，初始身份随机器：按官方阵营分布自动配板）
+
+冻结版本：`main` @ `d56f659`（本批新增装置 `tools/verify-setup-randomizer.mjs`、`proposeSetup` 包装单测与
+装置登记；**未改产品代码**；跑批期间工作树只有本批新增/修改的工具、测试与文档）。
+
+本批改动只在工具 / 测试 / 文档，故按「本票新装置 + 门禁」两面取证：
+
+- `tools/verify-setup-randomizer.mjs`（**本批新增**，取证档 `--quota 2 --screenshots-all --build`）：
+  **58 项全部通过 / 0 跳过、退出码 0**。一键配板（覆盖每席 / 角色唯一 / 净分布随在场恶魔修正 / 显式种子；
+  本跑首抽方古 → 2/1/1/1，并给出「设置调整 · 方古」与「镇民取余量」披露）→ 重摇（新种子 `64ea…03e`）→
+  手改到 `clockmaker / dreamer / no-dashii / mutant / klutz` → 提交走既有分配命令面（序号 9）→ 开夜（序号 11）→
+  首夜 1 号钟表匠待裁定（归属 1 号 + 当前槽位高亮）+ 2 号筑梦师定向请求（窗口 8 次采样：其余席位零请求）→
+  钟表匠 / 筑梦师两条信息只到本人（DOM + 五席 35 帧隔离扫描，说书人连接 26 帧阳性对照）。截图
+  `setup-01…09` 均为本次运行写入并逐张复核（01 = 方古建议 + 净分布 / 钳制说明；05 = 钟表匠待裁定；
+  07 = 筑梦师请求；09 = 无关席位空态）。
+- **其余十一个装置本批不重跑**（诚实记录）：本批零产品代码改动，通用玩法回归与其它能力链路没有被本批触碰；
+  装置脚本与 web 单测的风险由 `dotnet build/test/format` + `npm run gate` 覆盖。这与 E24–E26"改了产品代码就
+  重跑主装置 + 同族装置"的口径不冲突——那些批次的改动面在本批不存在。
+
+冻结版门禁（跑批前）：`dotnet build` 0 警告 0 错误；`dotnet test` **787 通过 / 0 失败**（Kernel 327 · Rules 314 ·
+Integration 122 · NormativeGates 24）；`dotnet format` 就地通过；`npm run gate` 全绿（typecheck + lint +
+**117** 前端单测 + build；本批新增 3 条 `proposeSetup` 包装用例）。
+
+诚实记录：
+
+- 装置首跑 58 项里 1 项**假红**：「玩家帧不含其他席位角色 slug」把玩家视图 DTO 的字段名 `klutzChoices`
+  当成了角色值 `klutz`（1–4 号全命中）。修法在工具侧：按 JSON 字符串值（带引号）扫描、阳性对照同口径；
+  迭代档与取证档复跑均 58 项全绿。不是产品泄漏。
+- 判行时新发现一处**低危 UX 观察**并记入票据残余：手改后「净分布」行仍显示最近一次建议的分布与种子
+  （不随手改重算；建议语义待定）。不影响任何矩阵行。
+
+批次 E27 判出：
+
+- **初始身份随机器票验收矩阵 8 行全部通过**（逐行证据见 `done/setup-randomizer.md` 的「E27 验收判定」；
+  行 5 / 6 / 8 为本批装置证据，行 1–4 / 7 为规则单测 + 真宿主用例 + 帧级隔离扫描）→ 移入 `done/`。
+- 本批后 `in-progress/`、`review/` 清空；`todo/` 两张（`replay-auto-review` / `ui-layout-and-onboarding`）；
+  `done/` 新增 `setup-randomizer.md`；装置清单增到 12 个（`docs/acceptance/devices.md`）。
+
 ## 相关阅读
 
 - 验收规程：`docs/acceptance/AGENTS.md`

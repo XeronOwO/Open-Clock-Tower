@@ -1,6 +1,6 @@
 # 初始身份随机器：按官方阵营分布自动配板
 
-- Status: In progress
+- Status: Done
 - Priority: High
 - 来源：用户会话提出（本票无实现；R-0035 已把它登记为"独立能力，要做须先立票据"）
 - Depends on: R-0035（阵型修正的现有承载口径）；R-0041（分布表来源与口径）；R-0042（净分布合成口径）；
@@ -74,4 +74,32 @@
   Attested 6 行 / Derived 4 行 / Extrapolated 1 行（只剩 6 人），引用页扩到 87 页；
   补真宿主集成用例 4 条（建议覆盖每一席 / 同种子可复现 / 不落账 / 玩家与匿名读不到 / 重建后配板不变
   / 开阶段后显式拒绝）。
-- 待办：真机装置（矩阵行 5 / 6 / 8）、按行判矩阵、移 `review/`。
+- 2026-10-04（第三轮）：真机装置与验收——新增 `tools/verify-setup-randomizer.mjs`（取证档 **58 项全过 / 退出码 0**，
+  截图 `setup-01…09` 本次运行落盘并逐张复核）、补 `proposeSetup` 包装单测三条、装置清单增到 12 个；
+  矩阵 8 行全部判出（见下）。
+
+## E27 验收判定（2026-10-04）
+
+冻结版本：`main` @ `d56f659`（本批只新增装置、web 单测与文档，未改产品代码）。
+装置：`tools/verify-setup-randomizer.mjs`，取证档 `--quota 2 --screenshots-all --build`——**58 项全部通过 / 0 跳过、退出码 0**；
+截图 `setup-01…09` 均为本次运行写入（`artifacts/web/`，gitignored）并逐张 `read_image` 复核。
+
+| # | 场景 | 判定 | 本轮证据（运行时） |
+|---|---|---|---|
+| 1 | 官方分布表 | 通过 | `SectsAndVioletsDistributionTests`（8 条：5–15 无缺口 / 逐行合计 / Attested 六行 / Derived 四行 / Extrapolated 只剩 6 人 / 逐行出处 / 带结构不变量 / 表外不猜）+ R-0041 登记；装置首抽方古 → 净分布 2/1/1/1（`setup-01-proposal.png`） |
+| 2 | 阵型修正叠加 | 通过 | `SetupComposerTests`（+1 / −1 / 超池 / 对立修正先加总 / 不收敛）；装置首抽方古时建议里的「设置调整 · 方古：外来者 +1（缺额由镇民补偿）」与净分布一致（`setup-01-proposal.png`） |
+| 3 | 修正超池 / 冲突 | 通过 | `SetupComposerTests`（−1 钳到 0 且披露「期望 -1」/ 超池钳到剧本池且披露「期望 5 → 实际 4」/ 人数不在表 / 池不够 / 目标镇民 / 振荡不收敛 / 空种子）；装置同屏给出「镇民随净分布取余量：3 → 2」 |
+| 4 | 随机可重放 | 通过 | `SetupProposalHostTests`：同种子同配板 + 查询不改事件序号 + 提交后重建逐席不变；装置两次建议种子不同（`5bd8…0877` → `64ea…03e`），且建议阶段魔典仍是「角色未观测」（`setup-01/02`） |
+| 5 | 角色唯一与席位 | 通过 | 装置：两次建议都覆盖 5 席、非空、去重 5/5、四项合计 = 席位数（`setup-01/02`）；规则单测 `ComposeFillsTheSeatCountWithUniqueRoles` 覆盖 5–15 人 |
+| 6 | 说书人裁量 | 通过 | 装置：重摇出新种子 → 手改到 `clockmaker/dreamer/no-dashii/mutant/klutz` → 「提交分配」受理（序号 9）→ 魔典逐席对账（`setup-02/03/04`）；结构审查：`AssignmentControl.vue` 的提交只调 `assignCharacters` → `GameHub.AssignCharacters`（无第二条分配路径） |
+| 7 | 信息隔离 | 通过 | `SetupProposalHostTests`：玩家 / 匿名连接 Hub 层拒绝 + 审计留痕；装置五席 35 帧扫描：配板建议（种子 / 净分布 / 分配表 / 说明）零下发、他人角色值零泄露、信息与请求只到本人（另有说书人连接 26 帧阳性对照） |
+| 8 | 端到端 | 通过 | 装置：开夜（序号 11）→ 首夜 1 号钟表匠待裁定（归属 1 号 + 牌面高亮）+ 2 号筑梦师定向请求（选项 = 除自己外席位）→ 两条信息只到本人；无关席位在请求窗口 8 次采样零请求（`setup-05…09.png`） |
+
+## 残余
+
+- 低：6 人行的分布行为 `Extrapolated`（R-0041 状态 Open，百科无例证）——拿到实物《旅行者列表 / 初始设置表》后逐行改判；不影响其余 10 行。
+- 低（本批新观察，UX 语义待定）：手改选择后「净分布」行仍显示**最近一次建议**的分布与种子（不随手改重算）。
+  可选处置：清空 / 改口径文案（如「最近一次建议」）/ 实时重算——属产品决策，不阻塞本票任何矩阵行；截图见 `setup-03-handedited.png`。
+- 已闭合：`web/src/services/storytellerCommands.ts` 的 `proposeSetup` 包装原无单测——本批补三条（正常透传 / 空凭据 / 传输异常），
+  `npm run gate` 全绿：117 前端单测（本批新增 3 条 `proposeSetup` 用例）。
+- 看护项（不属本票）：`GameSession.cs` 595/600 行，下次改它前先拆；`references/wiki/` 87 页快照为 gitignored 可重生成物。
