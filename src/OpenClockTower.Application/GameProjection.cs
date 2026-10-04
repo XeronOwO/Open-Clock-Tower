@@ -16,6 +16,8 @@ public static class GameProjection
     /// <param name="state">状态账（白天权限判定要读生死）。</param>
     /// <param name="seats">本局完整座次（算可提名目标用）。</param>
     /// <param name="sequence">投影对应的事件序号。</param>
+    /// <param name="now">应用层当前时刻（算收票剩余时间；不驱动推进）。</param>
+    /// <param name="voteSweepStartedAt">收票时间轴锚点；为空 = 未开始或已中断。</param>
     /// <param name="seat">接收者席位。</param>
     /// <param name="trackers">会话派生跟踪器：发给该席位的信息结果与公开生死面（R-0022）。</param>
     /// <param name="seatNames">公开的「席位 → 玩家名」映射（D-0021；无名字的席位不出现）。</param>
@@ -24,6 +26,8 @@ public static class GameProjection
         GameState state,
         IReadOnlyList<SeatId> seats,
         long sequence,
+        DateTimeOffset now,
+        DateTimeOffset? voteSweepStartedAt,
         SeatId seat,
         SessionTrackers trackers,
         IReadOnlyList<SeatDisplayName> seatNames)
@@ -48,7 +52,14 @@ public static class GameProjection
             Phase = machine?.Plan.Phase,
             PendingRequest = deliverable,
             InformationResults = trackers.InformationResultsFor(seat),
-            Day = DayProjection.ForSeat(machine?.Day, state, seats, seat, trackers.PublicLife),
+            Day = DayProjection.ForSeat(
+                machine?.Day,
+                state,
+                seats,
+                seat,
+                trackers.PublicLife,
+                now,
+                voteSweepStartedAt),
             Outcome = machine?.Outcome,
             KlutzChoices = [.. (machine?.KlutzChoices ?? []).Select(PublicKlutzChoice)],
             SeatNames = seatNames,
@@ -152,6 +163,7 @@ public static class GameProjection
         long sequence,
         DateTimeOffset? pendingSince,
         DateTimeOffset now,
+        DateTimeOffset? voteSweepStartedAt,
         IReadOnlyList<SeatChangeSnapshot> recentSeatChanges,
         IReadOnlyList<SeatAnnotation> annotations,
         IReadOnlyList<SeatDisplayName> seatNames,
@@ -199,6 +211,9 @@ public static class GameProjection
             StepDigest = stepDigest,
             LastVoidedRequest = lastVoidedRequest,
             Day = machine?.Day?.Days.LastOrDefault(),
+
+            // 钟盘收票的呈现相位（剩余时间在读取时算出；R-0017 目标形态）。
+            VoteSweep = VoteSweepProjection.Build(machine?.Day?.OpenDay?.OpenNomination, now, voteSweepStartedAt),
             Outcome = machine?.Outcome,
             KlutzChoices = machine?.KlutzChoices ?? [],
             SeatNames = seatNames,

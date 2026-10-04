@@ -307,7 +307,7 @@ async function join(): Promise<void> {
   }
 }
 
-/** 提名 / 投票包装：把网关实例收敛成两个纯函数，交给白天面板（面板不持有连接）。 */
+/** 提名 / 举手包装：把网关实例收敛成两个纯函数，交给白天面板（面板不持有连接）。 */
 function nominateSeat(seat: number, idempotencyKey: string): Promise<unknown> {
   return ensureGateway().nominate(seat, idempotencyKey)
 }

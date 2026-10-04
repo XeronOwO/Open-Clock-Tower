@@ -264,7 +264,7 @@ public sealed class GameHub : Hub<IGameClient>
             new NominateCommand { Nominee = new SeatId(nomineeSeat) },
             idempotencyKey);
 
-    /// <summary>玩家在当前开放的提名上投票 / 撤回（在线口径见 R-0017）。</summary>
+    /// <summary>玩家在当前开放的提名上举手 / 放下（先举也算、过时不候；R-0017 目标形态）。</summary>
     public Task<CommandResultDto> CastVote(
         string credential,
         int nominationIndex,
@@ -275,7 +275,31 @@ public sealed class GameHub : Hub<IGameClient>
             new CastVoteCommand { NominationIndex = nominationIndex, Voted = voted },
             idempotencyKey);
 
-    /// <summary>说书人 / 宿主对当前开放的提名计票（票面快照冻结）。</summary>
+    /// <summary>说书人 / 宿主开始钟盘收票：倒计时 + 分针逐席旋转（R-0017 目标形态）。</summary>
+    public Task<CommandResultDto> StartVoteSweep(
+        string credential,
+        int nominationIndex,
+        int countdownMilliseconds,
+        int intervalMilliseconds,
+        string idempotencyKey) =>
+        ExecuteAsync(
+            ResolveActor(credential),
+            new StartVoteSweepCommand
+            {
+                NominationIndex = nominationIndex,
+                CountdownMilliseconds = countdownMilliseconds,
+                IntervalMilliseconds = intervalMilliseconds,
+            },
+            idempotencyKey);
+
+    /// <summary>说书人 / 宿主继续中断的钟盘收票（重新起倒计时，从下一未收席位接着收）。</summary>
+    public Task<CommandResultDto> ResumeVoteSweep(string credential, int nominationIndex, string idempotencyKey) =>
+        ExecuteAsync(
+            ResolveActor(credential),
+            new ResumeVoteSweepCommand { NominationIndex = nominationIndex },
+            idempotencyKey);
+
+    /// <summary>说书人 / 宿主在收票全部完成后计票（票面 = 逐席冻结结论；R-0017 目标形态）。</summary>
     public Task<CommandResultDto> CountVotes(string credential, int nominationIndex, string idempotencyKey) =>
         ExecuteAsync(
             ResolveActor(credential),

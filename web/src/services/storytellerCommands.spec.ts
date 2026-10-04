@@ -11,7 +11,9 @@ import {
   pitHagCasualty,
   proposeSetup,
   resolveDeferredDeath,
+  resumeVoteSweep,
   startDay,
+  startVoteSweep,
   type CommandSender,
 } from '@/services/storytellerCommands'
 
@@ -105,12 +107,18 @@ describe('命令必须出示连接凭据（D-0012）', () => {
     expect(invoke).not.toHaveBeenCalled()
   })
 
-  it('白天命令按 Hub 方法名与参数顺序发出（开白天 / 计票 / 结束并处决）', async () => {
+  it('白天命令按 Hub 方法名与参数顺序发出（开白天 / 开始收票 / 继续 / 计票 / 结束并处决）', async () => {
     const invoke = vi.fn(async () => ({ kind: 'Accepted', sequence: 9 }))
     const sender: CommandSender = { connection: { invoke } as unknown as HubConnection, credential }
 
     await startDay(sender, 'key-day')
     expect(invoke).toHaveBeenCalledWith('StartDay', credential, 'key-day')
+
+    await startVoteSweep(sender, 2, 3000, 1000, 'key-sweep')
+    expect(invoke).toHaveBeenCalledWith('StartVoteSweep', credential, 2, 3000, 1000, 'key-sweep')
+
+    await resumeVoteSweep(sender, 2, 'key-resume')
+    expect(invoke).toHaveBeenCalledWith('ResumeVoteSweep', credential, 2, 'key-resume')
 
     await countVotes(sender, 2, 'key-count')
     expect(invoke).toHaveBeenCalledWith('CountVotes', credential, 2, 'key-count')

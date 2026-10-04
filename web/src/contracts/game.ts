@@ -229,6 +229,22 @@ export interface PhaseStartedDto {
   phase: string
 }
 
+/** 钟盘收票的公开呈现（R-0017 目标形态）：相位 / 当前席位 / 已收席位 / 参数与剩余时间。 */
+export interface DayVoteSweepDto {
+  /** Countdown（倒计时）/ Collecting（旋转收票）/ Interrupted（中断待继续）/ AwaitingCount（收完待计票）。 */
+  phase: string
+  /** 分针当前指向的席位（下一待收）；倒计时 / 收完 / 中断时为 null。 */
+  currentSeat: number | null
+  /** 已收票的席位号，按收票顺序。 */
+  collected: number[]
+  /** 倒计时长度（毫秒；呈现参数，判定不读）。 */
+  countdownMilliseconds: number
+  /** 逐席间隔（毫秒；呈现参数，判定不读）。 */
+  intervalMilliseconds: number
+  /** 距离下一拍（倒计时结束 / 下一席到点）的毫秒数；中断 / 收完时为 null。 */
+  nextBeatMilliseconds: number | null
+}
+
 /** 白天一次提名的公开账目（提名与投票本身是桌面上的公开信息）。 */
 export interface DayNominationDto {
   index: number
@@ -236,10 +252,14 @@ export interface DayNominationDto {
   nominee: number
   /** Voting（投票窗口开着）/ Counted（已计票）。 */
   status: string
-  /** 当前 / 最终票数。 */
+  /** 当前 / 最终票数（钟盘形态 = 已收票的赞成数）。 */
   votes: number
   /** 当前 / 最终投赞成者的席位（按席位号升序）。 */
   voters: number[]
+  /** 当前举着手（赞成）的席位，按席位号升序；钟盘形态的公开面。 */
+  handsRaised: number[]
+  /** 钟盘收票呈现；这项提名没在收票时为 null。 */
+  sweep: DayVoteSweepDto | null
 }
 
 /** 白天公开事实（最新一天：进行中或最近结束）。 */
@@ -273,6 +293,8 @@ export interface PlayerDayDto {
   canNominate: boolean
   canVote: boolean
   voted: boolean
+  /** 本席是否已经被收票（先举也算、过时不候；前端据此锁定举手开关）。 */
+  seatCollected: boolean
   /** 今天还没被提名过的席位（可提名目标，按席位号升序）。 */
   candidates: number[]
 }

@@ -26,11 +26,17 @@ public sealed record PlayerDay
     /// <summary>现在能不能发起提名（白天开着、没有进行中的提名、存活、今天还没发起过）。</summary>
     public required bool CanNominate { get; init; }
 
-    /// <summary>现在能不能在当前开放提名上投票（白天开着、有开放提名、存活或还有死后票权）。</summary>
+    /// <summary>现在能不能举手 / 放下（白天开着、收票已开始、本席还没被收票、存活或还有死后票权）。</summary>
     public required bool CanVote { get; init; }
 
-    /// <summary>自己当前是否投了赞成（仅对开放中的提名有意义）。</summary>
+    /// <summary>自己当前的举手状态；本席已被收票时为**冻结结论**（仅对开放中的提名有意义）。</summary>
     public required bool Voted { get; init; }
+
+    /// <summary>本席是否已经被收票（先举也算、过时不候；前端据此锁定举手开关）。</summary>
+    public required bool SeatCollected { get; init; }
+
+    /// <summary>当前开放提名的钟盘收票呈现（相位 / 当前席位 / 已收席位 / 剩余时间）；没有收票时为 null。</summary>
+    public required VoteSweepView? VoteSweep { get; init; }
 
     /// <summary>今天还没被提名过的席位（可提名目标，按席位号升序）；服务端算好，前端不猜。</summary>
     public required IReadOnlyList<SeatId> NominationCandidates { get; init; }

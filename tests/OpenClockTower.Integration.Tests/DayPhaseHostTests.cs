@@ -89,15 +89,19 @@ public sealed class DayPhaseHostTests
         await using var seat2 = await host.ConnectSeatAsync(new SeatId(2));
         await using var seat3 = await host.ConnectSeatAsync(new SeatId(3));
 
-        // 1 号（存活）提名 2 号 → 投票窗口打开。
+        // 1 号（存活）提名 2 号 → 说书人点「开始」进入钟盘收票（R-0017 目标形态）。
         var nominated = await seat1.InvokeAsync<CommandResultDto>("Nominate", 2, "test-day-nominate");
         Assert.Equal("Accepted", nominated.Kind);
+        await VoteSweepTestDriver.StartAsync(host, 1, "test-day-sweep");
 
-        // 2 号可以为自己投票（百科《规则概要》三-2）；3 号也投 → 2 票达到 3 名存活的一半以上。
+        // 2 号可以为自己举手（百科《规则概要》三-2）；3 号也举 → 收票后 2 票达到 3 名存活的一半以上。
         var voteSelf = await seat2.InvokeAsync<CommandResultDto>("CastVote", 1, true, "test-day-vote-self");
         Assert.Equal("Accepted", voteSelf.Kind);
         var voteOther = await seat3.InvokeAsync<CommandResultDto>("CastVote", 1, true, "test-day-vote-other");
         Assert.Equal("Accepted", voteOther.Kind);
+
+        // 控制面按座次走完一圈：每席在分针指向它的那一刻冻结举手状态（先举也算、过时不候）。
+        await VoteSweepTestDriver.CollectAllAsync(host, 1, 4, "test-day-sweep");
 
         var counted = await storyteller.InvokeAsync<CommandResultDto>("CountVotes", 1, "test-day-count");
         Assert.Equal("Accepted", counted.Kind);
@@ -156,7 +160,8 @@ public sealed class DayPhaseHostTests
     }
 
     /// <summary>
-    /// 白天进行中重启宿主：白天账（提名 / 票面）与阶段从事件流恢复，重启后还能把这天打完。
+    /// 白天进行中重启宿主：白天账（提名 / 收票进度 / 举手）与阶段从事件流恢复；
+    /// 未收完的收票**不追补**（中断等说书人继续），重启后还能把这天打完。
     /// </summary>
     [Fact]
     public async Task RestartDuringDay_RestoresDayLedgerAndCanContinue()
@@ -188,6 +193,7 @@ public sealed class DayPhaseHostTests
 
                 var nominated = await seat1.InvokeAsync<CommandResultDto>("Nominate", 2, "test-day-restart-nominate");
                 Assert.Equal("Accepted", nominated.Kind);
+                await VoteSweepTestDriver.StartAsync(host, 1, "test-day-restart-sweep");
                 var voteNominee = await seat1.InvokeAsync<CommandResultDto>("CastVote", 1, true, "test-day-restart-vote-1");
                 Assert.Equal("Accepted", voteNominee.Kind);
                 var voteOther = await seat3.InvokeAsync<CommandResultDto>("CastVote", 1, true, "test-day-restart-vote-3");
@@ -201,17 +207,23 @@ public sealed class DayPhaseHostTests
                 deleteDatabaseOnDispose: true,
                 autoStartTestNight: false))
             {
-                // 重启只靠事件流恢复：阶段、白天账（进行中）、提名与票面都在。
+                // 重启只靠事件流恢复：阶段、白天账（进行中）、提名、收票进度与举手都在。
                 var view = restarted.Session.GetStorytellerView();
                 Assert.Equal("Day", view.Phase?.ToString());
                 Assert.Equal(DayStatus.Open, view.Day?.Status);
                 var nomination = Assert.Single(view.Day!.Nominations);
                 Assert.Equal(NominationStatus.Voting, nomination.Status);
                 Assert.Equal(1, nomination.Index);
-                Assert.Equal(2, nomination.Ballot.Count);
+                Assert.Equal(2, nomination.HandsRaised.Count);
+                Assert.Empty(nomination.Ballot);
 
-                // 还能继续打完：计票 → 结束并处决。
+                // 未收完的收票不追补：重启后是「已中断」，等说书人显式继续（R-0017 目标形态）。
+                Assert.Equal("Interrupted", view.VoteSweep?.Phase);
+
+                // 还能继续打完：继续收票 → 按座次收完 → 计票 → 结束并处决。
                 await using var storyteller = await restarted.ConnectStorytellerAsync();
+                await VoteSweepTestDriver.ResumeAsync(restarted, 1, "test-day-restart-resume");
+                await VoteSweepTestDriver.CollectAllAsync(restarted, 1, 3, "test-day-restart-collect");
                 var counted = await storyteller.InvokeAsync<CommandResultDto>("CountVotes", 1, "test-day-restart-count");
                 Assert.Equal("Accepted", counted.Kind);
                 var closed = await storyteller.InvokeAsync<CommandResultDto>("CloseDay", "test-day-restart-close");
@@ -290,7 +302,7 @@ public sealed class DayPhaseHostTests
 
     /// <summary>
     /// 矩阵第 7 行的正向证据：白天公开事实**逐席位一致**（只有自己的权限位不同）；
-    /// 窗口期内的票面公开是 R-0017 第 5 条登记的口径（线下举手本来就人人可见）。
+    /// 收票期间的举手 / 已收票公开是 R-0017 第 5 条登记的口径（线下举手本来就人人可见）。
     /// </summary>
     [Fact]
     public async Task PlayerDayProjection_IsPublicOnlyAndIdenticalAcrossSeats()
@@ -313,6 +325,7 @@ public sealed class DayPhaseHostTests
 
         var nominated = await seat1.InvokeAsync<CommandResultDto>("Nominate", 2, "test-day-view-nominate");
         Assert.Equal("Accepted", nominated.Kind);
+        await VoteSweepTestDriver.StartAsync(host, 1, "test-day-view-sweep");
         var voted = await seat3.InvokeAsync<CommandResultDto>("CastVote", 1, true, "test-day-view-vote");
         Assert.Equal("Accepted", voted.Kind);
 
@@ -321,20 +334,24 @@ public sealed class DayPhaseHostTests
         Assert.NotNull(seatOne);
         Assert.NotNull(seatThree);
 
-        // 公开事实逐字段一致：天数 / 状态 / 提名 / 票面 / 开放提名 / 候选名单。
+        // 公开事实逐字段一致：天数 / 状态 / 提名 / 举手 / 收票进度 / 开放提名 / 候选名单。
         Assert.Equal(seatOne!.PublicView.DayNumber, seatThree!.PublicView.DayNumber);
         Assert.Equal(seatOne.PublicView.Status, seatThree.PublicView.Status);
         Assert.Equal(seatOne.PublicView.Nominations.Count, seatThree.PublicView.Nominations.Count);
         Assert.Equal(seatOne.PublicView.Nominations[0].Nominator, seatThree.PublicView.Nominations[0].Nominator);
         Assert.Equal(seatOne.PublicView.Nominations[0].Nominee, seatThree.PublicView.Nominations[0].Nominee);
-        Assert.Equal(seatOne.PublicView.Nominations[0].Ballot, seatThree.PublicView.Nominations[0].Ballot);
+        Assert.Equal(seatOne.PublicView.Nominations[0].HandsRaised, seatThree.PublicView.Nominations[0].HandsRaised);
+        Assert.Equal(seatOne.VoteSweep?.Phase, seatThree.VoteSweep?.Phase);
         Assert.Equal(seatOne.PublicView.OpenNomination?.Index, seatThree.PublicView.OpenNomination?.Index);
         Assert.Equal(seatOne.PublicView.AboutToBeExecuted, seatThree.PublicView.AboutToBeExecuted);
         Assert.Equal(seatOne.NominationCandidates, seatThree.NominationCandidates);
 
-        // 窗口期内票面公开（R-0017 第 5 条）：3 号投的票立刻出现在两个席位的公开事实里。
-        Assert.Single(seatOne.PublicView.Nominations[0].Ballot);
-        Assert.Equal(new SeatId(3), seatOne.PublicView.Nominations[0].Ballot[0]);
+        // 收票期间举手公开（R-0017 第 5 条）：3 号的举手立刻出现在两个席位的公开事实里；
+        // 票面（冻结结论）要等逐席收票才产生。
+        Assert.Single(seatOne.PublicView.Nominations[0].HandsRaised);
+        Assert.Equal(new SeatId(3), seatOne.PublicView.Nominations[0].HandsRaised[0]);
+        Assert.Empty(seatOne.PublicView.Nominations[0].Ballot);
+        Assert.Equal("Countdown", seatOne.VoteSweep?.Phase);
         Assert.Null(seatOne.PublicView.AboutToBeExecuted);
 
         // 权限位是"自己的"：投过票的 3 号 voted=true；1 号是提名者、没投票。

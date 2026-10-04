@@ -255,7 +255,7 @@ export class PlayerGateway {
     return this.connection.invoke<unknown>('Nominate', this.requireCredential(), nomineeSeat, idempotencyKey)
   }
 
-  /** 在当前开放的提名上投票 / 撤回（在线口径见 R-0017）。 */
+  /** 在当前开放的提名上举手 / 放下（先举也算、过时不候；R-0017 目标形态）。 */
   async castVote(nominationIndex: number, voted: boolean, idempotencyKey: string): Promise<unknown> {
     return this.connection.invoke<unknown>(
       'CastVote',
@@ -492,6 +492,7 @@ export function normalizePlayerDay(raw: unknown): PlayerDayDto | null {
     canNominate: asBoolean(day['canNominate']) ?? false,
     canVote: asBoolean(day['canVote']) ?? false,
     voted: asBoolean(day['voted']) ?? false,
+    seatCollected: asBoolean(day['seatCollected']) ?? false,
     candidates: asArray<unknown>(day['candidates'])
       .map((candidate) => asCount(candidate))
       .filter((candidate): candidate is number => candidate !== null),

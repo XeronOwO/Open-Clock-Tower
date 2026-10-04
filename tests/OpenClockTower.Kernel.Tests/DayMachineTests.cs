@@ -3,11 +3,12 @@ using OpenClockTower.Kernel;
 namespace OpenClockTower.Kernel.Tests;
 
 /// <summary>
-/// 白天规则（提名 / 投票 / 计票 / 处决）的行为与边界。
+/// 白天规则（提名 / 收票后的计票 / 处决）的行为与边界；钟盘收票本身的语义见
+/// <see cref="VoteSweepMachineTests"/>。
 /// </summary>
 /// <remarks>
 /// 依据：百科《规则概要》三 /《提名》/《投票》/《处决》· 2026-10-01 抓取；
-/// 在线投票窗口口径见 <c>docs/standard/rulings.md</c> R-0017；自我提名见 R-0018（暂取允许）。
+/// 钟盘收票口径见 <c>docs/standard/rulings.md</c> R-0017（目标形态）；自我提名见 R-0018（允许）。
 /// </remarks>
 public sealed class DayMachineTests
 {
@@ -80,9 +81,9 @@ public sealed class DayMachineTests
         var deadNominee = DayPhaseFixture.Nominate(state, context, nominator: 1, nominee: 2);
         Assert.Equal(StepMachineOutcomeKind.Applied, deadNominee.Kind);
 
-        // 同一个白天：1 号已经发起过提名，换 3 号对 3 号自我提名（R-0018 暂取允许）。
+        // 同一个白天：1 号已经发起过提名，换 3 号对 3 号自我提名（R-0018 允许）。
         var selfContext = DayPhaseFixture.Context((1, LifeState.Alive), (2, LifeState.Dead), (3, LifeState.Alive));
-        var counted = DayPhaseFixture.Count(deadNominee.State, selfContext, index: 1);
+        var counted = DayPhaseFixture.SweepAndCount(deadNominee.State, selfContext, index: 1);
         var selfNomination = DayPhaseFixture.Nominate(counted.State, selfContext, nominator: 3, nominee: 3);
         Assert.Equal(StepMachineOutcomeKind.Applied, selfNomination.Kind);
     }
@@ -107,7 +108,7 @@ public sealed class DayMachineTests
         var state = DayPhaseFixture.StartDay();
 
         var first = DayPhaseFixture.Nominate(state, context, nominator: 1, nominee: 2);
-        var counted = DayPhaseFixture.Count(first.State, context, index: 1);
+        var counted = DayPhaseFixture.SweepAndCount(first.State, context, index: 1);
         Assert.Equal(StepMachineOutcomeKind.Applied, counted.Kind);
 
         var sameNominator = DayPhaseFixture.Nominate(counted.State, context, nominator: 1, nominee: 3);
@@ -127,28 +128,18 @@ public sealed class DayMachineTests
         Assert.Equal("day.no_open_nomination", DayPhaseFixture.CodeOf(noOpen));
 
         var nominated = DayPhaseFixture.Nominate(state, context, nominator: 1, nominee: 2);
-        var wrongIndex = DayPhaseFixture.Vote(nominated.State, context, voter: 2, index: 9, voted: true);
+
+        // 新口径：还没点「开始收票」之前不能举手（R-0017 目标形态）。
+        var beforeSweep = DayPhaseFixture.Vote(nominated.State, context, voter: 2, index: 1, voted: true);
+        Assert.Equal("day.sweep_not_started", DayPhaseFixture.CodeOf(beforeSweep));
+
+        var started = DayPhaseFixture.StartSweep(nominated.State, context, 1);
+        var wrongIndex = DayPhaseFixture.Vote(started.State, context, voter: 2, index: 9, voted: true);
         Assert.Equal("day.nomination_not_open", DayPhaseFixture.CodeOf(wrongIndex));
 
-        var counted = DayPhaseFixture.Count(nominated.State, context, index: 1);
+        var counted = DayPhaseFixture.SweepAndCount(nominated.State, context, index: 1);
         var afterCount = DayPhaseFixture.Vote(counted.State, context, voter: 2, index: 1, voted: true);
         Assert.Equal("day.no_open_nomination", DayPhaseFixture.CodeOf(afterCount));
-    }
-
-    [Fact]
-    public void CastVote_ChangeVoteIsCountedAtTheMomentOfCounting()
-    {
-        var context = DayPhaseFixture.Context((1, LifeState.Alive), (2, LifeState.Alive), (3, LifeState.Alive));
-        var state = DayPhaseFixture.StartDay();
-
-        var nominated = DayPhaseFixture.Nominate(state, context, nominator: 1, nominee: 2);
-        var voted = DayPhaseFixture.Vote(nominated.State, context, voter: 3, index: 1, voted: true);
-        var withdrawn = DayPhaseFixture.Vote(voted.State, context, voter: 3, index: 1, voted: false);
-
-        var counted = DayPhaseFixture.Count(withdrawn.State, context, index: 1);
-        var voteCounted = counted.Events.OfType<VoteCountedEvent>().Single();
-        Assert.Empty(voteCounted.Voters);
-        Assert.Null(voteCounted.AboutToBeExecuted);
     }
 
     [Fact]
@@ -161,10 +152,8 @@ public sealed class DayMachineTests
         var state = DayPhaseFixture.StartDay();
 
         var nominated = DayPhaseFixture.Nominate(state, context, nominator: 1, nominee: 2);
-        var vote3 = DayPhaseFixture.Vote(nominated.State, context, voter: 3, index: 1, voted: true);
-        var vote4 = DayPhaseFixture.Vote(vote3.State, context, voter: 4, index: 1, voted: true);
+        var counted = DayPhaseFixture.SweepAndCount(nominated.State, context, index: 1, 3, 4);
 
-        var counted = DayPhaseFixture.Count(vote4.State, context, index: 1);
         var result = counted.Events.OfType<VoteCountedEvent>().Single();
         Assert.Equal(2, result.Voters.Count);
         Assert.Null(result.AboutToBeExecuted);
@@ -180,19 +169,12 @@ public sealed class DayMachineTests
 
         // 第一项：3 票（≥ 一半 3 票 + 至少 1 票 + 严格最多）→ 成立。
         var first = DayPhaseFixture.Nominate(state, context, nominator: 1, nominee: 2);
-        var vote = DayPhaseFixture.Vote(first.State, context, voter: 3, index: 1, voted: true);
-        vote = DayPhaseFixture.Vote(vote.State, context, voter: 4, index: 1, voted: true);
-        vote = DayPhaseFixture.Vote(vote.State, context, voter: 5, index: 1, voted: true);
-        var countedOne = DayPhaseFixture.Count(vote.State, context, index: 1);
+        var countedOne = DayPhaseFixture.SweepAndCount(first.State, context, index: 1, 3, 4, 5);
         Assert.Equal(new SeatId(2), countedOne.Events.OfType<VoteCountedEvent>().Single().AboutToBeExecuted);
 
         // 第二项：4 票超过 3 → 取代为 4 号（条件全满足）。
         var second = DayPhaseFixture.Nominate(countedOne.State, context, nominator: 3, nominee: 4);
-        vote = DayPhaseFixture.Vote(second.State, context, voter: 1, index: 2, voted: true);
-        vote = DayPhaseFixture.Vote(vote.State, context, voter: 2, index: 2, voted: true);
-        vote = DayPhaseFixture.Vote(vote.State, context, voter: 5, index: 2, voted: true);
-        vote = DayPhaseFixture.Vote(vote.State, context, voter: 6, index: 2, voted: true);
-        var countedTwo = DayPhaseFixture.Count(vote.State, context, index: 2);
+        var countedTwo = DayPhaseFixture.SweepAndCount(second.State, context, index: 2, 1, 2, 5, 6);
         Assert.Equal(new SeatId(4), countedTwo.Events.OfType<VoteCountedEvent>().Single().AboutToBeExecuted);
     }
 
@@ -205,18 +187,12 @@ public sealed class DayMachineTests
         var state = DayPhaseFixture.StartDay();
 
         var first = DayPhaseFixture.Nominate(state, context, nominator: 1, nominee: 2);
-        var vote = DayPhaseFixture.Vote(first.State, context, voter: 3, index: 1, voted: true);
-        vote = DayPhaseFixture.Vote(vote.State, context, voter: 4, index: 1, voted: true);
-        vote = DayPhaseFixture.Vote(vote.State, context, voter: 5, index: 1, voted: true);
-        var countedOne = DayPhaseFixture.Count(vote.State, context, index: 1);
+        var countedOne = DayPhaseFixture.SweepAndCount(first.State, context, index: 1, 3, 4, 5);
         Assert.Equal(new SeatId(2), countedOne.Events.OfType<VoteCountedEvent>().Single().AboutToBeExecuted);
 
         // 第二项同样 3 票：并列最多 → 两人都不再是「即将被处决」。
         var second = DayPhaseFixture.Nominate(countedOne.State, context, nominator: 2, nominee: 4);
-        vote = DayPhaseFixture.Vote(second.State, context, voter: 5, index: 2, voted: true);
-        vote = DayPhaseFixture.Vote(vote.State, context, voter: 6, index: 2, voted: true);
-        vote = DayPhaseFixture.Vote(vote.State, context, voter: 1, index: 2, voted: true);
-        var countedTwo = DayPhaseFixture.Count(vote.State, context, index: 2);
+        var countedTwo = DayPhaseFixture.SweepAndCount(second.State, context, index: 2, 5, 6, 1);
         Assert.Null(countedTwo.Events.OfType<VoteCountedEvent>().Single().AboutToBeExecuted);
     }
 
@@ -228,15 +204,15 @@ public sealed class DayMachineTests
         var state = DayPhaseFixture.StartDay();
 
         var first = DayPhaseFixture.Nominate(state, context, nominator: 1, nominee: 2);
-        var voted = DayPhaseFixture.Vote(first.State, context, voter: 3, index: 1, voted: true);
-        var counted = DayPhaseFixture.Count(voted.State, context, index: 1);
+        var counted = DayPhaseFixture.SweepAndCount(first.State, context, index: 1, 3);
         var result = counted.Events.OfType<VoteCountedEvent>().Single();
         Assert.Contains(new SeatId(3), result.SpentVoteTokens);
         Assert.Contains(new SeatId(3), counted.State.Day!.SpentVoteTokens);
 
-        // 第二次提名时 3 号再投 → 票权已耗尽。
+        // 第二次提名时 3 号再举手 → 票权已耗尽（先点「开始收票」才轮到票权校验）。
         var second = DayPhaseFixture.Nominate(counted.State, context, nominator: 2, nominee: 1);
-        var again = DayPhaseFixture.Vote(second.State, context, voter: 3, index: 2, voted: true);
+        var started = DayPhaseFixture.StartSweep(second.State, context, 2);
+        var again = DayPhaseFixture.Vote(started.State, context, voter: 3, index: 2, voted: true);
         Assert.Equal("day.vote_token_spent", DayPhaseFixture.CodeOf(again));
     }
 
@@ -253,7 +229,8 @@ public sealed class DayMachineTests
         {
             Seats = [new SeatId(1), new SeatId(2), new SeatId(3)],
         };
-        var counted = DayPhaseFixture.Count(nominated.State, incomplete, index: 1);
+        var swept = DayPhaseFixture.RunSweep(nominated.State, context, index: 1);
+        var counted = DayPhaseFixture.Count(swept, incomplete, index: 1);
         Assert.Equal("day.life_unobserved", DayPhaseFixture.CodeOf(counted));
     }
 
@@ -280,9 +257,7 @@ public sealed class DayMachineTests
         var state = DayPhaseFixture.StartDay();
 
         var nominated = DayPhaseFixture.Nominate(state, context, nominator: 1, nominee: 2);
-        var vote = DayPhaseFixture.Vote(nominated.State, context, voter: 3, index: 1, voted: true);
-        vote = DayPhaseFixture.Vote(vote.State, context, voter: 1, index: 1, voted: true);
-        var counted = DayPhaseFixture.Count(vote.State, context, index: 1);
+        var counted = DayPhaseFixture.SweepAndCount(nominated.State, context, index: 1, 3, 1);
 
         var closed = DayPhaseFixture.Close(counted.State, context);
 
@@ -316,9 +291,7 @@ public sealed class DayMachineTests
         var state = DayPhaseFixture.StartDay();
 
         var nominated = DayPhaseFixture.Nominate(state, context, nominator: 1, nominee: 2);
-        var vote = DayPhaseFixture.Vote(nominated.State, context, voter: 3, index: 1, voted: true);
-        vote = DayPhaseFixture.Vote(vote.State, context, voter: 1, index: 1, voted: true);
-        var counted = DayPhaseFixture.Count(vote.State, context, index: 1);
+        var counted = DayPhaseFixture.SweepAndCount(nominated.State, context, index: 1, 3, 1);
 
         // 计票之后、结束之前 2 号死亡（例如其它效果）：仍然"被处决"，但不再产生死亡变化。
         var died = DayPhaseFixture.Apply(counted.State, context, new SeatStateChangedInput
@@ -354,8 +327,7 @@ public sealed class DayMachineTests
         var state = DayPhaseFixture.StartDay();
 
         var nominated = DayPhaseFixture.Nominate(state, context, nominator: 1, nominee: 2);
-        var vote = DayPhaseFixture.Vote(nominated.State, context, voter: 3, index: 1, voted: true);
-        var counted = DayPhaseFixture.Count(vote.State, context, index: 1);
+        var counted = DayPhaseFixture.SweepAndCount(nominated.State, context, index: 1, 3);
 
         var forced = DayPhaseFixture.Apply(counted.State, context, new ForceAdvanceInput { Reason = "测试强推" });
         Assert.Equal(StepMachineOutcomeKind.Applied, forced.Kind);
@@ -371,8 +343,7 @@ public sealed class DayMachineTests
         var context = DayPhaseFixture.Context((1, LifeState.Alive), (2, LifeState.Alive), (3, LifeState.Dead));
         var state = DayPhaseFixture.StartDay();
         var nominated = DayPhaseFixture.Nominate(state, context, nominator: 1, nominee: 2);
-        var voted = DayPhaseFixture.Vote(nominated.State, context, voter: 3, index: 1, voted: true);
-        var counted = DayPhaseFixture.Count(voted.State, context, index: 1);
+        var counted = DayPhaseFixture.SweepAndCount(nominated.State, context, index: 1, 3);
         var closed = DayPhaseFixture.Close(counted.State, context);
         Assert.Contains(new SeatId(3), closed.State.Day!.SpentVoteTokens);
 
@@ -396,8 +367,8 @@ public sealed class DayMachineTests
         var forced = DayPhaseFixture.Apply(nominated.State, context, new ForceAdvanceInput { Reason = "测试强推" });
         Assert.Equal("day.nomination_not_counted", DayPhaseFixture.CodeOf(forced));
 
-        // 先计票，再强推：出路永远存在（且票权在计票时结算）。
-        var counted = DayPhaseFixture.Count(nominated.State, context, index: 1);
+        // 先收票再计票，然后强推：出路永远存在（且票权在计票时结算）。
+        var counted = DayPhaseFixture.SweepAndCount(nominated.State, context, index: 1);
         var afterCount = DayPhaseFixture.Apply(counted.State, context, new ForceAdvanceInput { Reason = "测试强推" });
         Assert.Equal(StepMachineOutcomeKind.Applied, afterCount.Kind);
         Assert.True(afterCount.State.IsPlanCompleted);
@@ -416,8 +387,7 @@ public sealed class DayMachineTests
         var state = DayPhaseFixture.StartDay();
 
         var nominated = DayPhaseFixture.Nominate(state, context, nominator: 1, nominee: 2);
-        var voted = DayPhaseFixture.Vote(nominated.State, context, voter: 6, index: 1, voted: true);
-        var counted = DayPhaseFixture.Count(voted.State, context, index: 1);
+        var counted = DayPhaseFixture.SweepAndCount(nominated.State, context, index: 1, 6);
 
         var result = counted.Events.OfType<VoteCountedEvent>().Single();
         Assert.Null(result.AboutToBeExecuted); // 1 票达不到 5 名存活者的一半 → 本次投票失败
@@ -426,7 +396,8 @@ public sealed class DayMachineTests
 
         // 下一次提名时 6 号已无票权。
         var second = DayPhaseFixture.Nominate(counted.State, context, nominator: 2, nominee: 3);
-        var again = DayPhaseFixture.Vote(second.State, context, voter: 6, index: 2, voted: true);
+        var started = DayPhaseFixture.StartSweep(second.State, context, 2);
+        var again = DayPhaseFixture.Vote(started.State, context, voter: 6, index: 2, voted: true);
         Assert.Equal("day.vote_token_spent", DayPhaseFixture.CodeOf(again));
     }
 
@@ -437,11 +408,15 @@ public sealed class DayMachineTests
         var context = DayPhaseFixture.Context((1, LifeState.Alive), (2, LifeState.Alive), (3, LifeState.Alive));
         var started = StepMachine.StartDay(DayPhaseFixture.Plan(), 1);
         var nominated = DayPhaseFixture.Nominate(started.State, context, nominator: 1, nominee: 2);
-        var voted = DayPhaseFixture.Vote(nominated.State, context, voter: 3, index: 1, voted: true);
+        var sweep = DayPhaseFixture.StartSweep(nominated.State, context, 1);
+        var voted = DayPhaseFixture.Vote(sweep.State, context, voter: 3, index: 1, voted: true);
+        var collected = DayPhaseFixture.CollectAll(voted.State, context, 1);
 
         var events = new List<GameEvent>(started.Events);
         events.AddRange(nominated.Events);
+        events.AddRange(sweep.Events);
         events.AddRange(voted.Events);
+        events.AddRange(collected.Events);
         events.Add(new VoteCountedEvent
         {
             DayNumber = 1,
@@ -471,11 +446,15 @@ public sealed class DayMachineTests
         }
 
         Step(DayPhaseFixture.Nominate(state, context, nominator: 1, nominee: 2));
+        Step(DayPhaseFixture.StartSweep(state, context, 1));
         Step(DayPhaseFixture.Vote(state, context, voter: 3, index: 1, voted: true));
         Step(DayPhaseFixture.Vote(state, context, voter: 4, index: 1, voted: true));
+        Step(DayPhaseFixture.CollectAll(state, context, 1));
         Step(DayPhaseFixture.Count(state, context, index: 1));
         Step(DayPhaseFixture.Nominate(state, context, nominator: 2, nominee: 4));
+        Step(DayPhaseFixture.StartSweep(state, context, 2));
         Step(DayPhaseFixture.Vote(state, context, voter: 1, index: 2, voted: true));
+        Step(DayPhaseFixture.CollectAll(state, context, 2));
         Step(DayPhaseFixture.Count(state, context, index: 2));
         Step(DayPhaseFixture.Close(state, context));
 
@@ -483,6 +462,6 @@ public sealed class DayMachineTests
         Assert.NotNull(folded);
         Assert.True(
             StepMachineStateComparer.AreEquivalent(state, folded),
-            "重放折叠出的白天账必须与逐条处理后的状态等价（含票权与处决）。");
+            "重放折叠出的白天账必须与逐条处理后的状态等价（含收票进度、票权与处决）。");
     }
 }

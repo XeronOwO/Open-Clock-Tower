@@ -36,6 +36,9 @@ public static class GameNotificationBuilder
             if (draft.Event is DayStartedEvent
                 or NominationMadeEvent
                 or VoteCastEvent
+                or VoteSweepStartedEvent
+                or SeatVoteCollectedEvent
+                or VoteSweepResumedEvent
                 or VoteCountedEvent
                 or ExecutedEvent
                 or DayClosedEvent)

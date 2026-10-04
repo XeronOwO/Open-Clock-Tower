@@ -79,12 +79,14 @@ public sealed class RetrospectiveInfoHostTests
 
         var nominated = await pitHag.InvokeAsync<CommandResultDto>("Nominate", 2, "test-retro-nominate");
         Assert.Equal("Accepted", nominated.Kind);
+        await VoteSweepTestDriver.StartAsync(host, 1, "test-retro-sweep:start");
         var demonVote = await demon.InvokeAsync<CommandResultDto>("CastVote", 1, true, "test-retro-vote-demon");
         Assert.Equal("Accepted", demonVote.Kind);
         var crierVote = await townCrier.InvokeAsync<CommandResultDto>("CastVote", 1, true, "test-retro-vote-crier");
         Assert.Equal("Accepted", crierVote.Kind);
         var oracleVote = await oracle.InvokeAsync<CommandResultDto>("CastVote", 1, true, "test-retro-vote-oracle");
         Assert.Equal("Accepted", oracleVote.Kind);
+        await VoteSweepTestDriver.CollectAllAsync(host, 1, 6, "test-retro-sweep");
 
         var counted = await storyteller.InvokeAsync<CommandResultDto>("CountVotes", 1, "test-retro-count");
         Assert.Equal("Accepted", counted.Kind);

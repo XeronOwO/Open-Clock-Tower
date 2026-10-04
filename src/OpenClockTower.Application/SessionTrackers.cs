@@ -36,6 +36,15 @@ public sealed class SessionTrackers
     /// </summary>
     public long? SlotEntrySequence { get; private set; }
 
+    /// <summary>
+    /// 钟盘收票的时间轴锚点（开始 / 继续事件的记录时刻）；为空 = 没有可推进的收票
+    /// （未开始，或服务端重启 / 重建后中断、等待说书人继续）。
+    /// </summary>
+    public DateTimeOffset? VoteSweepStartedAt { get; private set; }
+
+    /// <summary>收票锚点事件的序号（收票命令的幂等键按"这一次收票"区分）。</summary>
+    public long? VoteSweepEntrySequence { get; private set; }
+
     /// <summary>当前挂起请求的起算时刻；没有挂起时为 null（说书人视图据此算"卡了多久"）。</summary>
     public DateTimeOffset? PendingRequestSince { get; private set; }
 
@@ -82,11 +91,25 @@ public sealed class SessionTrackers
                 case PhaseStartedEvent:
                     // 新计划开启：槽位标识跨夜复用（如 clockmaker），逐槽位结算只在本计划内有意义。
                     _slotResolutions.Clear();
+                    VoteSweepStartedAt = null;
+                    VoteSweepEntrySequence = null;
                     break;
                 case SlotEnteredEvent:
                     SlotStartedAt = recordedAt;
                     SlotEntrySequence = draft.Sequence;
                     PendingRequestSince = null;
+                    break;
+                case VoteSweepStartedEvent:
+                case VoteSweepResumedEvent:
+                    // 开始 / 继续收票：重锚时间轴，逐席到点由 VoteSweepPacer 按它算（D-0008）。
+                    VoteSweepStartedAt = recordedAt;
+                    VoteSweepEntrySequence = draft.Sequence;
+                    break;
+                case VoteCountedEvent:
+                case DayClosedEvent:
+                    // 收票收口：时间轴退场；再收票是下一项提名的新锚点。
+                    VoteSweepStartedAt = null;
+                    VoteSweepEntrySequence = null;
                     break;
                 case OperationRequestIssuedEvent:
                     PendingRequestSince = recordedAt;
@@ -142,6 +165,7 @@ public sealed class SessionTrackers
 
         DateTimeOffset? lastSlotEnteredAt = null;
         long? lastSlotEnteredSequence = null;
+        long? lastSweepAnchorSequence = null;
         OperationRequestId? lastIssuedRequestId = null;
         DateTimeOffset? lastIssuedAt = null;
 
@@ -156,6 +180,10 @@ public sealed class SessionTrackers
                 case SlotEnteredEvent:
                     lastSlotEnteredAt = stored.RecordedAt;
                     lastSlotEnteredSequence = stored.Sequence;
+                    break;
+                case VoteSweepStartedEvent:
+                case VoteSweepResumedEvent:
+                    lastSweepAnchorSequence = stored.Sequence;
                     break;
                 case OperationRequestIssuedEvent issued:
                     lastIssuedRequestId = issued.Request.Id;
@@ -187,6 +215,11 @@ public sealed class SessionTrackers
         SlotStartedAt = lastSlotEnteredAt;
         SlotEntrySequence = lastSlotEnteredSequence;
 
+        // 收票锚点刻意**不**沿用旧时间轴：服务端重启 / 重建后不追补断线期错过的席位
+        // （那时玩家无法举手），未收完的收票由说书人「继续收票」按新事件的记录时刻重锚。
+        VoteSweepStartedAt = null;
+        VoteSweepEntrySequence = lastSweepAnchorSequence;
+
         var pending = machine?.PendingRequest;
         if (pending is { Status: OperationRequestStatus.Pending } && pending.Id == lastIssuedRequestId)
         {
@@ -206,6 +239,8 @@ public sealed class SessionTrackers
         LastVoidedRequest = null;
         SlotStartedAt = null;
         SlotEntrySequence = null;
+        VoteSweepStartedAt = null;
+        VoteSweepEntrySequence = null;
         PendingRequestSince = null;
     }
 

@@ -16,6 +16,16 @@ namespace OpenClockTower.Kernel;
 /// </remarks>
 internal static class DayStepMachine
 {
+    /// <summary>这条输入是不是白天输入（提名 / 钟盘收票 / 计票 / 结束白天）。</summary>
+    internal static bool IsDayInput(StepMachineInput input) =>
+        input is NominateInput
+            or CastVoteInput
+            or StartVoteSweepInput
+            or CollectSeatVoteInput
+            or ResumeVoteSweepInput
+            or CountVotesInput
+            or CloseDayInput;
+
     /// <summary>开启白天：校验计划形状与天数，产出阶段 / 白天账 / 槽位事件。</summary>
     internal static StepMachineOutcome StartDay(
         StepPlan plan,
@@ -79,6 +89,9 @@ internal static class DayStepMachine
         var outcome = input switch
         {
             NominateInput nominate => DayMachine.Nominate(day, context, nominate),
+            StartVoteSweepInput startSweep => DayMachine.StartVoteSweep(day, context, startSweep),
+            CollectSeatVoteInput collectSeat => DayMachine.CollectSeatVote(day, context, collectSeat),
+            ResumeVoteSweepInput resumeSweep => DayMachine.ResumeVoteSweep(day, context, resumeSweep),
             CastVoteInput castVote => DayMachine.CastVote(day, context, castVote),
             CountVotesInput countVotes => DayMachine.CountVotes(day, context, countVotes),
             CloseDayInput => DayMachine.CloseDay(day, context),

@@ -2,7 +2,7 @@ using OpenClockTower.Kernel;
 
 namespace OpenClockTower.Application;
 
-/// <summary>白天流程步骤：开始 / 提名 / 投票 / 计票 / 处决 / 结束（D-0020 步骤目录）。</summary>
+/// <summary>白天流程步骤：开始 / 提名 / 收票（开始 / 逐席 / 继续）/ 计票 / 处决 / 结束（D-0020 步骤目录）。</summary>
 internal sealed class DayReplayPresenter : IReplayStepPresenter
 {
     /// <inheritdoc />
@@ -10,7 +10,10 @@ internal sealed class DayReplayPresenter : IReplayStepPresenter
     [
         typeof(DayStartedEvent),
         typeof(NominationMadeEvent),
+        typeof(VoteSweepStartedEvent),
         typeof(VoteCastEvent),
+        typeof(SeatVoteCollectedEvent),
+        typeof(VoteSweepResumedEvent),
         typeof(VoteCountedEvent),
         typeof(ExecutedEvent),
         typeof(DayClosedEvent),
@@ -36,15 +39,42 @@ internal sealed class DayReplayPresenter : IReplayStepPresenter
                 ? $"提名时提名者角色：{ReplayText.CharacterValue(character)}"
                 : null,
         },
+        VoteSweepStartedEvent sweepStarted => new ReplayStep
+        {
+            Sequence = context.Stored.Sequence,
+            Kind = ReplayStepKind.Day,
+            Phase = GamePhase.Day,
+            Summary = $"第 {sweepStarted.DayNumber} 天第 {sweepStarted.NominationIndex} 项提名开始收票"
+                + $"（倒计时 {sweepStarted.CountdownMilliseconds / 1000.0:0.#}s，间隔 {sweepStarted.IntervalMilliseconds / 1000.0:0.#}s）",
+        },
         VoteCastEvent vote => new ReplayStep
         {
             Sequence = context.Stored.Sequence,
             Kind = ReplayStepKind.Day,
             Phase = GamePhase.Day,
-            Summary = $"{context.SeatText.Seat(vote.Voter)} {(vote.Voted ? "投出赞成票" : "撤回 / 取消赞成")}",
+            Summary = $"{context.SeatText.Seat(vote.Voter)} {(vote.Voted ? "举起手（赞成）" : "放下手（撤回）")}",
             Detail = vote.VoterCharacter is { } character
-                ? $"投票时投票者角色：{ReplayText.CharacterValue(character)}"
+                ? $"举手时投票者角色：{ReplayText.CharacterValue(character)}"
                 : null,
+        },
+        SeatVoteCollectedEvent collected => new ReplayStep
+        {
+            Sequence = context.Stored.Sequence,
+            Kind = ReplayStepKind.Day,
+            Phase = GamePhase.Day,
+            Summary = $"第 {collected.DayNumber} 天第 {collected.NominationIndex} 项提名收票："
+                + $"{context.SeatText.Seat(collected.Seat)} {(collected.Voted ? "举手赞成" : "未举手")}",
+            Detail = collected.VoterCharacter is { } character
+                ? $"收票时该席位角色：{ReplayText.CharacterValue(character)}"
+                : null,
+        },
+        VoteSweepResumedEvent sweepResumed => new ReplayStep
+        {
+            Sequence = context.Stored.Sequence,
+            Kind = ReplayStepKind.Day,
+            Phase = GamePhase.Day,
+            Summary = $"第 {sweepResumed.DayNumber} 天第 {sweepResumed.NominationIndex} 项提名继续收票"
+                + "（重新起倒计时，从下一未收席位接着收）",
         },
         VoteCountedEvent counted => PresentCounted(context, counted),
         ExecutedEvent executed => new ReplayStep

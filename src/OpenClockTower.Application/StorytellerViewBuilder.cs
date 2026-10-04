@@ -49,6 +49,7 @@ public static class StorytellerViewBuilder
             sequence,
             trackers.PendingRequestSince,
             now,
+            trackers.VoteSweepStartedAt,
             trackers.RecentSeatChanges,
             trackers.AnnotationLedger.Annotations,
             seatNames,

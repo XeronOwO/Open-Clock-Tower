@@ -33,8 +33,9 @@ public sealed class DayFactSnapshotTests
         var context = Context((1, LifeState.Alive, "no-dashii"), (2, LifeState.Alive, "clockmaker"));
         var state = DayPhaseFixture.StartDay();
         var opened = DayPhaseFixture.Nominate(state, context, nominator: 1, nominee: 2).State;
+        var sweep = DayPhaseFixture.StartSweep(opened, context, 1);
 
-        var voted = DayPhaseFixture.Vote(opened, context, voter: 1, index: 1, voted: true);
+        var voted = DayPhaseFixture.Vote(sweep.State, context, voter: 1, index: 1, voted: true);
         var cast = Assert.Single(voted.Events.OfType<VoteCastEvent>());
         Assert.Equal(new CharacterId("no-dashii"), cast.VoterCharacter);
 
@@ -50,7 +51,11 @@ public sealed class DayFactSnapshotTests
             Voted = true,
         }, attempts[0]);
         Assert.False(attempts[1].Voted);
-        Assert.Empty(withdrawn.State.Day!.OpenDay!.OpenNomination!.Ballot);
+
+        // 钟盘形态：举手只改"现在谁举着手"；票面要等逐席收票才有冻结结论（先举也算、过时不候）。
+        var nomination = withdrawn.State.Day!.OpenDay!.OpenNomination!;
+        Assert.Empty(nomination.Ballot);
+        Assert.Empty(nomination.HandsRaised);
     }
 
     /// <summary>角色维度未观测：快照记 null，不把「不知道」写成「不是恶魔」（不猜）。</summary>
@@ -60,8 +65,9 @@ public sealed class DayFactSnapshotTests
         var context = Context((1, LifeState.Alive, null), (2, LifeState.Alive, null));
         var state = DayPhaseFixture.StartDay();
         var opened = DayPhaseFixture.Nominate(state, context, nominator: 1, nominee: 2).State;
+        var sweep = DayPhaseFixture.StartSweep(opened, context, 1);
 
-        var outcome = DayPhaseFixture.Vote(opened, context, voter: 1, index: 1, voted: true);
+        var outcome = DayPhaseFixture.Vote(sweep.State, context, voter: 1, index: 1, voted: true);
 
         var cast = Assert.Single(outcome.Events.OfType<VoteCastEvent>());
         Assert.Null(cast.VoterCharacter);
@@ -75,7 +81,8 @@ public sealed class DayFactSnapshotTests
         var context = Context((1, LifeState.Alive, "no-dashii"), (2, LifeState.Alive, "clockmaker"));
         var state = DayPhaseFixture.StartDay();
         var opened = DayPhaseFixture.Nominate(state, context, nominator: 1, nominee: 2).State;
-        var voted = DayPhaseFixture.Vote(opened, context, voter: 1, index: 1, voted: true).State;
+        var sweep = DayPhaseFixture.StartSweep(opened, context, 1);
+        var voted = DayPhaseFixture.Vote(sweep.State, context, voter: 1, index: 1, voted: true).State;
 
         Assert.True(StepMachineStateComparer.AreEquivalent(voted, voted with { }));
 
@@ -103,6 +110,37 @@ public sealed class DayFactSnapshotTests
             },
         };
         Assert.False(StepMachineStateComparer.AreEquivalent(voted, tamperedNominator));
+
+        // 收票状态（参数 / 举手）也必须参与比较：漏比会让重建校验在"收票到哪了"上失明。
+        var tamperedInterval = voted with
+        {
+            Day = voted.Day! with
+            {
+                Days =
+                [
+                    day with
+                    {
+                        Nominations =
+                        [
+                            day.Nominations[0] with
+                            {
+                                Sweep = day.Nominations[0].Sweep! with { IntervalMilliseconds = 4000 },
+                            },
+                        ],
+                    },
+                ],
+            },
+        };
+        Assert.False(StepMachineStateComparer.AreEquivalent(voted, tamperedInterval));
+
+        var tamperedHands = voted with
+        {
+            Day = voted.Day! with
+            {
+                Days = [day with { Nominations = [day.Nominations[0] with { HandsRaised = [] }] }],
+            },
+        };
+        Assert.False(StepMachineStateComparer.AreEquivalent(voted, tamperedHands));
     }
 
     /// <summary>
@@ -114,7 +152,8 @@ public sealed class DayFactSnapshotTests
         var context = Context((1, LifeState.Alive, "no-dashii"), (2, LifeState.Alive, "clockmaker"));
         var state = DayPhaseFixture.StartDay();
         var opened = DayPhaseFixture.Nominate(state, context, nominator: 1, nominee: 2).State;
-        var voted = DayPhaseFixture.Vote(opened, context, voter: 1, index: 1, voted: true).State;
+        var sweep = DayPhaseFixture.StartSweep(opened, context, 1);
+        var voted = DayPhaseFixture.Vote(sweep.State, context, voter: 1, index: 1, voted: true).State;
 
         var options = new JsonSerializerOptions(JsonSerializerDefaults.Web);
         var payload = JsonSerializer.Serialize(voted.Day, options);
@@ -124,6 +163,14 @@ public sealed class DayFactSnapshotTests
         Assert.Equal(payload, JsonSerializer.Serialize(restored, options));
         Assert.Equal(new CharacterId("no-dashii"), restored!.Days[0].Nominations[0].NominatorCharacter);
         Assert.Equal(new CharacterId("no-dashii"), restored.Days[0].VoteAttempts[0].VoterCharacter);
+
+        // 钟盘收票状态也要能过 JSON 往返（快照落库与重启恢复走这条管道）。
+        var restoredSweep = restored.Days[0].Nominations[0].Sweep;
+        Assert.NotNull(restoredSweep);
+        Assert.Equal(VoteSweepLimits.DefaultCountdownMilliseconds, restoredSweep!.CountdownMilliseconds);
+        Assert.Equal(VoteSweepLimits.DefaultIntervalMilliseconds, restoredSweep.IntervalMilliseconds);
+        Assert.Empty(restoredSweep.Collected);
+        Assert.Contains(new SeatId(1), restored.Days[0].Nominations[0].HandsRaised);
     }
 
     /// <summary>按「席位 + 生死 + 可选角色」构造状态账；角色为 null 表示该维度未观测。</summary>

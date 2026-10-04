@@ -1,7 +1,7 @@
 namespace OpenClockTower.Kernel;
 
 /// <summary>
-/// 白天阶段的纯迁移：提名 / 投票 / 计票 / 结束白天。
+/// 白天阶段的纯迁移：提名 / 钟盘收票 / 计票 / 结束白天。
 /// </summary>
 /// <remarks>
 /// <para>
@@ -11,7 +11,7 @@ namespace OpenClockTower.Kernel;
 /// <para>
 /// **纯计算**（D-0008）：生命事实从 <paramref name="context"/> 的状态账读，不猜；
 /// 观测不齐就拒绝整条输入（D-0015）。规则依据：百科《规则概要》三 /《提名》/《投票》/《处决》
-/// · 2026-10-01 抓取；在线投票窗口口径见 <c>docs/standard/rulings.md</c> R-0017。
+/// · 2026-10-01 抓取；钟盘收票口径见 <c>docs/standard/rulings.md</c> R-0017（目标形态）。
 /// </para>
 /// </remarks>
 public static class DayMachine
@@ -94,7 +94,181 @@ public static class DayMachine
         ]);
     }
 
-    /// <summary>投票 / 撤回：存活玩家不限次数；死亡玩家消耗「死后仅一次」的投票权（计票时结算）。</summary>
+    /// <summary>
+    /// 开始钟盘收票：进入倒计时，之后由控制面逐席送 <see cref="CollectSeatVoteInput"/>（R-0017 目标形态）。
+    /// </summary>
+    public static DayOutcome StartVoteSweep(DayState state, SettlementContext context, StartVoteSweepInput input)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(input);
+
+        if (state.OpenDay is not { } day)
+        {
+            return DayOutcome.Reject("day.not_open", "现在不是白天，或白天已经结束");
+        }
+
+        var open = day.OpenNomination;
+        if (open is null)
+        {
+            return DayOutcome.Reject("day.no_open_nomination", "现在没有开放投票的提名");
+        }
+
+        if (open.Index != input.NominationIndex)
+        {
+            return DayOutcome.Reject(
+                "day.nomination_not_open",
+                $"当前开放的是第 {open.Index} 项提名，不是第 {input.NominationIndex} 项");
+        }
+
+        if (open.Sweep is not null)
+        {
+            return DayOutcome.Reject("day.sweep_started", $"第 {open.Index} 项提名的收票已经开始过了");
+        }
+
+        if (!VoteSweepLimits.IsCountdownValid(input.CountdownMilliseconds))
+        {
+            return DayOutcome.Reject(
+                "day.sweep_countdown_invalid",
+                $"倒计时必须在 {VoteSweepLimits.MinCountdownMilliseconds}–{VoteSweepLimits.MaxCountdownMilliseconds} 毫秒之间");
+        }
+
+        if (!VoteSweepLimits.IsIntervalValid(input.IntervalMilliseconds))
+        {
+            return DayOutcome.Reject(
+                "day.sweep_interval_invalid",
+                $"逐席间隔必须在 {VoteSweepLimits.MinIntervalMilliseconds}–{VoteSweepLimits.MaxIntervalMilliseconds} 毫秒之间");
+        }
+
+        if (context.Seats.Count == 0)
+        {
+            return DayOutcome.Reject("day.no_seats", "本局座次还没有观测：无法确定收票顺序（不猜）");
+        }
+
+        return DayOutcome.Accepted(
+        [
+            new VoteSweepStartedEvent
+            {
+                DayNumber = day.DayNumber,
+                NominationIndex = open.Index,
+                Seats = [.. context.Seats.OrderBy(seat => seat.Value)],
+                CountdownMilliseconds = input.CountdownMilliseconds,
+                IntervalMilliseconds = input.IntervalMilliseconds,
+            },
+        ]);
+    }
+
+    /// <summary>
+    /// 收第 N 席的票：严格时点冻结该席"已登记的举手状态"（先举也算、过时不候）；
+    /// 只接受下一待收席位，顺序由内核校验（R-0017 目标形态）。
+    /// </summary>
+    public static DayOutcome CollectSeatVote(DayState state, SettlementContext context, CollectSeatVoteInput input)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(input);
+
+        if (state.OpenDay is not { } day)
+        {
+            return DayOutcome.Reject("day.not_open", "现在不是白天，或白天已经结束");
+        }
+
+        var open = day.OpenNomination;
+        if (open is null)
+        {
+            return DayOutcome.Reject("day.no_open_nomination", "现在没有开放投票的提名");
+        }
+
+        if (open.Index != input.NominationIndex)
+        {
+            return DayOutcome.Reject(
+                "day.nomination_not_open",
+                $"当前开放的是第 {open.Index} 项提名，不是第 {input.NominationIndex} 项");
+        }
+
+        if (open.Sweep is not { } sweep)
+        {
+            return DayOutcome.Reject("day.sweep_not_started", "收票还没有开始：先由说书人点「开始」");
+        }
+
+        if (sweep.NextSeat is not { } nextSeat)
+        {
+            return DayOutcome.Reject("day.sweep_complete", "收票已经全部完成，不能再收");
+        }
+
+        if (nextSeat != input.Seat)
+        {
+            return DayOutcome.Reject(
+                "day.seat_out_of_order",
+                $"下一待收的是 {nextSeat.Value} 号席位，不是 {input.Seat.Value} 号（收票必须按席位升序走完一圈）");
+        }
+
+        // 举手状态是事件流折叠出来的事实（先举也算）；角色快照只用于回溯型能力（R-0037），未观测记 null。
+        var voted = open.HandsRaised.Contains(input.Seat);
+        var voterCharacter = context.State.Seat(input.Seat)?.CharacterValue;
+
+        return DayOutcome.Accepted(
+        [
+            new SeatVoteCollectedEvent
+            {
+                DayNumber = day.DayNumber,
+                NominationIndex = open.Index,
+                Seat = input.Seat,
+                Voted = voted,
+                VoterCharacter = voterCharacter,
+            },
+        ]);
+    }
+
+    /// <summary>继续中断的收票：重新起倒计时，从下一未收席位接着收（R-0017 目标形态）。</summary>
+    public static DayOutcome ResumeVoteSweep(DayState state, SettlementContext context, ResumeVoteSweepInput input)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(input);
+
+        if (state.OpenDay is not { } day)
+        {
+            return DayOutcome.Reject("day.not_open", "现在不是白天，或白天已经结束");
+        }
+
+        var open = day.OpenNomination;
+        if (open is null)
+        {
+            return DayOutcome.Reject("day.no_open_nomination", "现在没有开放投票的提名");
+        }
+
+        if (open.Index != input.NominationIndex)
+        {
+            return DayOutcome.Reject(
+                "day.nomination_not_open",
+                $"当前开放的是第 {open.Index} 项提名，不是第 {input.NominationIndex} 项");
+        }
+
+        if (open.Sweep is not { } sweep)
+        {
+            return DayOutcome.Reject("day.sweep_not_started", "收票还没有开始：没有可以继续的收票");
+        }
+
+        if (sweep.IsComplete)
+        {
+            return DayOutcome.Reject("day.sweep_complete", "收票已经全部完成，不能再继续");
+        }
+
+        return DayOutcome.Accepted(
+        [
+            new VoteSweepResumedEvent
+            {
+                DayNumber = day.DayNumber,
+                NominationIndex = open.Index,
+            },
+        ]);
+    }
+
+    /// <summary>
+    /// 举手 / 放下：只在「开始收票之后、本席被收票之前」有效；本席收票后过时不候（R-0017 目标形态）。
+    /// 存活玩家不限次数；死亡玩家消耗「死后仅一次」的投票权（计票时结算）。
+    /// </summary>
     public static DayOutcome CastVote(DayState state, SettlementContext context, CastVoteInput input)
     {
         ArgumentNullException.ThrowIfNull(state);
@@ -117,6 +291,18 @@ public static class DayMachine
             return DayOutcome.Reject(
                 "day.nomination_not_open",
                 $"当前开放的是第 {open.Index} 项提名，不是第 {input.NominationIndex} 项");
+        }
+
+        if (open.Sweep is not { } sweep)
+        {
+            return DayOutcome.Reject("day.sweep_not_started", "收票还没有开始：先由说书人点「开始」，再举手 / 放下");
+        }
+
+        if (sweep.Collected.Any(vote => vote.Seat == input.Voter))
+        {
+            return DayOutcome.Reject(
+                "day.seat_collected",
+                $"分针已经过了 {input.Voter.Value} 号席位：先举也算、过时不候");
         }
 
         if (!context.Seats.Contains(input.Voter))
@@ -157,7 +343,8 @@ public static class DayMachine
     }
 
     /// <summary>
-    /// 计票：票面快照冻结，按「严格最多 + ≥ 存活人数一半 + ≥1 票」判定是否进入「即将被处决」；
+    /// 计票：收票**全部完成**后才能计（R-0017 目标形态）；票面 = 逐席冻结结论；
+    /// 按「严格最多 + ≥ 存活人数一半 + ≥1 票」判定是否进入「即将被处决」；
     /// 平局或后来者超过会取消原有状态；计票后不再重判（百科《投票》）。
     /// </summary>
     public static DayOutcome CountVotes(DayState state, SettlementContext context, CountVotesInput input)
@@ -184,6 +371,18 @@ public static class DayMachine
                 $"当前开放的是第 {open.Index} 项提名，不是第 {input.NominationIndex} 项");
         }
 
+        if (open.Sweep is not { } sweep)
+        {
+            return DayOutcome.Reject("day.sweep_not_started", "收票还没有开始：先由说书人点「开始」，不能用旧口径直接计票");
+        }
+
+        if (!sweep.IsComplete)
+        {
+            return DayOutcome.Reject(
+                "day.sweep_incomplete",
+                "收票还没有走完：等分针走完一圈、每一席都有冻结结论后再计票");
+        }
+
         var alive = 0;
         foreach (var seat in context.Seats)
         {
@@ -201,6 +400,7 @@ public static class DayMachine
             }
         }
 
+        // 钟盘形态下票面就是逐席冻结结论（先举也算、过时不候）；按席位升序只是让事件形状稳定。
         var voters = open.Ballot.OrderBy(seat => seat.Value).ToArray();
         var votes = voters.Length;
 

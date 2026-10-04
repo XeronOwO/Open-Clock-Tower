@@ -121,9 +121,11 @@ public sealed class MadnessPunishmentHostTests
         var day = await storyteller.InvokeAsync<CommandResultDto>("StartDay", "test-mutant-day-1");
         Assert.Equal("Accepted", day.Kind);
         Assert.Equal("Accepted", (await two.InvokeAsync<CommandResultDto>("Nominate", 3, "test-mutant-nominate")).Kind);
+        await VoteSweepTestDriver.StartAsync(host, 1, "test-mutant-sweep-1:start");
         Assert.Equal("Accepted", (await two.InvokeAsync<CommandResultDto>("CastVote", 1, true, "test-mutant-vote-2")).Kind);
         Assert.Equal("Accepted", (await three.InvokeAsync<CommandResultDto>("CastVote", 1, true, "test-mutant-vote-3")).Kind);
         Assert.Equal("Accepted", (await five.InvokeAsync<CommandResultDto>("CastVote", 1, true, "test-mutant-vote-5")).Kind);
+        await VoteSweepTestDriver.CollectAllAsync(host, 1, 5, "test-mutant-sweep-1");
         Assert.Equal("Accepted", (await storyteller.InvokeAsync<CommandResultDto>("CountVotes", 1, "test-mutant-count")).Kind);
         Assert.Equal("Accepted", (await storyteller.InvokeAsync<CommandResultDto>("CloseDay", "test-mutant-close")).Kind);
 
@@ -184,8 +186,10 @@ public sealed class MadnessPunishmentHostTests
         Assert.False(punishedDay.CanNominate);
 
         Assert.Equal("Accepted", (await four.InvokeAsync<CommandResultDto>("Nominate", 2, "test-mutant-nominate-2")).Kind);
+        await VoteSweepTestDriver.StartAsync(host, 1, "test-mutant-sweep-2:start");
         Assert.Equal("Accepted", (await four.InvokeAsync<CommandResultDto>("CastVote", 1, true, "test-mutant-vote-4")).Kind);
         Assert.Equal("Accepted", (await five.InvokeAsync<CommandResultDto>("CastVote", 1, true, "test-mutant-vote-5-2")).Kind);
+        await VoteSweepTestDriver.CollectAllAsync(host, 1, 5, "test-mutant-sweep-2");
         Assert.Equal("Accepted", (await storyteller.InvokeAsync<CommandResultDto>("CountVotes", 1, "test-mutant-count-2")).Kind);
         Assert.Equal("Accepted", (await storyteller.InvokeAsync<CommandResultDto>("CloseDay", "test-mutant-close-2")).Kind);
 

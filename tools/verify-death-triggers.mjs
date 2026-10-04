@@ -309,14 +309,29 @@ async function main() {
   const nominationCount = await waitForAttribute(nominationList, 'data-nomination-count', '1', 30_000)
   check('心上人自我提名进入公开账目（1 条）', nominationCount === '1', `data-nomination-count=${nominationCount}`)
 
+  // 钟盘收票（R-0017 目标形态）：改成 2s / 0.4s 缩短固定开销；先开始收票，再让四席举手。
+  await storytellerPage.getByTestId('st-sweep-countdown').fill('2')
+  await storytellerPage.getByTestId('st-sweep-interval').fill('0.4')
+  const sweepStarted = await runCommand(storytellerPage, '开始收票', () =>
+    storytellerPage.getByTestId('st-start-vote-sweep').click(),
+  )
+  check('开始收票被受理', sweepStarted.kind === 'Accepted', sweepStarted.raw)
+
   // 四票赞成（1 / 2 / 4 / 5）：4 票 × 2 = 8 ≥ 存活 5 席，达到计票阈值（DayMachine：votes * 2 >= alive）。
   for (const voterSeat of [DEMON_SEAT, SAGE_SEAT, KLUTZ_SEAT, BARBER_SEAT]) {
     await castYesVote(playerPages.get(voterSeat), voterSeat)
   }
 
   const firstNomination = nominationList.locator('li').first()
+  const expectedHands = [DEMON_SEAT, SAGE_SEAT, KLUTZ_SEAT, BARBER_SEAT]
+    .sort((left, right) => left - right)
+    .join(',')
+  const handsRaised = await waitForAttribute(firstNomination, 'data-nomination-hands', expectedHands, 30_000)
+  check('四次举手都到服务端（举手公开面）', handsRaised === expectedHands, `data-nomination-hands=${handsRaised}`)
+  const sweepDone = await waitForAttribute(storytellerPage.getByTestId('st-day'), 'data-sweep-phase', 'AwaitingCount', 30_000)
+  check('分针走完一圈、收票全部完成', sweepDone === 'AwaitingCount', `data-sweep-phase=${sweepDone}`)
   const voteCount = await waitForAttribute(firstNomination, 'data-nomination-votes', '4', 30_000)
-  check('四次「投赞成」都到服务端（公开票数 4）', voteCount === '4', `data-nomination-votes=${voteCount}`)
+  check('逐席收票冻结 4 票', voteCount === '4', `data-nomination-votes=${voteCount}`)
 
   const counted = await runCommand(storytellerPage, '计票', () => storytellerPage.getByTestId('st-count-votes').click())
   check('计票被受理', counted.kind === 'Accepted', counted.raw)
@@ -1144,7 +1159,7 @@ async function waitForSeatMark(page, seat, classToken, labelToken, timeoutMs = 3
 }
 
 /**
- * 玩家端「投赞成」：等按钮真的可点再点。
+ * 玩家端「举手」：等按钮真的可点再点（R-0017 目标形态：说书人开始收票后才可举）。
  *
  * 判据全在界面上：按钮出现 = 服务端下发的 `canNominate === false`（这只在「有一项提名在投票中」
  * 成立，见 DayProjection.canNominate）；按钮可用 = `canVote && !voted`。不成立就抛错并附上
@@ -1157,7 +1172,7 @@ async function castYesVote(page, seat) {
     const body = compact(await page.locator('body').innerText()).slice(0, 400)
     console.error(`[诊断] ${seat} 号玩家页全文：${body}`)
     throw new Error(
-      `${seat} 号的「投赞成」不可点：${await describePlayerDay(page)}`
+      `${seat} 号的「举手」不可点：${await describePlayerDay(page)}`
         + `（原始错误：${error instanceof Error ? error.message.split('\n')[0] : String(error)}）`,
     )
   }

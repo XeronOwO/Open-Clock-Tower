@@ -1,7 +1,7 @@
 namespace OpenClockTower.Kernel;
 
 /// <summary>
-/// 当天一次提名的账目：谁提名谁、投票窗口状态、票面。
+/// 当天一次提名的账目：谁提名谁、投票窗口状态、票面与钟盘收票状态。
 /// </summary>
 /// <remarks>
 /// <para>
@@ -9,9 +9,10 @@ namespace OpenClockTower.Kernel;
 /// 也只能被提名一次；计票以票面快照为准。
 /// </para>
 /// <para>
-/// <see cref="Ballot"/> 在投票窗口期间是**当前投赞成的席位**（按席位号升序，可增可减：
-/// 在线窗口内允许改票，口径见 <c>docs/standard/rulings.md</c> R-0017）；
-/// 计票后它即最终投票者名单，票数 = 名单长度。
+/// **两种折叠口径**（R-0017）：<see cref="Sweep"/> 为 null 时是旧形态的"投票开放窗口"，
+/// <see cref="Ballot"/> 随每次举手 / 撤回即时增删；<see cref="Sweep"/> 不为 null 时是钟盘收票，
+/// <see cref="HandsRaised"/> 记"现在谁举着手"，<see cref="Ballot"/> 只由逐席收票追加冻结结论
+/// （先举也算、过时不候），收票完成后即最终投票者名单，票数 = 名单长度。
 /// </para>
 /// </remarks>
 public sealed record NominationRecord
@@ -35,5 +36,13 @@ public sealed record NominationRecord
     public required NominationStatus Status { get; init; }
 
     /// <summary>当前 / 最终投赞成的席位，按席位号升序。</summary>
+    /// <remarks>旧形态：投票窗口内的实时票面；钟盘形态：逐席收票的冻结结论（收票完成后即最终名单）。</remarks>
     public IReadOnlyList<SeatId> Ballot { get; init; } = [];
+
+    /// <summary>钟盘形态下"现在举着手"的席位（按席位号升序）；旧形态恒为空。</summary>
+    /// <remarks>举手是线下所有人看得见的公开动作（R-0017 第 5 条）：只作公开面呈现，不直接计票。</remarks>
+    public IReadOnlyList<SeatId> HandsRaised { get; init; } = [];
+
+    /// <summary>钟盘收票状态；还没点「开始」或旧形态时为 null。</summary>
+    public VoteSweepState? Sweep { get; init; }
 }

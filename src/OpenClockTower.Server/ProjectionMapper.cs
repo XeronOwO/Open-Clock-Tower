@@ -135,16 +135,17 @@ public static class ProjectionMapper
         Detail = $"呆瓜（{choice.Klutz.Value} 号）公开选择了 {choice.Target.Value} 号",
     };
 
-    /// <summary>玩家白天投影 → DTO（公开事实 + 公开生死面 + 权限位 + 可提名目标）。</summary>
+    /// <summary>玩家白天投影 → DTO（公开事实 + 公开生死面 + 权限位 + 可提名目标 + 收票呈现）。</summary>
     public static PlayerDayDto ToDto(PlayerDay day, long sequence) => new()
     {
         Sequence = sequence,
-        PublicView = ToDto(day.PublicView),
+        PublicView = ToDto(day.PublicView, day.VoteSweep),
         Lives = [.. day.Lives.Select(ToDto)],
         Announcements = [.. day.Announcements.Select(ToDto)],
         CanNominate = day.CanNominate,
         CanVote = day.CanVote,
         Voted = day.Voted,
+        SeatCollected = day.SeatCollected,
         Candidates = [.. day.NominationCandidates.Select(seat => seat.Value)],
     };
 
@@ -155,26 +156,24 @@ public static class ProjectionMapper
         State = entry.State.ToString(),
     };
 
-    /// <summary>白天公开事实 → DTO（最新一天）。</summary>
-    public static DayViewDto ToDto(DayRecord day) => new()
+    /// <summary>白天公开事实 → DTO（最新一天；收票呈现只挂在当前开放的那一项提名上）。</summary>
+    public static DayViewDto ToDto(DayRecord day, VoteSweepView? sweep) => new()
     {
         DayNumber = day.DayNumber,
         Status = day.Status.ToString(),
-        Nominations = [.. day.Nominations.Select(ToDto)],
+        Nominations = [.. day.Nominations.Select(nomination =>
+            ToDto(nomination, nomination.Index == day.OpenNomination?.Index ? sweep : null))],
         AboutToBeExecuted = day.AboutToBeExecuted?.Value,
         Executed = day.Executed?.Value,
         OpenNominationIndex = day.OpenNomination?.Index,
     };
 
     /// <summary>
-    /// 一次提名 → DTO（票数 = 票面长度；投票中为当前票数，计票后为最终票数）。
+    /// 一次提名 → DTO：票数 = 已收票的赞成数（计票后为最终票数）；举手与已收票都是公开面
+    /// （线下绕圈点数时所有人都看得见，R-0017 第 5 条）。
     /// </summary>
-    /// <remarks>
-    /// 投票窗口期内就把票面下发给全体玩家，是 R-0017 第 5 条登记的公开面：
-    /// 线下绕圈点数时"谁举了手"所有人都看得见，在线只是把它渲染出来。
-    /// 若要改成"计票后才公开票面"，先改裁决条目，再改这里与投影用例。
-    /// </remarks>
-    public static DayNominationDto ToDto(NominationRecord nomination) => new()
+    /// <param name="sweep">钟盘收票的呈现快照；这项提名没在收票时为 null（旧日志 / 已计票项）。</param>
+    public static DayNominationDto ToDto(NominationRecord nomination, VoteSweepView? sweep) => new()
     {
         Index = nomination.Index,
         Nominator = nomination.Nominator.Value,
@@ -182,6 +181,18 @@ public static class ProjectionMapper
         Status = nomination.Status.ToString(),
         Votes = nomination.Ballot.Count,
         Voters = [.. nomination.Ballot.Select(seat => seat.Value)],
+        HandsRaised = [.. nomination.HandsRaised.Select(seat => seat.Value)],
+        Sweep = sweep is null
+            ? null
+            : new DayVoteSweepDto
+            {
+                Phase = sweep.Phase,
+                CurrentSeat = sweep.CurrentSeat,
+                Collected = [.. sweep.Collected.Select(seat => seat.Value)],
+                CountdownMilliseconds = sweep.CountdownMilliseconds,
+                IntervalMilliseconds = sweep.IntervalMilliseconds,
+                NextBeatMilliseconds = sweep.NextBeatMilliseconds,
+            },
     };
 
     /// <summary>信息结果投影 → DTO（只有内容；「可能为假」不出去；序号取快照条目自己的事件序号）。</summary>
@@ -323,7 +334,7 @@ public static class ProjectionMapper
                 Note = voided.Note,
             }
             : null,
-        Day = view.Day is { } day ? ToDto(day) : null,
+        Day = view.Day is { } day ? ToDto(day, view.VoteSweep) : null,
         Outcome = view.Outcome is { } outcome ? ToDto(outcome, view.Sequence) : null,
         KlutzChoices = [.. view.KlutzChoices.Select(record => ToDto(record, view.Sequence))],
         SeatNames = [.. view.SeatNames.Select(ToDto)],

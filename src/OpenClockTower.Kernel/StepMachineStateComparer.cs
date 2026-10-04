@@ -260,7 +260,9 @@ public static class StepMachineStateComparer
                     || nominationLeft.Nominee != nominationRight.Nominee
                     || nominationLeft.NominatorCharacter != nominationRight.NominatorCharacter
                     || nominationLeft.Status != nominationRight.Status
-                    || !SeatsEquivalent(nominationLeft.Ballot, nominationRight.Ballot))
+                    || !SeatsEquivalent(nominationLeft.Ballot, nominationRight.Ballot)
+                    || !SeatsEquivalent(nominationLeft.HandsRaised, nominationRight.HandsRaised)
+                    || !SweepEquivalent(nominationLeft.Sweep, nominationRight.Sweep))
                 {
                     return false;
                 }
@@ -295,6 +297,42 @@ public static class StepMachineStateComparer
         for (var index = 0; index < left.Count; index++)
         {
             if (left[index] != right[index])
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>钟盘收票状态等价：顺序、呈现参数与逐席冻结结论（含角色快照）都要一致。</summary>
+    private static bool SweepEquivalent(VoteSweepState? left, VoteSweepState? right)
+    {
+        if (ReferenceEquals(left, right))
+        {
+            return true;
+        }
+
+        if (left is null || right is null)
+        {
+            return false;
+        }
+
+        if (left.CountdownMilliseconds != right.CountdownMilliseconds
+            || left.IntervalMilliseconds != right.IntervalMilliseconds
+            || !SeatsEquivalent(left.Seats, right.Seats)
+            || left.Collected.Count != right.Collected.Count)
+        {
+            return false;
+        }
+
+        for (var index = 0; index < left.Collected.Count; index++)
+        {
+            var collectedLeft = left.Collected[index];
+            var collectedRight = right.Collected[index];
+            if (collectedLeft.Seat != collectedRight.Seat
+                || collectedLeft.Voted != collectedRight.Voted
+                || collectedLeft.VoterCharacter != collectedRight.VoterCharacter)
             {
                 return false;
             }

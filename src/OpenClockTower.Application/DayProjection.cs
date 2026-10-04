@@ -17,12 +17,16 @@ public static class DayProjection
     /// <param name="seats">本局完整座次（算可提名目标用；读不到时给空表，宁可少给、不猜）。</param>
     /// <param name="seat">接收者席位。</param>
     /// <param name="board">公开生死面（`rulings.md` R-0022）：对外可见生死 + 本日公告；不含死因。</param>
+    /// <param name="now">应用层当前时刻（算收票剩余时间；不驱动推进）。</param>
+    /// <param name="voteSweepStartedAt">收票时间轴锚点；为空 = 未开始或已中断。</param>
     public static PlayerDay? ForSeat(
         DayState? day,
         GameState state,
         IReadOnlyList<SeatId> seats,
         SeatId seat,
-        PublicLifeBoard board)
+        PublicLifeBoard board,
+        DateTimeOffset now,
+        DateTimeOffset? voteSweepStartedAt)
     {
         ArgumentNullException.ThrowIfNull(state);
         ArgumentNullException.ThrowIfNull(seats);
@@ -42,12 +46,21 @@ public static class DayProjection
             && life == LifeState.Alive
             && !facts.HasNominated(seat);
 
+        // 举手窗口 = 开始收票之后、本席被收票之前（先举也算、过时不候）；本席收票后由服务端锁死。
+        var sweep = openNomination?.Sweep;
+        var collectedVote = sweep?.Collected.FirstOrDefault(vote => vote.Seat == seat);
         var canVote = facts.Status == DayStatus.Open
-            && openNomination is not null
+            && sweep is not null
+            && collectedVote is null
             && life is not null
             && (life == LifeState.Alive || !day.HasSpentVoteToken(seat));
 
-        var voted = openNomination is not null && openNomination.Ballot.Contains(seat);
+        // 本席已被收票：Voted 展示**冻结结论**；否则展示当前举手状态（旧形态回放退回票面口径）。
+        var voted = collectedVote is { } frozen
+            ? frozen.Voted
+            : sweep is not null
+                ? openNomination!.HandsRaised.Contains(seat)
+                : openNomination is not null && openNomination.Ballot.Contains(seat);
 
         // 可提名目标 = 本局席位里"今天还没被提名过"的（死亡玩家可以被提名，百科《提名》）。
         var candidates = seats
@@ -63,6 +76,8 @@ public static class DayProjection
             CanNominate = canNominate,
             CanVote = canVote,
             Voted = voted,
+            SeatCollected = collectedVote is not null,
+            VoteSweep = VoteSweepProjection.Build(openNomination, now, voteSweepStartedAt),
             NominationCandidates = candidates,
         };
     }

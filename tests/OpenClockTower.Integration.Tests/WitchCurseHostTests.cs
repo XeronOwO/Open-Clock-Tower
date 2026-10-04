@@ -97,7 +97,8 @@ public sealed class WitchCurseHostTests
         Assert.Equal("Rejected", prematureClose.Kind);
         Assert.Equal("day.nomination_not_counted", prematureClose.RejectionCode);
 
-        // 计票：无人投票 → 不进入「即将被处决」；结束白天也不产生处决（诅咒致死不是处决）。
+        // 钟盘收票：被诅咒者已死（提名仍然成立），无人举手 → 一圈收完后计票，不进入「即将被处决」。
+        await VoteSweepTestDriver.RunAsync(host, 1, 4, "test-witch-sweep");
         var counted = await storyteller.InvokeAsync<CommandResultDto>("CountVotes", 1, "test-witch-count");
         Assert.Equal("Accepted", counted.Kind);
 
@@ -153,6 +154,9 @@ public sealed class WitchCurseHostTests
             WitchSeat,
             "test-witch-surface-nominate");
         Assert.Equal("Accepted", nominated.Kind);
+
+        // 钟盘收票开始后，死亡玩家的「死后仅一次」票权才体现为可举手（CanVote）。
+        await VoteSweepTestDriver.StartAsync(host, 1, "test-witch-surface-sweep:start");
 
         // 行 2：白天死亡即时公告（女巫"立即宣布"的等价物），且死亡 ≠ 处决。
         var after = host.Session.GetPlayerView(new SeatId(CursedSeat)).Day;

@@ -234,6 +234,24 @@ public sealed class TestServerHost : IAsyncDisposable
         return result;
     }
 
+    /// <summary>以系统身份执行命令（测试里显式驱动钟盘收票到点；生产由节拍器发出）。</summary>
+    public async Task<CommandResult> ExecuteSystemCommandAsync(
+        GameCommand command,
+        string idempotencyKey,
+        CancellationToken cancellationToken)
+    {
+        var result = await Session.ExecuteAsync(
+            new CommandEnvelope
+            {
+                Command = command,
+                Actor = Actor.System,
+                IdempotencyKey = idempotencyKey,
+            },
+            cancellationToken);
+        await _factory.Services.GetRequiredService<NotificationDispatcher>().DispatchAsync(result, cancellationToken);
+        return result;
+    }
+
     /// <summary>轮询等待一个条件成立（测试用，超时有界）。</summary>
     public static async Task<bool> WaitUntilAsync(Func<bool> condition, TimeSpan? timeout = null)
     {

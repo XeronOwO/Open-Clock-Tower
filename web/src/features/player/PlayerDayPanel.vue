@@ -8,6 +8,7 @@
 import type { PlayerDayDto, SeatDisplayNameDto } from '@/contracts/game'
 import { seatTextOf } from '@/display/format'
 import HelpTip from '@/features/common/HelpTip.vue'
+import VoteDial from '@/features/common/VoteDial.vue'
 import { newIdempotencyKey } from '@/services/idempotency'
 import { computed, ref } from 'vue'
 
@@ -46,6 +47,39 @@ const selfDead = computed(() =>
 
 const busy = ref(false)
 const nominee = ref<number | null>(null)
+
+/** 当前开放的那一项提名（含钟盘收票呈现）。 */
+const openNomination = computed(
+  () =>
+    props.day.publicView.nominations.find(
+      (nomination) => nomination.index === props.day.publicView.openNominationIndex,
+    ) ?? null,
+)
+
+/** 钟盘席位号：公开生死面上的全部席位（未观测的席位不出现）。 */
+const seatNumbers = computed(() =>
+  props.day.lives.map((entry) => entry.seat).sort((left, right) => left - right),
+)
+
+/** 举手区的状态文案：只说服务端下发的相位与冻结结论，不自己推断。 */
+const voteStateText = computed(() => {
+  if (props.day.seatCollected) {
+    return props.day.voted ? '本席已收票：你投了赞成' : '本席已收票：你没有举手'
+  }
+
+  switch (openNomination.value?.sweep?.phase) {
+    case 'Countdown':
+      return '倒计时中：举手 = 投这一票'
+    case 'Collecting':
+      return props.day.voted ? '你举着手：轮到你之前都可以放下' : '收票进行中：轮到你之前都可以举手'
+    case 'Interrupted':
+      return '收票已中断，等待说书人继续'
+    case 'AwaitingCount':
+      return '收票已走完，等待说书人计票'
+    default:
+      return '等待说书人点「开始收票」'
+  }
+})
 
 /** 服务端回执 → 人话；成功返回 null。 */
 function outcomeProblem(raw: unknown): string | null {
@@ -97,7 +131,7 @@ async function castVote(voted: boolean): Promise<void> {
       emit('diagnostic', problem)
     }
   } catch (error) {
-    emit('diagnostic', `投票失败：${error instanceof Error ? error.message : String(error)}`)
+    emit('diagnostic', `举手失败：${error instanceof Error ? error.message : String(error)}`)
   } finally {
     busy.value = false
   }
@@ -137,16 +171,28 @@ async function castVote(voted: boolean): Promise<void> {
         </button>
       </template>
       <template v-else-if="day.publicView.openNominationIndex !== null">
+        <VoteDial
+          v-if="openNomination"
+          :seat-numbers="seatNumbers"
+          :nominator="openNomination.nominator"
+          :nominee="openNomination.nominee"
+          :current-seat="openNomination.sweep?.currentSeat ?? null"
+          :collected="openNomination.sweep?.collected ?? []"
+          :hands-raised="openNomination.handsRaised"
+          :phase="openNomination.sweep?.phase ?? null"
+          :next-beat-milliseconds="openNomination.sweep?.nextBeatMilliseconds ?? null"
+        />
         <span class="hint" data-testid="player-vote-state">
-          {{ day.voted ? '你已投赞成' : '你还没投票' }}
+          {{ voteStateText }}
         </span>
         <button
           type="button"
+          class="primary"
           data-testid="player-vote-yes"
           :disabled="busy || !day.canVote || day.voted"
           @click="castVote(true)"
         >
-          投赞成
+          举手（投这一票）
         </button>
         <button
           type="button"
@@ -154,7 +200,7 @@ async function castVote(voted: boolean): Promise<void> {
           :disabled="busy || !day.canVote || !day.voted"
           @click="castVote(false)"
         >
-          撤回
+          放下手
         </button>
       </template>
       <span v-else class="hint" data-testid="player-day-waiting">现在没有开放投票的提名。</span>

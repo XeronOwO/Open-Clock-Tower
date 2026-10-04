@@ -122,7 +122,7 @@ internal static class GameCommandDispatcher
             }));
         }
 
-        if (envelope.Command is CountVotesCommand or CloseDayCommand)
+        if (envelope.Command is StartVoteSweepCommand or ResumeVoteSweepCommand or CountVotesCommand or CloseDayCommand)
         {
             return Translate(StepMachine.Handle(machine, settlement, BuildStorytellerDayInput(envelope.Command)));
         }
@@ -232,10 +232,20 @@ internal static class GameCommandDispatcher
             _ => throw new InvalidOperationException($"不是玩家白天命令：{command.GetType().Name}"),
         };
 
-    /// <summary>说书人白天命令 → 内核输入（计票与结束白天不携带行动者席位）。</summary>
+    /// <summary>说书人白天命令 → 内核输入（收票 / 计票与结束白天不携带行动者席位）。</summary>
     private static StepMachineInput BuildStorytellerDayInput(GameCommand command) =>
         command switch
         {
+            StartVoteSweepCommand startSweep => new StartVoteSweepInput
+            {
+                NominationIndex = startSweep.NominationIndex,
+                CountdownMilliseconds = startSweep.CountdownMilliseconds,
+                IntervalMilliseconds = startSweep.IntervalMilliseconds,
+            },
+            ResumeVoteSweepCommand resumeSweep => new ResumeVoteSweepInput
+            {
+                NominationIndex = resumeSweep.NominationIndex,
+            },
             CountVotesCommand countVotes => new CountVotesInput
             {
                 NominationIndex = countVotes.NominationIndex,

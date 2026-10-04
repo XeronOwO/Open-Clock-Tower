@@ -88,6 +88,9 @@ public sealed record StorytellerView
     /// <summary>最新一天（进行中或最近结束）的白天账；还没有开过白天时为 null。</summary>
     public DayRecord? Day { get; init; }
 
+    /// <summary>当前开放提名的钟盘收票呈现（相位 / 当前席位 / 已收席位 / 剩余时间）；没有收票时为 null。</summary>
+    public VoteSweepView? VoteSweep { get; init; }
+
     /// <summary>胜负结论；null = 游戏仍在进行。结束后一切命令被拒（R-0024）。</summary>
     public GameOutcome? Outcome { get; init; }
 

@@ -135,6 +135,10 @@ public static class CommandGatePipeline
                 "只有玩家本人可以投票",
                 "identity"),
 
+            // 钟盘收票（R-0017 目标形态）：身份 / 参数形状的闸在 VoteSweepGate。
+            StartVoteSweepCommand or ResumeVoteSweepCommand or CollectSeatVoteCommand
+                => VoteSweepGate.IdentityRejection(envelope.Command, actor),
+
             AskArtistQuestionCommand => ArtistQuestionGate.IdentityRejection(actor),
 
             CountVotesCommand when actor.Kind is ActorKind.Host or ActorKind.Storyteller => null,
@@ -272,8 +276,14 @@ public static class CommandGatePipeline
 
                 return null;
 
-            // 白天四类输入统一要求"白天开着"：具体规则（谁有资格、票数够不够）在内核里判。
-            case NominateCommand or CastVoteCommand or CountVotesCommand or CloseDayCommand:
+            // 白天输入统一要求"白天开着"：具体规则（谁有资格、票数够不够、收票到没到点）在内核里判。
+            case NominateCommand
+                or CastVoteCommand
+                or StartVoteSweepCommand
+                or CollectSeatVoteCommand
+                or ResumeVoteSweepCommand
+                or CountVotesCommand
+                or CloseDayCommand:
                 if (machine is null || machine.Plan.Phase != GamePhase.Day || machine.Day?.OpenDay is null)
                 {
                     return Reject("phase.not_open_day", "现在不是白天，或白天已经结束", "phase");
@@ -360,6 +370,9 @@ public static class CommandGatePipeline
             ApplySeatStateCommand seat => CheckSeatExists(seat.Seat, setup),
             NominateCommand nominate => CheckSeatExists(nominate.Nominee, setup),
             CastVoteCommand castVote => CheckNominationIndex(castVote.NominationIndex),
+            // 钟盘收票（R-0017 目标形态）：参数范围与席位形状的闸在 VoteSweepGate（与内核同尺）。
+            StartVoteSweepCommand or ResumeVoteSweepCommand or CollectSeatVoteCommand
+                => VoteSweepGate.LegalityRejection(envelope.Command, setup),
             CountVotesCommand countVotes => CheckNominationIndex(countVotes.NominationIndex),
             PunishExecutionCommand punish => CheckSeatExists(punish.Seat, setup),
             PitHagCasualtyCommand casualty => CheckSeatExists(casualty.Seat, setup),

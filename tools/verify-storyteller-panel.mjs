@@ -887,20 +887,60 @@ async function main() {
   check('白天阶段：提名进入公开账目', nominationCount === '1', `data-nomination-count=${nominationCount}`)
   await screenshot(storyteller.page, '31-day-nomination')
 
-  // 三名存活玩家各投一票（2 号提名者也投；1 号作为被提名者可以投自己——百科《规则概要》三-2）。
-  // 玩家端没有回执区：判据是公开票数随推送变化。
+  // 钟盘形态（R-0017 目标形态）：默认 3s / 1s；本装置改成 2s / 0.5s 缩短固定开销，同时证明参数可调。
+  const countdownInput = storyteller.page.getByTestId('st-sweep-countdown')
+  const intervalInput = storyteller.page.getByTestId('st-sweep-interval')
+  const countdownDefault = await countdownInput.inputValue()
+  const intervalDefault = await intervalInput.inputValue()
+  check('白天阶段：倒计时默认 3s', countdownDefault === '3', `countdown=${countdownDefault}`)
+  check('白天阶段：逐席间隔默认 1s', intervalDefault === '1', `interval=${intervalDefault}`)
+  await countdownInput.fill('2')
+  await intervalInput.fill('0.5')
+
+  const sweepStartOutcome = await runCommand(storyteller.page, '开始收票', () =>
+    storyteller.page.getByTestId('st-start-vote-sweep').click(),
+  )
+  check('白天阶段：开始收票被受理', sweepStartOutcome.kind === 'Accepted', sweepStartOutcome.raw)
+
+  // 钟盘：蓝针 = 提名者、红针 = 被提名者；开始后先进入倒计时。
+  const dial = storyteller.page.getByTestId('vote-dial')
+  const dialNominator = await waitForAttribute(dial, 'data-nominator', String(dreamerSeat), 30_000)
+  const dialNominee = await waitForAttribute(dial, 'data-nominee', String(clockmakerSeat), 30_000)
+  check(
+    '白天阶段：钟盘蓝针指提名者、红针指被提名者',
+    dialNominator === String(dreamerSeat) && dialNominee === String(clockmakerSeat),
+    `蓝针=${dialNominator}；红针=${dialNominee}`,
+  )
+  const countdownPhase = await waitForAttribute(dayPanel, 'data-sweep-phase', 'Countdown', 10_000)
+  check('白天阶段：开始收票后进入倒计时', countdownPhase === 'Countdown', `data-sweep-phase=${countdownPhase}`)
+  await screenshot(storyteller.page, '32-day-dial-countdown')
+
+  // 三名存活玩家各举一次手（2 号提名者也举；1 号作为被提名者可以举自己——百科《规则概要》三-2）。
+  // 举手窗口 = 开始收票之后、本席被收票之前；判据是公开举手面随推送变化。
   for (const voteSeat of [clockmakerSeat, dreamerSeat, demonSeat]) {
     await players.get(voteSeat).page.getByTestId('player-vote-yes').click()
   }
 
   const firstNomination = nominationList.locator('li').first()
+  const expectedHands = [clockmakerSeat, dreamerSeat, demonSeat].sort((left, right) => left - right).join(',')
+  const handsRaised = await waitForAttribute(firstNomination, 'data-nomination-hands', expectedHands, 30_000)
+  check('白天阶段：三次举手都到服务端（举手公开面）', handsRaised === expectedHands, `data-nomination-hands=${handsRaised}`)
+
+  // 分针逐席旋转收票 → 收完一圈后才能计票。
+  const collectingPhase = await waitForAttribute(dayPanel, 'data-sweep-phase', 'Collecting', 10_000)
+  check('白天阶段：分针开始逐席旋转收票', collectingPhase === 'Collecting', `data-sweep-phase=${collectingPhase}`)
+  await screenshot(storyteller.page, '33-day-sweep-collecting')
+
+  const sweepDone = await waitForAttribute(dayPanel, 'data-sweep-phase', 'AwaitingCount', 30_000)
+  check('白天阶段：分针走完一圈、收票全部完成', sweepDone === 'AwaitingCount', `data-sweep-phase=${sweepDone}`)
   const voteCount = await waitForAttribute(firstNomination, 'data-nomination-votes', '3', 30_000)
-  check('白天阶段：三次投票都到服务端（公开票数 3）', voteCount === '3', `data-nomination-votes=${voteCount}`)
+  check('白天阶段：逐席收票冻结 3 票', voteCount === '3', `data-nomination-votes=${voteCount}`)
+  await screenshot(storyteller.page, '34-day-sweep-done')
 
   const countVotesOutcome = await runCommand(storyteller.page, '计票', () =>
     storyteller.page.getByTestId('st-count-votes').click(),
   )
-  check('白天阶段：计票被受理', countVotesOutcome.kind === 'Accepted', countVotesOutcome.raw)
+  check('白天阶段：收票完成后计票被受理', countVotesOutcome.kind === 'Accepted', countVotesOutcome.raw)
 
   const aboutToBeExecuted = storyteller.page.getByTestId('st-about-to-be-executed')
   const aboutSeat = await waitForAttribute(aboutToBeExecuted, 'data-seat', String(clockmakerSeat), 30_000)

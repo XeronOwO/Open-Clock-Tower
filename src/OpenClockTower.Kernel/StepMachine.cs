@@ -152,8 +152,8 @@ public static class StepMachine
             PunishExecutionInput punish => AdjudicatedExecutionMachine.Handle(state, context, punish),
             PitHagCasualtyInput casualty => PitHagNightMachine.HandleCasualty(state, context, casualty),
             ResolveDeferredDeathInput deferredDeath => PitHagNightMachine.HandleResolve(state, context, deferredDeath),
-            NominateInput or CastVoteInput or CountVotesInput or CloseDayInput
-                => DayStepMachine.Handle(state, context, input),
+            StepMachineInput dayInput when DayStepMachine.IsDayInput(dayInput)
+                => DayStepMachine.Handle(state, context, dayInput),
             _ => Reject(state, StepMachineRejectionReason.UnexpectedInput, $"未知输入：{input.GetType().Name}"),
         };
     }

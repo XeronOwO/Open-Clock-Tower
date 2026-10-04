@@ -48,6 +48,7 @@ public sealed class GameProjectionOutcomeTests
             sequence: 7,
             pendingSince: null,
             now: DateTimeOffset.UnixEpoch,
+            voteSweepStartedAt: null,
             recentSeatChanges: [],
             annotations: [],
             seatNames: []);
@@ -94,6 +95,8 @@ public sealed class GameProjectionOutcomeTests
             new GameState(),
             [new SeatId(1), new SeatId(2)],
             sequence: 7,
+            now: DateTimeOffset.UnixEpoch,
+            voteSweepStartedAt: null,
             seat,
             new SessionTrackers(),
             seatNames: []);

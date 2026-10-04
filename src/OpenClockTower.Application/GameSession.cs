@@ -168,7 +168,9 @@ public sealed class GameSession
         await _gate.WaitAsync(cancellationToken);
         try
         {
-            if (SlotQuotaPacer.TryBuild(_machine, _trackers, _clock.UtcNow, _pacing.SlotQuota) is not { } envelope)
+            var envelope = SlotQuotaPacer.TryBuild(_machine, _trackers, _clock.UtcNow, _pacing.SlotQuota)
+                ?? VoteSweepPacer.TryBuild(_machine, _trackers, _clock.UtcNow);
+            if (envelope is null)
             {
                 return null;
             }
@@ -192,6 +194,8 @@ public sealed class GameSession
                 _state,
                 SeatList(),
                 _lastSequence,
+                _clock.UtcNow,
+                _trackers.VoteSweepStartedAt,
                 seat,
                 _trackers,
                 _seatNames.Snapshot());
@@ -266,6 +270,7 @@ public sealed class GameSession
                 _lastSequence,
                 _trackers,
                 _seatNames.Snapshot(),
+                _clock.UtcNow,
                 seat,
                 Math.Clamp(afterSequence, 0, _lastSequence),
                 cancellationToken);

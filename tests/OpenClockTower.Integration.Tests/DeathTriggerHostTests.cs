@@ -63,6 +63,7 @@ public sealed class DeathTriggerHostTests
 
         var nominated = await sweetheart.InvokeAsync<CommandResultDto>("Nominate", 3, "test-death-trigger-nominate");
         Assert.Equal("Accepted", nominated.Kind);
+        await VoteSweepTestDriver.StartAsync(host, 1, "test-death-trigger-sweep:start");
         var demonVote = await demon.InvokeAsync<CommandResultDto>("CastVote", 1, true, "test-death-trigger-vote-demon");
         Assert.Equal("Accepted", demonVote.Kind);
         var sageVote = await sage.InvokeAsync<CommandResultDto>("CastVote", 1, true, "test-death-trigger-vote-sage");
@@ -71,6 +72,7 @@ public sealed class DeathTriggerHostTests
         Assert.Equal("Accepted", klutzVote.Kind);
         var barberVote = await barber.InvokeAsync<CommandResultDto>("CastVote", 1, true, "test-death-trigger-vote-barber");
         Assert.Equal("Accepted", barberVote.Kind);
+        await VoteSweepTestDriver.CollectAllAsync(host, 1, 5, "test-death-trigger-sweep");
 
         var counted = await storyteller.InvokeAsync<CommandResultDto>("CountVotes", 1, "test-death-trigger-count");
         Assert.Equal("Accepted", counted.Kind);

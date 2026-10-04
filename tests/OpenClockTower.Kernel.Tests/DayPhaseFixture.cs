@@ -65,6 +65,89 @@ internal static class DayPhaseFixture
     internal static StepMachineOutcome Close(StepMachineState state, SettlementContext context) =>
         Apply(state, context, new CloseDayInput());
 
+    /// <summary>开始钟盘收票（默认 3s / 1s；R-0017 目标形态）。</summary>
+    internal static StepMachineOutcome StartSweep(
+        StepMachineState state,
+        SettlementContext context,
+        int index,
+        int countdownMilliseconds = VoteSweepLimits.DefaultCountdownMilliseconds,
+        int intervalMilliseconds = VoteSweepLimits.DefaultIntervalMilliseconds) =>
+        Apply(state, context, new StartVoteSweepInput
+        {
+            NominationIndex = index,
+            CountdownMilliseconds = countdownMilliseconds,
+            IntervalMilliseconds = intervalMilliseconds,
+        });
+
+    /// <summary>收第 N 席的票（由控制面按时间轴发出）。</summary>
+    internal static StepMachineOutcome Collect(StepMachineState state, SettlementContext context, int index, int seat) =>
+        Apply(state, context, new CollectSeatVoteInput
+        {
+            NominationIndex = index,
+            Seat = new SeatId(seat),
+        });
+
+    /// <summary>继续中断的收票（重新起倒计时）。</summary>
+    internal static StepMachineOutcome ResumeSweep(StepMachineState state, SettlementContext context, int index) =>
+        Apply(state, context, new ResumeVoteSweepInput { NominationIndex = index });
+
+    /// <summary>把一项已开始的收票按座次收完（已收过的席位跳过）；返回累积事件与最终状态。</summary>
+    internal static StepMachineOutcome CollectAll(StepMachineState state, SettlementContext context, int index)
+    {
+        var events = new List<GameEvent>();
+        var after = state;
+        foreach (var seat in context.Seats)
+        {
+            var alreadyCollected = after.Day?.OpenDay?.OpenNomination?.Sweep?
+                .Collected.Any(vote => vote.Seat == seat) ?? false;
+            if (alreadyCollected)
+            {
+                continue;
+            }
+
+            var outcome = Collect(after, context, index, seat.Value);
+            Assert.True(outcome.Kind == StepMachineOutcomeKind.Applied, $"收票被拒：{outcome.RejectionCode}");
+            events.AddRange(outcome.Events);
+            after = outcome.State;
+        }
+
+        return new StepMachineOutcome
+        {
+            Kind = StepMachineOutcomeKind.Applied,
+            State = after,
+            Events = events,
+        };
+    }
+
+    /// <summary>走完一次钟盘收票：先让给定席位举手，再按座次逐席收完；返回收完后的状态。</summary>
+    internal static StepMachineState RunSweep(
+        StepMachineState state,
+        SettlementContext context,
+        int index,
+        params int[] raised)
+    {
+        var started = StartSweep(state, context, index);
+        Assert.True(started.Kind == StepMachineOutcomeKind.Applied, $"开始收票被拒：{started.RejectionCode}");
+        var after = started.State;
+
+        foreach (var seat in raised)
+        {
+            var outcome = Vote(after, context, seat, index, voted: true);
+            Assert.True(outcome.Kind == StepMachineOutcomeKind.Applied, $"举手被拒：{outcome.RejectionCode}");
+            after = outcome.State;
+        }
+
+        return CollectAll(after, context, index).State;
+    }
+
+    /// <summary>走完收票并计票（最常用的一步到位）。</summary>
+    internal static StepMachineOutcome SweepAndCount(
+        StepMachineState state,
+        SettlementContext context,
+        int index,
+        params int[] raised) =>
+        Count(RunSweep(state, context, index, raised), context, index);
+
     /// <summary>拒绝码（受理时为 null）。</summary>
     internal static string? CodeOf(StepMachineOutcome outcome) => outcome.RejectionCode;
 

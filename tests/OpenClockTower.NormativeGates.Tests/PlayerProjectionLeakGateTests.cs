@@ -23,6 +23,7 @@ public sealed partial class PlayerProjectionLeakGateTests
         Path.Combine("src", "OpenClockTower.Contracts", "OperationRequestDto.cs"),
         Path.Combine("src", "OpenClockTower.Contracts", "DecisionOptionDto.cs"),
         Path.Combine("src", "OpenClockTower.Contracts", "DayNominationDto.cs"),
+        Path.Combine("src", "OpenClockTower.Contracts", "DayVoteSweepDto.cs"),
         Path.Combine("src", "OpenClockTower.Contracts", "InformationResultDto.cs"),
         Path.Combine("src", "OpenClockTower.Contracts", "OperationRequestVoidedDto.cs"),
         Path.Combine("src", "OpenClockTower.Contracts", "ReconnectBundleDto.cs"),
@@ -378,6 +379,10 @@ public sealed partial class PlayerProjectionLeakGateTests
         // 只渲染 `@/display/help` 里的静态说明文案，不读任何视图数据、不含说书人 DTO / 类型；
         // 玩家侧显式登记依赖，新增共享组件仍必须逐项复核。
         "@/features/common/HelpTip.vue",
+        // 钟盘（R-0017 目标形态）：两端共用的**纯呈现组件**——只接收公开事实
+        // （席位号、提名 / 被提名、当前席位、已收席位、举手、相位与下一拍毫秒数），
+        // 不含说书人 DTO / 类型、不判规则；玩家侧显式登记依赖。
+        "@/features/common/VoteDial.vue",
     };
 
     /// <summary>说书人专属的 DTO 类型名；玩家侧出现任何一个都说明越界。</summary>

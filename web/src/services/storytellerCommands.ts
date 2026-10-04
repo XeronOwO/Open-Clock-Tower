@@ -153,7 +153,34 @@ export function startDay(sender: CommandSender, idempotencyKey: string): Promise
   return invokeCommand(sender, 'StartDay', idempotencyKey)
 }
 
-/** 对当前开放的提名计票（票面快照冻结，R-0017）。 */
+/** 开始钟盘收票：倒计时 + 分针逐席旋转（R-0017 目标形态）。 */
+export function startVoteSweep(
+  sender: CommandSender,
+  nominationIndex: number,
+  countdownMilliseconds: number,
+  intervalMilliseconds: number,
+  idempotencyKey: string,
+): Promise<CommandOutcome> {
+  return invokeCommand(
+    sender,
+    'StartVoteSweep',
+    nominationIndex,
+    countdownMilliseconds,
+    intervalMilliseconds,
+    idempotencyKey,
+  )
+}
+
+/** 继续中断的钟盘收票（重新起倒计时，从下一未收席位接着收）。 */
+export function resumeVoteSweep(
+  sender: CommandSender,
+  nominationIndex: number,
+  idempotencyKey: string,
+): Promise<CommandOutcome> {
+  return invokeCommand(sender, 'ResumeVoteSweep', nominationIndex, idempotencyKey)
+}
+
+/** 收票全部完成后计票（票面 = 逐席冻结结论，R-0017 目标形态）。 */
 export function countVotes(
   sender: CommandSender,
   nominationIndex: number,

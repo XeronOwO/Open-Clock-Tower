@@ -64,6 +64,11 @@ public static class KernelInputMapper
                 CausedBy = seat.CausedBy,
             },
             SlotQuotaElapsedCommand => new SlotQuotaElapsedInput(),
+            CollectSeatVoteCommand collectSeat => new CollectSeatVoteInput
+            {
+                NominationIndex = collectSeat.NominationIndex,
+                Seat = collectSeat.Seat,
+            },
             PunishExecutionCommand punish => new PunishExecutionInput
             {
                 Seat = punish.Seat,

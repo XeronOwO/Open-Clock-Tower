@@ -117,6 +117,7 @@ public sealed class WinLossHostTests
         Assert.Equal(
             "Accepted",
             (await two.InvokeAsync<CommandResultDto>("Nominate", 1, "test-winloss-klutz-nominate")).Kind);
+        await VoteSweepTestDriver.StartAsync(host, 1, "test-winloss-klutz-sweep:start");
         Assert.Equal(
             "Accepted",
             (await two.InvokeAsync<CommandResultDto>("CastVote", 1, true, "test-winloss-klutz-vote-2")).Kind);
@@ -126,6 +127,7 @@ public sealed class WinLossHostTests
         Assert.Equal(
             "Accepted",
             (await five.InvokeAsync<CommandResultDto>("CastVote", 1, true, "test-winloss-klutz-vote-5")).Kind);
+        await VoteSweepTestDriver.CollectAllAsync(host, 1, 5, "test-winloss-klutz-sweep");
         Assert.Equal(
             "Accepted",
             (await storyteller.InvokeAsync<CommandResultDto>("CountVotes", 1, "test-winloss-klutz-count")).Kind);

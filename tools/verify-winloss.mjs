@@ -215,19 +215,36 @@ async function main() {
   const nominationCount = await waitForAttribute(nominationList, 'data-nomination-count', '1', 30_000)
   check('呆瓜自我提名进入公开账目', nominationCount === '1', `data-nomination-count=${nominationCount}`)
 
+  // 钟盘收票（R-0017 目标形态）：改成 2s / 0.4s 缩短固定开销；先开始收票，再让三席举手。
+  await storytellerPage.getByTestId('st-sweep-countdown').fill('2')
+  await storytellerPage.getByTestId('st-sweep-interval').fill('0.4')
+  const sweepStarted = await runCommand(storytellerPage, '开始收票', () =>
+    storytellerPage.getByTestId('st-start-vote-sweep').click(),
+  )
+  check('开始收票被受理', sweepStarted.kind === 'Accepted', sweepStarted.raw)
+
   await klutzPage.getByTestId('player-vote-yes').click()
   for (const [index, voter] of voterSeats.entries()) {
     const voted = await voter.invoke('CastVote', 1, true, `test-winloss-vote-${index + 3}`)
     check(`旁观席位投票（${index + 3} 号）`, voted.kind === 'Accepted', JSON.stringify(voted))
   }
 
+  const firstNomination = nominationList.locator('li').first()
+  const expectedHands = [KLUTZ_SEAT, ...voterSeats.map((_, index) => index + 3)]
+    .sort((left, right) => left - right)
+    .join(',')
+  const handsRaised = await waitForAttribute(firstNomination, 'data-nomination-hands', expectedHands, 30_000)
+  check('呆瓜自举 + 两席旁观举手都到服务端（举手公开面）', handsRaised === expectedHands, `data-nomination-hands=${handsRaised}`)
+  const sweepDone = await waitForAttribute(storytellerPage.getByTestId('st-day'), 'data-sweep-phase', 'AwaitingCount', 30_000)
+  check('分针走完一圈、收票全部完成', sweepDone === 'AwaitingCount', `data-sweep-phase=${sweepDone}`)
+
   const voteCount = await waitForAttribute(
-    nominationList.locator('li').first(),
+    firstNomination,
     'data-nomination-votes',
     '3',
     30_000,
   )
-  check('呆瓜自投 + 两席旁观投票都到服务端（公开票数 3）', voteCount === '3', `data-nomination-votes=${voteCount}`)
+  check('呆瓜自举 + 两席旁观举手逐席冻结为 3 票', voteCount === '3', `data-nomination-votes=${voteCount}`)
 
   const counted = await runCommand(storytellerPage, '计票', () =>
     storytellerPage.getByTestId('st-count-votes').click(),

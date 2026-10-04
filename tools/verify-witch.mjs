@@ -251,8 +251,8 @@ async function main() {
 
   const dayPanelText = compact(await dayPanel.innerText())
   check(
-    '提名仍然生效：投票窗口还开着、还没有「即将被处决」',
-    dayPanelText.includes('投票') && !dayPanelText.includes('即将被处决'),
+    '提名仍然生效：收票控制还在（尚未计票）、还没有「即将被处决」',
+    dayPanelText.includes('开始收票') && !dayPanelText.includes('即将被处决'),
     compact(dayPanelText),
   )
 

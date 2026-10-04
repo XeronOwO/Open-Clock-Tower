@@ -40,6 +40,7 @@ const day = (dayNumber: number, sequence: number): PlayerDayDto => ({
   canNominate: true,
   canVote: true,
   voted: false,
+  seatCollected: false,
   candidates: [],
 })
 

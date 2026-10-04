@@ -10,6 +10,7 @@ import type {
   BarberNightDto,
   DayNominationDto,
   DayViewDto,
+  DayVoteSweepDto,
   DecisionOptionDto,
   DeferredDeathDto,
   EffectDto,
@@ -383,6 +384,30 @@ export function normalizeOption(raw: unknown): DecisionOptionDto | null {
   return { value, preview: asSizedText(option['preview'], 512) ?? value }
 }
 
+/** 归一化钟盘收票呈现；缺相位时返回 null（不编收票进度，R-0017 目标形态）。 */
+export function normalizeDayVoteSweep(raw: unknown): DayVoteSweepDto | null {
+  if (raw === null || typeof raw !== 'object') {
+    return null
+  }
+
+  const sweep = raw as Record<string, unknown>
+  const phase = asText(sweep['phase'])
+  if (phase === null) {
+    return null
+  }
+
+  return {
+    phase,
+    currentSeat: asCount(sweep['currentSeat']),
+    collected: asArray<unknown>(sweep['collected'])
+      .map((seat) => asCount(seat))
+      .filter((seat): seat is number => seat !== null),
+    countdownMilliseconds: asCount(sweep['countdownMilliseconds']) ?? 0,
+    intervalMilliseconds: asCount(sweep['intervalMilliseconds']) ?? 0,
+    nextBeatMilliseconds: asCount(sweep['nextBeatMilliseconds']),
+  }
+}
+
 /** 归一化一次白天提名；缺关键字段时返回 null（宁可少显示，不编造票数）。 */
 export function normalizeDayNomination(raw: unknown): DayNominationDto | null {
   if (raw === null || typeof raw !== 'object') {
@@ -407,6 +432,10 @@ export function normalizeDayNomination(raw: unknown): DayNominationDto | null {
     voters: asArray<unknown>(nomination['voters'])
       .map((voter) => asCount(voter))
       .filter((voter): voter is number => voter !== null),
+    handsRaised: asArray<unknown>(nomination['handsRaised'])
+      .map((seat) => asCount(seat))
+      .filter((seat): seat is number => seat !== null),
+    sweep: normalizeDayVoteSweep(nomination['sweep']),
   }
 }
 

@@ -61,7 +61,7 @@ public sealed class DeathTriggerResidueHostTests
 
         await AssignAsync(storyteller, "release");
         await FinishFirstNightAsync(storyteller, "release");
-        await ExecuteSweetheartAsync(storyteller, demon, sage, sweetheart, klutz, barber, "release");
+        await ExecuteSweetheartAsync(host, storyteller, demon, sage, sweetheart, klutz, barber, "release");
 
         var decision = await WaitForTriggerDecisionAsync(storyteller, "心上人");
         Assert.Equal(SweetheartSeat, decision.AwaitingDecisionSeat);
@@ -169,7 +169,7 @@ public sealed class DeathTriggerResidueHostTests
 
                 await AssignAsync(storyteller, "restart");
                 await FinishFirstNightAsync(storyteller, "restart");
-                await ExecuteSweetheartAsync(storyteller, demon, sage, sweetheart, klutz, barber, "restart");
+                await ExecuteSweetheartAsync(first, storyteller, demon, sage, sweetheart, klutz, barber, "restart");
 
                 var pending = await WaitForTriggerDecisionAsync(storyteller, "心上人");
                 Assert.Equal(SweetheartSeat, pending.AwaitingDecisionSeat);
@@ -258,7 +258,7 @@ public sealed class DeathTriggerResidueHostTests
 
         await AssignAsync(storyteller, "dead-target");
         await FinishFirstNightAsync(storyteller, "dead-target");
-        await ExecuteSweetheartAsync(storyteller, demon, sage, sweetheart, klutz, barber, "dead-target");
+        await ExecuteSweetheartAsync(host, storyteller, demon, sage, sweetheart, klutz, barber, "dead-target");
 
         var decision = await WaitForTriggerDecisionAsync(storyteller, "心上人");
         var sting = await storyteller.InvokeAsync<CommandResultDto>(
@@ -313,6 +313,7 @@ public sealed class DeathTriggerResidueHostTests
 
     /// <summary>白天 1：3 号自我提名 → 四票赞成 → 计票 → 结束白天（处决 3 号心上人，触发裁定点）。</summary>
     private static async Task ExecuteSweetheartAsync(
+        TestServerHost host,
         GameClient storyteller,
         GameClient demon,
         GameClient sage,
@@ -335,6 +336,7 @@ public sealed class DeathTriggerResidueHostTests
             SweetheartSeat,
             $"test-death-trigger-residue-{tag}-nominate");
         Assert.Equal("Accepted", nominated.Kind);
+        await VoteSweepTestDriver.StartAsync(host, 1, $"test-death-trigger-residue-{tag}-sweep:start");
 
         var voters = new[] { demon, sage, klutz, barber };
         for (var index = 0; index < voters.Length; index++)
@@ -346,6 +348,8 @@ public sealed class DeathTriggerResidueHostTests
                 $"test-death-trigger-residue-{tag}-vote-{index}");
             Assert.Equal("Accepted", voted.Kind);
         }
+
+        await VoteSweepTestDriver.CollectAllAsync(host, 1, 5, $"test-death-trigger-residue-{tag}-sweep");
 
         var counted = await storyteller.InvokeAsync<CommandResultDto>(
             "CountVotes",
