@@ -1,9 +1,10 @@
 # 账号与玩家名：让局内每个人知道对面是谁
 
-- Status: In progress
+- Status: Done（批次 E30，2026-10-04）
 - Priority: Medium
 - Depends on: 无（M1 局内玩家名 + M2 账号系统本版一起做，口径见 D-0021）
 - 落地方案：`docs/decisions/active.md` D-0021 / `docs/architecture/current.md` §4.1、§5
+- 冻结版本：`451ab23`（取证档只对本版本跑）
 
 ## 要解决的问题
 
@@ -83,3 +84,48 @@
 - 前端：账号面板、加入流程、姓名呈现与缺失回退；
 - 门禁与装置：凭据安全门禁扩展、`tools/verify-accounts.mjs`（第 14 个装置）、零信任 / 胜负装置扩展；
 - 验收：批次 E30 逐行判定，票据移入 `done/`。
+
+## 实施结论（批次 E30，冻结版本 `451ab23`）
+
+门禁：`dotnet build` 0 警告 0 错误；`dotnet test` **853 通过 / 0 失败**（Kernel 327 · Rules 314 ·
+Integration 188 · NormativeGates 24）；`dotnet format` 就地通过；`npm run gate` 全绿
+（typecheck + lint + **142** 前端单测 + build）。
+取证档（`--quota 2 --screenshots-all`，只对 `451ab23`）：主装置 **194 判定全绿**（109.8s）·
+`verify-accounts` **29 项全绿**（37.9s，截图 `accounts-01…06`）· `verify-zero-trust` **51 项全绿**（23.5s）·
+`verify-winloss` **25 项全绿**（34.5s，复盘面回归）。
+
+| 行 | 判定 | 证据 |
+|---|---|---|
+| M1-1 设置玩家名 | 通过 | `AccountFoundationTests`（登录名 2–24 / 玩家名 ≤24 / 空白折叠 / 控制字符与非法输入不落库）+ `format.spec` 席位名归一化 |
+| M1-2 公开可见 | 通过 | 截图 `accounts-02`（B 的同桌）、`accounts-03`（游客 C 的同桌同样看到 1 / 2 号的名字）+ 集成用例 `RegisterClaim_ShowsNameToEveryone_AndGuestStaysNameless` |
+| M1-3 零信任 | 通过 | `verify-zero-trust` 51 项（含账号段：无账号会话的第三方入座不含账号凭据、伪造 / 过期会话来不了、账号会话不能当游戏凭据）+ 投影用例 |
+| M1-4 重放与恢复 | 通过 | 集成用例 `Restart_KeepsAccountBinding_AndReloadsSeatNames`（重启后登录 → 只凭账号回席位 → 名字重新装载） |
+| M1-5 呈现一致 | 通过（有范围说明） | 截图 `accounts-04`（席位牌 / 操作台 / 上报到 / 处罚处决）、`accounts-05`（复盘文案 + 圆盘标记）、`winloss-04/05`（玩家复盘面回归）；结构审查：前端唯一口径 `seatDisplayOf`、服务端 `ReplaySeatText`、门禁登记 |
+| M1-6 缺失兼容 | 通过 | 截图 `accounts-03`（游客 C 席位标签「3 号」、那一行不带名字、无诊断、不白屏）+ `format.spec` / `playerViewMerge.spec` 缺字段退化 |
+| M2-1 注册 | 通过 | 集成用例（登录名唯一且大小写不敏感、玩家名有界、口令 8–128、非法 / 重复不落库）+ `accountGateway.spec` 回执归一化 |
+| M2-2 登录 | 通过 | 集成用例（错误口令统一拒绝 + dummy hash 计时均衡 + 失败审计）+ 装置第 22 项（同账号多次登录各得会话） |
+| M2-3 席位认领 | 通过 | 集成用例（一席一账号 / 一账号一席 / 幂等 / 抢席被拒）+ 装置第 23–26 项（伪造会话、跨账号抢席、第二席、被拒连接无凭据）+ 截图 `accounts-01/02` |
+| M2-4 跨局身份 | 通过（证据形态：集成用例） | `Restart_KeepsAccountBinding_AndReloadsSeatNames` + `SeatBindingTests.Claim_IsScopedPerGame`（绑定按对局隔离）；**未做真机新对局取证**（见诚实记录） |
+| M2-5 找回 | 通过 | 集成用例 `ResetPassword_RotatesRecoveryCode_AndRevokesOldSessions`（旧会话失效 / 旧恢复码被拒 / 新口令可登录 / 恢复码轮换）+ 截图 `accounts-06`（面板上只显示这一次） |
+| M2-6 改名 | 通过 | 集成用例改名推送双端 + 装置第 11–14 项（自己 / 同桌 B / 说书人魔典三处同步）+ 截图 `accounts-04`（席位牌已是「爱丽丝二世」） |
+| M2-7 零信任 | 通过 | `verify-zero-trust` 账号段 51 项 + 投影用例（姓名不参与四道闸） |
+| M2-8 呈现一致 | 通过（有范围说明） | 同 M1-5；另加前端单测 `seatDisplayOf` / `optionDisplayOf` / `markerTextOf` + 游客面不破版（`accounts-03`） |
+
+**诚实记录**
+
+- 装置首跑真红：改名推送与入座快照**同序号**（认领 / 改名是会话信息，不产生事件），
+  而玩家端按字段合并整视图时用的是 `sequence >`，整份改名推送被当旧数据丢掉。修
+  `web/src/services/playerViewMerge.ts` 改用 `>=` 并补回归（`d79da3e`）；改动前后装置第 11–14 项
+  一红一绿，这是本票唯一的真缺陷。
+- 取证档首跑在 `night1-dreamer-resolution` 红了：选项文案统一改写后，游客面的服务端文案「3 号玩家」
+  变成「3 号」，打翻了主装置（13 个装置共享的文本耦合）。据此把口径收紧为**只有这一席已经有玩家名
+  才接管文案**（`451ab23`）：既保住游客面语境，又让有名席位用统一口径。
+- 范围残余：说书人数据抽屉类组件（`LedgerPanel` / `SeatLedgerPanel` / `EffectChainPanel` /
+  `SeatChangeTimeline` / `AssignmentControl` / `PitHagNightPanel` / `StepDigest` /
+  `GrimoireAnnotationControl`）仍显示「N 号」，未接入姓名口径——矩阵点名的五处已覆盖，抽屉面另计。
+- 未重跑的装置：其余九个（女巫 / 麻脸巫婆 / 数学家在 / 回溯信息 / 死亡触发 / 限次信息 / 角色变更 /
+  初始配板 / 复盘规模）未触及规则内核与其链路，且玩家面文案在有名字时才改写、游客面与 E29 一致，
+  故未重跑；零信任与胜负两个同族装置已按回归重跑。
+- 运行成本：`verify-accounts` 迭代档 37.4s / 取证档 37.9s（辅助装置量级 7–13s 之外，固定开销是
+  宿主 + Vite 冷启 + 4 个浏览器上下文）；规则已落 `AGENTS.local.md`（红断言等待要算钱 + 新装置报耗时）。
+
