@@ -35,8 +35,8 @@ public sealed class NightOrderRecommendedTests
     }
 
     /// <summary>
-    /// 其他夜晚：22 条；麻脸巫婆提前到舞蛇人之前，恶魔顺序为方古→诺-达鲺→涡流→亡骨魔，
-    /// 且在贤者之后多一个「信息类角色行动开始」标记。
+    /// 其他夜晚：23 条；麻脸巫婆提前到舞蛇人之前，恶魔顺序为方古→诺-达鲺→涡流→亡骨魔，
+    /// 且在贤者之后多一个「信息类角色行动开始」标记；旅行者黄昏行动（流莺）紧跟 Dusk。
     /// </summary>
     [Fact]
     public void OtherNight_MatchesSource()
@@ -44,6 +44,7 @@ public sealed class NightOrderRecommendedTests
         string[] expected =
         [
             "Dusk",
+            "CharacterAction:harlot",
             "CharacterAction:philosopher",
             "CharacterAction:pit-hag",
             "CharacterAction:snake-charmer",

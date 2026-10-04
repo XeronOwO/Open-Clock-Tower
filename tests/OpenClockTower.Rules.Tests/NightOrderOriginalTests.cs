@@ -34,13 +34,17 @@ public sealed class NightOrderOriginalTests
             NightOrderText.DescribeAll(NightOrderTable.For(GamePhase.FirstNight, NightOrderVariant.Original)));
     }
 
-    /// <summary>其他夜晚：21 条；麻脸巫婆在洗脑师之后、恶魔顺序为方古→亡骨魔→诺-达鲺→涡流。</summary>
+    /// <summary>
+    /// 其他夜晚：22 条；麻脸巫婆在洗脑师之后、恶魔顺序为方古→亡骨魔→诺-达鲺→涡流；
+    /// 旅行者黄昏行动（流莺）紧跟 Dusk，与推荐口径同改（票据 D5 / R-0051）。
+    /// </summary>
     [Fact]
     public void OtherNight_MatchesSource()
     {
         string[] expected =
         [
             "Dusk",
+            "CharacterAction:harlot",
             "CharacterAction:philosopher",
             "CharacterAction:snake-charmer",
             "CharacterAction:witch",

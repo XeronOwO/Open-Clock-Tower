@@ -64,6 +64,10 @@ public static class NightOrderTable
         Array.AsReadOnly<NightOrderEntry>(
             [
                 Step(NightOrderEntryKind.Dusk),
+
+                // 旅行者黄昏行动（D5 / R-0051）：流莺只在其他夜晚行动，插在 Dusk 步之后。
+                // 咖啡师 / 集骨者按 D5 顺序后续落地（《夜晚行动顺序一览》· 2026-10-04 抓取 · 其他夜晚）。
+                Action("harlot"),
                 Action("philosopher"),
                 Action("snake-charmer"),
                 Action("witch"),
@@ -108,6 +112,9 @@ public static class NightOrderTable
         Array.AsReadOnly<NightOrderEntry>(
             [
                 Step(NightOrderEntryKind.Dusk),
+
+                // 旅行者黄昏行动（D5 / R-0051）：与 Original 口径同改（两口径同改见票据 D5）。
+                Action("harlot"),
                 Action("philosopher"),
                 Action("pit-hag"),
                 Action("snake-charmer"),

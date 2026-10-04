@@ -30,6 +30,15 @@ public sealed class NightOrderTableTests
         "artist", "klutz", "mutant", "savant",
     ];
 
+    /// <summary>
+    /// 已经在夜晚顺序表上落地的旅行者（D5 逐角色落地：先流莺，咖啡师 / 集骨者按 D5 顺序后续补入）。
+    /// 依据 docs/standard/character-rules.md「旅行者（5）」与《夜晚行动顺序一览》· 2026-10-04 抓取 · 黄昏行。
+    /// </summary>
+    private static readonly string[] TravellersOnNightOrder =
+    [
+        "harlot",
+    ];
+
     /// <summary>首夜：以黄昏起、以黎明止，爪牙 / 恶魔信息各恰好一条。</summary>
     [Theory]
     [InlineData(NightOrderVariant.Original)]
@@ -77,12 +86,13 @@ public sealed class NightOrderTableTests
         }
     }
 
-    /// <summary>表上的角色必须来自剧本 25 人，且覆盖全部 21 个有夜晚行动的角色。</summary>
+    /// <summary>表上的角色必须来自剧本 25 人（含已落地的旅行者），且覆盖全部有夜晚行动的角色。</summary>
     [Theory]
     [InlineData(NightOrderVariant.Original)]
     [InlineData(NightOrderVariant.Recommended)]
     public void CharacterActions_ComeFromScript_AndCoverEveryNightActor(NightOrderVariant variant)
     {
+        var onTable = ScriptCharacters.Concat(TravellersOnNightOrder).ToList();
         var seen = new SortedSet<string>(StringComparer.Ordinal);
         foreach (var phase in new[] { GamePhase.FirstNight, GamePhase.OtherNight })
         {
@@ -93,12 +103,14 @@ public sealed class NightOrderTableTests
                     continue;
                 }
 
-                Assert.Contains(character.Value, ScriptCharacters);
+                Assert.Contains(character.Value, onTable);
                 seen.Add(character.Value);
             }
         }
 
-        var expected = ScriptCharacters.Except(CharactersWithoutNightAction, StringComparer.Ordinal).ToList();
+        var expected = ScriptCharacters.Except(CharactersWithoutNightAction, StringComparer.Ordinal)
+            .Concat(TravellersOnNightOrder)
+            .ToList();
         Assert.True(
             seen.SetEquals(expected),
             $"夜晚顺序表应覆盖 {expected.Count} 个有夜晚行动的角色；实际覆盖 {seen.Count} 个：{string.Join(",", seen)}");
