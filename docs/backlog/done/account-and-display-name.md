@@ -123,6 +123,8 @@ Integration 188 · NormativeGates 24）；`dotnet format` 就地通过；`npm ru
 - 范围残余：说书人数据抽屉类组件（`LedgerPanel` / `SeatLedgerPanel` / `EffectChainPanel` /
   `SeatChangeTimeline` / `AssignmentControl` / `PitHagNightPanel` / `StepDigest` /
   `GrimoireAnnotationControl`）仍显示「N 号」，未接入姓名口径——矩阵点名的五处已覆盖，抽屉面另计。
+  **（已由批次 E31 的 `ui-layout-and-onboarding` 关闭：八个组件改走 `seatDisplayOf` / `seatTextOf`；
+  真机断言见 `verify-accounts` 抽屉段，其余面由组件级 SSR 回归覆盖。）**
 - 未重跑的装置：其余九个（女巫 / 麻脸巫婆 / 数学家在 / 回溯信息 / 死亡触发 / 限次信息 / 角色变更 /
   初始配板 / 复盘规模）未触及规则内核与其链路，且玩家面文案在有名字时才改写、游客面与 E29 一致，
   故未重跑；零信任与胜负两个同族装置已按回归重跑。

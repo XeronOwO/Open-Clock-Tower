@@ -1,8 +1,9 @@
 # 排版与上手引导优化：让版块自解释、信息降密度
 
-- Status: Todo
+- Status: Done（批次 E31，2026-10-05）
 - Priority: Medium
 - Depends on: 无（纯前端呈现层；不涉及规则与投影面）
+- 冻结版本：`1a73bad`（取证档只对本版本跑）
 
 ## 要解决的问题
 
@@ -96,3 +97,43 @@
   术语变更遵循该页的唯一性要求。
 - 说明文字（问号圆圈）**不承载新知识**：只解释既有术语与字段，规则断言一律指回来源或裁定号。
 - 本票开工前先做一次界面信息架构梳理（现状：每屏有什么、主次与来源），再动版式——避免只是换皮。
+
+## 实施结论（批次 E31，冻结版本 `1a73bad`）
+
+门禁：`dotnet build` 0 警告 0 错误；`dotnet test` **853 通过 / 0 失败**（Kernel 327 · Rules 314 ·
+Integration 188 · NormativeGates 24）；`dotnet format` 就地通过；`npm run gate` 全绿
+（typecheck + lint + **154** 前端单测 + build）。
+
+取证档（`--quota 2 --screenshots-all`，只对 `1a73bad`）：主装置 **194 判定全绿**（跳过 0）·
+`verify-accounts` **36 项全绿**（新增说明入口交互、抽屉面姓名、版面量度）· `verify-zero-trust`
+**50 项全绿**（首夜强推 3 次 = 动态 3 条）· `verify-winloss` **25 项全绿** · `verify-madness`
+**28 项全绿**（处罚处决折叠后先展开再交互）。
+
+| 行 | 判定 | 证据 |
+|---|---|---|
+| 1 版块标题 | 通过 | 两端每个主要版块都是「标题 + `.block-question` 副标题」；说书人端截图 `01-storyteller-joined` / `03-night-started` / `17-grimoire-assigned` / `30-day-open` / `accounts-08` / `accounts-09`（抽屉五个面板），玩家端 `accounts-07` / `accounts-10` / `07-player-dreamer-request` |
+| 2 解释入口 | 通过 | `HelpTip.vue` + `help.ts` 登记表（`help.spec.ts` 5 项：完整性 / 长度 / 指回来源 / 口径 / 去重）；真机交互 `accounts-10-explain-tip` 与断言 #33–35（悬停显示、点按显示、Esc 关闭）；说书人 / 玩家 / 复盘共 26 处引用（状态条 7 个词、抽屉 4 处、**魔典标记、席位操作台、玩家请求 / 信息 / 同桌 / 账号**等） |
+| 3 信息密度 | 通过（有范围说明） | 同状态同口径（accounts 装置量度）：玩家页 **626 → 556px（-11.2%）**、说书人页 **1664 → 1611px（-3.2%）**；主装置整页截图：`03` 1215→1100（**-9.5%**）、`17` 1470→1325（**-9.9%**）、`39` 1196→1132（-5.4%）、`33` 1036→1005（-3.0%）、玩家两态 1106→1071（-3.2%）；日间抽屉展开态持平（3129→3122，-0.2%）。范围说明见「诚实记录」 |
+| 4 文案通俗度 | 通过 | 玩家端：等待态、账号折叠摘要、白天、提问、信息行、副标题；说书人端：魔典 / 操作台 / 白天 / 兜底 / 分配 / 麻脸巫婆之夜 / 抽屉；说明文案全部登记在 `help.ts`（不新增术语，新词先进 `terminology.md`） |
+| 5 数据拼接 | 通过 | `seatSummaryOf`（操作台一句话现状）+ `effectSentenceOf`（效果一句归因）+ 玩家信息「能力：内容」；`grimoire.spec.ts` 新增 3 项、`format.spec.ts` 新增 1 项；截图 `17-grimoire-assigned` / `18-grimoire-seat-console` |
+| 6 信息隔离回归 | 通过 | `verify-zero-trust` 50 项（收包扫描 + 禁词表 + 账号段）；`PlayerProjectionLeakGateTests` 24 项（共享组件按正道登记）；集成投影用例 188 项全绿 |
+| 7 相关族一致 | 通过 | 同一 `HelpTip` + `help.ts` 被说书人 / 玩家 / 复盘三面引用；席位口径唯一（`seatDisplayOf` / `seatTextOf`，8 个抽屉面组件 + 复盘 + 席位牌）；新增组件级渲染回归 `seatDisplay.spec.ts`（4 项，含真机难触达的麻脸巫婆之夜面板） |
+
+**诚实记录**
+
+- 门禁真红两次，都是被硬约束抓到的真问题，不是纸面问题：
+  1. `PlayerProjectionLeakGateTests`：玩家侧 import `features/common/HelpTip.vue` 未登记 → 按门禁
+     规则**显式登记**（该组件是纯呈现组件：只渲染 `display/help.ts` 的静态文案，不读视图数据），
+     没有静默绕过；登记后 24 项全绿。
+  2. 主装置首跑 5 红：① 装置用 `.caption` 的 `textContent === '槽位'` 当锚点，我把 `?` 写进了 caption
+     → 改成同级元素（caption 保持纯标签）；② 玩家信息面板的可见说明「信息可能是错的」（D-0002）
+     被我收进 `?` 气泡 → 恢复为可见一行。两条都按取证口径改产品标记，没有放宽断言。
+- 取证档暴露并顺手修掉一处既有缺陷：`StorytellerPanel` 的凭据占位提示 `v-else` 误绑在复盘开关上，
+  复盘收起时它一直挂在魔典下方说"还没有凭据"，与"已连接"矛盾——改成与 `GrimoireView` 配对；
+  另把低频危险的「处罚处决」默认收起（装置先展开再交互，`verify-madness` 28 项全绿）。
+- 密度范围说明：为矩阵行 1 加的标题 / 副标题本身有高度成本。说书人"加入空态"因此 +29px（+2.6%），
+  抽屉展开态基本持平（副标题成本 ≈ 折叠收益）；**游玩态与玩家页是净下降**（-3% ～ -11%）。
+  若要求所有状态一律下降，需要把副标题并入行内或砍掉部分说明，本轮按矩阵行 1 的优先级保留。
+- 真机未覆盖的组件面：`StepDigest` / `EffectChainPanel` / `LedgerPanel` / `PitHagNightPanel` /
+  `GrimoireAnnotationControl` 的姓名口径与渲染由组件级 SSR 回归 `seatDisplay.spec.ts` 覆盖；
+  真机只覆盖到状态账 / 最近状态变化 / 开局分配 / 席内注记四处（其余需要夜间窗口 / 效果夹具）。
