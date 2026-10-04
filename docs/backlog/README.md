@@ -60,6 +60,8 @@ todo/  →  in-progress/  →  review/  →  done/
 
 ### Todo
 
+- [旅行者与流放流程（首版纳入）](todo/traveller-and-exile.md) — **High** — 《梦殒春宵》5 名旅行者（怪咖 / 集骨者 / 咖啡师 / 流莺 / 屠夫）+ 流放流程 + 加入 / 离开；范围决策 D-0022（需求方 2026-10-04 确认纳入 MVP），开工第一步是补来源与细则清点
+
 ### In progress
 
 ### Review
