@@ -520,4 +520,6 @@ export interface ReplayViewDto {
   ended: boolean
   hasMore: boolean
   steps: ReplayStepDto[]
+  /** 公开的「席位 → 玩家名」快照（D-0021）：圆盘标记与文案用同一份名字。 */
+  seatNames: SeatDisplayNameDto[]
 }

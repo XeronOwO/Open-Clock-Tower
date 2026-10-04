@@ -46,14 +46,14 @@ internal sealed class TriggerReplayPresenter : IReplayStepPresenter
             Sequence = context.Stored.Sequence,
             Kind = ReplayStepKind.Trigger,
             Phase = context.Phase,
-            Summary = $"{ReplayText.Seat(choice.Klutz)} 的呆瓜公开选择：{ReplayText.Seat(choice.Target)}",
+            Summary = $"{context.SeatText.Seat(choice.Klutz)} 的呆瓜公开选择：{context.SeatText.Seat(choice.Target)}",
         },
         KlutzChoiceSkippedEvent klutzSkipped => new ReplayStep
         {
             Sequence = context.Stored.Sequence,
             Kind = ReplayStepKind.Trigger,
             Phase = context.Phase,
-            Summary = $"{ReplayText.Seat(klutzSkipped.Klutz)} 的呆瓜选择跳过",
+            Summary = $"{context.SeatText.Seat(klutzSkipped.Klutz)} 的呆瓜选择跳过",
             Detail = klutzSkipped.Reason,
         },
         DeferredDeathRecordedEvent recorded => PresentDeferredRecorded(context, recorded),
@@ -62,7 +62,7 @@ internal sealed class TriggerReplayPresenter : IReplayStepPresenter
             Sequence = context.Stored.Sequence,
             Kind = ReplayStepKind.Trigger,
             Phase = context.Phase,
-            Summary = $"待定死亡裁定：{ReplayText.Seat(resolved.Target)} "
+            Summary = $"待定死亡裁定：{context.SeatText.Seat(resolved.Target)} "
                 + (resolved.Killed ? "死亡" : "存活"),
             Detail = resolved.Note,
         },
@@ -71,7 +71,7 @@ internal sealed class TriggerReplayPresenter : IReplayStepPresenter
             Sequence = context.Stored.Sequence,
             Kind = ReplayStepKind.Trigger,
             Phase = context.Phase,
-            Summary = $"{ReplayText.Seat(pitHagOpened.Source)} 创造恶魔：死亡裁量窗口开启"
+            Summary = $"{context.SeatText.Seat(pitHagOpened.Source)} 创造恶魔：死亡裁量窗口开启"
                 + $"（至第 {pitHagOpened.ClosesAfterSlotIndex} 个槽位）",
             Detail = $"窗口能力：{ReplayText.Ability(pitHagOpened.CasualtyAbility)}",
         },
@@ -97,7 +97,7 @@ internal sealed class TriggerReplayPresenter : IReplayStepPresenter
             Sequence = context.Stored.Sequence,
             Kind = ReplayStepKind.Trigger,
             Phase = context.Phase,
-            Summary = $"{ReplayText.Seat(sageSkipped.Sage)} 的贤者触发跳过",
+            Summary = $"{context.SeatText.Seat(sageSkipped.Sage)} 的贤者触发跳过",
             Detail = sageSkipped.Reason,
         },
         BarberNightOpenedEvent barberOpened => new ReplayStep
@@ -105,7 +105,7 @@ internal sealed class TriggerReplayPresenter : IReplayStepPresenter
             Sequence = context.Stored.Sequence,
             Kind = ReplayStepKind.Trigger,
             Phase = context.Phase,
-            Summary = $"{ReplayText.Seat(barberOpened.Source)} 死亡：今晚理发待交互",
+            Summary = $"{context.SeatText.Seat(barberOpened.Source)} 死亡：今晚理发待交互",
             Detail = barberOpened.Note,
         },
         BarberNightClosedEvent barberClosed => new ReplayStep
@@ -121,7 +121,7 @@ internal sealed class TriggerReplayPresenter : IReplayStepPresenter
             Sequence = context.Stored.Sequence,
             Kind = ReplayStepKind.Trigger,
             Phase = context.Phase,
-            Summary = $"{ReplayText.Seat(barberSkipped.Seat)} 的理发交互跳过",
+            Summary = $"{context.SeatText.Seat(barberSkipped.Seat)} 的理发交互跳过",
             Detail = barberSkipped.Reason,
         },
         SweetheartDeathSkippedEvent sweetheartSkipped => new ReplayStep
@@ -129,7 +129,7 @@ internal sealed class TriggerReplayPresenter : IReplayStepPresenter
             Sequence = context.Stored.Sequence,
             Kind = ReplayStepKind.Trigger,
             Phase = context.Phase,
-            Summary = $"{ReplayText.Seat(sweetheartSkipped.Sweetheart)} 的心上人触发跳过",
+            Summary = $"{context.SeatText.Seat(sweetheartSkipped.Sweetheart)} 的心上人触发跳过",
             Detail = sweetheartSkipped.Reason,
         },
         FangGuInfectionRecordedEvent infection => new ReplayStep
@@ -137,8 +137,8 @@ internal sealed class TriggerReplayPresenter : IReplayStepPresenter
             Sequence = context.Stored.Sequence,
             Kind = ReplayStepKind.Trigger,
             Phase = context.Phase,
-            Summary = $"方古「限一次」已使用：{ReplayText.Seat(infection.Source)} → "
-                + $"{ReplayText.Seat(infection.Seat)} 侵染",
+            Summary = $"方古「限一次」已使用：{context.SeatText.Seat(infection.Source)} → "
+                + $"{context.SeatText.Seat(infection.Seat)} 侵染",
         },
         _ => throw new InvalidOperationException(
             $"TriggerReplayPresenter 不认领事件 {context.Stored.Event.GetType().Name}"),
@@ -151,7 +151,7 @@ internal sealed class TriggerReplayPresenter : IReplayStepPresenter
         var requirement = issued.Requirement;
         var details = new List<string>
         {
-            $"来源 {ReplayText.Seat(requirement.Source)}；能力 {ReplayText.Ability(requirement.Ability)}",
+            $"来源 {context.SeatText.Seat(requirement.Source)}；能力 {ReplayText.Ability(requirement.Ability)}",
         };
 
         if (requirement.ExpiresAtDay is { } expiresAt)
@@ -164,7 +164,7 @@ internal sealed class TriggerReplayPresenter : IReplayStepPresenter
             Sequence = context.Stored.Sequence,
             Kind = ReplayStepKind.Trigger,
             Phase = context.Phase,
-            Summary = $"{ReplayText.Seat(requirement.Seat)} 被要求疯狂证明自己是「{requirement.ProveToBe}」",
+            Summary = $"{context.SeatText.Seat(requirement.Seat)} 被要求疯狂证明自己是「{requirement.ProveToBe}」",
             Detail = string.Join("；", details),
         };
     }
@@ -179,7 +179,7 @@ internal sealed class TriggerReplayPresenter : IReplayStepPresenter
             details.Add(
                 $"确认后转化为 {ReplayText.CharacterValue(transformation.Character)}"
                 + $"（{ReplayText.Alignment(transformation.Alignment)}），"
-                + $"{ReplayText.Seat(transformation.Dies)} 死亡");
+                + $"{context.SeatText.Seat(transformation.Dies)} 死亡");
         }
 
         return new ReplayStep
@@ -187,7 +187,7 @@ internal sealed class TriggerReplayPresenter : IReplayStepPresenter
             Sequence = context.Stored.Sequence,
             Kind = ReplayStepKind.Trigger,
             Phase = context.Phase,
-            Summary = $"{ReplayText.Seat(recorded.Source)} 对 {ReplayText.Seat(recorded.Target)} 的击杀进入待定死亡",
+            Summary = $"{context.SeatText.Seat(recorded.Source)} 对 {context.SeatText.Seat(recorded.Target)} 的击杀进入待定死亡",
             Detail = string.Join("；", details),
         };
     }
@@ -216,7 +216,7 @@ internal sealed class TriggerReplayPresenter : IReplayStepPresenter
             Sequence = context.Stored.Sequence,
             Kind = ReplayStepKind.Trigger,
             Phase = context.Phase,
-            Summary = $"{ReplayText.Seat(opened.Sage)} 被恶魔 {ReplayText.Seat(opened.Demon)} 击杀：当夜展示",
+            Summary = $"{context.SeatText.Seat(opened.Sage)} 被恶魔 {context.SeatText.Seat(opened.Demon)} 击杀：当夜展示",
             Detail = string.Join("；", details),
         };
     }

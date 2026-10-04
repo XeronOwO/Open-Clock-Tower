@@ -39,12 +39,47 @@ public sealed class ReplayProjectionTests
     [Fact]
     public void EmptyStream_YieldsEmptyView()
     {
-        var view = ReplayProjection.Build([], afterSequence: 0, pageSize: 100);
+        var view = ReplayProjection.Build([], afterSequence: 0, seatNames: [], pageSize: 100);
 
         Assert.Equal(0, view.Sequence);
         Assert.False(view.Ended);
         Assert.False(view.HasMore);
         Assert.Empty(view.Steps);
+    }
+
+    /// <summary>席位文案带玩家名（D-0021）：有名字写「N 号 · 玩家名」，没名字的席位回退「N 号」。</summary>
+    [Fact]
+    public void Build_RendersSeatNamesInCopy_AndFallsBackWithoutName()
+    {
+        var stream = new List<StoredEvent>
+        {
+            Assignment(1, 1, "vortox"),
+            Assignment(2, 2, "clockmaker"),
+        };
+        var names = new List<SeatDisplayName>
+        {
+            new() { Seat = new SeatId(1), DisplayName = "爱丽丝" },
+        };
+
+        var view = ReplayProjection.Build(stream, afterSequence: 0, seatNames: names, pageSize: 100);
+
+        Assert.Contains(view.Steps, step => step.Summary.Contains("1 号 · 爱丽丝", StringComparison.Ordinal));
+        Assert.Contains(view.Steps, step => step.Summary.Contains("2 号：", StringComparison.Ordinal));
+        Assert.DoesNotContain(view.Steps, step => step.Summary.Contains("2 号 ·", StringComparison.Ordinal));
+        Assert.Contains(view.SeatNames, item => item.Seat == new SeatId(1) && item.DisplayName == "爱丽丝");
+    }
+
+    /// <summary>选项值里的席位分量走同一口径（seat:N / pair:A+B，D-0021）。</summary>
+    [Fact]
+    public void ReplaySeatText_FormatsOptionSeatPartsWithNames()
+    {
+        var text = new ReplaySeatText([new SeatDisplayName { Seat = new SeatId(2), DisplayName = "小明" }]);
+
+        Assert.True(text.TryFormatOptionSeatPart("seat:2", out var seat));
+        Assert.Equal("2 号 · 小明", seat);
+        Assert.True(text.TryFormatOptionSeatPart("pair:2+5", out var pair));
+        Assert.Equal("2 号 · 小明 + 5 号", pair);
+        Assert.False(text.TryFormatOptionSeatPart("clockmaker", out _));
     }
 
     /// <summary>步骤顺序 = 事件序号顺序；分页按序号推进、不重不漏。</summary>
@@ -59,20 +94,20 @@ public sealed class ReplayProjectionTests
             Death(4, 2, causedBy: 1, reason: "测试：恶魔击杀"),
         };
 
-        var all = ReplayProjection.Build(stream, afterSequence: 0, pageSize: 100);
+        var all = ReplayProjection.Build(stream, afterSequence: 0, seatNames: [], pageSize: 100);
         Assert.Equal(new long[] { 1, 2, 3, 4 }, all.Steps.Select(step => step.Sequence).ToArray());
         Assert.False(all.HasMore);
         Assert.False(all.Ended);
 
-        var first = ReplayProjection.Build(stream, afterSequence: 0, pageSize: 2);
+        var first = ReplayProjection.Build(stream, afterSequence: 0, seatNames: [], pageSize: 2);
         Assert.Equal(new long[] { 1, 2 }, first.Steps.Select(step => step.Sequence).ToArray());
         Assert.True(first.HasMore);
 
-        var second = ReplayProjection.Build(stream, afterSequence: 2, pageSize: 2);
+        var second = ReplayProjection.Build(stream, afterSequence: 2, seatNames: [], pageSize: 2);
         Assert.Equal(new long[] { 3, 4 }, second.Steps.Select(step => step.Sequence).ToArray());
         Assert.False(second.HasMore);
 
-        var beyond = ReplayProjection.Build(stream, afterSequence: 4, pageSize: 2);
+        var beyond = ReplayProjection.Build(stream, afterSequence: 4, seatNames: [], pageSize: 2);
         Assert.Empty(beyond.Steps);
         Assert.False(beyond.HasMore);
     }
@@ -88,7 +123,7 @@ public sealed class ReplayProjectionTests
             Death(3, 2, causedBy: 1, reason: "测试：恶魔击杀"),
         };
 
-        var step = ReplayProjection.Build(stream, 0, 100).Steps.Single(item => item.Sequence == 3);
+        var step = ReplayProjection.Build(stream, 0, [], 100).Steps.Single(item => item.Sequence == 3);
 
         var delta = Assert.Single(step.Seats);
         Assert.Equal(new SeatId(2), delta.Seat);
@@ -116,7 +151,7 @@ public sealed class ReplayProjectionTests
             Death(3, 2, causedBy: 1, reason: "测试：处决"),
         };
 
-        var step = ReplayProjection.Build(stream, 0, 100).Steps.Single(item => item.Sequence == 3);
+        var step = ReplayProjection.Build(stream, 0, [], 100).Steps.Single(item => item.Sequence == 3);
 
         Assert.Contains(step.Markers, marker => marker.Kind == "shroud");
         Assert.DoesNotContain(step.Markers, marker => marker.Kind == "kill-arrow");
@@ -143,7 +178,7 @@ public sealed class ReplayProjectionTests
             },
         };
 
-        var step = ReplayProjection.Build(stream, 0, 100).Steps.Single(item => item.Sequence == 2);
+        var step = ReplayProjection.Build(stream, 0, [], 100).Steps.Single(item => item.Sequence == 2);
 
         var marker = Assert.Single(step.Markers, item => item.Kind == "character-change");
         Assert.Contains("钟表匠", marker.Text);
@@ -184,7 +219,7 @@ public sealed class ReplayProjectionTests
             },
         };
 
-        var steps = ReplayProjection.Build(stream, 0, 100).Steps;
+        var steps = ReplayProjection.Build(stream, 0, [], 100).Steps;
         var applied = steps.Single(item => item.Sequence == 2);
         Assert.Contains(applied.Markers, marker => marker.Kind == "poisoned");
         Assert.Contains(applied.Markers, marker => marker.Kind == "drunk");
@@ -213,7 +248,7 @@ public sealed class ReplayProjectionTests
             Death(3, 1, causedBy: 1, reason: "测试：死亡"),
         };
 
-        var steps = ReplayProjection.Build(stream, 0, 100).Steps;
+        var steps = ReplayProjection.Build(stream, 0, [], 100).Steps;
         Assert.Equal(new long[] { 1, 3 }, steps.Select(step => step.Sequence).ToArray());
     }
 
@@ -248,7 +283,7 @@ public sealed class ReplayProjectionTests
         var afterSequence = 0L;
         while (true)
         {
-            var page = ReplayProjection.Build(stream, afterSequence, ReplayProjection.DefaultPageSize);
+            var page = ReplayProjection.Build(stream, afterSequence, [], ReplayProjection.DefaultPageSize);
             collected.AddRange(page.Steps.Select(step => step.Sequence));
             if (!page.HasMore)
             {
@@ -289,7 +324,7 @@ public sealed class ReplayProjectionTests
             },
         };
 
-        var step = ReplayProjection.Build(stream, 0, 100).Steps.Single(item => item.Sequence == 2);
+        var step = ReplayProjection.Build(stream, 0, [], 100).Steps.Single(item => item.Sequence == 2);
 
         Assert.Contains(step.Markers, marker => marker.Kind == "shroud" && marker.Seat == new SeatId(3));
         Assert.DoesNotContain(step.Markers, marker => marker.Kind == "kill-arrow");

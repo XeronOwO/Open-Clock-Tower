@@ -31,7 +31,7 @@ internal sealed class DayReplayPresenter : IReplayStepPresenter
             Sequence = context.Stored.Sequence,
             Kind = ReplayStepKind.Day,
             Phase = GamePhase.Day,
-            Summary = $"{ReplayText.Seat(nomination.Nominator)} 提名 {ReplayText.Seat(nomination.Nominee)}",
+            Summary = $"{context.SeatText.Seat(nomination.Nominator)} 提名 {context.SeatText.Seat(nomination.Nominee)}",
             Detail = nomination.NominatorCharacter is { } character
                 ? $"提名时提名者角色：{ReplayText.CharacterValue(character)}"
                 : null,
@@ -41,7 +41,7 @@ internal sealed class DayReplayPresenter : IReplayStepPresenter
             Sequence = context.Stored.Sequence,
             Kind = ReplayStepKind.Day,
             Phase = GamePhase.Day,
-            Summary = $"{ReplayText.Seat(vote.Voter)} {(vote.Voted ? "投出赞成票" : "撤回 / 取消赞成")}",
+            Summary = $"{context.SeatText.Seat(vote.Voter)} {(vote.Voted ? "投出赞成票" : "撤回 / 取消赞成")}",
             Detail = vote.VoterCharacter is { } character
                 ? $"投票时投票者角色：{ReplayText.CharacterValue(character)}"
                 : null,
@@ -52,7 +52,7 @@ internal sealed class DayReplayPresenter : IReplayStepPresenter
             Sequence = context.Stored.Sequence,
             Kind = executed.DayNumber is null ? ReplayStepKind.Trigger : ReplayStepKind.Day,
             Phase = GamePhase.Day,
-            Summary = $"{ReplayText.Seat(executed.Seat)} 被处决（{ReplayText.Execution(executed.Kind)}）"
+            Summary = $"{context.SeatText.Seat(executed.Seat)} 被处决（{ReplayText.Execution(executed.Kind)}）"
                 + (executed.DayNumber is { } day ? $" · 第 {day} 天" : " · 夜晚形态"),
             Detail = executed.Note,
         },
@@ -72,12 +72,12 @@ internal sealed class DayReplayPresenter : IReplayStepPresenter
         var details = new List<string>();
         if (counted.Voters.Count > 0)
         {
-            details.Add($"赞成：{ReplayText.SeatList(counted.Voters)}");
+            details.Add($"赞成：{context.SeatText.SeatList(counted.Voters)}");
         }
 
         if (counted.SpentVoteTokens.Count > 0)
         {
-            details.Add($"用掉死亡玩家的一次性投票权：{ReplayText.SeatList(counted.SpentVoteTokens)}");
+            details.Add($"用掉死亡玩家的一次性投票权：{context.SeatText.SeatList(counted.SpentVoteTokens)}");
         }
 
         return new ReplayStep
@@ -88,7 +88,7 @@ internal sealed class DayReplayPresenter : IReplayStepPresenter
             Summary = $"第 {counted.DayNumber} 天计票（第 {counted.NominationIndex} 项提名）："
                 + $"{counted.Voters.Count} 票"
                 + (counted.AboutToBeExecuted is { } aboutToDie
-                    ? $"，{ReplayText.Seat(aboutToDie)} 即将被处决"
+                    ? $"，{context.SeatText.Seat(aboutToDie)} 即将被处决"
                     : "，无人被处决"),
             Detail = details.Count == 0 ? null : string.Join("；", details),
         };

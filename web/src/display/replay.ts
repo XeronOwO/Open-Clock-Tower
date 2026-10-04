@@ -11,9 +11,18 @@ import type {
   ReplaySeatDeltaDto,
   ReplayStepDto,
   ReplayViewDto,
+  SeatDisplayNameDto,
   SeatStateFactDto,
 } from '@/contracts/game'
-import { asArray, asBoolean, asCount, asSizedText, asText } from '@/display/format'
+import {
+  asArray,
+  asBoolean,
+  asCount,
+  asSizedText,
+  asText,
+  normalizeSeatNames,
+  seatDisplayOf,
+} from '@/display/format'
 import { buildSeatMarks, type SeatCardModel } from '@/display/grimoire'
 
 /** 单维度的已知值 + 归因（复盘增量按事件序号覆盖）。 */
@@ -71,13 +80,16 @@ export function markerLabelOf(kind: string): string {
   return MARKER_LABELS[kind] ?? kind
 }
 
-/** 标记的一句话说明：有向标记写「A 号 → B 号」，其余写席位 + 补充文本。 */
-export function markerTextOf(marker: ReplayMarkerDto): string {
+/** 标记的一句话说明：有向标记写「A 号 → B 号」，其余写席位 + 补充文本；席位走 D-0021 统一口径。 */
+export function markerTextOf(
+  marker: ReplayMarkerDto,
+  seatNames: readonly SeatDisplayNameDto[] = [],
+): string {
   const head =
     marker.from !== null && marker.to !== null
-      ? `${marker.from} 号 → ${marker.to} 号`
+      ? `${seatDisplayOf(marker.from, seatNames)} → ${seatDisplayOf(marker.to, seatNames)}`
       : marker.seat !== null
-        ? `${marker.seat} 号`
+        ? seatDisplayOf(marker.seat, seatNames)
         : ''
   return [head, marker.text ?? ''].filter((part) => part.length > 0).join(' · ')
 }
@@ -104,6 +116,7 @@ export function normalizeReplayView(raw: unknown): ReplayViewDto | null {
     ended: asBoolean(view['ended']) ?? false,
     hasMore: asBoolean(view['hasMore']) ?? false,
     steps: parsed as ReplayStepDto[],
+    seatNames: normalizeSeatNames(view['seatNames']),
   }
 }
 

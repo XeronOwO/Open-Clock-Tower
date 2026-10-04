@@ -28,14 +28,18 @@ public static class ReplayProjection
     /// </summary>
     /// <param name="events">整条事件流（按序号升序；实现按给定顺序折叠）。</param>
     /// <param name="afterSequence">客户端已拿到的最大序号；首次请传 0。</param>
+    /// <param name="seatNames">公开的「席位 → 玩家名」快照（D-0021；读时解析，不参与折事件）。</param>
     /// <param name="pageSize">本页最多返回多少步（钳制在 1..<see cref="MaxPageSize"/>）。</param>
     public static ReplayView Build(
         IReadOnlyList<StoredEvent> events,
         long afterSequence,
+        IReadOnlyList<SeatDisplayName> seatNames,
         int pageSize = DefaultPageSize)
     {
         ArgumentNullException.ThrowIfNull(events);
+        ArgumentNullException.ThrowIfNull(seatNames);
         var limit = Math.Clamp(pageSize, 1, MaxPageSize);
+        var seatText = new ReplaySeatText(seatNames);
 
         var steps = new List<ReplayStep>();
         StepMachineState? machine = null;
@@ -64,6 +68,7 @@ public static class ReplayProjection
                 MachineAfter = machine,
                 StateBefore = stateBefore,
                 StateAfter = state,
+                SeatText = seatText,
             }));
         }
 
@@ -85,6 +90,7 @@ public static class ReplayProjection
             Ended = ended,
             HasMore = startIndex + page.Count < steps.Count,
             Steps = page,
+            SeatNames = seatNames,
         };
     }
 }

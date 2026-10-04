@@ -481,6 +481,7 @@ public static class ProjectionMapper
         Ended = view.Ended,
         HasMore = view.HasMore,
         Steps = [.. view.Steps.Select(step => ToDto(step))],
+        SeatNames = [.. view.SeatNames.Select(ToDto)],
     };
 
     /// <summary>复盘步骤 → DTO。</summary>

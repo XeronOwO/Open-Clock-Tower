@@ -27,7 +27,7 @@ internal sealed class ChoiceReplayPresenter : IReplayStepPresenter
             Sequence = context.Stored.Sequence,
             Kind = ReplayStepKind.Request,
             Phase = context.Phase,
-            Summary = $"{ReplayText.Seat(issued.Request.Addressee)} 被要求做出选择",
+            Summary = $"{context.SeatText.Seat(issued.Request.Addressee)} 被要求做出选择",
             Detail = issued.Request.Prompt.Context
                 + (issued.Request.Prompt.HasSecondDimension
                     ? $"（两维选择：{issued.Request.Prompt.Options.Count} × "
@@ -43,7 +43,7 @@ internal sealed class ChoiceReplayPresenter : IReplayStepPresenter
             Sequence = context.Stored.Sequence,
             Kind = ReplayStepKind.Request,
             Phase = context.Phase,
-            Summary = $"{ReplayText.Seat(asked.Seat)} 向说书人提问",
+            Summary = $"{context.SeatText.Seat(asked.Seat)} 向说书人提问",
             Detail = $"「{asked.Question}」；提问时角色：{ReplayText.Character(asked.Character)}",
         },
         ArtistQuestionClosedEvent closed => new ReplayStep
@@ -76,8 +76,8 @@ internal sealed class ChoiceReplayPresenter : IReplayStepPresenter
             Sequence = context.Stored.Sequence,
             Kind = ReplayStepKind.Request,
             Phase = context.Phase,
-            Summary = $"{ReplayText.Seat(request?.Addressee)} 完成选择："
-                + ReplayText.Option(answered.Answer.OptionValue),
+            Summary = $"{context.SeatText.Seat(request?.Addressee)} 完成选择："
+                + ReplayText.Option(answered.Answer.OptionValue, context.SeatText),
             Detail = details.Count == 0 ? null : string.Join("；", details),
         };
     }
@@ -98,7 +98,7 @@ internal sealed class ChoiceReplayPresenter : IReplayStepPresenter
             Sequence = context.Stored.Sequence,
             Kind = ReplayStepKind.Request,
             Phase = context.Phase,
-            Summary = $"{ReplayText.Seat(request?.Addressee)} 的选择被作废",
+            Summary = $"{context.SeatText.Seat(request?.Addressee)} 的选择被作废",
             Detail = string.Join("；", details),
         };
     }
@@ -120,7 +120,7 @@ internal sealed class ChoiceReplayPresenter : IReplayStepPresenter
 
         if (raised.AttributionSeat is { } attribution)
         {
-            details.Add($"归属 {ReplayText.Seat(attribution)}");
+            details.Add($"归属 {context.SeatText.Seat(attribution)}");
         }
 
         if (raised.TriggerAbility is { } trigger)
@@ -161,7 +161,7 @@ internal sealed class ChoiceReplayPresenter : IReplayStepPresenter
             Phase = context.Phase,
             Summary = resolved.Decision is null
                 ? "说书人裁定点以「未选择」了结"
-                : $"说书人裁定：{ReplayText.Option(resolved.Decision)}",
+                : $"说书人裁定：{ReplayText.Option(resolved.Decision, context.SeatText)}",
             Detail = details.Count == 0 ? null : string.Join("；", details),
         };
     }

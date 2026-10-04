@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import type { ReplayMarkerDto, ReplaySeatDeltaDto, ReplayStepDto } from '@/contracts/game'
+import type {
+  ReplayMarkerDto,
+  ReplaySeatDeltaDto,
+  ReplayStepDto,
+  SeatDisplayNameDto,
+} from '@/contracts/game'
+import { seatDisplayOf } from '@/display/format'
 import {
   boardAt,
   markerLabelOf,
@@ -115,5 +121,33 @@ describe('复盘归一化与文案（服务端数据是不可信输入）', () =
     const marker: ReplayMarkerDto = { kind: 'kill-arrow', seat: null, from: 2, to: 5, text: null }
     expect(markerTextOf(marker)).toBe('2 号 → 5 号')
     expect(markerLabelOf(marker.kind)).toBe('恶魔击杀')
+  })
+
+  it('有玩家名时标记与文案走同一口径；没名字的席位回退席位号（D-0021）', () => {
+    const names: SeatDisplayNameDto[] = [
+      { seat: 2, displayName: '小明' },
+      { seat: 5, displayName: '小红' },
+    ]
+    const arrow: ReplayMarkerDto = { kind: 'kill-arrow', seat: null, from: 2, to: 5, text: null }
+    expect(markerTextOf(arrow, names)).toBe('2 号 · 小明 → 5 号 · 小红')
+
+    const single: ReplayMarkerDto = { kind: 'poisoned', seat: 3, from: null, to: null, text: '中毒' }
+    expect(markerTextOf(single, names)).toBe('3 号 · 中毒')
+    expect(seatDisplayOf(2, names)).toBe('2 号 · 小明')
+    expect(seatDisplayOf(4, names)).toBe('4 号')
+  })
+
+  it('复盘视图解析带上公开席位名（缺字段时退化成空表）', () => {
+    const withNames = normalizeReplayView({
+      sequence: 9,
+      ended: true,
+      hasMore: false,
+      steps: [step(1)],
+      seatNames: [{ seat: 1, displayName: '爱丽丝' }, { seat: 'x', displayName: '坏数据' }],
+    })
+    expect(withNames?.seatNames).toEqual([{ seat: 1, displayName: '爱丽丝' }])
+
+    const without = normalizeReplayView({ sequence: 9, ended: true, hasMore: false, steps: [step(1)] })
+    expect(without?.seatNames).toEqual([])
   })
 })

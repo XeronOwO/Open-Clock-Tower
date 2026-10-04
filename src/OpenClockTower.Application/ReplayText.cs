@@ -3,20 +3,14 @@ using OpenClockTower.Rules;
 
 namespace OpenClockTower.Application;
 
-/// <summary>复盘文案的公共口径：席位 / 角色 / 能力 / 阶段 / 选项值的显示文本。</summary>
+/// <summary>复盘文案的公共口径：角色 / 能力 / 阶段 / 失效原因 / 选项值的显示文本。</summary>
 /// <remarks>
-/// 未知取值一律原样回显、不吞（项目约定）；角色中文名以花名册为准（术语表 §1）。
+/// 席位文本（含玩家名，D-0021）单独由 <see cref="ReplaySeatText"/> 提供：它需要一份名册快照，
+/// 不适合放在静态工具里。未知取值一律原样回显、不吞（项目约定）；角色中文名以花名册为准（术语表 §1）。
 /// 这里只做「值 → 人话」，不推演任何规则（D-0020：复盘是事件流的呈现投影）。
 /// </remarks>
 internal static class ReplayText
 {
-    /// <summary>席位文本，如「3 号」。</summary>
-    internal static string Seat(SeatId? seat) => seat is { } value ? $"{value.Value} 号" : "（未知席位）";
-
-    /// <summary>席位列表文本。</summary>
-    internal static string SeatList(IEnumerable<SeatId> seats) =>
-        string.Join("、", seats.Select(seat => Seat(seat)));
-
     /// <summary>角色文本（中文名，未知原样回显）。</summary>
     internal static string Character(CharacterId? character) =>
         character is { } value ? CharacterValue(value) : "（未知角色）";
@@ -89,7 +83,7 @@ internal static class ReplayText
     };
 
     /// <summary>把选项值翻译成人话：seat:N / pair:A+B / decline / 两维编码 / 未知原样回显。</summary>
-    internal static string Option(string? value)
+    internal static string Option(string? value, ReplaySeatText seatText)
     {
         if (string.IsNullOrEmpty(value))
         {
@@ -103,33 +97,18 @@ internal static class ReplayText
 
         if (value.Contains('|'))
         {
-            return string.Join(" × ", value.Split('|').Select(OptionPart));
+            return string.Join(" × ", value.Split('|').Select(part => OptionPart(part, seatText)));
         }
 
-        return OptionPart(value);
+        return OptionPart(value, seatText);
     }
 
-    /// <summary>单个选项分量：席位 / 玩家对 / 角色 slug / 原样回显。</summary>
-    private static string OptionPart(string part)
+    /// <summary>单个选项分量：席位 / 玩家对（走同一席位口径） / 角色 slug / 原样回显。</summary>
+    private static string OptionPart(string part, ReplaySeatText seatText)
     {
-        if (part.StartsWith("seat:", StringComparison.Ordinal)
-            && int.TryParse(part["seat:".Length..], out var seat))
+        if (seatText.TryFormatOptionSeatPart(part, out var seatPart))
         {
-            return $"{seat} 号";
-        }
-
-        if (part.StartsWith("pair:", StringComparison.Ordinal))
-        {
-            var seats = part["pair:".Length..]
-                .Split('+', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            if (seats.Length == 2
-                && int.TryParse(seats[0], out var first)
-                && int.TryParse(seats[1], out var second))
-            {
-                return $"{first} 号 + {second} 号";
-            }
-
-            return part;
+            return seatPart;
         }
 
         return SectsAndVioletsRoster.DisplayNameOf(new CharacterId(part)) ?? part;

@@ -7,7 +7,7 @@
  * 位置写进 URL hash（`?replay=<事件序号>`）：刷新 / 重连后按序号重建（票据矩阵行 7）。
  * 播放节拍是呈现态，与 D-0013 的对局配额无关（票据「决定与依据」）。
  */
-import type { ReplayStepDto, ReplayViewDto } from '@/contracts/game'
+import type { ReplayStepDto, ReplayViewDto, SeatDisplayNameDto } from '@/contracts/game'
 import { labelOf } from '@/display/labels'
 import {
   boardAt,
@@ -33,6 +33,7 @@ const PAGE_SIZE = 200
 const PLAY_INTERVAL_MS = 1200
 
 const steps = ref<ReplayStepDto[]>([])
+const seatNames = ref<SeatDisplayNameDto[]>([])
 const cursor = ref(0)
 const playing = ref(false)
 const loading = ref(false)
@@ -85,6 +86,7 @@ async function loadMore(): Promise<boolean> {
 
     ended.value = page.ended
     hasMore.value = page.hasMore
+    seatNames.value = page.seatNames
     error.value = ''
     return page.steps.length > 0
   } catch (cause) {
@@ -232,7 +234,12 @@ onBeforeUnmount(stopPlaying)
 
     <div class="body">
       <div class="board">
-        <ReplayCircle :cards="cards" :markers="current?.markers ?? []" :current-seat="currentSeat" />
+        <ReplayCircle
+          :cards="cards"
+          :markers="current?.markers ?? []"
+          :current-seat="currentSeat"
+          :seat-names="seatNames"
+        />
       </div>
 
       <div class="side">
@@ -247,7 +254,7 @@ onBeforeUnmount(stopPlaying)
         <ul v-if="current && current.markers.length > 0" class="markers" data-testid="replay-marker-list">
           <li v-for="(marker, index) in current.markers" :key="index">
             {{ markerLabelOf(marker.kind) }}
-            <template v-if="markerTextOf(marker).length > 0"> · {{ markerTextOf(marker) }}</template>
+            <template v-if="markerTextOf(marker, seatNames).length > 0"> · {{ markerTextOf(marker, seatNames) }}</template>
           </li>
         </ul>
 

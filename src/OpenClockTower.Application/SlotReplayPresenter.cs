@@ -60,7 +60,7 @@ internal sealed class SlotReplayPresenter : IReplayStepPresenter
                 Seat = activated.Actor,
                 From = previousActor,
                 To = activated.Actor,
-                Text = $"原行动者 {ReplayText.Seat(previousActor)} → {ReplayText.Seat(activated.Actor)}",
+                Text = $"原行动者 {context.SeatText.Seat(previousActor)} → {context.SeatText.Seat(activated.Actor)}",
             });
         }
 
@@ -70,8 +70,8 @@ internal sealed class SlotReplayPresenter : IReplayStepPresenter
             Kind = ReplayStepKind.Slot,
             Phase = context.Phase,
             Summary = isRebind
-                ? $"换手重绑：{ReplayText.Seat(activated.Actor)} 接手尚未进入的槽位"
-                : $"{ReplayText.Seat(activated.Actor)} 被唤醒",
+                ? $"换手重绑：{context.SeatText.Seat(activated.Actor)} 接手尚未进入的槽位"
+                : $"{context.SeatText.Seat(activated.Actor)} 被唤醒",
             Detail = activated.Prompt.Context,
             Markers = markers,
         };

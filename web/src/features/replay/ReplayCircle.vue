@@ -6,7 +6,7 @@
  * - 席位牌只渲染 `display/replay.ts` 折好的 `SeatCardModel`——不读原始步骤、不做领域判断；
  * - 击杀箭头只认 `kill-arrow` 标记（服务端已按 R-0038 同源判据给出），前端不做归因推断。
  */
-import type { ReplayMarkerDto } from '@/contracts/game'
+import type { ReplayMarkerDto, SeatDisplayNameDto } from '@/contracts/game'
 import { ringPosition, type SeatCardModel } from '@/display/grimoire'
 import { markerLabelOf, markerTextOf } from '@/display/replay'
 import GrimoireSeatCard from '@/features/grimoire/GrimoireSeatCard.vue'
@@ -16,6 +16,8 @@ const props = defineProps<{
   cards: SeatCardModel[]
   markers: ReplayMarkerDto[]
   currentSeat: number | null
+  /** 公开的「席位 → 玩家名」（D-0021）：标记文案与实时魔典共用同一份口径。 */
+  seatNames: SeatDisplayNameDto[]
 }>()
 
 interface Arrow {
@@ -48,7 +50,7 @@ const arrows = computed<Arrow[]>(() => {
 const legend = computed(() =>
   props.markers.map((marker) => ({
     label: markerLabelOf(marker.kind),
-    text: markerTextOf(marker),
+    text: markerTextOf(marker, props.seatNames),
   })),
 )
 </script>

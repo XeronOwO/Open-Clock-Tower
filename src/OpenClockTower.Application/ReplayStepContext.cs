@@ -26,6 +26,11 @@ public sealed record ReplayStepContext
     /// <summary>折叠本条事件之后的状态账。</summary>
     public required GameState StateAfter { get; init; }
 
+    /// <summary>
+    /// 本次投影的席位文本口径（有玩家名写「N 号 · 玩家名」，D-0021）；由 <see cref="ReplayProjection"/> 注入。
+    /// </summary>
+    public required ReplaySeatText SeatText { get; init; }
+
     /// <summary>本步所属阶段：按折叠后的计划取，未开局（账事件）为 null。</summary>
     public GamePhase? Phase => MachineAfter?.Plan?.Phase ?? MachineBefore?.Plan?.Phase;
 }

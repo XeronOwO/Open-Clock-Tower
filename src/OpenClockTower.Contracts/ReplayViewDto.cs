@@ -20,4 +20,7 @@ public sealed record ReplayViewDto
 
     /// <summary>本页步骤；按序号严格递增。</summary>
     public required ReplayStepDto[] Steps { get; init; }
+
+    /// <summary>公开的「席位 → 玩家名」快照（D-0021）：圆盘标记等客户端渲染用同一份名字。</summary>
+    public required SeatDisplayNameDto[] SeatNames { get; init; }
 }

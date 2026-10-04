@@ -62,7 +62,7 @@ internal sealed class StateReplayPresenter : IReplayStepPresenter
         var details = new List<string> { changed.Reason };
         if (changed.CausedBy is { } causedBy)
         {
-            details.Add($"归因：{ReplayText.Seat(causedBy)}");
+            details.Add($"归因：{context.SeatText.Seat(causedBy)}");
         }
 
         var markers = new List<ReplayMarker>();
@@ -107,7 +107,7 @@ internal sealed class StateReplayPresenter : IReplayStepPresenter
             Sequence = context.Stored.Sequence,
             Kind = ReplayStepKind.State,
             Phase = context.Phase,
-            Summary = $"{ReplayText.Seat(changed.Seat)}：{string.Join("；", summaryParts)}",
+            Summary = $"{context.SeatText.Seat(changed.Seat)}：{string.Join("；", summaryParts)}",
             Detail = string.Join("；", details),
             Seats =
             [
@@ -161,7 +161,7 @@ internal sealed class StateReplayPresenter : IReplayStepPresenter
         var effect = applied.Effect;
         var details = new List<string>
         {
-            $"来源 {ReplayText.Seat(effect.Source)}（{ReplayText.CharacterValue(effect.SourceCharacter)}）",
+            $"来源 {context.SeatText.Seat(effect.Source)}（{ReplayText.CharacterValue(effect.SourceCharacter)}）",
         };
 
         if (effect.Dimension is { } dimension)
@@ -179,7 +179,7 @@ internal sealed class StateReplayPresenter : IReplayStepPresenter
             Sequence = context.Stored.Sequence,
             Kind = ReplayStepKind.Effect,
             Phase = context.Phase,
-            Summary = $"效果施加：{ReplayText.Ability(effect.Ability)} → {ReplayText.Seat(effect.Target)}",
+            Summary = $"效果施加：{ReplayText.Ability(effect.Ability)} → {context.SeatText.Seat(effect.Target)}",
             Detail = string.Join("；", details),
         };
     }
@@ -194,7 +194,7 @@ internal sealed class StateReplayPresenter : IReplayStepPresenter
         var details = new List<string> { terminated.Termination.Reason };
         if (terminated.Termination.CausedBy is { } causedBy)
         {
-            details.Add($"归因：{ReplayText.Seat(causedBy)}");
+            details.Add($"归因：{context.SeatText.Seat(causedBy)}");
         }
 
         return new ReplayStep
@@ -204,7 +204,7 @@ internal sealed class StateReplayPresenter : IReplayStepPresenter
             Phase = context.Phase,
             Summary = effect is null
                 ? "效果终止"
-                : $"效果终止：{ReplayText.Ability(effect.Ability)} → {ReplayText.Seat(effect.Target)}",
+                : $"效果终止：{ReplayText.Ability(effect.Ability)} → {context.SeatText.Seat(effect.Target)}",
             Detail = string.Join("；", details),
         };
     }
@@ -219,8 +219,8 @@ internal sealed class StateReplayPresenter : IReplayStepPresenter
             Sequence = context.Stored.Sequence,
             Kind = ReplayStepKind.Effect,
             Phase = context.Phase,
-            Summary = $"即时效果：{ReplayText.Ability(effect.Ability)} → {ReplayText.Seat(effect.Target)}",
-            Detail = $"来源 {ReplayText.Seat(effect.Source)}",
+            Summary = $"即时效果：{ReplayText.Ability(effect.Ability)} → {context.SeatText.Seat(effect.Target)}",
+            Detail = $"来源 {context.SeatText.Seat(effect.Source)}",
         };
     }
 

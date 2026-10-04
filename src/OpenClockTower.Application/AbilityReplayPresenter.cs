@@ -43,7 +43,7 @@ internal sealed class AbilityReplayPresenter : IReplayStepPresenter
             Sequence = context.Stored.Sequence,
             Kind = ReplayStepKind.Ability,
             Phase = context.Phase,
-            Summary = $"{ReplayText.Seat(resolved.Actor)} 的能力结算：{ReplayText.Ability(resolved.Ability)}",
+            Summary = $"{context.SeatText.Seat(resolved.Actor)} 的能力结算：{ReplayText.Ability(resolved.Ability)}",
             Detail = string.Join("；", details),
         };
     }
@@ -72,7 +72,7 @@ internal sealed class AbilityReplayPresenter : IReplayStepPresenter
             Sequence = context.Stored.Sequence,
             Kind = ReplayStepKind.Information,
             Phase = context.Phase,
-            Summary = $"信息结果 → {ReplayText.Seat(information.Recipient)}：{information.Content}",
+            Summary = $"信息结果 → {context.SeatText.Seat(information.Recipient)}：{information.Content}",
             Detail = string.Join("；", details),
         };
     }

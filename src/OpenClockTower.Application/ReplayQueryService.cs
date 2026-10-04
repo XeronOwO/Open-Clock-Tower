@@ -20,13 +20,19 @@ public sealed class ReplayQueryService
 {
     private readonly GameId _gameId;
     private readonly IGameStore _store;
+    private readonly SeatNameDirectory _seatNames;
     private readonly ILogger<ReplayQueryService> _logger;
 
     /// <summary>构造复盘读侧服务。</summary>
-    public ReplayQueryService(GameId gameId, IGameStore store, ILogger<ReplayQueryService> logger)
+    public ReplayQueryService(
+        GameId gameId,
+        IGameStore store,
+        SeatNameDirectory seatNames,
+        ILogger<ReplayQueryService> logger)
     {
         _gameId = gameId;
         _store = store;
+        _seatNames = seatNames;
         _logger = logger;
     }
 
@@ -47,7 +53,7 @@ public sealed class ReplayQueryService
         ArgumentNullException.ThrowIfNull(actor);
 
         var storedEvents = await _store.ReadEventsAsync(_gameId, afterSequence: 0, cancellationToken);
-        var replay = ReplayProjection.Build(storedEvents, afterSequence, pageSize);
+        var replay = ReplayProjection.Build(storedEvents, afterSequence, _seatNames.Snapshot(), pageSize);
 
         if (actor.Kind is not (ActorKind.Player or ActorKind.Storyteller))
         {

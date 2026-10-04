@@ -188,6 +188,40 @@ public sealed class AccountHostTests
             item => item.Seat == 1 && item.DisplayName == "鲍勃");
     }
 
+    /// <summary>
+    /// 复盘读侧带同一份玩家名（D-0021）：说书人实时面能看到「N 号 · 玩家名」文案——
+    /// 关闭 `replay-auto-review` 的「复盘文案仍是席位号」残余。
+    /// </summary>
+    [Fact]
+    public async Task ReplayView_CarriesSeatNames_AndNameAwareCopy()
+    {
+        await using var host = new TestServerHost(seatCount: 3);
+        var account = await host.ConnectAccountAsync();
+        var registered = await TestServerHost.RegisterAccountAsync(account, "alice", "爱丽丝", "password-123");
+        await using var seat = await host.ConnectSeatAsync(new SeatId(1), accountSession: registered.AccountSession);
+        await using var storyteller = await host.ConnectStorytellerAsync();
+
+        var reported = await storyteller.InvokeAsync<CommandResultDto>(
+            "ReportSeatState",
+            1,
+            "Alive",
+            null,
+            null,
+            null,
+            null,
+            "测试：复盘玩家名",
+            null,
+            "test-account-replay-1");
+        Assert.Equal("Accepted", reported.Kind);
+
+        var replay = await storyteller.InvokeAsync<ReplayViewDto>("GetReplay", 0, 100);
+
+        Assert.Contains(replay.SeatNames, item => item.Seat == 1 && item.DisplayName == "爱丽丝");
+        Assert.Contains(
+            replay.Steps,
+            step => step.Summary.Contains("1 号 · 爱丽丝", StringComparison.Ordinal));
+    }
+
     /// <summary>重启后账号 / 绑定仍在，读模型重新装载出玩家名（M1 行 4 / M2 行 4）。</summary>
     [Fact]
     public async Task Restart_KeepsAccountBinding_AndReloadsSeatNames()

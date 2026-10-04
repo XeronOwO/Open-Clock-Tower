@@ -496,6 +496,15 @@ export function normalizeSeatNames(raw: unknown): SeatDisplayNameDto[] {
   return result
 }
 
+/**
+ * 席位显示文本（D-0021 的**唯一口径**）：「N 号 · 玩家名」；这一席没有名字时回退「N 号」。
+ * 席位牌 / 提名 / 投票 / 归属 / 复盘共用这一份拼接口径（票据矩阵行 5）。
+ */
+export function seatDisplayOf(seat: number, seatNames: readonly SeatDisplayNameDto[]): string {
+  const entry = seatNames.find((item) => item.seat === seat)
+  return entry === undefined ? `${seat} 号` : `${seat} 号 · ${entry.displayName}`
+}
+
 /** 归一化整个说书人视图。任何缺失都退化成空集合 / null，不编造状态。 */
 export function normalizeStorytellerView(raw: unknown): StorytellerViewDto {
   const view = (raw ?? {}) as Record<string, unknown>

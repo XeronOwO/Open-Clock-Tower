@@ -48,6 +48,7 @@ builder.Services.AddSingleton(provider => new GameSession(
 builder.Services.AddSingleton(provider => new ReplayQueryService(
     provider.GetRequiredService<GameId>(),
     provider.GetRequiredService<IGameStore>(),
+    provider.GetRequiredService<SeatNameDirectory>(),
     provider.GetRequiredService<ILogger<ReplayQueryService>>()));
 builder.Services.AddSingleton<ConnectionRegistry>();
 builder.Services.AddSingleton<NotificationDispatcher>();
