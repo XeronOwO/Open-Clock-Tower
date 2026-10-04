@@ -15,6 +15,7 @@ import {
 } from '@/display/grimoire'
 import { annotationTokenTextOf } from '@/display/format'
 import { characterNameOf, characterTypeOf, labelOf } from '@/display/labels'
+import CharacterArt from '@/features/grimoire/CharacterArt.vue'
 
 const props = defineProps<{
   model: SeatCardModel
@@ -119,6 +120,7 @@ function typeText(): string {
     </span>
 
     <span class="token" :class="alignmentClass()">
+      <CharacterArt :character="model.character" :label="characterText()" />
       <span class="role">{{ characterText() }}</span>
       <span class="type">{{ typeText() }}</span>
       <span v-if="model.life === LIFE_DEAD" class="shroud" aria-hidden="true">帷幕</span>

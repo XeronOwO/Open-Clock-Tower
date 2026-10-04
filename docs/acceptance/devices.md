@@ -46,6 +46,8 @@
 `ChangeDisplayName` / `ResetPassword`）、账号表 `Users` 与席位绑定表 `SeatBindings` 的列形状
 （装置直接读库断言「绑定是会话信息而不是事件」）；游戏 Hub 的带账号入口是
 `JoinSeatWithAccount(ticket, accountSession, lastSequence)`——SignalR 不支持方法重载，改名即换契约。
+运行期外链：魔典席位牌的角色图热链百科图片（D-0007 / R-0006）。图片主机不可达或路径变化时只降级为
+文字 + 色环；失败图片只触发 `requestfailed`（不进 console / pageerror），不影响装置断言。
 装置启动失败时会打印对应路径；退出码 `2` 先查这条。
 
 ## 4. 新增装置怎么登记
