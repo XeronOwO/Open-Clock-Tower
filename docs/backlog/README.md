@@ -60,13 +60,15 @@ todo/  →  in-progress/  →  review/  →  done/
 
 ### Todo
 
-- [装置轮询助手的 `innerText` 无界等待：元素缺失时白等 30s](todo/device-poll-innertext-unbounded-wait.md) — **Low** — 12 个装置各自的 `waitForText` / `waitForLocatorContains` 用无界 `innerText()`（默认 30s），元素缺失 / 晚到时会突破自己的 deadline（账号装置已实测 37.3s → 7.3s，同款已修）
-
 ### In progress
 
 ### Review
 
 ### Done
+
+- [装置轮询读文本必须有界：元素缺失时不再白等 30s](done/device-poll-innertext-unbounded-wait.md) — **Low** — 十二个装置的 `waitForText` / `waitForLocatorContains` / `waitForLocatorText` / `waitForSeedChange` 统一改走 `tools/lib/bounded-text.mjs` 的有界读取（单次 500ms），并落一个假页面最小复现脚本 `tools/check-bounded-text.mjs`
+
+- [玩家信息行读法跟进 E31：三装置改读可见标签](done/player-information-row-readers-stale.md) — **Medium** — `verify-retro-info` / `verify-death-triggers` / `verify-seamstress-artist` 从已退役的 `.mono` / `span[1]` 结构改读「`<strong>` 中文名（slug）标签 + 内容」；修复前该三装置在 `e6917db` 基线已红，修复后 53 / 82 / 70 全绿
 
 - [账号装置分段选择器：把 37–40s 的固定开销拆开定位](done/accounts-device-section-selector.md) — **Medium** — 账号装置接上 `--only` / `--from` / `--list-sections`（12 段、每次运行打印按段耗时）；分段当场咬出 guest 段一处无界 `innerText()` 白等满 30s——迭代档 **37.3s → 7.3s**，36 项回归全绿（同族 12 个装置的同款写法另立 Low 票）
 

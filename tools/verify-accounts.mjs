@@ -50,6 +50,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { DatabaseSync } from 'node:sqlite'
+import { readTextBounded } from './lib/bounded-text.mjs'
 import { describeProfile, ensureServerArtifacts, extractProfileFlags, resolveProfile } from './lib/verify-profile.mjs'
 import { createChecker, createSectionRunner } from './lib/verify-sections.mjs'
 
@@ -744,7 +745,7 @@ async function waitForLocatorContains(locator, needle, timeoutMs) {
   const deadline = Date.now() + timeoutMs
   let text = ''
   while (Date.now() < deadline) {
-    text = await readTextBounded(locator)
+    text = compact(await readTextBounded(locator))
     if (text.includes(needle)) {
       return text
     }
@@ -760,7 +761,7 @@ async function waitForLocatorText(locator, timeoutMs) {
   const deadline = Date.now() + timeoutMs
   let text = ''
   while (Date.now() < deadline) {
-    text = await readTextBounded(locator)
+    text = compact(await readTextBounded(locator))
     if (text.length > 0) {
       return text
     }
@@ -769,18 +770,6 @@ async function waitForLocatorText(locator, timeoutMs) {
   }
 
   return text
-}
-
-/**
- * 轮询用的**有界**文本读取。`innerText()` 默认超时 30s：元素缺失时，"每 150ms 轮询一次"
- * 会退化成"每次白等 30s"，把自己的 deadline（15s / 30s）悄悄突破——设备报红时最容易在这里白花时间。
- * 显式给一个短超时：元素在就立刻返回，不在就马上当空串，何时放弃交给外层循环的 deadline。
- */
-function readTextBounded(locator) {
-  return locator
-    .innerText({ timeout: 500 })
-    .then((text) => compact(text))
-    .catch(() => '')
 }
 
 async function screenshot(page, name) {

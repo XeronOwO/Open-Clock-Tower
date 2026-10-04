@@ -76,6 +76,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { DatabaseSync } from 'node:sqlite'
+import { readTextBounded } from './lib/bounded-text.mjs'
 import { describeProfile, ensureServerArtifacts, extractProfileFlags, resolveProfile } from './lib/verify-profile.mjs'
 import { createChecker, createSectionRunner } from './lib/verify-sections.mjs'
 
@@ -2133,7 +2134,7 @@ async function waitForText(locator, expected, timeoutMs) {
   const deadline = Date.now() + timeoutMs
   let text = ''
   while (Date.now() < deadline) {
-    text = (await locator.innerText().catch(() => '')).trim()
+    text = (await readTextBounded(locator)).trim()
     if (text === expected) {
       return text
     }
@@ -2163,7 +2164,7 @@ async function waitForLocatorContains(locator, needle, timeoutMs) {
   const deadline = Date.now() + timeoutMs
   let text = ''
   while (Date.now() < deadline) {
-    text = (await locator.innerText().catch(() => '')).replace(/\s+/g, ' ')
+    text = (await readTextBounded(locator)).replace(/\s+/g, ' ')
     if (text.includes(needle)) {
       return text
     }

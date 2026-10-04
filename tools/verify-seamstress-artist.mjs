@@ -55,12 +55,12 @@
  *         无关席位页面零问题文本 / 挂起时结束白天被拒 `phase.artist_question_pending` /
  *         重连（快照）后等待态与问题全文仍在 / 「要求重问」受理 + 裁定块消失 + 输入框回来 +
  *         零标记零信息 / 第二次提问开出新裁定点（问题全文更新）/ 回答「不是」受理 + 裁定块消失 /
- *         2 号玩家页信息（ability=artist，内容「不是」）/ 2 号牌面「失去能力」标记（title 记能力已用尽）/
+ *         2 号玩家页信息（艺术家，内容「不是」）/ 2 号牌面「失去能力」标记（title 记能力已用尽）/
  *         回答后提问入口消失 / 其他席位零失能标记；
  *   夜 2 ：开夜受理 / 恶魔击杀 2 号被受理（顺序表位置在女裁缝之前）+ 2 号席位死亡 /
  *         女裁缝**再次被唤醒**且候选 = 同一 6 组 pair + decline（摇头不消耗）/
  *         选 `pair:3+4` 提交受理 / 裁定归属 = 1 号、上下文含推演行、候选 = 是 / 否 /
- *         裁定「是」受理 / 1 号玩家页信息（ability=seamstress，3 号与 4 号属于同一阵营）/
+ *         裁定「是」受理 / 1 号玩家页信息（女裁缝，3 号与 4 号属于同一阵营）/
  *         1 号牌面「失去能力」标记 / 无关席位零信息 / 第二夜自然收口；
  *   夜 3 ：开夜受理 / 恶魔击杀已死 2 号受理（无事发生）/ 计划推进到她的格；
  *         空槽不再唤醒——槽上下文（DOM 观察器 + 说书人视图帧）含「不再被唤醒」/
@@ -86,6 +86,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { DatabaseSync } from 'node:sqlite'
+import { readTextBounded } from './lib/bounded-text.mjs'
 import { describeProfile, ensureServerArtifacts, extractProfileFlags, resolveProfile } from './lib/verify-profile.mjs'
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -428,10 +429,10 @@ async function main() {
   const artistInfoCount = await waitForAttributeValue(() => readPlayerInformationCount(artistPage), '1', 30_000)
   const artistRows = await readPlayerInformationRows(artistPage)
   check(
-    `${ARTIST_SEAT} 号玩家页收到一条信息（ability=artist，内容「不是」）`,
+    `${ARTIST_SEAT} 号玩家页收到一条信息（艺术家，内容「不是」）`,
     artistInfoCount === '1'
       && artistRows.length === 1
-      && artistRows[0].ability === 'artist'
+      && artistRows[0].label === '艺术家（artist）'
       && artistRows[0].content === '不是',
     `count=${artistInfoCount}；行=${JSON.stringify(artistRows)}`,
   )
@@ -562,10 +563,10 @@ async function main() {
   const seamstressInfoCount = await waitForAttributeValue(() => readPlayerInformationCount(seamstressPage), '1', 30_000)
   const seamstressRows = await readPlayerInformationRows(seamstressPage)
   check(
-    `${SEAMSTRESS_SEAT} 号玩家页收到一条信息（ability=seamstress，内容 = ${PAIR_PREVIEW} 属于同一阵营）`,
+    `${SEAMSTRESS_SEAT} 号玩家页收到一条信息（女裁缝，内容 = ${PAIR_PREVIEW} 属于同一阵营）`,
     seamstressInfoCount === '1'
       && seamstressRows.length === 1
-      && seamstressRows[0].ability === 'seamstress'
+      && seamstressRows[0].label === '女裁缝（seamstress）'
       && seamstressRows[0].content.includes(PAIR_PREVIEW)
       && seamstressRows[0].content.includes('属于同一阵营'),
     `count=${seamstressInfoCount}；行=${JSON.stringify(seamstressRows)}`,
@@ -588,7 +589,7 @@ async function main() {
   const artistRowsAfterNight = await readPlayerInformationRows(artistPage)
   check(
     `${ARTIST_SEAT} 号（已死亡）信息里没有别人的女裁缝信息`,
-    artistRowsAfterNight.every((row) => row.ability !== 'seamstress'),
+    artistRowsAfterNight.every((row) => row.label !== '女裁缝（seamstress）'),
     JSON.stringify(artistRowsAfterNight),
   )
   await screenshot(seamstressPage, 'limitinfo-08-seamstress-player-info')
@@ -1157,7 +1158,7 @@ async function readPlayerInformationCount(page) {
   return panel.getAttribute('data-information-count')
 }
 
-/** 玩家页信息面板的每一行（真 DOM：ability slug + 说书人给的内容）。 */
+/** 玩家页信息面板的每一行（真 DOM：能力中文标签 + 说书人给的内容）。 */
 async function readPlayerInformationRows(page) {
   const panel = page.locator('[data-testid="player-information"]')
   if ((await panel.count()) === 0) {
@@ -1165,11 +1166,15 @@ async function readPlayerInformationRows(page) {
   }
 
   return panel.locator('li').evaluateAll((items) =>
-    items.map((item) => ({
-      index: item.getAttribute('data-information-index'),
-      ability: (item.querySelector('.mono')?.textContent ?? '').trim(),
-      content: (item.querySelectorAll('span')[1]?.textContent ?? '').trim(),
-    })),
+    items.map((item) => {
+      const label = (item.querySelector('strong')?.textContent ?? '').trim()
+      const text = (item.textContent ?? '').trim()
+      return {
+        index: item.getAttribute('data-information-index'),
+        label,
+        content: text.startsWith(label) ? text.slice(label.length).replace(/^[：:]\s*/, '').trim() : text,
+      }
+    }),
   )
 }
 
@@ -1469,7 +1474,7 @@ async function waitForText(locator, expected, timeoutMs) {
   const deadline = Date.now() + timeoutMs
   let text = ''
   while (Date.now() < deadline) {
-    text = compact(await locator.innerText().catch(() => ''))
+    text = compact(await readTextBounded(locator))
     if (text.includes(expected)) {
       return text
     }

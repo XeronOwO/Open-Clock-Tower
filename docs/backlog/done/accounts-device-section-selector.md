@@ -53,7 +53,7 @@
   `--only` 早退与异常路径都会漏（`--list-sections` 则连依赖都不加载）；
 - **同族写法不进本票**：其余 12 个装置的 `waitForText` / `waitForLocatorContains` 是同一族无界等待
   （元素缺失时同样白等 30s，且会突破自己的 deadline），但一次要动 12 个装置、各需一次运行回归，
-  另立 `docs/backlog/todo/device-poll-innertext-unbounded-wait.md`（Low）。
+  另立 `docs/backlog/done/device-poll-innertext-unbounded-wait.md`（Low）。
 
 ## 结果（2026-10-05 · 五次真机运行 + 门禁）
 

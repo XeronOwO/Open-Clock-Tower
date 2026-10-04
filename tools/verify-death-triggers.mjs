@@ -68,7 +68,7 @@
  *         是新的裁定点（非心上人残留）/ 由槽位承载（对照：计划进行中 + 当前槽位标识非空）/
  *         候选 = 除贤者外 6 组 pair 且不含 2 号 / **非 `seat:N` 的 pair 候选一律不带「已死亡」标签** /
  *         提交 `pair:1+4` 受理；
- *   隔离：2 号页出现那条信息（ability=sage，内容含「1 号」「4 号」）/ 3 / 4 / 5 号页零该信息 /
+ *   隔离：2 号页出现那条信息（贤者，内容含「1 号」「4 号」）/ 3 / 4 / 5 号页零该信息 /
  *         信息结果只推给 2 号（五席连接全量扫描）/ 五席连接零说书人字段（推演 / MayBeFalse / note）/
  *         裁定结清后夜晚继续自动推进到收口（独立复核 H-1 的界面级回归）/
  *         阳性对照：说书人连接确实收到含「推演」的视图帧 / 贤者信息帧本身不含说书人字段 /
@@ -93,6 +93,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { DatabaseSync } from 'node:sqlite'
+import { readTextBounded } from './lib/bounded-text.mjs'
 import { describeProfile, ensureServerArtifacts, extractProfileFlags, resolveProfile } from './lib/verify-profile.mjs'
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -639,10 +640,10 @@ async function main() {
   const sageInfoCount = await waitForAttributeValue(() => readPlayerInformationCount(sagePage), '1', 30_000)
   const sageRows = await readPlayerInformationRows(sagePage)
   check(
-    `${SAGE_SEAT} 号玩家页出现一条信息结果（ability=sage，内容含「${DEMON_SEAT} 号」「${DRUNK_TARGET_SEAT} 号」）`,
+    `${SAGE_SEAT} 号玩家页出现一条信息结果（贤者，内容含「${DEMON_SEAT} 号」「${DRUNK_TARGET_SEAT} 号」）`,
     sageInfoCount === '1'
       && sageRows.length === 1
-      && sageRows[0].ability === 'sage'
+      && sageRows[0].label === '贤者（sage）'
       && sageRows[0].content.includes(`${DEMON_SEAT} 号`)
       && sageRows[0].content.includes(`${DRUNK_TARGET_SEAT} 号`),
     `count=${sageInfoCount}；行=${JSON.stringify(sageRows)}`,
@@ -1270,7 +1271,7 @@ async function readPlayerInformationCount(page) {
   return panel.getAttribute('data-information-count')
 }
 
-/** 玩家页信息面板的每一行（真 DOM：ability slug + 说书人给的内容）。 */
+/** 玩家页信息面板的每一行（真 DOM：能力中文标签 + 说书人给的内容）。 */
 async function readPlayerInformationRows(page) {
   const panel = page.locator('[data-testid="player-information"]')
   if ((await panel.count()) === 0) {
@@ -1278,11 +1279,15 @@ async function readPlayerInformationRows(page) {
   }
 
   return panel.locator('li').evaluateAll((items) =>
-    items.map((item) => ({
-      index: item.getAttribute('data-information-index'),
-      ability: (item.querySelector('.mono')?.textContent ?? '').trim(),
-      content: (item.querySelectorAll('span')[1]?.textContent ?? '').trim(),
-    })),
+    items.map((item) => {
+      const label = (item.querySelector('strong')?.textContent ?? '').trim()
+      const text = (item.textContent ?? '').trim()
+      return {
+        index: item.getAttribute('data-information-index'),
+        label,
+        content: text.startsWith(label) ? text.slice(label.length).replace(/^[：:]\s*/, '').trim() : text,
+      }
+    }),
   )
 }
 
@@ -1376,7 +1381,7 @@ async function waitForText(locator, expected, timeoutMs) {
   const deadline = Date.now() + timeoutMs
   let text = ''
   while (Date.now() < deadline) {
-    text = compact(await locator.innerText().catch(() => ''))
+    text = compact(await readTextBounded(locator))
     if (text.includes(expected)) {
       return text
     }

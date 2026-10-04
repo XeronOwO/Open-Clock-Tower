@@ -17,7 +17,7 @@
  *      - 神谕者：当前账「死亡且邪恶」1 席（2 号被处决）⇒ 提示必须含「推演：1」；给出「1」。
  *      每个裁定点都顺带断言**该提示不是上一个裁定点的残留**（提示里的角色名自证归属 +
  *      裁定点标识必须换新），否则「读到上一个槽位的文本」会假绿；
- *   5) 信息只到本人：3 / 4 / 5 号玩家页各出现自己的那条（ability slug + 内容，按行读 DOM），
+ *   5) 信息只到本人：3 / 4 / 5 号玩家页各出现自己的那条（能力中文标签 + 内容，按行读 DOM），
  *      且**互不串台**（3 号页没有另两条内容、4 / 5 号同理）；
  *   6) 反方向零下发（D-0012 §4.3 信息隔离）：无关席位 2 号与 6 号的信息面板零下发（count=0 + 空态文案），
  *      六席各自那条连接上收到的全部推送里没有别的能力 slug、没有说书人视角的「推演」行。
@@ -48,6 +48,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { DatabaseSync } from 'node:sqlite'
+import { readTextBounded } from './lib/bounded-text.mjs'
 import { describeProfile, ensureServerArtifacts, extractProfileFlags, resolveProfile } from './lib/verify-profile.mjs'
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -99,6 +100,12 @@ const TOWN_CRIER_CONTENT = '有爪牙发起了提名'
 const ORACLE_CONTENT = '1'
 /** 三个能力 slug：既用于「只推给本人」，也用于越权扫描。 */
 const INFO_ABILITIES = ['flowergirl', 'town-crier', 'oracle']
+/** 玩家页信息行里的能力**可见标签**（E31 起界面显示 `characterLabelOf`：中文名（slug）；来源 web/src/display/labels.ts）。 */
+const INFO_LABELS = new Map([
+  ['flowergirl', '卖花女孩（flowergirl）'],
+  ['town-crier', '城镇公告员（town-crier）'],
+  ['oracle', '神谕者（oracle）'],
+])
 /** 「不是自己的那条内容」——串台探针：三条内容互不包含（'1' 太泛，只用于本人那一行）。 */
 const OTHER_CONTENTS = new Map([
   ['flowergirl', [TOWN_CRIER_CONTENT, ORACLE_CONTENT]],
@@ -408,7 +415,7 @@ async function main() {
     informationRows.set(seat, rows)
     check(
       `${seat} 号玩家页出现一条信息结果（${ability} / ${content}）`,
-      count === '1' && rows.length === 1 && rows[0].ability === ability && rows[0].content === content,
+      count === '1' && rows.length === 1 && rows[0].label === INFO_LABELS.get(ability) && rows[0].content === content,
       `count=${count}；行=${JSON.stringify(rows)}`,
     )
   }
@@ -419,7 +426,7 @@ async function main() {
     const leaked = OTHER_CONTENTS.get(ability).filter((content) => rows.some((row) => row.content.includes(content)))
     check(
       `${seat} 号页没有别人的那条内容（${ability} 的行只有自己的）`,
-      rows.length > 0 && rows.every((row) => row.ability === ability) && leaked.length === 0,
+      rows.length > 0 && rows.every((row) => row.label === INFO_LABELS.get(ability)) && leaked.length === 0,
       leaked.join(' | ') || `行=${JSON.stringify(rows)}`,
     )
   }
@@ -870,7 +877,7 @@ async function readPlayerInformationCount(page) {
   return panel.getAttribute('data-information-count')
 }
 
-/** 玩家页信息面板的每一行（真 DOM：ability slug + 说书人给的内容）。 */
+/** 玩家页信息面板的每一行（真 DOM：能力中文标签 + 说书人给的内容）。 */
 async function readPlayerInformationRows(page) {
   const panel = page.locator('[data-testid="player-information"]')
   if ((await panel.count()) === 0) {
@@ -878,11 +885,15 @@ async function readPlayerInformationRows(page) {
   }
 
   return panel.locator('li').evaluateAll((items) =>
-    items.map((item) => ({
-      index: item.getAttribute('data-information-index'),
-      ability: (item.querySelector('.mono')?.textContent ?? '').trim(),
-      content: (item.querySelectorAll('span')[1]?.textContent ?? '').trim(),
-    })),
+    items.map((item) => {
+      const label = (item.querySelector('strong')?.textContent ?? '').trim()
+      const text = (item.textContent ?? '').trim()
+      return {
+        index: item.getAttribute('data-information-index'),
+        label,
+        content: text.startsWith(label) ? text.slice(label.length).replace(/^[：:]\s*/, '').trim() : text,
+      }
+    }),
   )
 }
 
@@ -976,7 +987,7 @@ async function waitForText(locator, expected, timeoutMs) {
   const deadline = Date.now() + timeoutMs
   let text = ''
   while (Date.now() < deadline) {
-    text = compact(await locator.innerText().catch(() => ''))
+    text = compact(await readTextBounded(locator))
     if (text.includes(expected)) {
       return text
     }

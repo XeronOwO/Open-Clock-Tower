@@ -34,6 +34,7 @@
 | 正式取证 | **必须显式** `--quota 2 --screenshots-all`（必要时加 `--build`）；一批一次、只对**冻结版本**；默认档与分段跑都不作交付证据（`docs/acceptance/AGENTS.md` §3） |
 | 分段（主装置 / 账号装置） | `--list-sections` 列段名（账号装置 12 段）；`--only <段>` 执行到该段为止（前置段照跑，**只有该段的断言计入判定**）；`--from <段>` 全程执行、从该段起计入判定——只作定位，不作证据；每次运行打印**按段耗时**表 |
 | 装置成本（迭代参考） | 主装置 27.0s；**账号装置 7.3s**（2026-10-05 前 37–40s：分段耗时咬出 guest 段一处无界 `innerText()` 白等满 30s，已修）；其余辅助装置 7–13s |
+| 轮询读文本 | 装置的轮询助手读 DOM 一律走 `tools/lib/bounded-text.mjs` 的 `readTextBounded`（单次读取 500ms 上限）——Playwright 默认 30s 不再参与轮询，助手自己的 15s / 30s deadline 不被突破；改动该助手后跑一次假页面四探针自检 `node tools/check-bounded-text.mjs`（在场 / 缺失 / 守时 / 晚到） |
 | 退出码 | `0` 全部断言通过；`1` 有断言失败（含前置段）；`2` 环境缺依赖（Playwright / Chromium 等） |
 | 产物 | 截图与日志进 `artifacts/web/`（gitignored，可重生成）；装置自建临时库与工作目录由脚本收尾自清理 |
 
