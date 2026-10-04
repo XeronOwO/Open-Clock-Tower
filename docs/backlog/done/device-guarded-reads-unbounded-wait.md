@@ -74,7 +74,8 @@ return compact(await block.first().innerText())   // 无界读：默认 30s
   `waitForOutcome` 在状态就绪后的 `box.innerText()` 诊断读、`setup-randomizer` 的 notesBox catch 读——
   这些路径没有"先守卫再轮询"的约定；若要继续收口零白等，另票审计；
 - 本票是装置工具链改动：证据全部是**迭代档 + 假页面探针**，不作玩法验收证据；三张信息行装置
-  （retro-info / seamstress-artist / death-triggers）的**取证档**重跑在批次 E32 执行；
+  （retro-info / seamstress-artist / death-triggers）的**取证档**已在批次 E32（`407eea2`）重跑：
+  53 / 82 / 70 全绿、退出码 0（见 `docs/acceptance/batches.md`）；
 - 顺手修正：4 处过期票据指针（`tools/verify-retro-info.mjs`、`verify-death-triggers.mjs`、
   `verify-mathematician.mjs`、`tools/lib/verify-profile.mjs` 头部的 in-progress/todo → done）；
   `docs/acceptance/devices.md` §2 口径行扩到守卫式读取与五探针；

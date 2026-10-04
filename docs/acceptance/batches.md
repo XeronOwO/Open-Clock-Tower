@@ -630,6 +630,33 @@ Integration 188 · NormativeGates 24）；`dotnet format` 就地通过；`npm ru
   已于 2026-10-05 落地（`docs/backlog/done/accounts-device-section-selector.md`，12 段；同轮修掉
   游客页那处让本装置白等 30s 的无界 `innerText()`，迭代档 37.3s → 7.3s）。
 
+## 批次 E32（2026-10-05，装置读取链：守卫式读取收口 + 三装置取证档重跑）
+
+冻结版本：`main` @ `407eea2`（先提交工具改动 `fix(tools)`，再对冻结版跑取证档；跑批期间工作树干净、
+未改产品代码）。本批没有等待判定的玩法票据——主要内容是**重跑三张信息行装置的取证档**，让 E31 之后
+修复的新读法与本轮守卫式有界读取进入证据链（上一票「已知缺陷与未验证」里的 Medium 项）。
+
+- `tools/verify-retro-info.mjs`（取证档 `--quota 2 --screenshots-all --build`）：**53 项全部通过、退出码 0**（76.0s）；
+- `tools/verify-seamstress-artist.mjs`（取证档）：**82 项全部通过、退出码 0**（118.3s）；
+- `tools/verify-death-triggers.mjs`（取证档）：**70 项全部通过、退出码 0**（80.9s）；
+- 截图 21 张（`retro-01…05` / `limitinfo-01…10` / `deathtrigger-01…06`）均为本次运行写入；
+  复核 9 张关键图（每装置：裁定面 / 玩家信息面 / 无关席位干净面）——`retro-01/04/05`、
+  `limitinfo-03/08/10`、`deathtrigger-02/05/06`：花名册与判定一致，玩家信息行按「中文名（slug）」+ 内容
+  渲染（retro-04「卖花女孩（flowergirl）：恶魔参与了投票」、limitinfo-08「女裁缝（seamstress）：
+  3 号与 4 号玩家属于同一阵营」、deathtrigger-05「贤者（sage）：…1 号 与 4 号…」），
+  无关席位信息面板为空；其余 12 张为同一次运行写入，未逐张复核（如实记录）。
+
+诚实记录：
+
+- **本批只跑三装置**：其余装置未重跑——E31 之后产品代码没有变化，变化只在装置读取助手；
+  这三张正是"读取面变化 + 旧取证档停留 E23 / E24 / E26"的交集（E20 / E27 先例：本批没有它们的改动就不跑）。
+- 工具链票（`device-guarded-reads-unbounded-wait`）的验收证据是**迭代档 + 假页面探针 + 门禁**：
+  探针 E 守卫后脱离 501ms（先红：旧写法 30012ms）、11 装置迭代档全绿、四条门禁全 0（vitest 154）；
+  本批的三次取证档同时把该票的读取面带上真机证据链。逐条见该票「结果」节。
+- 冻结版门禁在提交前已跑（`artifacts/web/gates.log`：build 0 · test 853 · format 0 · gate 0），
+  跑批期间未改代码；本批记录本身是纯文档改动，按门禁规则跳过重跑。
+- 本批后 `in-progress/` 清空，`todo/` 余一张（装置属性读取收口，见票据索引）。
+
 ## 相关阅读
 
 - 验收规程：`docs/acceptance/AGENTS.md`

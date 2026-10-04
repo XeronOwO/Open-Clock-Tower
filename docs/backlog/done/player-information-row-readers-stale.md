@@ -50,4 +50,7 @@ retro-info 失败 6 / 53、seamstress-artist 失败 2 / 82、death-triggers 失�
 - 首跑修复时假定标签只有中文名 → 实际是「中文名（slug）」：三处断言按**玩家实际看到的完整标签**
   收紧后全绿（数值证据见日志行 `行=[{"index":"0","label":"卖花女孩（flowergirl）","content":"恶魔参与了投票"}]`）；
 - 日志：`artifacts/web/bounded-retro-info-fixed.log`、`bounded-seamstress-artist-fixed.log`、
-  `bounded-death-triggers-fixed.log`；基线红证据：`baseline-retro-info.log` 等。
+  `bounded-death-triggers-fixed.log`；基线红证据：`baseline-retro-info.log` 等；
+- E32 补证（2026-10-05）：三装置在本票读法落地后的冻结版 `407eea2` 上重跑**取证档**
+  （`--quota 2 --screenshots-all`），**53 / 82 / 70 全绿、退出码 0**；截图 `retro-*` / `limitinfo-*` /
+  `deathtrigger-*` 为本次运行写入（关键 9 张已复核），批次记录见 `docs/acceptance/batches.md`。
