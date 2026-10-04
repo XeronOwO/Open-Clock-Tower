@@ -624,7 +624,7 @@ onBeforeUnmount(() => {
 
       <section class="panel" data-testid="player-information" :data-information-count="informationResults.length">
         <h2>我收到的信息<HelpTip topic="information" /></h2>
-        <p class="block-question">只发给你的信息结果；说书人对醉酒 / 中毒者的信息有裁量权。</p>
+        <p class="block-question">只发给你的信息结果。</p>
         <div v-if="informationResults.length === 0" class="placeholder">还没有收到信息。</div>
         <ul v-else class="information">
           <li
@@ -635,6 +635,7 @@ onBeforeUnmount(() => {
             <strong>{{ characterLabelOf(information.ability) }}</strong>：{{ information.content }}
           </li>
         </ul>
+        <p class="hint">信息可能是错的——说书人对醉酒 / 中毒玩家的信息有裁量权（D-0002）。</p>
       </section>
 
       <section class="panel" data-testid="player-roster">
