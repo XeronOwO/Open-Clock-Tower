@@ -103,6 +103,39 @@ Application（命令面 / 闸 / 投影 / 节拍器 / 会话）· Contracts + web
 - 怪咖裁定点：白天作用域的说书人裁定「今天是否有趣」，达线时触发一次并记入事件流；结论为
   「有趣」→ 不产生死亡、不触发死亡触发能力（R-0045 §3）。保护不拦流放流程本身（票照收、数照记）。
 
+**D3 实施口径（2026-10-04 实施前定案；细节以本块为准）**：
+
+- **裁定时机（「实施时定」#3 定案 = 达线时）**：只有「这一票真的会决定怪咖的生死」时才需要裁定——
+  一条流放满足「目标是该席位、收票已收完、票面达线（赞成 × 2 ≥ 收票席位数）、目标存活、
+  且该席位的流放死亡保护尚未裁定」时，说书人的裁定才被接受。平台**不提前提问、不预缓存**；
+  「当日缓存」= 日账里该席位当天的裁定本身（每席位每天至多一条，重放稳定）。
+- **保护查询（统一收口）**：内核新增「死亡保护」契约族：`DeathProtectionCause`（死因）/
+  `DeathProtectionOutcome`（`Protected` / `NotProtected` / `NeedsRuling` 待裁定 / `Indeterminate` 判定不了）/
+  `DeathProtectionAssessment` / `IDeathProtectionSource` + `SettlementContext.DeathProtections` + 聚合查询。
+  流放计票与 `CloseDay` 处决收口**都先问查询**（按死因）；`NeedsRuling` / `Indeterminate` 一律**显式拒绝**，
+  不猜、不静默死亡。
+- **两条收口**：
+  - 流放计票达线且目标存活：受保护 → `ExileConclusion.Protected`，不产生死亡事件、不触发死亡触发能力；
+    不受保护 → `day.exile` 死亡（现状）；待裁定 → `day.exile_protection_required`；
+    判定不了 → `day.exile_protection_indeterminate`（补观测后再计票）。
+  - `CloseDay` 处决收口（目标存活）：受保护 → 只记「被处决」、不产生死亡；待裁定 / 判定不了 → 显式拒绝。
+    今日没有覆盖处决路径的保护来源 → 行为与现状一致（注释从「本票没有免死角色」改为查询口径）。
+- **怪咖裁定命令**：新命令 `ResolveDayProtectionCommand { Seat, Protected, Note }`（说书人 / 宿主）→
+  事件 `DayProtectionDecidedEvent`，折进 `DayRecord.ProtectionDecisions`。裁定只在该席位
+  「流放已收完且达线」时被接受；已裁定 → `day.protection_already_decided`；目标生死未观测 →
+  `day.protection_life_unknown`；席位不在局 → `day.protection_seat_unknown`；其余 → `day.protection_not_required`。
+- **怪咖保护范围（新登记 R-0048）**：只作用于**流放致死**（能力文本「当天你不能被流放」+ 两则范例；
+  《免死》分类页的通述不扩张角色自身范围）；死亡 / 醉酒 / 中毒 → 能力不生效（不受保护、不需要裁定）；
+  维度未观测齐 → `Indeterminate`（显式拒绝，不猜）。
+- **不拦流程**：保护不改变收票、票数、公开面与额度（R-0044 第 7 / 9 条）；同日后续流放照常。
+- **D7 边界（预期）**：两端入口、`DayViewDto` 流放字段与复盘圆盘标记仍属 D7；本批只落命令面 / 事件 /
+  日账与门禁所需接线，不做 UI。
+
+**D3 期间发现（未收口，登记 R-0049）**：提名 / 处决路径目前不排除旅行者——旅行者可以被提名、被计票送上
+「即将被处决」、并被 `CloseDay` 以 `day.execution` 杀死；而《术语汇总》处决条把处决限定为「杀死非旅行者」、
+《旅行者》说「需要通过流放流程而不是处决流程来杀死」。收口方案（提名拒绝 / 计票不落靶 / 收口拒绝）
+未定案，随 D4（`CloseDay` 拆两段）一并处理。
+
 ### D4 屠夫窗口
 
 - `CloseDay` 拆两段：处决当前「即将被处决」者 → 若存在**可用屠夫**（存活、能力生效、当日已有处决、
@@ -155,6 +188,8 @@ Application（命令面 / 闸 / 投影 / 节拍器 / 会话）· Contracts + web
    当前占着钟盘的是第几项提名 / 第几条流放）；关账时未计票一律 `day.nomination_not_counted` /
    `day.exile_not_counted`（见上方 D2 实施口径）。
 3. 怪咖裁定点的提问时机（达线时 vs 当日一次性）与当日缓存；
+   — **D3 已定案**：达线时裁定（收票已收完 + 票面达线 + 目标存活 + 尚未裁定）；「当日缓存」= 日账里
+   该席位当天的裁定本身，不提前提问（见上方「D3 实施口径」）。
 4. 集骨者「重获能力」与 `IAbilityPresence` / 夜计划的接线方式；
 5. `MalfunctionKind.Barista` 去留（R-0047 §5）。
 
@@ -297,6 +332,46 @@ Hub 只保留凭据闸与推送。这是门禁要求的「先拆再改」，不�
 
 未做（属 D7 / D8）：`DayViewDto` / 玩家投影的流放字段与两端入口、复盘圆盘标记、真机批次取证。
 
+## 实施进度（2026-10-04，第四批：D3 免死收口）
+
+已落地（代码 + 测试 + 文档同一提交；口径按上方「D3 实施口径」与 R-0048，未改任何已登记裁定）：
+
+- **内核契约族**：`DeathProtectionCause` / `DeathProtectionOutcome`（四态：受保护 / 不受保护 / 待裁定 /
+  判定不了）/ `DeathProtectionAssessment` / `DeathProtectionContext` / `IDeathProtectionSource` +
+  `SettlementContext.DeathProtections` + 聚合查询 `DeathProtectionQuery`（受保护 > 判定不了 > 待裁定 >
+  不受保护；没有来源时行为与保护机制引入前一致）。
+- **两条收口**：`ExileMachine.CountVotes` 在达线且目标存活时先问保护——受保护 → `ExileConclusion.Protected`
+  （不产生死亡、不触发死亡触发）；待裁定 → `day.exile_protection_required`；判定不了 →
+  `day.exile_protection_indeterminate`。`DayMachine.CloseDay` 的处决收口同样先问保护（受保护只记「被处决」、
+  不产生死亡；待裁定 / 判定不了显式拒绝）——「本票没有免死角色」的注释随之换成查询口径。
+- **怪咖裁定**：`ResolveDayProtectionInput` / `DayProtectionMachine` / `DayProtectionDecidedEvent` +
+  `DayRecord.ProtectionDecisions`（每席位每天至多一条）；受理条件 = 该席位流放「收完且达线」+ 目标存活
+  且未裁定（达线时裁定、不提前问），拒绝码 `day.protection_seat_unknown` / `day.protection_life_unknown` /
+  `day.protection_already_decided` / `day.protection_not_required` / `day.protection_indeterminate`；
+  `DayStepMachine` / `DayLedgerFolder` / `StepMachineFolder` / `GameStateMachine` 接线，
+  `StepMachineStateComparer` 同步比对裁定账。
+- **规则层**：`DeviantProtectionSource`（只覆盖流放致死；死亡 / 醉酒 / 中毒 → 不生效；无裁定 → 待裁定；
+  维度不齐 → 判定不了）+ `RoleContracts.DeathProtections` + `SessionSettlement` 接线；
+  `DayActions` 把怪咖翻进已覆盖——带怪咖的局现在可以开白天（原先 `legality.day_contract_missing`）。
+- **命令面**：`ResolveDayProtectionCommand` + `ExileGate`（身份 / 形状）+ 分派 + Hub `ResolveDayProtection` +
+  白天刷新通知 + 复盘步骤（含「达线但受死亡保护」结论文案）。
+- **接缝登记（新发现）**：提名 / 处决路径目前不排除旅行者（可提名、可被计票送上「即将被处决」、
+  可被 `CloseDay` 以 `day.execution` 杀死），与《术语汇总》处决条「杀死非旅行者」冲突——登记 R-0049（Open）
+  与上方「D3 期间发现」，随 D4 一并处理。
+
+验证证据（2026-10-04，冻结工作树）：
+
+- `dotnet build` 0 警告 0 错误；`dotnet test` **941 通过 / 0 失败**
+  （门禁 24 / 内核 375 / 规则 329 / 集成 213）；`dotnet format` 退出 0；
+- 新增用例（逐类在跑）：`DayProtectionTests` 八条（保护四态聚合 / 流放计票两条分支 / 裁定受理与全部拒绝路径 /
+  处决收口三分支 / 裁定账折叠损坏与重复拒绝）、`DeviantProtectionSourceTests` 十条（范围 / 裁定 / 酒毒与死亡 /
+  观测不齐）、`DeviantHostTests` 四条（计票被拒 → 裁定 → 受保护存活 / 不受保护死亡 / 受理时机与重复裁定 /
+  重启恢复后裁定仍可计票），以及 `ExileHostTests` 的「怪咖白天契约已覆盖」翻转、`DayActionsTests` 覆盖名单更新。
+
+未做（属 D7 / D8）：`DayViewDto` / 玩家投影的保护字段与两端入口、复盘圆盘标记、真机批次取证；
+处罚处决路径（洗脑师 / 畸形秀演员）今日未接保护查询——没有来源覆盖处决，行为与既有实现一致，
+D4 / 未来免死角色需要时再收。
+
 ## 验收矩阵
 
 （维度细化；证据列在实现时逐行落）
@@ -307,7 +382,7 @@ Hub 只保留凭据闸与推送。这是门禁要求的「先拆再改」，不�
 | 2 | 离开 | 说书人可把旅行者移出游戏（移除角色与生命标记）；此后不计任何人数（流放分母、胜负、投票） | 集成 |
 | 3 | 流放成立 | 任意玩家（含死者）任意白天时刻（含提名进行中）发起；不计提名；全员（含死者）逐席表决、死者不耗标记；支持 ≥ `ceil(在局总数 / 2)` → 死亡 | 集成 + 真机 |
 | 4 | 流放边界 | 每名旅行者每日一次（成败均消耗）；同日多名旅行者多次流放；不占当日处决；与提名 / 处决并行不互斥 | 集成 |
-| 5 | 能力不进流放 | 投票 / 处决类能力（卖花女孩 / 屠夫 / 涡流 / 女巫诅咒等）对流放零影响；管家类限制不影响流放表决；**防死能力仍有效**（怪咖有趣时不死亡、且不触发死亡触发） | 内核 + 集成 |
+| 5 | 能力不进流放 | 投票 / 处决类能力（卖花女孩 / 屠夫 / 涡流 / 女巫诅咒等）对流放零影响；管家类限制不影响流放表决；**防死能力仍有效**（怪咖有趣时不死亡、且不触发死亡触发） | 内核（`DayProtectionTests` / `DeviantProtectionSourceTests`）+ 集成（`DeviantHostTests`） |
 | 6 | 阈值与分母 | 分母含死者与旅行者、不含离场者；奇数上取整；边界值（恰好一半 / 差一票）逐点判出 | 内核用例 |
 | 7 | 胜败 | 旅行者不计入「仅有两名玩家存活」；流放不计入涡流「白天被处决」；其余胜败条件不受影响 | 内核用例 |
 | 8 | 死亡面 | 流放死亡即时公开 + 照常获得投票标记；夜死走黎明公告；计入神谕者类死亡统计；无新增死亡触发 | 集成 + 投影用例 |
@@ -323,7 +398,8 @@ Hub 只保留凭据闸与推送。这是门禁要求的「先拆再改」，不�
   《重要细节》一-4、《梦殒春宵》旅行者区与夜序表、5 个角色页、《投票》《提名》《处决》《术语汇总》
   《规则概要》《免死》《额外死亡》《死亡触发能力》《设计师总结的国内玩家对染的错误理解》；
 - 规则口径：R-0007（范围）+ R-0044（流放语义）/ R-0045（死亡后果）/ R-0046（配板边界）/
-  R-0047（咖啡师免疫）+ R-0004（数学家计数）；
+  R-0047（咖啡师免疫）+ R-0004（数学家计数）+ R-0048（怪咖免死范围与收口）；
+- 已知接缝：R-0049（Open，旅行者与处决路径——可被提名 / 被处决，收口方案待定，随 D4 处理）；
 - 相克面（2026-10-04）：5 名 S&V 旅行者在《相克规则》快照中 0 命中，不新增相克组合（R-0002 第 4 条）；
 - 不做：实验性旅行者（黑帮 / 笑匠 / 侏儒等）；旅行者↔非旅行者转换（默认摇头口径）；
 - 架构方案：见本文「设计定稿」（D1–D8 + 「实施时定」5 条）；实现按该节执行——要改口径，

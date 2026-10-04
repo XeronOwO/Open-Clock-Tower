@@ -247,6 +247,7 @@ public static class StepMachineStateComparer
                 || dayLeft.ExecutedKind != dayRight.ExecutedKind
                 || dayLeft.Nominations.Count != dayRight.Nominations.Count
                 || dayLeft.Exiles.Count != dayRight.Exiles.Count
+                || dayLeft.ProtectionDecisions.Count != dayRight.ProtectionDecisions.Count
                 || dayLeft.VoteAttempts.Count != dayRight.VoteAttempts.Count)
             {
                 return false;
@@ -298,6 +299,17 @@ public static class StepMachineStateComparer
                     || !SeatsEquivalent(exileLeft.Ballot, exileRight.Ballot)
                     || !SeatsEquivalent(exileLeft.HandsRaised, exileRight.HandsRaised)
                     || !SweepEquivalent(exileLeft.Sweep, exileRight.Sweep))
+                {
+                    return false;
+                }
+            }
+
+            // 死亡保护裁定（D3 / R-0048）：逐条比对席位与结论；漏比会让重建校验在免死上失明。
+            for (var decisionIndex = 0; decisionIndex < dayLeft.ProtectionDecisions.Count; decisionIndex++)
+            {
+                var decisionLeft = dayLeft.ProtectionDecisions[decisionIndex];
+                var decisionRight = dayRight.ProtectionDecisions[decisionIndex];
+                if (decisionLeft.Seat != decisionRight.Seat || decisionLeft.Protected != decisionRight.Protected)
                 {
                     return false;
                 }

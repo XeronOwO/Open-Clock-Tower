@@ -141,6 +141,7 @@ public static class GameStateMachine
             ExileSeatVoteCollectedEvent => current,
             ExileSweepResumedEvent => current,
             ExileVoteCountedEvent => current,
+            DayProtectionDecidedEvent => current,
             ExecutedEvent => current,
             DayClosedEvent => current,
 

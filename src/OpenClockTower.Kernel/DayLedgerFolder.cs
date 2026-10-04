@@ -39,6 +39,9 @@ internal static class DayLedgerFolder
                 or ExileSeatVoteCollectedEvent or ExileSweepResumedEvent or ExileVoteCountedEvent
                 => ExileLedgerFolder.Apply(current, gameEvent),
 
+            // 当天的死亡保护裁定（D3）：当天作用域、每席位一条（R-0048）。
+            DayProtectionDecidedEvent protectionDecided => ApplyProtectionDecided(current, protectionDecided),
+
             _ => throw new InvalidOperationException($"不是白天事件：{gameEvent.GetType().Name}"),
         };
     }
@@ -363,6 +366,55 @@ internal static class DayLedgerFolder
     private static DayState ApplyDayClosed(DayState state, DayClosedEvent closed)
     {
         return DayLedgerEdit.UpdateOpenDay(state, closed.DayNumber, day => day with { Status = DayStatus.Closed });
+    }
+
+    /// <summary>折叠一条死亡保护裁定：受理条件与 <see cref="DayProtectionMachine"/> 同尺（恢复也必须失败）。</summary>
+    private static DayState ApplyProtectionDecided(DayState state, DayProtectionDecidedEvent decided)
+    {
+        return DayLedgerEdit.UpdateOpenDay(state, decided.DayNumber, day =>
+        {
+            if (day.ProtectionDecisionFor(decided.Seat) is not null)
+            {
+                throw new InvalidOperationException(
+                    $"事件流顺序损坏：白天 {day.DayNumber} 席位 {decided.Seat.Value} 的死亡保护已经裁定过");
+            }
+
+            // 裁定只发生在「达线时」：流放必须是该席位、收票已收完、票面达线。
+            // 事件流里出现别的形状 = 被改写 / 重排，恢复必须失败（D-0010 / D-0014 能力 3）。
+            if (day.OpenExile is not { } exile || exile.Target != decided.Seat)
+            {
+                throw new InvalidOperationException(
+                    $"事件流顺序损坏：白天 {day.DayNumber} 没有针对席位 {decided.Seat.Value} 的未结清流放，"
+                    + "却收到死亡保护裁定");
+            }
+
+            if (exile.Sweep is not { IsComplete: true } sweep)
+            {
+                throw new InvalidOperationException(
+                    $"事件流顺序损坏：白天 {day.DayNumber} 第 {exile.Index} 条流放的收票还没走完，"
+                    + "却收到死亡保护裁定");
+            }
+
+            if (exile.Ballot.Count * 2 < sweep.Seats.Count)
+            {
+                throw new InvalidOperationException(
+                    $"事件流顺序损坏：白天 {day.DayNumber} 第 {exile.Index} 条流放还没有达线，"
+                    + "却收到死亡保护裁定");
+            }
+
+            return day with
+            {
+                ProtectionDecisions =
+                [
+                    .. day.ProtectionDecisions,
+                    new DayProtectionDecision
+                    {
+                        Seat = decided.Seat,
+                        Protected = decided.Protected,
+                    },
+                ],
+            };
+        });
     }
 
 }

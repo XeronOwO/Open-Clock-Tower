@@ -139,9 +139,10 @@ public static class CommandGatePipeline
             StartVoteSweepCommand or ResumeVoteSweepCommand or CollectSeatVoteCommand
                 => VoteSweepGate.IdentityRejection(envelope.Command, actor),
 
-            // 流放（票据 traveller-and-exile · D2）：身份 / 参数形状的闸在 ExileGate。
+            // 流放（票据 traveller-and-exile · D2 / D3）：身份 / 参数形状的闸在 ExileGate。
             ProposeExileCommand or CastExileVoteCommand or StartExileSweepCommand
                 or CollectExileSeatVoteCommand or ResumeExileSweepCommand or CountExileVotesCommand
+                or ResolveDayProtectionCommand
                 => ExileGate.IdentityRejection(envelope.Command, actor),
 
             AskArtistQuestionCommand => ArtistQuestionGate.IdentityRejection(actor),
@@ -298,6 +299,7 @@ public static class CommandGatePipeline
                 or CollectExileSeatVoteCommand
                 or ResumeExileSweepCommand
                 or CountExileVotesCommand
+                or ResolveDayProtectionCommand
                 or CloseDayCommand:
                 if (machine is null || machine.Plan.Phase != GamePhase.Day || machine.Day?.OpenDay is null)
                 {
@@ -393,9 +395,10 @@ public static class CommandGatePipeline
             // 钟盘收票（R-0017 目标形态）：参数范围与席位形状的闸在 VoteSweepGate（与内核同尺）。
             StartVoteSweepCommand or ResumeVoteSweepCommand or CollectSeatVoteCommand
                 => VoteSweepGate.LegalityRejection(envelope.Command, setup),
-            // 流放（票据 traveller-and-exile · D2）：参数范围与席位形状的闸在 ExileGate（与内核同尺）。
+            // 流放（票据 traveller-and-exile · D2 / D3）：参数范围与席位形状的闸在 ExileGate（与内核同尺）。
             ProposeExileCommand or CastExileVoteCommand or StartExileSweepCommand
                 or CollectExileSeatVoteCommand or ResumeExileSweepCommand or CountExileVotesCommand
+                or ResolveDayProtectionCommand
                 => ExileGate.LegalityRejection(envelope.Command, setup),
             CountVotesCommand countVotes => CheckNominationIndex(countVotes.NominationIndex),
             PunishExecutionCommand punish => SeatGate.CheckExists(punish.Seat, setup),

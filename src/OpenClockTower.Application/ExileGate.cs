@@ -40,6 +40,12 @@ internal static class ExileGate
                 "identity.storyteller_only",
                 "只有说书人或宿主可以给流放计票"),
 
+            ResolveDayProtectionCommand when actor.Kind is ActorKind.Host or ActorKind.Storyteller => null,
+            ResolveDayProtectionCommand => Reject(
+                "identity",
+                "identity.storyteller_only",
+                "只有说书人或宿主可以裁定当天的死亡保护"),
+
             CollectExileSeatVoteCommand when actor.Kind == ActorKind.System => null,
             CollectExileSeatVoteCommand => Reject(
                 "identity",
@@ -68,6 +74,7 @@ internal static class ExileGate
             StartExileSweepCommand startSweep => CheckExileIndex(startSweep.ExileIndex),
             ResumeExileSweepCommand resumeSweep => CheckExileIndex(resumeSweep.ExileIndex),
             CountExileVotesCommand countVotes => CheckExileIndex(countVotes.ExileIndex),
+            ResolveDayProtectionCommand resolveProtection => SeatGate.CheckExists(resolveProtection.Seat, setup),
             CollectExileSeatVoteCommand collectSeat => CheckExileIndex(collectSeat.ExileIndex)
                 ?? SeatGate.CheckExists(collectSeat.Seat, setup),
             _ => Reject("legality", "legality.unknown_exile_command", "不是流放命令（防御性兜底）"),

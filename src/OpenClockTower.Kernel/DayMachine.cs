@@ -399,6 +399,9 @@ public static class DayMachine
         SeatId? aboutToBeExecuted;
         if (qualifies)
         {
+            // 旅行者与处决路径的接缝（R-0049 · Open）：来源没有直接写「旅行者不得被提名」，
+            // 但《术语汇总》把处决限定为「杀死非旅行者」。收口方案尚未定案，这里暂不排除——
+            // 见 docs/backlog/in-progress/traveller-and-exile.md「D3 期间发现」。
             aboutToBeExecuted = open.Nominee;
         }
         else if (existing is not null && votes >= (existingVotes ?? 0))
@@ -474,15 +477,31 @@ public static class DayMachine
                 Kind = ExecutionKind.Day,
             });
 
-            // 本票没有免死角色：存活者被处决即死亡；已经死亡者只记录"被处决"，不重复记死亡。
+            // 存活者被处决是否产生死亡，先问统一死亡保护查询（R-0048，按死因）：受保护只记「被处决」、
+            // 不产生死亡；待裁定 / 判定不了显式拒绝。已经死亡者只记录「被处决」，不重复记死亡。
+            // 今日没有覆盖处决路径的保护来源 → 行为与既有实现一致（R-0049 的旅行者接缝另计）。
             if (life == LifeState.Alive)
             {
-                events.Add(new SeatStateChangedEvent
+                var protection = DeathProtectionQuery.Resolve(context, day, seat, DeathProtectionCause.Execution);
+                switch (protection.Outcome)
                 {
-                    Seat = seat,
-                    Life = LifeState.Dead,
-                    Reason = ExecutionDeathReason,
-                });
+                    case DeathProtectionOutcome.Protected:
+                        break;
+                    case DeathProtectionOutcome.NeedsRuling:
+                        return DayOutcome.Reject("day.execution_protection_required", protection.Note);
+                    case DeathProtectionOutcome.Indeterminate:
+                        return DayOutcome.Reject(
+                            "day.execution_protection_indeterminate",
+                            $"{protection.Note}（先补观测，再结束白天；R-0048）");
+                    default:
+                        events.Add(new SeatStateChangedEvent
+                        {
+                            Seat = seat,
+                            Life = LifeState.Dead,
+                            Reason = ExecutionDeathReason,
+                        });
+                        break;
+                }
             }
         }
 

@@ -30,6 +30,7 @@ internal static class DayStepMachine
             or CollectExileSeatVoteInput
             or ResumeExileSweepInput
             or CountExileVotesInput
+            or ResolveDayProtectionInput
             or CloseDayInput;
 
     /// <summary>开启白天：校验计划形状与天数，产出阶段 / 白天账 / 槽位事件。</summary>
@@ -106,6 +107,7 @@ internal static class DayStepMachine
             ResumeExileSweepInput resumeExileSweep => ExileMachine.ResumeSweep(day, context, resumeExileSweep),
             CastExileVoteInput castExileVote => ExileMachine.CastVote(day, context, castExileVote),
             CountExileVotesInput countExileVotes => ExileMachine.CountVotes(day, context, countExileVotes),
+            ResolveDayProtectionInput resolveProtection => DayProtectionMachine.Resolve(day, context, resolveProtection),
             CloseDayInput => DayMachine.CloseDay(day, context),
             _ => throw new InvalidOperationException($"不是白天输入：{input.GetType().Name}"),
         };

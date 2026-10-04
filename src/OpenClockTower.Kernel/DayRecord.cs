@@ -30,6 +30,9 @@ public sealed record DayRecord
     /// <summary>当天已发起的流放提议，按发生顺序（D2；同日可多次、顺序进行）。</summary>
     public IReadOnlyList<ExileRecord> Exiles { get; init; } = [];
 
+    /// <summary>当天说书人裁定的死亡保护，按裁定顺序（每席位至多一条；R-0048）。</summary>
+    public IReadOnlyList<DayProtectionDecision> ProtectionDecisions { get; init; } = [];
+
     /// <summary>
     /// 当前「即将被处决」的玩家；null = 当前没有人（无人提名 / 票数不够 / 最高票平局）。
     /// 只由计票改写（《投票》：计票后不再重判）。
@@ -96,4 +99,8 @@ public sealed record DayRecord
     /// <summary>某个旅行者今天是否已经被提议过流放（每天一次，成败都算；R-0044 第 3 条）。</summary>
     public bool HasExileProposed(SeatId seat) =>
         Exiles.Any(exile => exile.Target == seat);
+
+    /// <summary>该席位今天已经裁定过的死亡保护；还没有裁定时为 null（R-0048）。</summary>
+    public DayProtectionDecision? ProtectionDecisionFor(SeatId seat) =>
+        ProtectionDecisions.FirstOrDefault(decision => decision.Seat == seat);
 }

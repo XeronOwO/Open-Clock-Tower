@@ -110,7 +110,7 @@ public sealed class ExileHostTests
     }
 
     [Fact]
-    public async Task UnimplementedTravellerDayContract_RejectsStartDayExplicitly()
+    public async Task DeviantDayContract_IsCovered_AndTheDayStarts()
     {
         await using var host = new TestServerHost(seatCount: 5, autoStartTestNight: false);
         await using var storyteller = await host.ConnectStorytellerAsync();
@@ -121,8 +121,8 @@ public sealed class ExileHostTests
             "test-exile-contract-assign");
         Assert.Equal("Accepted", assigned.Kind);
 
-        // 怪咖的「免死」是白天面（D3 才落地）：契约未实现前，带它的局开白天显式拒绝——
-        // 不许"白天照跑、免死静默不发生"（与其余未实现角色同款，DayActionsTests 锁名单）。
+        // 怪咖的「免死」在 D3 翻覆盖（R-0048）：带怪咖的局能开白天。收口的完整链路
+        // （达线时裁定、受保护存活、不受保护死亡）见 DeviantHostTests。
         var joined = await storyteller.InvokeAsync<CommandResultDto>(
             "JoinTraveller",
             null,
@@ -135,8 +135,7 @@ public sealed class ExileHostTests
         await CompleteFixtureNightAsync(host, storyteller, joined.IssuedSeat!.Value);
 
         var started = await storyteller.InvokeAsync<CommandResultDto>("StartDay", "test-exile-contract-start-day");
-        Assert.Equal("Rejected", started.Kind);
-        Assert.Equal("legality.day_contract_missing", started.RejectionCode);
+        Assert.Equal("Accepted", started.Kind);
     }
 
     [Fact]

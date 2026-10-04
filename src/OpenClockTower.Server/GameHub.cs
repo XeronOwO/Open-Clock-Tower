@@ -364,6 +364,21 @@ public sealed class GameHub : Hub<IGameClient>
         ExecuteAsync(ResolveActor(credential), Commands().CountExileVotes(exileIndex), idempotencyKey);
 
     /// <summary>
+    /// 说书人 / 宿主裁定某席位「今天的死亡保护」（R-0048）：只在流放收票已收完、票面达线且尚未裁定时受理。
+    /// 怪咖的「今天是否有趣」由这条命令回答（有趣 → 受保护）；受理条件与拒绝码由内核给出。
+    /// </summary>
+    public Task<CommandResultDto> ResolveDayProtection(
+        string credential,
+        int seat,
+        bool isProtected,
+        string? note,
+        string idempotencyKey) =>
+        ExecuteAsync(
+            ResolveActor(credential),
+            Commands().ResolveDayProtection(seat, isProtected, note),
+            idempotencyKey);
+
+    /// <summary>
     /// 说书人 / 宿主处罚处决：洗脑师 / 畸形秀演员的"疯狂"后果（R-0020）。
     /// 白天形态占用当天处决上限并立即收口白天；夜晚形态不占任何白天的上限。
     /// </summary>

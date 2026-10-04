@@ -267,6 +267,15 @@ internal sealed class GameCommandFactory
     internal GameCommand CountExileVotes(int exileIndex) =>
         new CountExileVotesCommand { ExileIndex = exileIndex };
 
+    /// <summary>说书人 / 宿主裁定当天的死亡保护（R-0048）。</summary>
+    internal GameCommand ResolveDayProtection(int seat, bool isProtected, string? note) =>
+        new ResolveDayProtectionCommand
+        {
+            Seat = new SeatId(seat),
+            Protected = isProtected,
+            Note = note,
+        };
+
     /// <summary>把客户端传来的维度字符串解析成枚举；null = 本次未观测，非法值当场拒绝（并写审计）。</summary>
     private TEnum? ParseDimension<TEnum>(string? raw, string label)
         where TEnum : struct, Enum

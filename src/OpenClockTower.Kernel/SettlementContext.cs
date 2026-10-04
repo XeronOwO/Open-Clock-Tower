@@ -44,6 +44,11 @@ public sealed record SettlementContext
     public IReadOnlyList<IArtistQuestionSource> ArtistQuestions { get; init; } = [];
 
     /// <summary>
+    /// 死亡保护来源（规则层实现，R-0048）；没有时任何死亡都不受保护——行为与保护机制引入前一致。
+    /// </summary>
+    public IReadOnlyList<IDeathProtectionSource> DeathProtections { get; init; } = [];
+
+    /// <summary>
     /// 步骤机状态（可选）：给"需要读游戏流程状态"的触发器用（例如呆瓜选择的幂等判断，R-0027）。
     /// 触发管线只读它、不写它；派生事件折回步骤机由应用层完成。
     /// </summary>

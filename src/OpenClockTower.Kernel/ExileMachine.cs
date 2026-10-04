@@ -336,16 +336,8 @@ public static class ExileMachine
         var voters = exile.Ballot.OrderBy(seat => seat.Value).ToArray();
         var reached = voters.Length * 2 >= sweep.Seats.Count;
 
-        var events = new List<GameEvent>(capacity: 2)
-        {
-            new ExileVoteCountedEvent
-            {
-                DayNumber = day.DayNumber,
-                ExileIndex = exile.Index,
-                Voters = voters,
-                Conclusion = reached ? ExileConclusion.Exiled : ExileConclusion.VotesInsufficient,
-            },
-        };
+        var conclusion = reached ? ExileConclusion.Exiled : ExileConclusion.VotesInsufficient;
+        SeatStateChangedEvent? death = null;
 
         if (reached)
         {
@@ -369,13 +361,46 @@ public static class ExileMachine
             // 目标已死时只记结论、不重复记死亡（与 CloseDay 对已死者的处决口径一致）。
             if (life == LifeState.Alive)
             {
-                events.Add(new SeatStateChangedEvent
+                // 统一死亡保护查询（R-0048）：受保护 → 目标存活、结论记「受保护」；
+                // 待裁定 / 判定不了 → 显式拒绝——先把裁定 / 观测补齐，再重新计票（不猜、不静默死亡）。
+                var protection = DeathProtectionQuery.Resolve(context, day, exile.Target, DeathProtectionCause.Exile);
+                switch (protection.Outcome)
                 {
-                    Seat = exile.Target,
-                    Life = LifeState.Dead,
-                    Reason = ExileDeathReason,
-                });
+                    case DeathProtectionOutcome.Protected:
+                        conclusion = ExileConclusion.Protected;
+                        break;
+                    case DeathProtectionOutcome.NeedsRuling:
+                        return DayOutcome.Reject("day.exile_protection_required", protection.Note);
+                    case DeathProtectionOutcome.Indeterminate:
+                        return DayOutcome.Reject(
+                            "day.exile_protection_indeterminate",
+                            $"{protection.Note}（先补观测，再重新计票；R-0048）");
+                    default:
+                        death = new SeatStateChangedEvent
+                        {
+                            Seat = exile.Target,
+                            Life = LifeState.Dead,
+                            Reason = ExileDeathReason,
+                        };
+                        break;
+                }
             }
+        }
+
+        var events = new List<GameEvent>(capacity: 2)
+        {
+            new ExileVoteCountedEvent
+            {
+                DayNumber = day.DayNumber,
+                ExileIndex = exile.Index,
+                Voters = voters,
+                Conclusion = conclusion,
+            },
+        };
+
+        if (death is not null)
+        {
+            events.Add(death);
         }
 
         return DayOutcome.Accepted(events);

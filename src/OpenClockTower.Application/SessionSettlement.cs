@@ -52,6 +52,7 @@ internal static class SessionSettlement
             AbilityPresences = RoleContracts.AbilityPresences,
             AdjudicatedExecutions = RoleContracts.AdjudicatedExecutions,
             ArtistQuestions = RoleContracts.ArtistQuestions,
+            DeathProtections = RoleContracts.DeathProtections,
             Machine = machine,
             DayWasOpen = machine?.Day?.OpenDay is not null,
         };

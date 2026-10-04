@@ -131,6 +131,7 @@ internal static class GameCommandDispatcher
 
         if (envelope.Command is StartVoteSweepCommand or ResumeVoteSweepCommand or CountVotesCommand
             or StartExileSweepCommand or ResumeExileSweepCommand or CountExileVotesCommand
+            or ResolveDayProtectionCommand
             or CloseDayCommand)
         {
             return Translate(StepMachine.Handle(machine, settlement, BuildStorytellerDayInput(envelope.Command)));
@@ -283,6 +284,12 @@ internal static class GameCommandDispatcher
             CountExileVotesCommand countExile => new CountExileVotesInput
             {
                 ExileIndex = countExile.ExileIndex,
+            },
+            ResolveDayProtectionCommand resolveProtection => new ResolveDayProtectionInput
+            {
+                Seat = resolveProtection.Seat,
+                Protected = resolveProtection.Protected,
+                Note = resolveProtection.Note,
             },
             CloseDayCommand => new CloseDayInput(),
             _ => throw new InvalidOperationException($"不是说书人白天命令：{command.GetType().Name}"),

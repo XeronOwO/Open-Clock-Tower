@@ -23,6 +23,7 @@ internal sealed class DayReplayPresenter : IReplayStepPresenter
         typeof(ExileSeatVoteCollectedEvent),
         typeof(ExileSweepResumedEvent),
         typeof(ExileVoteCountedEvent),
+        typeof(DayProtectionDecidedEvent),
     ];
 
     /// <inheritdoc />
@@ -150,12 +151,27 @@ internal sealed class DayReplayPresenter : IReplayStepPresenter
             Phase = GamePhase.Day,
             Summary = $"第 {exileCounted.DayNumber} 天第 {exileCounted.ExileIndex} 条流放计票："
                 + $"{exileCounted.Voters.Count} 票，"
-                + (exileCounted.Conclusion == ExileConclusion.Exiled
-                    ? "流放成立（目标死亡）"
-                    : "未达线，目标存活"),
+                + exileCounted.Conclusion switch
+                {
+                    ExileConclusion.Exiled => "流放成立（目标死亡）",
+                    ExileConclusion.Protected => "达线但受死亡保护，目标存活",
+                    _ => "未达线，目标存活",
+                },
             Detail = exileCounted.Voters.Count == 0
                 ? null
                 : $"赞成：{context.SeatText.SeatList(exileCounted.Voters)}",
+        },
+
+        // 死亡保护裁定（D3 / R-0048）：说书人对某席位「今天的死亡保护」的裁定，进复盘。
+        DayProtectionDecidedEvent protectionDecided => new ReplayStep
+        {
+            Sequence = context.Stored.Sequence,
+            Kind = ReplayStepKind.Day,
+            Phase = GamePhase.Day,
+            Summary = $"第 {protectionDecided.DayNumber} 天死亡保护裁定："
+                + $"{context.SeatText.Seat(protectionDecided.Seat)} "
+                + (protectionDecided.Protected ? "今天受保护（不因流放死亡）" : "不受保护"),
+            Detail = protectionDecided.Note,
         },
         _ => throw new InvalidOperationException(
             $"DayReplayPresenter 不认领事件 {context.Stored.Event.GetType().Name}"),

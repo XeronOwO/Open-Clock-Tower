@@ -238,10 +238,11 @@ internal static class ExileLedgerFolder
                     $"事件流顺序损坏：白天 {day.DayNumber} 第 {exile.Index} 条流放的计票名单里有人不在收票名册里");
             }
 
-            if (counted.Conclusion == ExileConclusion.Exiled && voters.Length * 2 < sweep.Seats.Count)
+            if ((counted.Conclusion is ExileConclusion.Exiled or ExileConclusion.Protected)
+                && voters.Length * 2 < sweep.Seats.Count)
             {
                 throw new InvalidOperationException(
-                    $"事件流顺序损坏：白天 {day.DayNumber} 第 {exile.Index} 条流放结论为「已流放」，"
+                    $"事件流顺序损坏：白天 {day.DayNumber} 第 {exile.Index} 条流放结论为「{counted.Conclusion}」，"
                     + $"但 {voters.Length} 票没有达到 {sweep.Seats.Count} 席的过半线");
             }
 

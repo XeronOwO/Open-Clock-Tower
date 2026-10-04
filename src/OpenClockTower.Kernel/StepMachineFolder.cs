@@ -151,6 +151,9 @@ internal static class StepMachineFolder
             ExileSweepResumedEvent => ApplyDay(state, gameEvent),
             ExileVoteCountedEvent => ApplyDay(state, gameEvent),
 
+            // 死亡保护裁定（D3）：当天作用域的裁定，同样折进白天账（R-0048）。
+            DayProtectionDecidedEvent => ApplyDay(state, gameEvent),
+
             // 夜晚处罚处决（DayNumber = null）不写白天账：不把"还没有白天"物化成空账（R-0020）。
             ExecutedEvent { DayNumber: null } => Require(state, gameEvent),
             ExecutedEvent => ApplyDay(state, gameEvent),
