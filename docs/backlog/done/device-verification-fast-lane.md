@@ -67,7 +67,7 @@ P3 一并处理：源文件新鲜度检测补 `json/resx/razor`；winloss 席位
 - 取证档余量 5.8 秒（84.2 / 90）：再往真机装置加断言前要重新评估；
 - 迭代档不跑第三夜深度场景（取证档跑）；迭代时想要更强的回归，用 `--quota 1` 以上的节拍；
 - 辅助装置暂无分段选择器（单次 7–13 秒，接入成本大于收益），需要时按主装置同款接入
-  `tools/lib/verify-sections.mjs`；
+  `tools/lib/verify-sections.mjs`（账号装置 2026-10-05 已接入：`done/accounts-device-section-selector.md`）；
 - 截图证据卫生：`artifacts/web/` 不轮转、落盘断言只查文件名存在性（不查 mtime / 哈希）——
   旧图可能冒充当轮；
 - `--skip-build` 只做存在性检查、不看产物新鲜度（显式复用的语义如此；改过 C# 后必须先构建）。

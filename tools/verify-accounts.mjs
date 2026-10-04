@@ -28,9 +28,16 @@
  *
  * 前置：Node >= 22.5（node:sqlite）、本机已构建 web/node_modules（playwright + @microsoft/signalr）。
  * 用法（在仓库根运行；默认迭代档 = 快节拍 + 不落盘截图 + 复用产物）：
- *   node tools/verify-accounts.mjs                                        # 迭代档
+ *   node tools/verify-accounts.mjs                                        # 迭代档（全部段）
+ *   node tools/verify-accounts.mjs --list-sections                        # 只列段名，不起宿主
+ *   node tools/verify-accounts.mjs --only drawer-names                    # 执行到该段为止，且只判该段
+ *   node tools/verify-accounts.mjs --from replay                          # 全程执行，但从该段起才计入判定
  *   node tools/verify-accounts.mjs --quota 2 --screenshots-all --build    # 取证档（一批一次）
  *   node tools/verify-accounts.mjs --port 5414 --vite-port 5294           # 自定端口
+ *
+ * 段落（前缀执行 + 判定过滤：`--only` 与 `--from` 互斥，前面的段是必要前置、照跑但只有选中段计入判定）：
+ *   boot · tickets · join-a · join-b · guest · rename · replay · drawer-names
+ *   · negative · account-panel · onboarding · layout
  *
  * 外部耦合（换机器先核对 web/AGENTS.md §3.1）：宿主编译产物路径、SQLite 表 Games 的
  * StorytellerTicket / SeatsJson 列形状、账号表 Users 与席位绑定表 SeatBindings 的列名。
@@ -44,6 +51,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { DatabaseSync } from 'node:sqlite'
 import { describeProfile, ensureServerArtifacts, extractProfileFlags, resolveProfile } from './lib/verify-profile.mjs'
+import { createChecker, createSectionRunner } from './lib/verify-sections.mjs'
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const webRoot = path.join(repositoryRoot, 'web')
@@ -55,8 +63,48 @@ const options = parseArguments(rest)
  * 取证档显式传 `--quota 2 --screenshots-all`（必要时加 `--build`）。
  */
 const config = resolveProfile(flags, { quotaSeconds: 0.3 })
-const results = []
+
+/** 段落清单：顺序即执行顺序，也是用法头里那份清单的唯一事实来源。 */
+const SECTIONS = [
+  { id: 'boot', title: '构建并启动真宿主（独立临时库）' },
+  { id: 'tickets', title: '取票据（说书人 + 各席位）并起 Vite' },
+  { id: 'join-a', title: '说书人 + 玩家 A：注册 → 认领 1 号' },
+  { id: 'join-b', title: '玩家 B：注册 → 认领 2 号（公开映射两席一致）' },
+  { id: 'guest', title: '游客 C：不登录只凭票据坐 3 号 + 线级探针入座' },
+  { id: 'rename', title: '改名：A 自己 / B 同桌 / 说书人魔典三处同步 + 线级序号取证' },
+  { id: 'replay', title: '复盘文案口径：上报 1 号死亡 → 步骤文案与刷新' },
+  { id: 'drawer-names', title: '抽屉面姓名口径：状态账 / 最近状态变化 / 开局分配 / 席内注记' },
+  { id: 'negative', title: '负向：伪造 / 跨账号 / 二次认领 + 会话信息落库' },
+  { id: 'account-panel', title: '收尾：账号面板一次性恢复码' },
+  { id: 'onboarding', title: '收尾：说明入口（悬停 / 点按 / Esc）' },
+  { id: 'layout', title: '版面量度（内容高 + 整页截图）+ 控制台零错误' },
+]
+
+const runner = createSectionRunner(SECTIONS, { only: config.only, from: config.from })
+const checker = createChecker({
+  sections: SECTIONS,
+  isJudged: (id) => runner.isJudged(id),
+  currentSection: () => runner.currentId,
+  slowPacer: config.slowPacer,
+  screenshots: config.screenshots,
+})
+const check = checker.check
+
+if (config.listSections) {
+  console.log('可用段落（按执行顺序；--only 与 --from 互斥）：')
+  for (const section of SECTIONS) {
+    console.log(`  ${section.id.padEnd(14)} ${section.title}`)
+  }
+
+  process.exit(0)
+}
+
 const children = []
+/** 浏览器实例与三条 SignalR 连接（模块级：正常收尾、`--only` 早退与异常路径都要关掉，不留孤儿）。 */
+let browser = null
+let accountClient = null
+let probe = null
+let seatProbe = null
 let playwright = null
 let signalR = null
 
@@ -71,6 +119,7 @@ try {
 }
 
 console.log(`档位：${describeProfile(config)}`)
+console.log(`段落选择：${runner.selectionSummary()}`)
 
 const workspace = mkdtempSync(path.join(tmpdir(), 'oct-accounts-'))
 const databasePath = path.join(workspace, 'accounts.db')
@@ -128,23 +177,25 @@ process.on('exit', () => killChildren())
 
 try {
   await main()
+  runner.reportTimings()
   await cleanup()
-  report()
-  process.exit(results.some((result) => !result.pass) ? 1 : 0)
+  checker.report()
+  console.log(config.screenshots ? `截图：${screenshotsDir}（accounts-*）` : '截图：未落盘（迭代档）')
+  process.exit(checker.results.some((result) => result.outcome === 'fail') ? 1 : 0)
 } catch (error) {
   console.error(`\n[FAIL] 批次脚本异常终止：${error instanceof Error ? error.stack : String(error)}`)
-  results.push({ label: '脚本执行到底', pass: false, detail: '见上方异常' })
+  checker.results.push({ section: runner.currentId, label: '脚本执行到底', outcome: 'fail', detail: '见上方异常' })
   await cleanup()
-  report()
+  checker.report()
   process.exit(1)
 }
 
 async function main() {
-  console.log('=== 1/8 构建并启动真宿主（独立临时库，3 席）===')
+  if (!runner.begin('boot')) return
   await ensureServerArtifacts({ repositoryRoot, buildMode: config.buildMode })
   await startServer()
 
-  console.log('=== 2/8 取票据并起 Vite ===')
+  if (!runner.begin('tickets')) return
   const storytellerTicket = readStorytellerTicket(databasePath)
   const seatTickets = readSeatTickets(databasePath)
   check(`席位票据齐备（${SEAT_COUNT} 席）`, seatTickets.length === SEAT_COUNT, `数据库 ${seatTickets.length} 张`)
@@ -166,8 +217,8 @@ async function main() {
   children.push(vite)
   await waitForHttp(viteUrl, 'Vite 开发服务器', 60_000)
 
-  console.log('=== 3/8 说书人 + 玩家 A：注册 → 认领 1 号 ===')
-  const browser = await playwright.chromium.launch()
+  if (!runner.begin('join-a')) return
+  browser = await playwright.chromium.launch()
   const consoleErrors = []
   const storytellerPage = await newPage(browser, { width: 1600, height: 1100 }, consoleErrors)
   await storytellerPage.goto(viteUrl)
@@ -200,7 +251,7 @@ async function main() {
   await alicePage.getByTestId('player-seat').waitFor({ timeout: 15_000 })
   await screenshot(alicePage, 'accounts-01-player-a')
 
-  console.log('=== 4/8 玩家 B：注册 → 认领 2 号（公开映射两席一致）===')
+  if (!runner.begin('join-b')) return
   const bobPage = await newPage(browser, { width: 900, height: 1200 }, consoleErrors)
   await bobPage.goto(`${viteUrl}/#player`)
   await registerAccount(bobPage, BOB)
@@ -218,7 +269,7 @@ async function main() {
   await bobPage.getByTestId('player-roster').waitFor({ timeout: 15_000 })
   await screenshot(bobPage, 'accounts-02-player-b')
 
-  console.log('=== 5/8 游客 C：不登录、只凭票据坐 3 号 ===')
+  if (!runner.begin('guest')) return
   const guestPage = await newPage(browser, { width: 900, height: 1200 }, consoleErrors)
   await guestPage.goto(`${viteUrl}/#player`)
   await joinSeat(guestPage, seatTickets[SEAT_GUEST - 1].ticket)
@@ -243,12 +294,12 @@ async function main() {
     (await guestPage.locator(`[data-testid="player-roster"] li[data-seat="${SEAT_GUEST}"]`).count()) === 1,
     `li[data-seat="${SEAT_GUEST}"] 条数 ${await guestPage.locator(`[data-testid="player-roster"] li[data-seat="${SEAT_GUEST}"]`).count()}`,
   )
-  const guestDiagnostics = compact(
-    await guestPage
-      .locator('[data-testid="player-diagnostics"]')
-      .innerText()
-      .catch(() => ''),
-  )
+  // 诊断区只在有内容时渲染，所以这里必须**非等待**读取：`innerText()` 在元素缺失时会白等满
+  // Playwright 默认的 30s 超时（2026-10-05 实测：光是这一处就把本装置从 ~7s 拖到 ~37s，
+  // 分段耗时把 guest 段钉在 30.3s 才暴露出来）。缺失 = 没有诊断，不是失败。
+  const diagnosticsBox = guestPage.locator('[data-testid="player-diagnostics"]')
+  const guestDiagnostics =
+    (await diagnosticsBox.count()) === 0 ? '' : compact(await diagnosticsBox.first().innerText())
   check(
     '游客 C 页面不白屏：席位标签在位、诊断区没有「加入失败」',
     (await guestPage.getByTestId('player-seat').count()) === 1 && !guestDiagnostics.includes('加入失败'),
@@ -261,10 +312,10 @@ async function main() {
   // ⚠ 每席位只保留一条连接（ConnectionRegistry.IssueForSeat）：探针若和某个浏览器页抢同一席，两边会互相
   // 顶替（E30 实测：探针一条推送都收不到，且宿主日志里的"推送=3/3"只统计**发送尝试**、不代表送达）——
   // 所以这里给它一个浏览器不用的席位，测的才是"服务端到底推没推、序号是多少"。
-  const seatProbe = await joinSeatProbe(seatTickets[SEAT_PROBE - 1].ticket)
+  seatProbe = await joinSeatProbe(seatTickets[SEAT_PROBE - 1].ticket)
   const probeSnapshotMark = seatProbe.inbox.length
 
-  console.log('=== 6/8 改名：A 自己 / B 的同桌名单 / 说书人魔典三处同步 ===')
+  if (!runner.begin('rename')) return
   await waitForLocatorContains(grimoireSeatName(storytellerPage, SEAT_A), ALICE.displayName, 30_000)
   // 账号区登录后默认收成一行摘要（票据 ui-layout-and-onboarding）：先点开「管理账号」再改名。
   await alicePage.getByTestId('account-fold-toggle').click()
@@ -317,7 +368,7 @@ async function main() {
     probeTargeted.map((message) => message.method).join('|') || '窗口内无定向推送',
   )
 
-  console.log('=== 7/8 复盘文案口径：说书人上报 1 号死亡 → 步骤文案用玩家名 ===')
+  if (!runner.begin('replay')) return
   await storytellerPage.locator(`[data-testid="grimoire-seat"][data-seat="${SEAT_A}"]`).click()
   const reportBlock = storytellerPage.locator('[data-testid="seat-console"] .report')
   await reportBlock.waitFor({ timeout: 30_000 })
@@ -368,9 +419,9 @@ async function main() {
   )
   check('刷新复盘面板后文案口径不变（服务端口径，不是前端拼的）', replayRefreshed.includes(`${SEAT_A} 号 · ${RENAMED}`), replayRefreshed)
 
+  if (!runner.begin('drawer-names')) return
   // 抽屉面姓名口径（E30 残余①，票据 ui-layout-and-onboarding 同批收口）：八个组件接入后逐面复核
   // **真机**上的四处（其余面板需要夜间 / 窗口夹具，由组件级渲染回归 `seatDisplay.spec.ts` 覆盖）。
-  console.log('=== 7.5/8 抽屉面姓名口径：数据与审计 / 开局分配 / 席内注记 ===')
   const drawerToggle = storytellerPage.getByTestId('data-drawer-toggle')
   if ((await drawerToggle.getAttribute('aria-expanded')) !== 'true') {
     await drawerToggle.click()
@@ -418,8 +469,8 @@ async function main() {
   )
   await screenshot(storytellerPage, 'accounts-09-drawer-names')
 
-  console.log('=== 8/8 负向：伪造 / 跨账号 / 二次认领 + 会话信息落库 ===')
-  const accountClient = await connectHub(accountHubUrl)
+  if (!runner.begin('negative')) return
+  accountClient = await connectHub(accountHubUrl)
   const bobLogin = await accountClient.invoke('Login', BOB.username, BOB.password)
   check(
     'B 可再次登录取得新的账号会话（同一账号多会话并存，用于负向取证）',
@@ -427,7 +478,7 @@ async function main() {
     `code=${bobLogin.code}`,
   )
 
-  const probe = await connectHub(hubUrl)
+  probe = await connectHub(hubUrl)
   const forgedTicketA = seatTickets[SEAT_A - 1].ticket
 
   const forged = await expectRejected(() =>
@@ -475,7 +526,7 @@ async function main() {
     `Users=${persisted.users.join('|')}｜SeatBindings 席位=${persisted.bindings.join('|')}`,
   )
 
-  console.log('=== 收尾：账号面板（一次性恢复码）截图 ===')
+  if (!runner.begin('account-panel')) return
   // 恢复码只在注册 / 重置时出现；改名不会清掉它，这里复核"同一枚恢复码仍在账号面板上"。
   const recoveryStillThere = await waitForLocatorText(alicePage.getByTestId('account-recovery-code'), 15_000)
   check(
@@ -486,9 +537,9 @@ async function main() {
   await alicePage.getByTestId('player-account').scrollIntoViewIfNeeded()
   await screenshot(alicePage, 'accounts-06-account-panel-recovery-code')
 
+  if (!runner.begin('onboarding')) return
   // 上手引导的说明入口（票据 ui-layout-and-onboarding 矩阵行 2）：悬停（键鼠）与点按（触屏路径）都能打开，
   // 文案来自 `display/help.ts` 登记表；Esc 关闭。截图 `accounts-10-explain-tip` 留证。
-  console.log('=== 收尾：说明入口（悬停 / 点按 / Esc）===')
   const helpButton = bobPage.getByTestId('player-roster').getByRole('button', { name: '说明：玩家名' })
   await helpButton.hover()
   const hoverBubble = await waitForLocatorText(bobPage.getByRole('tooltip'), 10_000)
@@ -505,6 +556,7 @@ async function main() {
   await bobPage.keyboard.press('Escape')
   check('说明入口：Esc 关闭气泡', (await bobPage.getByRole('tooltip').count()) === 0, '气泡已撤下')
 
+  if (!runner.begin('layout')) return
   // 版面量度（票据 `ui-layout-and-onboarding` 矩阵行 3）：固定状态下的整页截图 + 内容高度，
   // 供"前后对比"引用。量的是 `.shell` 的内容底边——`documentElement.scrollHeight` 会被视口高度钳制；
   // 说书人页量之前先收起数据抽屉（展开与否是本地呈现态，不能混进量度）。
@@ -525,11 +577,6 @@ async function main() {
   await screenshot(storytellerPage, 'accounts-08-layout-storyteller')
 
   check('浏览器控制台没有报错', consoleErrors.length === 0, consoleErrors.slice(0, 3).join(' | '))
-
-  await browser.close()
-  await accountClient.stop()
-  await probe.stop()
-  await seatProbe.connection.stop()
 }
 
 /** A / B / C 三张玩家页共用的注册动作：账号面板在未连接时是非紧凑布局。 */
@@ -697,7 +744,7 @@ async function waitForLocatorContains(locator, needle, timeoutMs) {
   const deadline = Date.now() + timeoutMs
   let text = ''
   while (Date.now() < deadline) {
-    text = compact(await locator.innerText().catch(() => ''))
+    text = await readTextBounded(locator)
     if (text.includes(needle)) {
       return text
     }
@@ -713,7 +760,7 @@ async function waitForLocatorText(locator, timeoutMs) {
   const deadline = Date.now() + timeoutMs
   let text = ''
   while (Date.now() < deadline) {
-    text = compact(await locator.innerText().catch(() => ''))
+    text = await readTextBounded(locator)
     if (text.length > 0) {
       return text
     }
@@ -724,6 +771,18 @@ async function waitForLocatorText(locator, timeoutMs) {
   return text
 }
 
+/**
+ * 轮询用的**有界**文本读取。`innerText()` 默认超时 30s：元素缺失时，"每 150ms 轮询一次"
+ * 会退化成"每次白等 30s"，把自己的 deadline（15s / 30s）悄悄突破——设备报红时最容易在这里白花时间。
+ * 显式给一个短超时：元素在就立刻返回，不在就马上当空串，何时放弃交给外层循环的 deadline。
+ */
+function readTextBounded(locator) {
+  return locator
+    .innerText({ timeout: 500 })
+    .then((text) => compact(text))
+    .catch(() => '')
+}
+
 async function screenshot(page, name) {
   if (!config.screenshots) {
     return
@@ -732,26 +791,6 @@ async function screenshot(page, name) {
   const target = path.join(screenshotsDir, `${name}.png`)
   await page.screenshot({ path: target, fullPage: true })
   console.log(`  截图：${target}`)
-}
-
-/** 断言编号 = 加入顺序（每条断言都有编号与输出，收尾再逐条重放一遍）。 */
-function check(label, pass, detail = '') {
-  results.push({ label, pass: Boolean(pass), detail })
-  console.log(`  ${pass ? '[PASS]' : '[FAIL]'} #${results.length} ${label}${detail ? ` → ${detail}` : ''}`)
-}
-
-function report() {
-  console.log('\n=== 账号与局内玩家名装置（accounts）取证结论 ===')
-  for (const [index, result] of results.entries()) {
-    console.log(
-      `#${index + 1} ${result.pass ? 'PASS' : 'FAIL'}  ${result.label}${result.detail ? ` → ${result.detail}` : ''}`,
-    )
-  }
-
-  const failed = results.filter((result) => !result.pass)
-  console.log(`断言总数 ${results.length}`)
-  console.log(config.screenshots ? `截图：${screenshotsDir}（accounts-*）` : '截图：未落盘（迭代档）')
-  console.log(failed.length === 0 ? `全部通过（${results.length} 项）` : `失败 ${failed.length} / ${results.length}`)
 }
 
 function compact(text) {
@@ -885,7 +924,28 @@ async function waitForHttp(url, label, timeoutMs) {
   throw new Error(`${label} 在 ${timeoutMs}ms 内没有就绪：${lastError}`)
 }
 
+/** 关掉浏览器与三条 SignalR 连接：正常收尾、`--only` 早退与异常路径共用，幂等。 */
+async function closeBrowser() {
+  if (browser === null) {
+    return
+  }
+
+  const closing = browser
+  browser = null
+  await closing.close().catch(() => {})
+}
+
+async function stopConnections() {
+  const connections = [accountClient, probe, seatProbe?.connection].filter((connection) => connection != null)
+  accountClient = null
+  probe = null
+  seatProbe = null
+  await Promise.all(connections.map((connection) => connection.stop().catch(() => {})))
+}
+
 async function cleanup() {
+  await closeBrowser()
+  await stopConnections()
   killChildren()
   await waitForChildrenExit(10_000)
   await sleep(500)

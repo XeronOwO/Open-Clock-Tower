@@ -60,11 +60,15 @@ todo/  →  in-progress/  →  review/  →  done/
 
 ### Todo
 
+- [装置轮询助手的 `innerText` 无界等待：元素缺失时白等 30s](todo/device-poll-innertext-unbounded-wait.md) — **Low** — 12 个装置各自的 `waitForText` / `waitForLocatorContains` 用无界 `innerText()`（默认 30s），元素缺失 / 晚到时会突破自己的 deadline（账号装置已实测 37.3s → 7.3s，同款已修）
+
 ### In progress
 
 ### Review
 
 ### Done
+
+- [账号装置分段选择器：把 37–40s 的固定开销拆开定位](done/accounts-device-section-selector.md) — **Medium** — 账号装置接上 `--only` / `--from` / `--list-sections`（12 段、每次运行打印按段耗时）；分段当场咬出 guest 段一处无界 `innerText()` 白等满 30s——迭代档 **37.3s → 7.3s**，36 项回归全绿（同族 12 个装置的同款写法另立 Low 票）
 
 - [排版与上手引导优化：让版块自解释、信息降密度](done/ui-layout-and-onboarding.md) — **Medium** — 两端版块标题 + 一句副标题、`?` 说明入口（悬停 / 点按 / Esc）、通俗文案与「席位 + 角色 + 状态 + 归因」拼接句、低频区块折叠；同批收口 E30 残余①（说书人数据抽屉八个组件接入玩家名口径）；批次 E31 矩阵 7 行全部判出（主装置 194 + accounts 36 + 零信任 50 + 胜负 25 + 疯狂 28；冻结版门禁 853 通过；玩家页内容高 -11.2%）
 

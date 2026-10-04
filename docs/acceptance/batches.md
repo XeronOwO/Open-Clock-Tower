@@ -626,7 +626,9 @@ Integration 188 · NormativeGates 24）；`dotnet format` 就地通过；`npm ru
   批次 E30 残余①（说书人数据抽屉组件的姓名口径）随之关闭。
 - 装置清单仍是 14 个（`verify-accounts` 扩展，未新增装置）；本批后 `in-progress/`、`review/` 清空，
   `todo/` 无待办票据。
-- 未做（交接提示词另计）：`verify-accounts --only/--from` 分段选择器（与其它装置同款）。
+- 未做（交接提示词另计）：`verify-accounts --only/--from` 分段选择器（与其它装置同款）——
+  已于 2026-10-05 落地（`docs/backlog/done/accounts-device-section-selector.md`，12 段；同轮修掉
+  游客页那处让本装置白等 30s 的无界 `innerText()`，迭代档 37.3s → 7.3s）。
 
 ## 相关阅读
 
