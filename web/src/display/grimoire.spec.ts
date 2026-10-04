@@ -331,7 +331,7 @@ describe('槽位读数（收口不越界）', () => {
 })
 
 describe('裁定候选的生死标注（映射，不是规则判断）', () => {
-  it('只认 seat:N 编码；其它选项值一律不标注', () => {
+  it('认 seat:N / 前缀式 / 两维第一维；其它选项值一律不标注', () => {
     expect(seatOfOptionValue('seat:3')).toBe(3)
     expect(seatOfOptionValue('seat:0')).toBeNull()
     expect(seatOfOptionValue('seat:')).toBeNull()
@@ -341,6 +341,12 @@ describe('裁定候选的生死标注（映射，不是规则判断）', () => {
     // 与内核 SeatChoice.Parse 一致：前导零按十进制解析；超界（> 1000）视为坏载荷。
     expect(seatOfOptionValue('seat:007')).toBe(7)
     expect(seatOfOptionValue('seat:1001')).toBeNull()
+    // 咖啡师的裁定候选（R-0052）：效果前缀 + 席位段。
+    expect(seatOfOptionValue('healthy:seat:3')).toBe(3)
+    expect(seatOfOptionValue('twice:seat:3')).toBe(3)
+    expect(seatOfOptionValue('healthy:seat:1001')).toBeNull()
+    // 两维选择（ChoicePrompt）：席位在第一位。
+    expect(seatOfOptionValue('seat:3|clockmaker')).toBe(3)
   })
 
   it('已死亡标 true；存活 / 未观测 / 非席位选项标 false', () => {
@@ -357,6 +363,9 @@ describe('裁定候选的生死标注（映射，不是规则判断）', () => {
     expect(optionSeatIsDead(view, 'seat:4')).toBe(false)
     expect(optionSeatIsDead(view, 'seat:5')).toBe(false)
     expect(optionSeatIsDead(view, 'pair:2+3')).toBe(false)
+    // 咖啡师候选（R-0052）同样按状态账打标——这是 D7 的修复点。
+    expect(optionSeatIsDead(view, 'healthy:seat:2')).toBe(true)
+    expect(optionSeatIsDead(view, 'twice:seat:3')).toBe(false)
   })
 })
 

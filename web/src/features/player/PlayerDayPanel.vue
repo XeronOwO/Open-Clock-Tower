@@ -6,7 +6,7 @@
  * 能不能动由服务端的权限位决定，前端只做使能提示——服务端仍会独立校验（D-0012）。
  */
 import type { PlayerDayDto, SeatDisplayNameDto } from '@/contracts/game'
-import { seatTextOf } from '@/display/format'
+import { exileStatusTextOf, seatTextOf } from '@/display/format'
 import HelpTip from '@/features/common/HelpTip.vue'
 import VoteDial from '@/features/common/VoteDial.vue'
 import { newIdempotencyKey } from '@/services/idempotency'
@@ -22,6 +22,12 @@ const props = defineProps<{
   nominate: (seat: number, idempotencyKey: string) => Promise<unknown>
   /** 投票 / 撤回。 */
   vote: (nominationIndex: number, voted: boolean, idempotencyKey: string) => Promise<unknown>
+  /** 发起流放提议（任意在局玩家含死者；目标必须是旅行者；R-0044 第 2 条）。 */
+  proposeExile: (seat: number, idempotencyKey: string) => Promise<unknown>
+  /** 流放表决举手 / 放下（含死者，不耗投票标记；R-0044 第 4 条）。 */
+  castExileVote: (exileIndex: number, voted: boolean, idempotencyKey: string) => Promise<unknown>
+  /** 屠夫窗口里的额外提名（仅窗口授予席位本人；R-0050）。 */
+  nominateExtra: (seat: number, idempotencyKey: string) => Promise<unknown>
 }>()
 const emit = defineEmits<{ diagnostic: [string] }>()
 
@@ -47,12 +53,22 @@ const selfDead = computed(() =>
 
 const busy = ref(false)
 const nominee = ref<number | null>(null)
+const exileTarget = ref<number | null>(null)
+const extraNominee = ref<number | null>(null)
 
 /** 当前开放的那一项提名（含钟盘收票呈现）。 */
 const openNomination = computed(
   () =>
     props.day.publicView.nominations.find(
       (nomination) => nomination.index === props.day.publicView.openNominationIndex,
+    ) ?? null,
+)
+
+/** 当前开放的那一条流放（含钟盘收票呈现）。 */
+const openExile = computed(
+  () =>
+    props.day.publicView.exiles.find(
+      (exile) => exile.index === props.day.publicView.openExileIndex,
     ) ?? null,
 )
 
@@ -78,6 +94,28 @@ const voteStateText = computed(() => {
       return '收票已走完，等待说书人计票'
     default:
       return '等待说书人点「开始收票」'
+  }
+})
+
+/** 流放举手区的状态文案：与提名同款口径（冻结结论优先，其次服务端下发的相位）。 */
+const exileVoteStateText = computed(() => {
+  if (props.day.exileSeatCollected) {
+    return props.day.exileVoted ? '本席已被收票：你投了赞成' : '本席已被收票：你没有举手'
+  }
+
+  switch (openExile.value?.sweep?.phase) {
+    case 'Countdown':
+      return '流放倒计时中：举手 = 投这一票'
+    case 'Collecting':
+      return props.day.exileVoted
+        ? '你举着手：轮到你之前都可以放下'
+        : '流放收票中：轮到你之前都可以举手'
+    case 'Interrupted':
+      return '流放收票已中断，等待说书人继续'
+    case 'AwaitingCount':
+      return '流放收票已走完，等待说书人计票'
+    default:
+      return '等待说书人点「开始流放收票」'
   }
 })
 
@@ -136,6 +174,74 @@ async function castVote(voted: boolean): Promise<void> {
     busy.value = false
   }
 }
+
+/** 发起流放提议：目标由服务端复核（必须是本局在局旅行者、今天还没被提议过）。 */
+async function submitExile(): Promise<void> {
+  if (exileTarget.value === null) {
+    return
+  }
+
+  busy.value = true
+  try {
+    const problem = outcomeProblem(
+      await props.proposeExile(exileTarget.value, newIdempotencyKey('exile')),
+    )
+    if (problem !== null) {
+      emit('diagnostic', problem)
+    } else {
+      exileTarget.value = null
+    }
+  } catch (error) {
+    emit('diagnostic', `流放提议失败：${error instanceof Error ? error.message : String(error)}`)
+  } finally {
+    busy.value = false
+  }
+}
+
+/** 流放表决举手 / 放下（先举也算、过时不候；本席收票后由服务端锁死）。 */
+async function submitExileVote(voted: boolean): Promise<void> {
+  const index = props.day.publicView.openExileIndex
+  if (index === null) {
+    return
+  }
+
+  busy.value = true
+  try {
+    const problem = outcomeProblem(
+      await props.castExileVote(index, voted, newIdempotencyKey('exile-vote')),
+    )
+    if (problem !== null) {
+      emit('diagnostic', problem)
+    }
+  } catch (error) {
+    emit('diagnostic', `流放举手失败：${error instanceof Error ? error.message : String(error)}`)
+  } finally {
+    busy.value = false
+  }
+}
+
+/** 屠夫窗口里的额外提名（不占当日提名次数、可提名今天已被提名过的人；R-0050）。 */
+async function submitExtraNomination(): Promise<void> {
+  if (extraNominee.value === null) {
+    return
+  }
+
+  busy.value = true
+  try {
+    const problem = outcomeProblem(
+      await props.nominateExtra(extraNominee.value, newIdempotencyKey('extra-nominate')),
+    )
+    if (problem !== null) {
+      emit('diagnostic', problem)
+    } else {
+      extraNominee.value = null
+    }
+  } catch (error) {
+    emit('diagnostic', `额外提名失败：${error instanceof Error ? error.message : String(error)}`)
+  } finally {
+    busy.value = false
+  }
+}
 </script>
 
 <template>
@@ -149,7 +255,8 @@ async function castVote(voted: boolean): Promise<void> {
     <p class="block-question">提名与投票都是公开信息；能不能行动由服务端判定。</p>
 
     <p v-if="selfDead" class="dead-note" data-testid="player-self-dead" :data-seat="seat">
-      你已死亡：不能发起提名{{ day.canVote ? '；你仍有投票标记，本白天还能再投一次票' : '；投票标记已经用完' }}。
+      你已死亡：不能发起提名{{ day.canVote ? '；你仍有投票标记，本白天还能再投一次票' : '；投票标记已经用完' }}；
+      流放不受生死限制——你仍可发起流放，也可在流放表决里举手。
     </p>
 
     <div v-if="day.publicView.status === 'Open'" class="row">
@@ -205,7 +312,83 @@ async function castVote(voted: boolean): Promise<void> {
       </template>
       <span v-else class="hint" data-testid="player-day-waiting">现在没有开放投票的提名。</span>
     </div>
-    <p v-else class="hint" data-testid="player-day-closed">白天已结束。</p>
+
+    <!-- 旅行者与流放（R-0044）：发起 / 举手都是公开流程；能不能动由服务端的权限位决定。 -->
+    <div v-if="day.publicView.status === 'Open'" class="row" data-testid="player-exile-row">
+      <template v-if="day.canProposeExile && day.exileCandidates.length > 0">
+        <select v-model.number="exileTarget" data-testid="player-exile-select">
+          <option :value="null" disabled>选择要流放的旅行者</option>
+          <option v-for="candidate in day.exileCandidates" :key="candidate" :value="candidate">
+            {{ seatText(candidate) }}
+          </option>
+        </select>
+        <button
+          type="button"
+          class="primary"
+          data-testid="player-propose-exile"
+          :disabled="busy || exileTarget === null"
+          @click="submitExile()"
+        >
+          发起流放
+        </button>
+      </template>
+      <span v-else class="hint" data-testid="player-exile-hint">
+        {{ day.canProposeExile ? '今天没有可提议流放的旅行者。' : '现在不能发起流放（已有未结清的流放，或你不在局）。' }}
+      </span>
+    </div>
+
+    <div v-if="openExile" class="row" data-testid="player-exile" :data-exile-index="openExile.index">
+      <VoteDial
+        dial-kind="exile"
+        :seat-numbers="seatNumbers"
+        :nominator="openExile.proposer"
+        :nominee="openExile.target"
+        :current-seat="openExile.sweep?.currentSeat ?? null"
+        :collected="openExile.sweep?.collected ?? []"
+        :hands-raised="openExile.handsRaised"
+        :phase="openExile.sweep?.phase ?? null"
+        :next-beat-milliseconds="openExile.sweep?.nextBeatMilliseconds ?? null"
+      />
+      <span class="hint" data-testid="player-exile-vote-state">{{ exileVoteStateText }}</span>
+      <button
+        type="button"
+        class="primary"
+        data-testid="player-exile-vote-yes"
+        :disabled="busy || !day.canVoteExile || day.exileVoted"
+        @click="submitExileVote(true)"
+      >
+        举手（赞成流放）
+      </button>
+      <button
+        type="button"
+        data-testid="player-exile-vote-withdraw"
+        :disabled="busy || !day.canVoteExile || !day.exileVoted"
+        @click="submitExileVote(false)"
+      >
+        放下手
+      </button>
+    </div>
+
+    <div v-if="day.canNominateExtra" class="row" data-testid="player-extra-nomination">
+      <span class="hint">屠夫窗口：你可以再发起一次提名（可提名今天已被提名过的人，R-0050）。</span>
+      <select v-model.number="extraNominee" data-testid="player-extra-nominee-select">
+        <option :value="null" disabled>选择要提名的席位</option>
+        <option v-for="candidate in day.extraNominationCandidates" :key="candidate" :value="candidate">
+          {{ seatText(candidate) }}
+        </option>
+      </select>
+      <button
+        type="button"
+        class="primary"
+        data-testid="player-nominate-extra"
+        :disabled="busy || extraNominee === null"
+        @click="submitExtraNomination()"
+      >
+        额外提名
+      </button>
+    </div>
+
+    <p v-if="day.publicView.status !== 'Open'" class="hint" data-testid="player-day-closed">白天已结束。</p>
 
     <p
       v-if="day.publicView.aboutToBeExecuted !== null"
@@ -233,6 +416,25 @@ async function castVote(voted: boolean): Promise<void> {
       >
         {{ seatText(nomination.nominator) }} 提名 {{ seatText(nomination.nominee) }} ——
         {{ nomination.votes }} 票（{{ nomination.status === 'Counted' ? '已计票' : '投票中' }}）
+      </li>
+    </ul>
+
+    <h3 v-if="day.publicView.exiles.length > 0" class="sub-title">流放记录</h3>
+    <ul
+      class="nominations"
+      data-testid="player-day-exiles"
+      :data-exile-count="day.publicView.exiles.length"
+    >
+      <li
+        v-for="exile in day.publicView.exiles"
+        :key="exile.index"
+        :data-exile-index="exile.index"
+        :data-exile-status="exile.status"
+        :data-exile-votes="exile.votes"
+        :data-exile-conclusion="exile.conclusion ?? ''"
+      >
+        {{ seatText(exile.proposer) }} 提议流放 {{ seatText(exile.target) }} ——
+        {{ exile.votes }} 票（{{ exileStatusTextOf(exile) }}）
       </li>
     </ul>
 

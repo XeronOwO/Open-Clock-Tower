@@ -5,7 +5,7 @@
  */
 import type { StorytellerViewDto } from '@/contracts/game'
 import { causedByLabelOf, seatDisplayOf } from '@/display/format'
-import { characterLabelOf, labelOf } from '@/display/labels'
+import { characterLabelOf, labelOf, windowLabelOf } from '@/display/labels'
 import HelpTip from '@/features/common/HelpTip.vue'
 
 defineProps<{ view: StorytellerViewDto }>()
@@ -38,6 +38,10 @@ defineProps<{ view: StorytellerViewDto }>()
             </span>
             <span v-if="effect.grantedCharacter" class="hint">
               （获得能力：{{ characterLabelOf(effect.grantedCharacter) }}）
+            </span>
+            <!-- 窗口（咖啡师 / 集骨者）：这条效果在目标身上开启了哪种「直到下个黄昏」的机制（R-0047 / R-0052 / R-0054）。 -->
+            <span v-if="windowLabelOf(effect.window)" class="hint" data-window="true">
+              （窗口：{{ windowLabelOf(effect.window) }}）
             </span>
           </td>
           <td>{{ seatDisplayOf(effect.source, view.seatNames) }}</td>

@@ -7,15 +7,19 @@
  * （这里只做"别让你点空"的呈现）。
  */
 import type { StorytellerViewDto } from '@/contracts/game'
-import { seatTextOf } from '@/display/format'
+import { exileStatusTextOf, seatTextOf } from '@/display/format'
 import HelpTip from '@/features/common/HelpTip.vue'
 import VoteDial from '@/features/common/VoteDial.vue'
 import { newIdempotencyKey } from '@/services/idempotency'
 import {
   closeDay,
+  countExileVotes,
   countVotes,
+  resolveDayProtection,
+  resumeExileSweep,
   resumeVoteSweep,
   startDay,
+  startExileSweep,
   startVoteSweep,
   type CommandOutcome,
   type CommandSender,
@@ -62,6 +66,61 @@ const canCount = computed(() => day.value?.status === 'Open' && sweep.value?.pha
 /** 结束并处决：白天开着且没有未计票的提名。 */
 const canClose = computed(() => day.value?.status === 'Open' && openNominationIndex.value === null)
 
+/** 当前开放流放（未结清那一条）与它的钟盘收票呈现。 */
+const openExileIndex = computed(() => day.value?.openExileIndex ?? null)
+const openExile = computed(
+  () => day.value?.exiles.find((exile) => exile.index === openExileIndex.value) ?? null,
+)
+const exileSweep = computed(() => openExile.value?.sweep ?? null)
+
+/** 流放钟盘：白天开着、有未结清的流放、还没开始收票（钟盘串行由服务端判，R-0044 第 10 条）。 */
+const canStartExileSweep = computed(
+  () => day.value?.status === 'Open' && openExileIndex.value !== null && exileSweep.value === null,
+)
+const canResumeExileSweep = computed(() => exileSweep.value?.phase === 'Interrupted')
+const canCountExileVotes = computed(() => exileSweep.value?.phase === 'AwaitingCount')
+
+/** 保护裁定入口：该流放收票走完且今天还没裁定过时给出（最终受理由服务端判，R-0048）。 */
+const protectionSeat = computed(() => openExile.value?.target ?? null)
+const protectionSeatText = computed(() => seatTextOf(protectionSeat.value, props.view.seatNames))
+const canResolveProtection = computed(
+  () =>
+    day.value?.status === 'Open'
+    && exileSweep.value?.phase === 'AwaitingCount'
+    && protectionSeat.value !== null
+    && !(day.value?.protections ?? []).some((entry) => entry.seat === protectionSeat.value),
+)
+
+/** 屠夫窗口（R-0050）：窗口公开；额外提名由屠夫本人在玩家端发起。 */
+const extraNomination = computed(() => day.value?.extraNomination ?? null)
+
+async function beginExileSweep(): Promise<void> {
+  if (openExileIndex.value === null) {
+    return
+  }
+
+  await run(() =>
+    startExileSweep(
+      props.sender,
+      openExileIndex.value!,
+      secondsToMilliseconds(countdownSeconds.value),
+      secondsToMilliseconds(intervalSeconds.value),
+      newIdempotencyKey('exile-sweep'),
+    ),
+  )
+}
+
+async function resolveProtection(isProtected: boolean): Promise<void> {
+  const seat = protectionSeat.value
+  if (seat === null) {
+    return
+  }
+
+  await run(() =>
+    resolveDayProtection(props.sender, seat, isProtected, null, newIdempotencyKey('protect')),
+  )
+}
+
 const phaseLabel = computed(() => {
   switch (sweep.value?.phase) {
     case 'Countdown':
@@ -73,6 +132,23 @@ const phaseLabel = computed(() => {
       return '收票已中断：点「继续收票」重新起倒计时，从下一未收席位接着收'
     case 'AwaitingCount':
       return '收票已走完：可以计票'
+    default:
+      return null
+  }
+})
+
+/** 流放钟盘的相位文案（与提名钟盘同款口径）。 */
+const exilePhaseLabel = computed(() => {
+  switch (exileSweep.value?.phase) {
+    case 'Countdown':
+      return '流放倒计时中：玩家举手 = 投这一票'
+    case 'Collecting':
+      return `流放收票中：分针指向 ${exileSweep.value.currentSeat ?? '—'} 号`
+        + `（已收 ${exileSweep.value.collected.length} 席）`
+    case 'Interrupted':
+      return '流放收票已中断：点「继续流放收票」重新起倒计时，从下一未收席位接着收'
+    case 'AwaitingCount':
+      return '流放收票已走完：可以计票'
     default:
       return null
   }
@@ -236,6 +312,100 @@ async function beginSweep(): Promise<void> {
           {{ seatTextOf(nomination.nominee, view.seatNames) }} —— {{ nomination.votes }} 票（{{ nomination.status === 'Counted' ? '已计票' : '收票中' }}）
         </li>
       </ul>
+
+      <template v-if="day.exiles.length > 0 || extraNomination !== null">
+        <h3 class="sub-title">流放（旅行者）</h3>
+        <p
+          v-if="extraNomination !== null"
+          class="hint"
+          data-testid="st-extra-nomination"
+          :data-seat="extraNomination.seat"
+          :data-status="extraNomination.status"
+        >
+          额外提名窗口：{{ seatTextOf(extraNomination.seat, view.seatNames) }}
+          （{{ extraNomination.status === 'Open' ? '开着——屠夫本人可再提名一次' : '已用掉' }}，R-0050）
+        </p>
+        <ul
+          class="nominations"
+          data-testid="st-exile-list"
+          :data-exile-count="day.exiles.length"
+          :data-open-exile="openExileIndex ?? ''"
+        >
+          <li
+            v-for="exile in day.exiles"
+            :key="exile.index"
+            :data-exile-index="exile.index"
+            :data-exile-target="exile.target"
+            :data-exile-status="exile.status"
+            :data-exile-votes="exile.votes"
+            :data-exile-hands="exile.handsRaised.join(',')"
+          >
+            第 {{ exile.index }} 条：{{ seatTextOf(exile.proposer, view.seatNames) }} 提议流放
+            {{ seatTextOf(exile.target, view.seatNames) }} —— {{ exile.votes }} 票（{{ exileStatusTextOf(exile) }}）
+          </li>
+        </ul>
+        <div v-if="openExile" class="row">
+          <button
+            type="button"
+            class="primary"
+            data-testid="st-start-exile-sweep"
+            :disabled="busy || !canStartExileSweep"
+            @click="beginExileSweep()"
+          >
+            开始流放收票
+          </button>
+          <button
+            v-if="canResumeExileSweep"
+            type="button"
+            class="primary"
+            data-testid="st-resume-exile-sweep"
+            :disabled="busy"
+            @click="run(() => resumeExileSweep(sender, openExileIndex!, newIdempotencyKey('exile-resume')))"
+          >
+            继续流放收票
+          </button>
+          <button
+            type="button"
+            data-testid="st-count-exile-votes"
+            :disabled="busy || !canCountExileVotes"
+            @click="run(() => countExileVotes(sender, openExileIndex!, newIdempotencyKey('exile-count')))"
+          >
+            流放计票
+          </button>
+        </div>
+        <VoteDial
+          v-if="openExile"
+          dial-kind="exile"
+          :seat-numbers="seatNumbers"
+          :nominator="openExile.proposer"
+          :nominee="openExile.target"
+          :current-seat="exileSweep?.currentSeat ?? null"
+          :collected="exileSweep?.collected ?? []"
+          :hands-raised="openExile.handsRaised"
+          :phase="exileSweep?.phase ?? null"
+          :next-beat-milliseconds="exileSweep?.nextBeatMilliseconds ?? null"
+        />
+        <p v-if="exilePhaseLabel" class="hint" data-testid="st-exile-phase">{{ exilePhaseLabel }}</p>
+        <div v-if="canResolveProtection" class="row" data-testid="st-protection">
+          <span class="hint">死亡保护裁定（{{ protectionSeatText }}；达线时才受理，R-0048）：</span>
+          <button
+            type="button"
+            :disabled="busy"
+            data-testid="st-protection-protected"
+            @click="resolveProtection(true)"
+          >
+            受保护（怪咖有趣）
+          </button>
+          <button
+            type="button"
+            :disabled="busy"
+            data-testid="st-protection-not-protected"
+            @click="resolveProtection(false)"
+          >
+            不受保护
+          </button>
+        </div>
+      </template>
     </div>
     <p v-else class="hint" data-testid="st-day-none">还没有开过白天。</p>
   </section>

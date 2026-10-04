@@ -1,6 +1,7 @@
 using OpenClockTower.Application;
 using OpenClockTower.Contracts;
 using OpenClockTower.Kernel;
+using OpenClockTower.Server;
 
 namespace OpenClockTower.Integration.Tests;
 
@@ -390,6 +391,49 @@ public sealed class ExileHostTests
 
         Assert.NotNull(firstCollected);
         Assert.Equal(new SeatId(1), firstCollected!.Seat);
+    }
+
+    /// <summary>
+    /// D7 投影面：流放的表态入口与服务端算好的**权限位 / 候选**走同一份 wire 投影
+    /// （前端据此显示入口；真正的拒绝仍在服务端——D-0012 / R-0044）。
+    /// </summary>
+    [Fact]
+    public async Task PlayerProjection_ExposesExilePermissionsAndCandidates()
+    {
+        await using var host = new TestServerHost(seatCount: 5, autoStartTestNight: false);
+        await using var session = await SetUpDayWithTravellerAsync(host);
+        await using var seat1 = await host.ConnectSeatAsync(new SeatId(1));
+
+        // 提议前：白天开放、没有未结清流放 → 可以发起；候选 = 在局旅行者（追加的 6 号）。
+        var before = ProjectionMapper.ToDto(host.Session.GetPlayerView(new SeatId(1))).Day
+            ?? throw new InvalidOperationException("白天投影应当可用");
+        Assert.True(before.CanProposeExile);
+        Assert.Equal(new[] { session.TravellerSeat.Value }, before.ExileCandidates);
+        Assert.False(before.CanVoteExile);
+        Assert.Null(before.PublicView.OpenExileIndex);
+
+        var proposed = await seat1.InvokeAsync<CommandResultDto>(
+            "ProposeExile",
+            session.TravellerSeat.Value,
+            "test-exile-projection-propose");
+        Assert.Equal("Accepted", proposed.Kind);
+
+        // 提议后、收票前：同日顺序进行 → 不能再提下一条；收票没开始 → 还不能举手。
+        var proposedDay = ProjectionMapper.ToDto(host.Session.GetPlayerView(new SeatId(1))).Day
+            ?? throw new InvalidOperationException("白天投影应当可用");
+        Assert.False(proposedDay.CanProposeExile);
+        Assert.False(proposedDay.CanVoteExile);
+        Assert.Equal(1, proposedDay.PublicView.OpenExileIndex);
+        Assert.Empty(proposedDay.ExileCandidates);
+
+        // 收票开始：本席可举手；钟盘相位随投影下发（实时呈现与投影同源）。
+        await ExileSweepTestDriver.StartAsync(host, 1, "test-exile-projection-sweep");
+        var sweepDay = ProjectionMapper.ToDto(host.Session.GetPlayerView(new SeatId(1))).Day
+            ?? throw new InvalidOperationException("白天投影应当可用");
+        Assert.True(sweepDay.CanVoteExile);
+        Assert.False(sweepDay.ExileSeatCollected);
+        var openExile = Assert.Single(sweepDay.PublicView.Exiles);
+        Assert.Equal("Countdown", openExile.Sweep?.Phase);
     }
 
     /// <summary>5 席固定角色（覆盖四类型；白天契约都已实现，不带旅行者夹具）。</summary>

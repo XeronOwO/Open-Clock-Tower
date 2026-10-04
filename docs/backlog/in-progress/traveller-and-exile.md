@@ -639,6 +639,48 @@ R-0054，未改任何已登记裁定）：
 未做（属 D7 第二批 / D8）：说书人控制台与玩家端入口（加入 / 离开 / 流放钟盘 / 保护裁定 /
 额外提名）、窗口的界面呈现、`ReplayCircle` 新标记渲染、装置与真机批次取证。
 
+## 实施进度（2026-10-04，第十批：D7 第二批——两端入口与复盘呈现）
+
+已落地（代码 + 测试 + 文档同一提交；口径按上方设计定稿 D7 块与 R-0044 / R-0048 / R-0050 /
+R-0054，未改任何已登记裁定）：
+
+- **说书人端**：新增 `TravellerControl.vue`——加入（角色 / 阵营 / 席位可空 = 服务端追加；
+  邪恶时多选揭示目标）与移出（席位 + 说明）；加入成功后把**签发的席位与票据**显示出来供转交
+  （票据只在组件内存里、刷新后不再显示）。`DayControl.vue` 增流放区：流放列表、流放钟盘
+  （复用 `VoteDial`）、开始 / 继续 / 计票三键、收票走完后的**死亡保护裁定**两键（受保护 /
+  不受保护，受理条件由服务端按 R-0048 判）与屠夫窗口读数；`EffectChainPanel.vue` 增窗口提示
+  （`windowLabelOf`：清醒且健康 / 行动两次 / 重获能力）。
+- **玩家端**：`PlayerDayPanel.vue` 增发起流放（候选来自服务端投影）、流放钟盘与举手 / 放下、
+  额外提名入口（屠夫窗口）、流放记录；`PlayerPanel.vue` 把网关包成三个纯函数传下去
+  （面板不持有连接）。
+- **裁定候选徽标修复（既有缺陷）**：`seatOfOptionValue` 从"只认 `seat:N`"扩展为
+  `{效果}:seat:N`（咖啡师的裁定候选，R-0052）与两维第一维（`seat:N|角色`）；`pair:A+B` 这类
+  **多名玩家**的原子选择仍不标（它不是"某一位"）。
+- **复盘**：`MARKER_LABELS` 登记 7 个新 slug 的中文文案（加入 / 离场 / 流放 / 保护 / 额外提名 /
+  重获能力 / 效果窗口）；渲染走既有「击杀箭头 + 圆盘图例」管线（席位角标仍由状态增量派生）。
+- **`VoteDial`**：加 `dialKind`（默认 `nomination`）——提名钟盘保持 `vote-dial` 选择器、
+  流放钟盘用 `exile-dial`，同页两个钟盘不再歧义。
+- **既有回归修复（装置）**：`verify-storyteller-panel.mjs` 首夜槽位断言 13 → 14——咖啡师黄昏槽在
+  D5 二批（`ae2e42a`）把首夜从 13 槽加到 14 槽，装置断言当时未同步（`NightBuildHostTests` 早已按
+  14 断言、`check-night-order.ps1` 四套序列为 14 / 14 / 24 / 25）。
+
+验证证据（2026-10-04，冻结工作树）：
+
+- `dotnet build` **0 警告 0 错误**；`dotnet test` **1076 通过 / 0 失败**（门禁 25 / 内核 430 /
+  规则 390 / 集成 231；基线 1075 → +1）；`dotnet format` 退出 0；
+- `npm run gate` 退出 0（typecheck + lint + vitest **169** + vite build；基线 168 → +1）；
+- 装置迭代档：主装置 **全部通过（判定 190 项 · 跳过 2 项）**——含新增两条 D7 断言（说书人旅行者
+  控件；玩家端流放入口与"空候选如实提示"）；零信任装置 **50 项全过**（玩家推包已带 `exiles` /
+  `openExileIndex` / `protections` 新字段）；复盘规模装置 **18 项全过**；
+- 新增 / 改动用例：集成 `ExileHostTests.PlayerProjection_ExposesExilePermissionsAndCandidates`
+  （真宿主 → wire：权限位 / 候选 / 钟盘相位）；前端 `grimoire.spec` 徽标形状、`replay.spec` 新标记
+  文案、装置两条入口断言。
+
+未做（属 D8）：真机批次取证（`--quota 2 --screenshots-all`）与窗口呈现 / 徽标的装置级截图；
+另有两条设计边界登记：① 「待保护裁定」目前由说书人点按钮、服务端按 R-0048 复核（没有"精确到
+这一席现在就能裁定"的投影指示）；② 完整流放真机链路（加入 → 流放 → 收票 → 计票 → 公开死亡）
+尚无装置段，由集成 `ExileHostTests` 覆盖。
+
 ## 验收矩阵
 
 （维度细化；证据列在实现时逐行落）
@@ -653,7 +695,7 @@ R-0054，未改任何已登记裁定）：
 | 6 | 阈值与分母 | 分母含死者与旅行者、不含离场者；奇数上取整；边界值（恰好一半 / 差一票）逐点判出 | 内核用例 |
 | 7 | 胜败 | 旅行者不计入「仅有两名玩家存活」；流放不计入涡流「白天被处决」；其余胜败条件不受影响 | 内核用例 |
 | 8 | 死亡面 | 流放死亡即时公开 + 照常获得投票标记；夜死走黎明公告；计入神谕者类死亡统计；无新增死亡触发 | 集成 + 投影用例 |
-| 9 | 5 名角色 | 怪咖（裁定保护）/ 集骨者（重获与终止）/ 咖啡师（两效果 + 免疫窗口）/ 流莺（同意 + 共死）/ 屠夫（额外提名）逐条链路 | 怪咖：内核 `DayProtectionTests` + 规则 `DeviantProtectionSourceTests` + 集成 `DeviantHostTests`（D3）；屠夫：内核 `ButcherWindowTests` + 规则 `ButcherExtraNominationSourceTests` + 集成 `ButcherHostTests`（D4）；流莺：规则 `HarlotNightActionTests` + 集成 `HarlotHostTests`（D5 首批）；咖啡师：内核 `EffectWindowTests` / `SecondActionTests` + 规则 `BaristaNightActionTests` + 集成 `BaristaHostTests`（D5 第二批，控制台入口属 D7）；集骨者：内核 `RegainedAbilityTests` + 规则 `BoneCollectorNightActionTests` / `DuskExpiryTests` / `RegainedPresenceTests` + 集成 `BoneCollectorHostTests`（D5 第三批，控制台入口属 D7）；真机装置属 D8 |
+| 9 | 5 名角色 | 怪咖（裁定保护）/ 集骨者（重获与终止）/ 咖啡师（两效果 + 免疫窗口）/ 流莺（同意 + 共死）/ 屠夫（额外提名）逐条链路 | 怪咖：内核 `DayProtectionTests` + 规则 `DeviantProtectionSourceTests` + 集成 `DeviantHostTests`（D3）；屠夫：内核 `ButcherWindowTests` + 规则 `ButcherExtraNominationSourceTests` + 集成 `ButcherHostTests`（D4）；流莺：规则 `HarlotNightActionTests` + 集成 `HarlotHostTests`（D5 首批）；咖啡师：内核 `EffectWindowTests` / `SecondActionTests` + 规则 `BaristaNightActionTests` + 集成 `BaristaHostTests`（D5 第二批；窗口投影与两端入口见 D7 第九 / 十批）；集骨者：内核 `RegainedAbilityTests` + 规则 `BoneCollectorNightActionTests` / `DuskExpiryTests` / `RegainedPresenceTests` + 集成 `BoneCollectorHostTests`（D5 第三批；窗口投影与两端入口见 D7 第九 / 十批）；真机装置属 D8 |
 | 10 | 信息隔离 | 玩家端不出现旅行者阵营 / 说书人字段；复盘与实时投影一致 | 零信任门禁 + 装置 |
 | 11 | 15+ 配板 | 16 人 = 15 人行 + 1 名旅行者；非旅行者人数 > 15（旅行者数不足）显式失败；旅行者人数在开局配置显式表达 | 内核 / 集成 |
 | 12 | 复盘 | 加入 / 离开 / 流放 / 角色行动按原子步骤可见；进行中零泄露（R-0043 口径） | 投影用例 + 装置 |

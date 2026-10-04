@@ -203,6 +203,28 @@ export function typeLabelOf(raw: string | null | undefined): string {
 }
 
 /**
+ * 效果窗口分类（`EffectWindowKind`）→ 中文。
+ *
+ * 窗口是「直到下个黄昏」这类跨阶段事实的可见载体：咖啡师两个效果（R-0047 / R-0052）与
+ * 集骨者的重获能力（R-0054）。未知取值原样回显——服务端加了新窗口而前端没跟上时，
+ * 说书人看到的是清楚的英文名，不是被吞掉的空白。
+ */
+const WINDOW_LABELS: Readonly<Record<string, string>> = {
+  AfflictionImmunity: '清醒且健康（免疫窗口）',
+  SecondAction: '行动两次',
+  RegainedAbility: '重获能力（直到下个黄昏）',
+}
+
+/** 效果窗口分类 → 中文；null / 空串 = 普通效果（调用方据此不显示这一行）。 */
+export function windowLabelOf(window: string | null | undefined): string | null {
+  if (window === null || window === undefined || window === '') {
+    return null
+  }
+
+  return WINDOW_LABELS[window] ?? window
+}
+
+/**
  * 已选角色的阵型修正提示（`[...]` 设置调整）：按花名册顺序返回带修正的角色档案。
  * 空数组 = 没有需要提示的修正——前端只显示，不替服务端判规则。
  */

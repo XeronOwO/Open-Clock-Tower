@@ -23,6 +23,7 @@ import EffectChainPanel from '@/features/storyteller/EffectChainPanel.vue'
 import LedgerPanel from '@/features/storyteller/LedgerPanel.vue'
 import AssignmentControl from '@/features/storyteller/AssignmentControl.vue'
 import DayControl from '@/features/storyteller/DayControl.vue'
+import TravellerControl from '@/features/storyteller/TravellerControl.vue'
 import PitHagNightPanel from '@/features/storyteller/PitHagNightPanel.vue'
 import OperationsControl from '@/features/storyteller/OperationsControl.vue'
 import GrimoireView from '@/features/storyteller/GrimoireView.vue'
@@ -291,6 +292,7 @@ onBeforeUnmount(() => {
             </template>
           </div>
           <DayControl v-if="sender" :view="view!" :sender="sender" @outcome="showOutcome" />
+          <TravellerControl v-if="sender" :view="view!" :sender="sender" @outcome="showOutcome" />
           <PitHagNightPanel v-if="sender" :view="view!" :sender="sender" @outcome="showOutcome" />
           <OperationsControl v-if="sender" :view="view!" :sender="sender" @outcome="showOutcome" />
           <AssignmentControl

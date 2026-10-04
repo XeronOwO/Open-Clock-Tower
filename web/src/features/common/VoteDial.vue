@@ -25,11 +25,21 @@ const props = defineProps<{
   phase: string | null
   /** 距离下一拍的毫秒数。 */
   nextBeatMilliseconds: number | null
+  /** 钟盘身份：提名（默认）/ 流放；只影响呈现属性（testid / aria），不影响几何。 */
+  dialKind?: 'nomination' | 'exile'
 }>()
 
 const seatRadius = 78
 const hourLength = 42
 const minuteLength = 64
+
+/** 提名钟盘沿用 `vote-dial`（既有装置的选择器），流放用 `exile-dial`——同页两个钟盘不再歧义。 */
+const dialTestId = computed(() => (props.dialKind === 'exile' ? 'exile-dial' : 'vote-dial'))
+const dialLabel = computed(() =>
+  props.dialKind === 'exile'
+    ? '流放钟盘（蓝针提议人 / 红针目标）'
+    : '投票钟盘（蓝针提名者 / 红针被提名者）',
+)
 
 const seatPoints = computed(() =>
   props.seatNumbers.flatMap((seat) => {
@@ -55,7 +65,8 @@ const isRaised = (seat: number): boolean => props.handsRaised.includes(seat)
 <template>
   <div
     class="dial"
-    data-testid="vote-dial"
+    :data-testid="dialTestId"
+    :data-dial-kind="dialKind ?? 'nomination'"
     :data-phase="phase ?? ''"
     :data-current-seat="currentSeat ?? ''"
     :data-nominator="nominator ?? ''"
@@ -64,7 +75,7 @@ const isRaised = (seat: number): boolean => props.handsRaised.includes(seat)
     :data-hands-raised="handsRaised.join(',')"
     :data-remaining-ms="nextBeatMilliseconds ?? ''"
   >
-    <svg viewBox="0 0 200 200" role="img" aria-label="投票钟盘（蓝针提名者 / 红针被提名者）">
+    <svg viewBox="0 0 200 200" role="img" :aria-label="dialLabel">
       <circle class="face" cx="100" cy="100" r="92" />
       <g v-for="point in seatPoints" :key="point.seat">
         <circle

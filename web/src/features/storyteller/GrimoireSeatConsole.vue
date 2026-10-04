@@ -375,7 +375,8 @@ async function submitReport(): Promise<void> {
           @click="decide(option.value)"
         >
           {{ option.preview }}
-          <!-- 席位候选的生死标注：只对 `seat:N` 选项按状态账打标，不影响候选集合（R-0039）。 -->
+          <!-- 席位候选的生死标注：对 `seat:N` / `{效果}:seat:N` / 两维第一维按状态账打标，
+               不影响候选集合（R-0039 / R-0052）。 -->
           <span
             v-if="optionSeatIsDead(view, option.value)"
             class="tag dead"

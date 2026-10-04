@@ -68,6 +68,14 @@ const MARKER_LABELS: Record<string, string> = {
   'role-rebind': '换手',
   poisoned: '中毒',
   drunk: '醉酒',
+  // 旅行者与窗口（票据 traveller-and-exile · D7）：加入 / 离场 / 流放 / 保护 / 屠夫窗口 / 两种效果窗口。
+  'traveller-joined': '旅行者加入',
+  'traveller-departed': '旅行者离场',
+  exile: '流放',
+  protected: '受死亡保护',
+  'extra-nomination': '额外提名窗口',
+  'regained-ability': '重获能力',
+  'effect-window': '效果窗口',
 }
 
 /** 步骤族文案（未知取值原样回显，不猜）。 */

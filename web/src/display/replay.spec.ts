@@ -123,6 +123,16 @@ describe('复盘归一化与文案（服务端数据是不可信输入）', () =
     expect(markerLabelOf(marker.kind)).toBe('恶魔击杀')
   })
 
+  it('D7 新增标记有中文文案（加入 / 离场 / 流放 / 保护 / 屠夫窗口 / 两种效果窗口）', () => {
+    expect(markerLabelOf('traveller-joined')).toBe('旅行者加入')
+    expect(markerLabelOf('traveller-departed')).toBe('旅行者离场')
+    expect(markerLabelOf('exile')).toBe('流放')
+    expect(markerLabelOf('protected')).toBe('受死亡保护')
+    expect(markerLabelOf('extra-nomination')).toBe('额外提名窗口')
+    expect(markerLabelOf('regained-ability')).toBe('重获能力')
+    expect(markerLabelOf('effect-window')).toBe('效果窗口')
+  })
+
   it('有玩家名时标记与文案走同一口径；没名字的席位回退席位号（D-0021）', () => {
     const names: SeatDisplayNameDto[] = [
       { seat: 2, displayName: '小明' },

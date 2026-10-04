@@ -316,6 +316,19 @@ function voteOnNomination(nominationIndex: number, voted: boolean, idempotencyKe
   return ensureGateway().castVote(nominationIndex, voted, idempotencyKey)
 }
 
+/** 旅行者与流放（D1 / D2 / D7）：发起流放、流放举手、屠夫窗口的额外提名（R-0044 / R-0050）。 */
+function proposeExileSeat(seat: number, idempotencyKey: string): Promise<unknown> {
+  return ensureGateway().proposeExile(seat, idempotencyKey)
+}
+
+function voteOnExile(exileIndex: number, voted: boolean, idempotencyKey: string): Promise<unknown> {
+  return ensureGateway().castExileVote(exileIndex, voted, idempotencyKey)
+}
+
+function nominateExtraSeat(seat: number, idempotencyKey: string): Promise<unknown> {
+  return ensureGateway().nominateExtra(seat, idempotencyKey)
+}
+
 /** 艺术家提问（R-0040）：问题由玩家决定；「要求重问」不消耗能力，回答只到本人。 */
 async function askArtistQuestion(): Promise<void> {
   const question = artistQuestion.value.trim()
@@ -575,6 +588,9 @@ onBeforeUnmount(() => {
         :seat-names="view!.seatNames"
         :nominate="nominateSeat"
         :vote="voteOnNomination"
+        :propose-exile="proposeExileSeat"
+        :cast-exile-vote="voteOnExile"
+        :nominate-extra="nominateExtraSeat"
         @diagnostic="pushDiagnostic"
       />
 

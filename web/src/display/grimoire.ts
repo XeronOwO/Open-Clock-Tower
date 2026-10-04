@@ -216,21 +216,35 @@ export function slotProgressTextOf(view: StorytellerViewDto): string {
 }
 
 /**
- * 选项值里的席位：只认规则层 `seat:N` 的编码（`web/AGENTS.md` §4 允许的映射，
- * 不是规则推断）；不是席位选择的选项（是 / 否、角色 slug、玩家对等）返回 null。
+ * 选项值里指向的**单个**席位：只认规则层登记过的编码形状（`web/AGENTS.md` §4 允许的映射，
+ * 不是规则推断）；不是席位选择 / 形状不认识返回 null。
+ *
+ * 支持的形状（与规则层的编码一一对应）：
+ * - `seat:3`——选一个席位（`SeatChoice`）；
+ * - `healthy:seat:3` / `twice:seat:3`——效果 + 席位（咖啡师的裁定候选，R-0052）；
+ * - `seat:3|clockmaker`——两维选择的第一维是席位（`ChoicePrompt` 的两维格式）。
+ *
+ * `pair:2+3` 这类**多名玩家**的原子选择不在这里收口（它不是"某一位"），返回 null。
  */
 export function seatOfOptionValue(value: string): number | null {
-  const prefix = 'seat:'
-  if (!value.startsWith(prefix)) {
+  for (const part of value.split('|')) {
+    const seat = seatDigitsOf(part)
+    if (seat !== null) {
+      return seat
+    }
+  }
+
+  return null
+}
+
+/** 单段文本 → 席位号：接受 `seat:N` 与 `{前缀}:seat:N` 两种编码；其余为 null。 */
+function seatDigitsOf(part: string): number | null {
+  const match = /^(?:[a-z-]+:)?seat:([0-9]+)$/.exec(part)
+  if (match === null) {
     return null
   }
 
-  const digits = value.slice(prefix.length)
-  if (!/^[0-9]+$/.test(digits)) {
-    return null
-  }
-
-  const seat = Number.parseInt(digits, 10)
+  const seat = Number.parseInt(match[1] ?? '', 10)
   return Number.isInteger(seat) && seat >= 1 && seat <= 1_000 ? seat : null
 }
 

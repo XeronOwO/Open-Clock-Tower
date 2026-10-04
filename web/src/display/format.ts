@@ -475,6 +475,19 @@ export function normalizeDayExile(raw: unknown): DayExileDto | null {
   }
 }
 
+/** 一条流放的状态文案：结论优先，其次收票相位；未知结论原样回显（不猜）。 */
+export function exileStatusTextOf(exile: DayExileDto): string {
+  if (exile.status === 'Counted') {
+    return exile.conclusion === 'Exiled'
+      ? '流放成立（目标死亡）'
+      : exile.conclusion === 'Protected'
+        ? '达线但受死亡保护'
+        : '未达线，目标存活'
+  }
+
+  return exile.sweep === null ? '待开始收票' : '收票中'
+}
+
 /** 归一化一条死亡保护裁定；缺席位 / 结论时返回 null（不编"受保护"）。 */
 export function normalizeDayProtection(raw: unknown): DayProtectionDto | null {
   if (raw === null || typeof raw !== 'object') {

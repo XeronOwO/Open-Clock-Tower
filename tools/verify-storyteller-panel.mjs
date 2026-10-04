@@ -15,7 +15,7 @@
  *      推送先到 → 放行响应；断言推送不丢、不重复、无坏包诊断（截图 05b）；
  *   6) 筑梦师槽位：2 号玩家收到定向请求（摘要断言行 1：中毒 + 归因 + 未生效）→ 作答 →
  *      说书人自由裁定（能力未生效）→ 信息只到 2 号玩家；期间其余玩家必须零请求、零进度；
- *   7) 第一夜 13 个槽位自行走完（服务端推送，无刷新）；
+ *   7) 第一夜 14 个槽位自行走完（服务端推送，无刷新；含 D5 咖啡师黄昏槽）；
  *   8) 白天阶段：说书人开白天 → 2 号提名 1 号 → 1 / 3 号投赞成 → 计票 → 结束并处决
  *      （公开事实各端可见；处决与死亡分开记录）；
  *   9) 第二夜（Recommended）：诺-达鲺击杀请求由说书人**代填**（行 2：3 号玩家不刷新就回空态并注明代填）→
@@ -538,8 +538,8 @@ async function main() {
   const slotAfterStart = await waitForSlotIndex(storyteller.page, 15_000)
   const slotCounter = await readSlotCounter(storyteller.page)
   check(
-    '首夜真实建表：13 个槽位（面板默认 Recommended 全表）',
-    slotCounter !== null && slotCounter.total === 13,
+    '首夜真实建表：14 个槽位（面板默认 Recommended 全表；含 D5 咖啡师黄昏槽）',
+    slotCounter !== null && slotCounter.total === 14,
     slotCounter === null ? '槽位计数不可读' : `${slotCounter.index + 1} / ${slotCounter.total}`,
   )
   const advanced = await waitForSlotAdvance(storyteller.page, slotAfterStart, 60_000)
@@ -876,6 +876,23 @@ async function main() {
   const dayOpen = await waitForAttribute(dayPanel, 'data-day-status', 'Open', 30_000)
   check('白天阶段：说书人面板进入「白天进行中」', dayOpen === 'Open', `data-day-status=${dayOpen}`)
   await screenshot(storyteller.page, '30-day-open')
+
+  // D7：旅行者与流放的入口在两端可见——说书人的加入 / 移出控件常驻；玩家端的流放区在白天开放时
+  // 出现（本局没有旅行者 → 候选为空，提示如实呈现，不编一个假入口）。
+  const travellerPanel = storyteller.page.getByTestId('st-traveller')
+  const travellerJoin = storyteller.page.getByTestId('traveller-join')
+  check(
+    '白天阶段：说书人面板出现旅行者控件（D7）',
+    (await travellerPanel.count()) >= 1 && (await travellerJoin.count()) >= 1,
+    `panel=${await travellerPanel.count()}；join=${await travellerJoin.count()}`,
+  )
+  const exileRow = players.get(dreamerSeat).page.getByTestId('player-exile-row')
+  const exileHint = await readTextBounded(players.get(dreamerSeat).page.getByTestId('player-exile-hint'))
+  check(
+    '白天阶段：玩家端流放入口可见、候选为空时如实提示（D7）',
+    (await exileRow.count()) >= 1 && exileHint.includes('没有可提议流放'),
+    `row=${await exileRow.count()}；hint=${exileHint}`,
+  )
 
   // 2 号提名 1 号（1 号被处决，不影响后续夜晚剧情需要存活的 2 / 3 号）。
   const nominatorPage = players.get(dreamerSeat).page
@@ -2788,7 +2805,7 @@ function parseArguments(argv) {
     // 而"有角色"还要求该角色的夜间契约已实现（plan.contract_missing）。默认五席：
     // 白天处决 + 夜晚击杀各带走一人——**三席夹具会在第一次死亡后当场满足「仅剩两名存活 → 邪恶获胜」**
     // （规则正确行为），第二夜就再也开不起来。两名外来者（畸形秀演员 / 呆瓜）不在夜晚顺序表上、
-    // 也不会被诺-达鲺毒到（它只毒邻近镇民），所以首夜 13 个槽位与中毒归因面都不变。
+    // 也不会被诺-达鲺毒到（它只毒邻近镇民），所以首夜 14 个槽位与中毒归因面都不变。
     seatCount: undefined,
     assign: ['clockmaker', 'dreamer', 'no-dashii', 'mutant', 'klutz'],
     screenshots: 'artifacts/web',
