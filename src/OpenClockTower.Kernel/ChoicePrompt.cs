@@ -23,6 +23,15 @@ public sealed record ChoicePrompt
     public required IReadOnlyList<DecisionOption> Options { get; init; }
 
     /// <summary>
+    /// 这一问的受众；默认 <see cref="ChoiceAudience.Actor"/>（保持既有投影不变）。
+    /// </summary>
+    /// <remarks>
+    /// <see cref="ChoiceAudience.Storyteller"/> 时 <see cref="Options"/> 是给说书人的结构化候选，
+    /// 说书人从候选中点选（值原样进裁定）；没有候选时退回自由决定。
+    /// </remarks>
+    public ChoiceAudience Audience { get; init; } = ChoiceAudience.Actor;
+
+    /// <summary>
     /// 可选的第二维合法选项：为空 = 单维选择（现状）。两维时答案编码为
     /// <c>{第一维}|{第二维}</c>（如 <c>seat:3|clockmaker</c>），两维必须同时给全——
     /// 依据 <c>docs/standard/rulings.md</c> R-0021：洗脑师的一次行动是（玩家 × 善良角色）的原子选择，
@@ -106,17 +115,20 @@ public sealed record ChoicePrompt
     }
 
     /// <summary>
-    /// 求当前去向：有选项 → 等对方选择；无选项 → 按 <see cref="OnNoOption"/> 走，**不抛异常**。
+    /// 求当前去向：受众是说书人 → 裁定点（选项作为结构化候选）；否则有选项 → 等对方选择；
+    /// 无选项 → 按 <see cref="OnNoOption"/> 走，**不抛异常**。
     /// 未知声明一律按阻塞处理：宁可报警，也不静默跳过（R-0009 禁止静默跳过）。
     /// </summary>
     public DecisionPointOutcome Evaluate() =>
-        HasOptions
-            ? DecisionPointOutcome.AwaitingChoice
-            : OnNoOption switch
-            {
-                NoOptionBehavior.Skip => DecisionPointOutcome.Skipped,
-                NoOptionBehavior.StorytellerDecides => DecisionPointOutcome.StorytellerDecides,
-                NoOptionBehavior.BlockAndAlert => DecisionPointOutcome.BlockedAndAlerted,
-                _ => DecisionPointOutcome.BlockedAndAlerted,
-            };
+        Audience == ChoiceAudience.Storyteller
+            ? DecisionPointOutcome.StorytellerDecides
+            : HasOptions
+                ? DecisionPointOutcome.AwaitingChoice
+                : OnNoOption switch
+                {
+                    NoOptionBehavior.Skip => DecisionPointOutcome.Skipped,
+                    NoOptionBehavior.StorytellerDecides => DecisionPointOutcome.StorytellerDecides,
+                    NoOptionBehavior.BlockAndAlert => DecisionPointOutcome.BlockedAndAlerted,
+                    _ => DecisionPointOutcome.BlockedAndAlerted,
+                };
 }

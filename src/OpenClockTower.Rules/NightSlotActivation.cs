@@ -205,4 +205,88 @@ public static class NightSlotActivation
 
         return null;
     }
+
+    /// <summary>
+    /// 「本夜无行动」格的**重开**：计划期把已经用满「每局限一次」的角色判成无行动
+    /// （行动槽位但提示没有合法选项），更早的结算（咖啡师「行动两次」）让它重新可用时，
+    /// 把这一格换成真实提示。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 与 <see cref="Plan"/> 的差别：只认**同一行动者**且**当前提示没有合法选项**的未进入格——
+    /// 换手重绑（行动者不同）与空槽激活仍由 <see cref="Plan"/> 负责；已经开着选项的格再绑就是重复。
+    /// 依据：咖啡师效果 2「已用过的『每局游戏限一次』可以再用」（百科《咖啡师》· 2026-10-04 抓取 ·
+    /// 角色简介），平台口径见 <c>docs/standard/rulings.md</c> R-0052 第 3 条。
+    /// </para>
+    /// <para>
+    /// 返回 null 的三种情形都不是静默：这一格已经进入过（过时不候）、那一格本来就是行动格
+    /// （窗口的第二次结算由槽位重入负责，不需要重开）、契约未实现（进入时按原提示跳过）。
+    /// </para>
+    /// </remarks>
+    internal static SlotActivatedEvent? PlanUpgrade(
+        StepPlan? plan,
+        int slotIndex,
+        SeatId actor,
+        CharacterId character,
+        GameState state,
+        DayRecord? lastDay,
+        IReadOnlyList<SeatId> seats,
+        INightActionCatalog catalog)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        ArgumentNullException.ThrowIfNull(seats);
+        ArgumentNullException.ThrowIfNull(catalog);
+
+        if (plan is null)
+        {
+            return null;
+        }
+
+        for (var index = slotIndex + 1; index < plan.Slots.Count; index++)
+        {
+            var slot = plan.Slots[index];
+            if (slot.Character != character)
+            {
+                continue;
+            }
+
+            if (slot.Kind != StepSlotKind.Action
+                || slot.Actor != actor
+                || slot.Prompt is not { } prompt
+                || prompt.HasOptions)
+            {
+                return null;
+            }
+
+            if (catalog.Find(character) is not { } action)
+            {
+                return null;
+            }
+
+            return new SlotActivatedEvent
+            {
+                SlotIndex = index,
+                SlotId = slot.Id,
+                Actor = actor,
+                Prompt = action.BuildPrompt(new NightActionContext
+                {
+                    Actor = actor,
+                    Seats = seats,
+                    State = state,
+                    LastDay = lastDay,
+                }),
+                Dependencies =
+                [
+                    new SeatDependency
+                    {
+                        Seat = actor,
+                        RequiredLife = LifeState.Alive,
+                        RequiredCharacter = character,
+                    },
+                ],
+            };
+        }
+
+        return null;
+    }
 }

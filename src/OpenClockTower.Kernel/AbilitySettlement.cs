@@ -70,6 +70,7 @@ internal static class AbilitySettlement
             LastDay = state.Day?.Days.LastOrDefault(),
             Plan = state.Plan,
             SlotIndex = state.SlotIndex,
+            SlotPass = state.SlotPass,
             PitHagNightActive = state.PitHagNight is not null,
             FangGuInfectionConsumed = state.FangGuInfection is not null,
         };
@@ -105,7 +106,10 @@ internal static class AbilitySettlement
         return AbilitySettlementPlan.Resolved(events);
     }
 
-    /// <summary>裁定点的稳定标识：与槽位一对一（入口裁定与选择后裁定不会共存）。</summary>
+    /// <summary>
+    /// 裁定点的稳定标识：与「槽位的这一次进入」一对一（入口裁定与选择后裁定不会共存；
+    /// 重进的遍次带 <c>#N</c>——两次进入各自有各自的身份，R-0052 第 2 条）。
+    /// </summary>
     internal static DecisionPointId DecisionPointIdOf(StepMachineState state, StepSlot slot) =>
-        new($"{state.Plan.Label}:{slot.Id}:decision");
+        new($"{StepSlotEntry.SlotKeyOf(state, slot)}:decision");
 }

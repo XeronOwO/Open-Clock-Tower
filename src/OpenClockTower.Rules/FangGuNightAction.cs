@@ -139,7 +139,7 @@ internal sealed class FangGuNightAction : INightAction, IAbilityResolution
             ];
         }
 
-        var effectId = new EffectId($"{context.PlanLabel}:{context.SlotId}:fang-gu-infect");
+        var effectId = new EffectId($"{context.SlotKey}:fang-gu-infect");
         return
         [
             new InstantaneousEffectAppliedEvent

@@ -31,11 +31,12 @@ public sealed class NightOrderTableTests
     ];
 
     /// <summary>
-    /// 已经在夜晚顺序表上落地的旅行者（D5 逐角色落地：先流莺，咖啡师 / 集骨者按 D5 顺序后续补入）。
+    /// 已经在夜晚顺序表上落地的旅行者（D5 逐角色落地：首批流莺，第二批咖啡师；集骨者按 D5 顺序后续补入）。
     /// 依据 docs/standard/character-rules.md「旅行者（5）」与《夜晚行动顺序一览》· 2026-10-04 抓取 · 黄昏行。
     /// </summary>
     private static readonly string[] TravellersOnNightOrder =
     [
+        "barista",
         "harlot",
     ];
 

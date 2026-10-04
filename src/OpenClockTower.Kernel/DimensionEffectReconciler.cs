@@ -71,7 +71,7 @@ public static class DimensionEffectReconciler
         {
             Seat = entry.Seat,
             Poison = PoisonState.Healthy,
-            Reason = $"持续型效果 {releasedEffectId} 已终止或挂起：中毒解除",
+            Reason = ReleaseReason(state, entry.Seat, "中毒", releasedEffectId),
             CausedBy = current.CausedBy,
             EffectId = releasedEffectId,
         });
@@ -115,11 +115,20 @@ public static class DimensionEffectReconciler
         {
             Seat = entry.Seat,
             Drunk = DrunkState.Sober,
-            Reason = $"持续型效果 {releasedEffectId} 已终止或挂起：醉酒解除",
+            Reason = ReleaseReason(state, entry.Seat, "醉酒", releasedEffectId),
             CausedBy = current.CausedBy,
             EffectId = releasedEffectId,
         });
     }
+
+    /// <summary>
+    /// 解除维度时的说明：区分「效果终止 / 挂起」与「目标处于咖啡师「清醒且健康」窗口」两种原因——
+    /// 后者不是效果失效，而是标记照记、暂不生效（R-0047 第 1–3 条），说书人视图要能看出是哪种。
+    /// </summary>
+    private static string ReleaseReason(GameState state, SeatId seat, string dimension, EffectId effectId) =>
+        state.WindowOn(seat, EffectWindowKind.AfflictionImmunity) == true
+            ? $"咖啡师「清醒且健康」窗口生效（R-0047 第 1 条）：{dimension}标记照记、暂不生效"
+            : $"持续型效果 {effectId} 已终止或挂起：{dimension}解除";
 
     /// <summary>
     /// 求这一维当前应由哪条效果支撑：

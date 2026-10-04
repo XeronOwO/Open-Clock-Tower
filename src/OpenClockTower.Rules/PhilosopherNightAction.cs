@@ -64,6 +64,13 @@ internal sealed class PhilosopherNightAction : INightAction, IAbilityResolution
     public bool CountsAsUse(AbilityResolutionContext context) =>
         !string.Equals(context.Choice, PhilosopherAbility.Decline, StringComparison.Ordinal);
 
+    /// <summary>
+    /// 「获得能力」不支持咖啡师「行动两次」的二次结算：第二次获得是**替换还是并存**未定稿
+    /// （<c>docs/standard/rulings.md</c> R-0053 Open）。步骤机据此不重开本格；
+    /// 建表期对"已经用掉 + 窗口在身"的席位也在跳过说明里显式点名，绝不静默给出第二条授予。
+    /// </summary>
+    public bool SupportsSecondAction => false;
+
     /// <inheritdoc />
     public IReadOnlyList<GameEvent> Resolve(AbilityResolutionContext context)
     {

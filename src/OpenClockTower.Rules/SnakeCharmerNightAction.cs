@@ -163,7 +163,7 @@ internal sealed class SnakeCharmerNightAction : INightAction, IAbilityResolution
         {
             Effect = new PersistentEffect
             {
-                Id = SnakeCharmerAbility.PoisonEffectId(context.PlanLabel, context.SlotId),
+                Id = SnakeCharmerAbility.PoisonEffectId(context.SlotKey),
                 Source = target,
                 Ability = SnakeCharmerAbility.PoisonAbility,
                 Target = target,

@@ -8,13 +8,14 @@ namespace OpenClockTower.Rules.Tests;
 /// </summary>
 public sealed class NightOrderRecommendedTests
 {
-    /// <summary>首个夜晚：13 条；哲学家在信息环节之前。</summary>
+    /// <summary>首个夜晚：14 条；哲学家在信息环节之前；旅行者黄昏行动（咖啡师）紧跟 Dusk。</summary>
     [Fact]
     public void FirstNight_MatchesSource()
     {
         string[] expected =
         [
             "Dusk",
+            "CharacterAction:barista",
             "CharacterAction:philosopher",
             "MinionInfo",
             "DemonInfo",
@@ -35,8 +36,8 @@ public sealed class NightOrderRecommendedTests
     }
 
     /// <summary>
-    /// 其他夜晚：23 条；麻脸巫婆提前到舞蛇人之前，恶魔顺序为方古→诺-达鲺→涡流→亡骨魔，
-    /// 且在贤者之后多一个「信息类角色行动开始」标记；旅行者黄昏行动（流莺）紧跟 Dusk。
+    /// 其他夜晚：24 条；麻脸巫婆提前到舞蛇人之前，恶魔顺序为方古→诺-达鲺→涡流→亡骨魔，
+    /// 且在贤者之后多一个「信息类角色行动开始」标记；旅行者黄昏行动（咖啡师 → 流莺）紧跟 Dusk。
     /// </summary>
     [Fact]
     public void OtherNight_MatchesSource()
@@ -44,6 +45,7 @@ public sealed class NightOrderRecommendedTests
         string[] expected =
         [
             "Dusk",
+            "CharacterAction:barista",
             "CharacterAction:harlot",
             "CharacterAction:philosopher",
             "CharacterAction:pit-hag",

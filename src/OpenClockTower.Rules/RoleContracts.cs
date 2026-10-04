@@ -30,6 +30,7 @@ public static class RoleContracts
         new BarberNightTrigger(),
         new SageNightTrigger(),
         new SweetheartDeathTrigger(),
+        new BaristaWindowTrigger(),
     ];
 
     /// <summary>能力存续契约：会在特定局势下失去的能力，失去时它名下的持续型效果立即解除。</summary>

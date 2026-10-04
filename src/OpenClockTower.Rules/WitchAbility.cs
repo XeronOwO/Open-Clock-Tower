@@ -37,9 +37,11 @@ internal static class WitchAbility
     /// <summary>失去能力的存活人数阈值：存活 ≤ 3 即失去（百科：只剩三名存活玩家）。</summary>
     private const int LostAtAliveCount = 3;
 
-    /// <summary>诅咒效果的标识：计划 + 槽位唯一（<c>sv:night-2:witch:curse</c>），重放稳定。</summary>
-    internal static EffectId CurseEffectId(string planLabel, StepSlotId slotId) =>
-        new($"{planLabel}:{slotId}:curse");
+    /// <summary>
+    /// 诅咒效果的标识：槽位稳定键（<c>sv:night-2:witch</c>，重进的遍次带 <c>#N</c>）加后缀，重放稳定。
+    /// </summary>
+    internal static EffectId CurseEffectId(string slotKey) =>
+        new($"{slotKey}:curse");
 
     /// <summary>
     /// 能力此刻是否仍在；null = 席位的生死还没观测齐，判定不了（不猜，D-0015）。

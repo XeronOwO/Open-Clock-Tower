@@ -209,7 +209,7 @@ internal sealed class PitHagNightAction : INightAction, IAbilityResolution
             opposite,
             EvilTwinAbility.Character,
             oppositeCharacter,
-            EvilTwinAbility.PairEffectId(context.PlanLabel, context.SlotId));
+            EvilTwinAbility.PairEffectId(context.SlotKey));
     }
 
     /// <summary>所选角色是不是恶魔类型（角色表里的类型标签，不猜）。</summary>

@@ -109,14 +109,17 @@ internal static class DeathTriggerFolder
         return current with { SageNight = null };
     }
 
-    /// <summary>记录呆瓜的选择；同一名呆瓜只能有一条记录。</summary>
+    /// <summary>
+    /// 记录呆瓜的选择；同一名呆瓜至多两条（咖啡师「行动两次」会让他选两次，R-0052 第 3 条：
+    /// 「他只选了几次」由触发层按窗口判定，这里只守住"不会更多"的硬上限）。
+    /// </summary>
     internal static StepMachineState ApplyKlutzChoice(StepMachineState? state, KlutzChoiceMadeEvent choice)
     {
         var current = StepMachineFolder.Require(state, choice);
-        if (current.KlutzChoices.Any(record => record.Klutz == choice.Klutz))
+        if (current.KlutzChoices.Count(record => record.Klutz == choice.Klutz) >= 2)
         {
             throw new InvalidOperationException(
-                $"事件流顺序损坏：席位 {choice.Klutz.Value} 的呆瓜选择已经记录过");
+                $"事件流顺序损坏：席位 {choice.Klutz.Value} 的呆瓜选择已经记录过两次（上限）");
         }
 
         return current with
@@ -134,16 +137,19 @@ internal static class DeathTriggerFolder
         };
     }
 
-    /// <summary>记录呆瓜"没有选择"（能力未生效 / 被作废）；同一名呆瓜只能有一条记录。</summary>
+    /// <summary>
+    /// 记录呆瓜"没有选择"（能力未生效 / 被作废）；同一名呆瓜至多两条（上限与
+    /// <see cref="ApplyKlutzChoice"/> 同一口径：两次选择的窗口下第一遍也可能被作废）。
+    /// </summary>
     internal static StepMachineState ApplyKlutzChoiceSkipped(
         StepMachineState? state,
         KlutzChoiceSkippedEvent skipped)
     {
         var current = StepMachineFolder.Require(state, skipped);
-        if (current.KlutzChoices.Any(record => record.Klutz == skipped.Klutz))
+        if (current.KlutzChoices.Count(record => record.Klutz == skipped.Klutz) >= 2)
         {
             throw new InvalidOperationException(
-                $"事件流顺序损坏：席位 {skipped.Klutz.Value} 的呆瓜选择已经记录过");
+                $"事件流顺序损坏：席位 {skipped.Klutz.Value} 的呆瓜选择已经记录过两次（上限）");
         }
 
         return current with

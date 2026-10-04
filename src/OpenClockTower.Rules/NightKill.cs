@@ -44,7 +44,7 @@ internal static class NightKill
             ];
         }
 
-        var effectId = new EffectId($"{context.PlanLabel}:{context.SlotId}:kill");
+        var effectId = new EffectId($"{context.SlotKey}:kill");
         return
         [
             new InstantaneousEffectAppliedEvent

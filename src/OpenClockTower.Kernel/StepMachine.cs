@@ -200,7 +200,8 @@ public static class StepMachine
         {
             new SlotQuotaElapsedEvent { SlotId = state.CurrentSlot!.Id },
         };
-        return Applied(state, WithAutoAdvance(state, context, events));
+        StepSlotEntry.AutoAdvance(state, context, events);
+        return Applied(state, events);
     }
 
     private static StepMachineOutcome HandleResponse(
@@ -305,7 +306,8 @@ public static class StepMachine
             }
         }
 
-        return Applied(state, WithAutoAdvance(state, context, events));
+        StepSlotEntry.AutoAdvance(state, context, events);
+        return Applied(state, events);
     }
 
     private static StepMachineOutcome HandleVoid(
@@ -352,7 +354,8 @@ public static class StepMachine
             return Reject(state, StepMachineRejectionReason.PlanAlreadyCompleted, "本计划已走完");
         }
 
-        return Applied(state, WithAutoAdvance(state, context, events));
+        StepSlotEntry.AutoAdvance(state, context, events);
+        return Applied(state, events);
     }
 
     private static StepMachineOutcome HandleForceAdvance(
@@ -411,7 +414,8 @@ public static class StepMachine
         {
             new ControlModeChangedEvent { Mode = mode, Reason = reason },
         };
-        return Applied(state, WithAutoAdvance(state, context, events));
+        StepSlotEntry.AutoAdvance(state, context, events);
+        return Applied(state, events);
     }
 
     private static StepMachineOutcome HandleSeatStateChanged(
@@ -467,7 +471,8 @@ public static class StepMachine
                 Note = SeatDependencyCheck.Describe(violated, input),
             },
         });
-        return Applied(state, WithAutoAdvance(state, context, events));
+        StepSlotEntry.AutoAdvance(state, context, events);
+        return Applied(state, events);
     }
 
     private static StepMachineOutcome HandleDecisionResolved(
@@ -554,22 +559,8 @@ public static class StepMachine
                 break;
         }
 
-        return Applied(state, WithAutoAdvance(state, context, events));
-    }
-
-    private static List<GameEvent> WithAutoAdvance(
-        StepMachineState state,
-        SettlementContext context,
-        List<GameEvent> events)
-    {
-        var after = StepMachineFolder.ApplyAll(state, events)
-            ?? throw new InvalidOperationException("事件流损坏：处理输入后丢失步骤机状态");
-        if (StepSlotEntry.CanAutoAdvance(after))
-        {
-            StepSlotEntry.AppendAdvance(after, context, events);
-        }
-
-        return events;
+        StepSlotEntry.AutoAdvance(state, context, events);
+        return Applied(state, events);
     }
 
     private static StepMachineOutcome Applied(StepMachineState state, List<GameEvent> events) =>

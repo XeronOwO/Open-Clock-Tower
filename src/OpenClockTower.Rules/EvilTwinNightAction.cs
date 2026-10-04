@@ -79,6 +79,6 @@ internal sealed class EvilTwinNightAction : INightAction, IAbilityResolution
             target,
             actorCharacter,
             targetCharacter,
-            EvilTwinAbility.PairEffectId(context.PlanLabel, context.SlotId));
+            EvilTwinAbility.PairEffectId(context.SlotKey));
     }
 }

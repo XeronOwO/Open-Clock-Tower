@@ -50,16 +50,7 @@ internal static class StepMachineFolder
                 // 艺术家的进行中提问不能跨阶段：边界上仍挂着说明收口缺失——CarryAcrossPhase 显式失败。
                 ArtistQuestion = ArtistQuestionFolder.CarryAcrossPhase(state),
             },
-            SlotEnteredEvent entered => Require(state, entered) with
-            {
-                SlotIndex = entered.SlotIndex,
-                Quota = SlotQuotaState.Running,
-                PendingRequest = null,
-                AwaitingDecision = null,
-                AwaitingDecisionTriggerAbility = null,
-                AwaitingDecisionSeat = null,
-                Block = null,
-            },
+            SlotEnteredEvent entered => ApplySlotEntered(Require(state, entered), entered),
             OperationRequestIssuedEvent issued => Require(state, issued) with
             {
                 PendingRequest = issued.Request,
@@ -89,7 +80,7 @@ internal static class StepMachineFolder
             PhaseCompletedEvent completed => Require(state, completed),
             ControlModeChangedEvent control => Require(state, control) with { Control = control.Mode },
             PromptSkippedEvent skipped => Require(state, skipped),
-            SlotActivatedEvent activated => ApplySlotActivation(state, activated),
+            SlotActivatedEvent activated => SlotActivationFolder.Apply(state, activated),
 
             // 麻脸巫婆之夜的死亡裁量窗口（R-0030）。
             PitHagNightOpenedEvent opened => ApplyPitHagNightOpened(state, opened),
@@ -176,7 +167,10 @@ internal static class StepMachineFolder
             InstantaneousEffectAppliedEvent => state,
             MadnessRequirementIssuedEvent => state,
             MadnessRequirementTerminatedEvent => state,
-            AbilityResolvedEvent => state,
+
+            // 能力结算：把「本格已经结算过」记在步骤机上——「行动两次」的第二次结算以此为凭据
+            // （跳过 / 作废 / 阻塞的格子没有它）。步骤机还没开始时保持 null：账事件可以先于任何阶段出现。
+            AbilityResolvedEvent resolved => state is null ? null : ApplyAbilityResolved(state, resolved),
             InformationResultIssuedEvent => state,
 
             // 说书人注记（D-0019）：第三条派生视图（SeatAnnotationMachine）的事件，
@@ -188,6 +182,33 @@ internal static class StepMachineFolder
             _ => throw new InvalidOperationException($"未知事件类型：{gameEvent.GetType().Name}"),
         };
     }
+
+    /// <summary>
+    /// 进入槽位（含同格重进）：清挂起、配额重新起算，并把进入遍次加一
+    /// （推进到下一格时由 <see cref="ApplyAdvance"/> 清零，下一格首次进入重新记 1；R-0052）。
+    /// </summary>
+    private static StepMachineState ApplySlotEntered(StepMachineState state, SlotEnteredEvent entered) =>
+        state with
+        {
+            SlotIndex = entered.SlotIndex,
+            Quota = SlotQuotaState.Running,
+            PendingRequest = null,
+            AwaitingDecision = null,
+            AwaitingDecisionTriggerAbility = null,
+            AwaitingDecisionSeat = null,
+            Block = null,
+            SlotPass = state.SlotPass + 1,
+            SlotAbilityResolved = false,
+        };
+
+    /// <summary>
+    /// 一条能力结算落到**当前槽位**上时，把「本格已结算」记下（「行动两次」的判据之一，R-0052）。
+    /// 不属于当前槽位的结算（历史槽位 / 触发型请求）不改本格状态。
+    /// </summary>
+    private static StepMachineState ApplyAbilityResolved(StepMachineState state, AbilityResolvedEvent resolved) =>
+        state.CurrentSlot?.Id == resolved.SlotId
+            ? state with { SlotAbilityResolved = true }
+            : state;
 
     /// <summary>按序折叠一批事件；空批（或只含账事件）时结果为 null。</summary>
     internal static StepMachineState? ApplyAll(StepMachineState? state, IEnumerable<GameEvent> events)
@@ -266,75 +287,6 @@ internal static class StepMachineFolder
 
         return current with { Block = null };
     }
-
-    /// <summary>
-    /// 把一次槽位绑定折进计划：空槽位 → 激活成行动槽位；行动槽位 → 换手重绑（换行动者与提示）。
-    /// 只有**尚未进入**的槽位可以被处理（过时不候，《隐性规则汇总》§6）。
-    /// </summary>
-    /// <remarks>
-    /// 顺序损坏一律显式抛错：处理一个已经走过的槽位、下标越界、槽位标识对不上、
-    /// 行动槽位重复绑定到同一行动者、或者绑定的不是角色槽位，都是事件流损坏
-    /// （恢复必须失败，不许静默继续）。
-    /// </remarks>
-    private static StepMachineState ApplySlotActivation(StepMachineState? state, SlotActivatedEvent activated)
-    {
-        var current = Require(state, activated);
-        if (activated.SlotIndex <= current.SlotIndex)
-        {
-            throw new InvalidOperationException(
-                $"事件流顺序损坏：槽位 {activated.SlotId.Value} 已经进入过（当前下标 {current.SlotIndex}），不能再激活");
-        }
-
-        if (activated.SlotIndex >= current.Plan.Slots.Count)
-        {
-            throw new InvalidOperationException($"事件流顺序损坏：激活下标 {activated.SlotIndex} 越界");
-        }
-
-        var slot = current.Plan.Slots[activated.SlotIndex];
-        if (slot.Id != activated.SlotId)
-        {
-            throw new InvalidOperationException(
-                $"事件流顺序损坏：下标 {activated.SlotIndex} 是槽位 {slot.Id.Value}，不是 {activated.SlotId.Value}");
-        }
-
-        var slots = current.Plan.Slots.ToArray();
-        slots[activated.SlotIndex] = slot.Kind switch
-        {
-            StepSlotKind.Action when slot.Actor == activated.Actor => throw new InvalidOperationException(
-                $"事件流顺序损坏：槽位 {activated.SlotId.Value} 的行动者没有变化，不能重复绑定"),
-
-            // 换手重绑 / 激活：行动者与提示按新行动者重建，角色归属不变（R-0032）。
-            // 行动者本人角色与槽位角色不同时（哲学家代行被获得角色的能力）构造代行槽位（R-0036）。
-            StepSlotKind.Action or StepSlotKind.Empty => Rebind(slot, activated),
-
-            _ => throw new InvalidOperationException(
-                $"事件流顺序损坏：槽位 {activated.SlotId.Value} 不是角色槽位，不能被激活"),
-        };
-
-        return current with { Plan = current.Plan with { Slots = slots } };
-    }
-
-    /// <summary>
-    /// 把一个角色槽位重新绑定给新行动者：行动者本人角色与槽位角色不同（哲学家代行被获得角色的能力，
-    /// R-0036）时构造**代行槽位**，否则是普通的行动槽位（R-0032 的换手重绑 / 空槽位激活）。
-    /// </summary>
-    private static StepSlot Rebind(StepSlot slot, SlotActivatedEvent activated) =>
-        activated.ActorCharacter is { } actorCharacter
-        && slot.Character is { } slotCharacter
-        && actorCharacter != slotCharacter
-            ? StepSlot.GrantedAction(
-                slot.Id,
-                activated.Actor,
-                actorCharacter,
-                activated.Prompt,
-                activated.Dependencies,
-                slotCharacter)
-            : StepSlot.Action(
-                slot.Id,
-                activated.Actor,
-                activated.Prompt,
-                activated.Dependencies,
-                slot.Character);
 
     /// <summary>
     /// 开一个裁定点：挂起待裁定；事件携带槽位提示时，把它**回写进槽位**（替换计划快照）。
@@ -533,6 +485,10 @@ internal static class StepMachineFolder
             AwaitingDecisionTriggerAbility = null,
             AwaitingDecisionSeat = null,
             Block = null,
+
+            // 推进到下一格：遍次与「本格已结算」都清零——下一格由它自己的 SlotEnteredEvent 记首次进入。
+            SlotPass = 0,
+            SlotAbilityResolved = false,
         };
 
         // 白天计划走完 = 白天结束：必须先有 DayClosedEvent（CloseDay 或强推兜底产出），

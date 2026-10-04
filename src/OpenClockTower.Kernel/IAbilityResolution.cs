@@ -55,6 +55,26 @@ public interface IAbilityResolution
     /// </summary>
     ChoicePrompt? BuildPostChoiceDecision(AbilityResolutionContext context);
 
+    /// <summary>
+    /// 本契约是否支持在咖啡师「行动两次」窗口内再结算一次（默认 true）。
+    /// </summary>
+    /// <remarks>
+    /// false = 该能力的二次结算语义**未定稿**：当前只有哲学家的「获得能力」（第二次获得是替换
+    /// 还是并存未定，登记为 <c>docs/standard/rulings.md</c> R-0053 Open）。步骤机据此不重开本格，
+    /// 绝不静默产生第二条授予；能力自己的提示里要说清这件事。
+    /// </remarks>
+    bool SupportsSecondAction => true;
+
+    /// <summary>
+    /// 本契约的能力是不是「每局限一次」：窗口内二次结算的**总使用次数**上限为 2（R-0052 第 3 条）。
+    /// </summary>
+    /// <remarks>
+    /// 普通夜晚能力按「每夜一次」计，不查总使用次数；「每局限一次」的能力（女裁缝等）要查：
+    /// 已经用过一次 → 窗口内还能再用一次；一次都没用过 → 下个黄昏前可以合计使用两次。
+    /// 判定依据是能力使用账本（<see cref="AbilityUseLedger.UseCount"/>），不是"猜"。
+    /// </remarks>
+    bool IsLimitedPerGame => false;
+
     /// <summary>产出本步的事件（效果 / 信息 / 状态变化）；结算结论本身由调用方记录。</summary>
     IReadOnlyList<GameEvent> Resolve(AbilityResolutionContext context);
 }

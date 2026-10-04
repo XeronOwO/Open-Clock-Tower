@@ -172,6 +172,7 @@ public static class GameStateComparer
         && left.Target == right.Target
         && left.SourceCharacter == right.SourceCharacter
         && left.Dimension == right.Dimension
+        && left.Window == right.Window
         && TerminationEquivalent(left.Termination, right.Termination);
 
     private static bool TerminationEquivalent(EffectTermination? left, EffectTermination? right)

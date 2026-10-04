@@ -49,7 +49,7 @@ internal sealed class OracleNightAction : INightAction, IAbilityResolution
                 + "（百科《神谕者》· 2026-10-01 抓取 · 角色简介；按当前阵营，含当夜死者）。"
                 + $"按当前账推演：{RetrospectiveReadings.Describe(reading)}"
                 + (reading is null ? "——有席位的生死 / 阵营未观测，读不出来，请说书人按现场判断。" : "。")
-                + (VortoxInterference.IsActive(context.State)
+                + (VortoxInterference.IsActiveFor(context.State, context.Actor)
                     ? "涡流在场：这条信息必须为假（R-0028）——给出与推演不同的数字。"
                     : string.Empty),
             Options = [],
@@ -78,9 +78,10 @@ internal sealed class OracleNightAction : INightAction, IAbilityResolution
                 Recipient = context.Actor,
                 Ability = Ability,
                 Content = context.Decision,
-                MayBeFalse = !context.Outcome.Effective || VortoxInterference.IsActive(context.State),
+                MayBeFalse = !context.Outcome.Effective || VortoxInterference.IsActiveFor(context.State, context.Actor),
                 Note = VortoxInterference.NoteFor(
                     context.State,
+                    context.Actor,
                     context.Outcome.Effective
                         ? $"平台按当前账推演：{RetrospectiveReadings.Describe(reading)}"
                             + "（当前阵营口径，含当夜死者）；信息由说书人给出"

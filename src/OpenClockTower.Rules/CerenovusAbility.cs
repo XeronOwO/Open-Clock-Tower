@@ -28,11 +28,11 @@ internal static class CerenovusAbility
     internal static readonly CharacterId Cerenovus = new("cerenovus");
 
     /// <summary>
-    /// 要求标识：计划 + 槽位唯一（<c>sv:night-2:cerenovus:madness</c>）。
-    /// 每夜唯一、重放稳定，撤下事件与说书人视图按它认人（R-0021）。
+    /// 要求标识：槽位稳定键（<c>sv:night-2:cerenovus</c>，重进的遍次带 <c>#N</c>）加后缀。
+    /// 每次进入唯一、重放稳定，撤下事件与说书人视图按它认人（R-0021 / R-0052 第 2 条）。
     /// </summary>
-    internal static MadnessRequirementId RequirementId(string planLabel, StepSlotId slotId) =>
-        new($"{planLabel}:{slotId}:madness");
+    internal static MadnessRequirementId RequirementId(string slotKey) =>
+        new($"{slotKey}:madness");
 
     /// <summary>死亡事实的原因（机器可读前缀 + 人可读说明）；具体要证明的角色由处罚依据补齐。</summary>
     internal const string PunishmentDeathReason = "cerenovus.madness：目标未按洗脑师的要求疯狂（R-0020）";

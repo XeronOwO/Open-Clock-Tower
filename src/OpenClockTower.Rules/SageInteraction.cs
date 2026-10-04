@@ -94,7 +94,7 @@ internal static class SageInteraction
             ?? throw new InvalidOperationException($"贤者的展示裁定不是合法玩家对：{resolved.Decision}");
         ValidatePair(context, fact, pair);
 
-        var vortox = VortoxInterference.IsActive(context.State);
+        var vortox = VortoxInterference.IsActiveFor(context.State, fact.Sage);
         events.Add(new InformationResultIssuedEvent
         {
             Recipient = fact.Sage,
@@ -227,7 +227,7 @@ internal static class SageInteraction
                 + $"按击杀记录推演：杀死他的是 {fact.Demon.Value} 号（{fact.DemonCharacter.Value}）"
                 + "——能力生效时，展示的两名玩家中应包含该席位。"
                 + SageAbility.EffectivenessNote(fact.Effective)
-                + (VortoxInterference.IsActive(context.State)
+                + (VortoxInterference.IsActiveFor(context.State, fact.Sage)
                     ? "涡流在场：这条信息必须为假（R-0028）——展示与推演不同的内容。"
                     : string.Empty),
             Options = options,

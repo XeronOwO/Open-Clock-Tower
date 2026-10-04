@@ -89,7 +89,7 @@ internal sealed class CerenovusNightAction : INightAction, IAbilityResolution
             {
                 Requirement = new MadnessRequirement
                 {
-                    Id = CerenovusAbility.RequirementId(context.PlanLabel, context.SlotId),
+                    Id = CerenovusAbility.RequirementId(context.SlotKey),
                     Seat = target,
                     ProveToBe = displayName,
 

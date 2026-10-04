@@ -67,8 +67,9 @@ public sealed class StepDigestHostTests
                     "test-digest-night");
                 Assert.Equal("Accepted", started.Kind);
 
-                // 真实顺序表前 8 个是节拍 / 空槽位；用兜底强推精确推进（配额 3600s 不会被等走）。
-                for (var step = 0; step < 8; step++)
+                // 真实顺序表前 9 个是节拍 / 空槽位（含 D5 的咖啡师黄昏槽）；用兜底强推精确推进
+                // （配额 3600s 不会被等走）。
+                for (var step = 0; step < 9; step++)
                 {
                     var advanced = await storyteller.InvokeAsync<CommandResultDto>(
                         "ForceAdvance",

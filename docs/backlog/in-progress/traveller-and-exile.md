@@ -179,6 +179,27 @@ Application（命令面 / 闸 / 投影 / 节拍器 / 会话）· Contracts + web
   旅行者清单，按术语表 §9 的旅行者映射与「已注册夜间行动契约」过滤后核对顺序；《梦殒春宵》页的黄昏行
   不列旅行者，Original 口径取推荐口径的同一清单（两口径同改）。
 
+**D5 实施口径 · 咖啡师（2026-10-04 实施前定案；细节以本块为准；裁定见 `rulings.md` R-0047 / R-0052 / R-0053）**：
+
+- **夜序**：首夜与其他夜晚都在 Dusk 步之后；其他夜晚按「咖啡师 → 流莺 → 集骨者」相对顺序（两口径同改）。
+- **裁定点**：目标 × 效果是**一条原子裁定**，以 `ChoicePrompt.Audience = Storyteller` 的槽位提示入槽
+  （候选 = 每个在局席位 × 两个效果，值 `healthy:seat:N` / `twice:seat:N`）；说书人点选后直接结算。
+  咖啡师玩家不收到任何请求；能力未生效时照常裁定但**不落效果、不宣告**（《重要细节》三-3）。
+- **效果落账**：`PersistentEffect.Window`（`EffectWindowKind.AfflictionImmunity` / `SecondAction`）+
+  来源 = 咖啡师席位；向目标下发「是哪一个效果」的信息（只到本人）。
+- **效果 1（R-0047）**：目标身上的维度效果**目标侧挂起**（`GameState.IsOperative` 改写 → 维度对账清空、
+  窗口结束按同一 `EffectId` 恢复）；「必定正确信息」在 `VortoxInterference` 族按席位覆盖
+  （窗口确认生效才覆盖；正确信息不再落涡流失效记录）。
+- **效果 2（R-0052 第 5 条）**：夜晚槽位**重进一次**（`StepMachineState.SlotPass`、请求 / 裁定标识 `#N`、
+  配额重新起算；跳过 / 作废 / 强推不重进；第二遍进入前按折完本批事件的账再确认行动者还站得住——
+  换角 / 自死则跳过并记原因）；「每局限一次」按总使用次数 < 2 放宽（建表闸 / 艺术家提问闸 /
+  呆瓜死亡选择）；已被计划判成「本夜无行动」的女裁缝格由 `SlotActivatedEvent` 重开；契约可声明
+  `SupportsSecondAction = false`（哲学家，R-0053 Open）。
+- **窗口收口**：`BaristaWindowTrigger` 在下一个夜晚阶段开始时终止存续窗口（来源死亡 / 离场按既有链路
+  提前终止，R-0012）。
+- **兼容**：不新增事件类型；`MalfunctionKind.Barista` 保留但永不写入（枚举按数值持久化，删除会让旧日志误读）。
+- **D7 边界**：咖啡师窗口的界面入口、`EffectDto` 字段与复盘圆盘标记属 D7；本批不做 UI。
+
 ### D6 配板与人数
 
 - `SetupProposalQuery` 输入改为**非旅行者人数**；非旅行者 >15 显式失败（R-0046）；旅行者人数在
@@ -214,6 +235,9 @@ Application（命令面 / 闸 / 投影 / 节拍器 / 会话）· Contracts + web
    该席位当天的裁定本身，不提前提问（见上方「D3 实施口径」）。
 4. 集骨者「重获能力」与 `IAbilityPresence` / 夜计划的接线方式；
 5. `MalfunctionKind.Barista` 去留（R-0047 §5）。
+   — **D5 第二批已定案**：保留枚举成员（事件载荷里的枚举按数值持久化，删除会让其后成员整体前移、
+   旧日志误读），但引擎没有任何路径写它（R-0047 第 5 条 / R-0004；注释已落在 `MalfunctionKind` 与
+   `MalfunctionCounting`）。
 
 ## 实施进度（2026-10-04，第一批：D1 数据切片 + D6）
 
@@ -468,6 +492,51 @@ D4 / 未来免死角色需要时再收。
 `IAbilityPresence` / 夜计划的接线）与两者的黄昏槽；流放 / 窗口的界面入口、`DayViewDto` 字段、
 复盘圆盘标记；真机批次取证。
 
+## 实施进度（2026-10-04，第七批：D5 第二批——咖啡师两效果 + 「行动两次」）
+
+已落地（代码 + 测试 + 文档同一提交；口径按上方「D5 实施口径 · 咖啡师」与 R-0047 / R-0052 / R-0053，
+未改任何已登记裁定）：
+
+- **夜序**：`NightOrderTable` 四序列在 Dusk 步之后插入咖啡师（首夜只有它；其他夜晚在流莺之前），
+  来源核对工具四套序列逐条通过（14 / 14 / 23 / 24）。
+- **内核（窗口与挂起）**：`EffectWindowKind` + `PersistentEffect.Window`；`GameState.WindowOn`
+  （生效 / 判定不了不猜）与目标侧免疫改写（`IsOperative` 对维度效果返回 false / null）；
+  `DimensionEffectReconciler` 的解除说明点名 R-0047。
+- **内核（二次结算）**：`StepMachineState.SlotPass` / `SlotAbilityResolved`（由事件流折叠派生）；
+  `StepSlotEntry` 的同格重进（`#N` 请求 / 裁定标识、配额重新起算；跳过 / 作废 / 强推不重进）；
+  `SecondActionSettlement` 判据（窗口 + 首遍 + 确实结算过 + 契约支持 + 「每局限一次」总次数 < 2）；
+  `AbilityResolutionContext.SlotPass` / `SlotKey` 与全族效果标识带遍次（夜杀 / 方古 / 蛇魅 / 女巫 /
+  双头 / 洗脑师 / 流莺）；`IAbilityResolution.SupportsSecondAction` / `IsLimitedPerGame`；
+  `SlotActivationFolder`（拆类守 600 行门禁，含「本夜无行动」格重开）。
+- **内核（每局限一次接线）**：女裁缝建表闸、艺术家提问闸、呆瓜死亡选择（第二次请求 `klutz:{seat}#2`、
+  选择账上限两条）。
+- **规则层**：`BaristaNightAction`（说书人受众的原子裁定、两窗口落账、目标宣告、未生效零效果、
+  女裁缝格重开、越界显式失败）+ `BaristaWindowTrigger`（下个黄昏收口）+ `ChoicePrompt.Audience`
+  受众原语 + `VortoxInterference` 按席位覆盖（全族信息能力改用）。
+- **门禁**：新增 `BaristaMalfunctionGateTests`——引擎不得引用 `MalfunctionKind.Barista`
+  （R-0047 第 5 条：两个效果都不产生「能力未正常生效」；枚举成员只为序列化兼容保留）。
+- **文档**：`rulings.md` 新增 R-0052（Decided）/ R-0053（Open）、更新 R-0047 第 5 条；
+  `character-rules.md` 咖啡师条目补平台口径；本票据 D5 实施口径与本批记录；
+  `tools/check-night-order.ps1` 文件头注释同步（咖啡师已落地，只剩集骨者待补）。
+
+验证证据（2026-10-04，冻结工作树）：
+
+- `dotnet build` **0 警告 0 错误**；`dotnet test` **1034 通过 / 0 失败**
+  （门禁 25 / 内核 419 / 规则 370 / 集成 220；基线 992 → +42）；`dotnet format` 退出 0（未重写工作树）；
+- 来源核对：`pwsh -File tools/check-night-order.ps1` 四套序列逐条通过（14 / 14 / 23 / 24），退出 0；
+- 新增用例（逐类在跑）：内核 `EffectWindowTests` 七条（挂起 / 恢复同一 `EffectId` / 窗口内新增中毒 /
+  判定不了不猜 / 来源死亡 / 类别区分）、`SecondActionTests` 十五条（重进与遍次标识 / 秒回 / 跳过 /
+  作废 / 强推 / 首遍自死后的再确认 / 契约退出 / 「每局限一次」上限 / 使用次数口径 / 说书人受众）、
+  `ArtistQuestionMachineTests` 增补一条（窗口内第二次提问）；规则 `BaristaNightActionTests`
+  十条（十四例：候选集合与生死标注 / 两效果落账 / 女裁缝重开 / 哲学家不重开 / 未生效零事件 /
+  越界拒绝 / 夜序两口径 / 窗口收口触发 / 涡流覆盖）、`KlutzChoiceTriggerTests` 增补两条
+  （两次选择 / 无窗口单次）；集成 `BaristaHostTests` 两条（真宿主 + 真 SignalR + 真 SQLite：
+  二次行动与下个黄昏收口；常驻中毒挂起与恢复）。
+
+未做（属 D5 后续批次 / D7 / D8）：集骨者（重获能力 + 与 `IAbilityPresence` / 夜计划的接线，
+含 R-0053 的核对）；哲学家「获得能力」的二次获得语义（R-0053 Open）；咖啡师窗口的界面入口、
+`EffectDto` 的窗口字段与复盘圆盘标记；真机批次取证。
+
 ## 验收矩阵
 
 （维度细化；证据列在实现时逐行落）
@@ -482,7 +551,7 @@ D4 / 未来免死角色需要时再收。
 | 6 | 阈值与分母 | 分母含死者与旅行者、不含离场者；奇数上取整；边界值（恰好一半 / 差一票）逐点判出 | 内核用例 |
 | 7 | 胜败 | 旅行者不计入「仅有两名玩家存活」；流放不计入涡流「白天被处决」；其余胜败条件不受影响 | 内核用例 |
 | 8 | 死亡面 | 流放死亡即时公开 + 照常获得投票标记；夜死走黎明公告；计入神谕者类死亡统计；无新增死亡触发 | 集成 + 投影用例 |
-| 9 | 5 名角色 | 怪咖（裁定保护）/ 集骨者（重获与终止）/ 咖啡师（两效果 + 免疫窗口）/ 流莺（同意 + 共死）/ 屠夫（额外提名）逐条链路 | 怪咖：内核 `DayProtectionTests` + 规则 `DeviantProtectionSourceTests` + 集成 `DeviantHostTests`（D3）；屠夫：内核 `ButcherWindowTests` + 规则 `ButcherExtraNominationSourceTests` + 集成 `ButcherHostTests`（D4）；流莺：规则 `HarlotNightActionTests` + 集成 `HarlotHostTests`（D5 首批）；集骨者 / 咖啡师属 D5 后续批次；真机装置属 D8 |
+| 9 | 5 名角色 | 怪咖（裁定保护）/ 集骨者（重获与终止）/ 咖啡师（两效果 + 免疫窗口）/ 流莺（同意 + 共死）/ 屠夫（额外提名）逐条链路 | 怪咖：内核 `DayProtectionTests` + 规则 `DeviantProtectionSourceTests` + 集成 `DeviantHostTests`（D3）；屠夫：内核 `ButcherWindowTests` + 规则 `ButcherExtraNominationSourceTests` + 集成 `ButcherHostTests`（D4）；流莺：规则 `HarlotNightActionTests` + 集成 `HarlotHostTests`（D5 首批）；咖啡师：内核 `EffectWindowTests` / `SecondActionTests` + 规则 `BaristaNightActionTests` + 集成 `BaristaHostTests`（D5 第二批，控制台入口属 D7）；集骨者属 D5 后续批次；真机装置属 D8 |
 | 10 | 信息隔离 | 玩家端不出现旅行者阵营 / 说书人字段；复盘与实时投影一致 | 零信任门禁 + 装置 |
 | 11 | 15+ 配板 | 16 人 = 15 人行 + 1 名旅行者；非旅行者人数 > 15（旅行者数不足）显式失败；旅行者人数在开局配置显式表达 | 内核 / 集成 |
 | 12 | 复盘 | 加入 / 离开 / 流放 / 角色行动按原子步骤可见；进行中零泄露（R-0043 口径） | 投影用例 + 装置 |

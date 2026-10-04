@@ -88,8 +88,9 @@ internal sealed class ArtistQuestionSource : IArtistQuestionSource
             return null;
         }
 
-        // 艺术家本人是镇民：涡流存活时她的信息必须为假（R-0028 / R-0004 对照）。
-        var vortox = VortoxInterference.IsActive(context.State);
+        // 艺术家本人是镇民：涡流存活时她的信息必须为假（R-0028 / R-0004 对照）；
+        // 处于咖啡师「清醒且健康」窗口内时不受涡流约束（R-0047 第 4 条）。
+        var vortox = VortoxInterference.IsActiveFor(context.State, context.Question.Seat);
         var malfunctions = new List<MalfunctionKind>(outcome.Malfunctions);
         if (vortox)
         {
@@ -101,7 +102,10 @@ internal sealed class ArtistQuestionSource : IArtistQuestionSource
             Ruling = ArtistQuestionRuling.Answered,
             Effective = outcome.Effective,
             Malfunctions = malfunctions,
-            Note = VortoxInterference.NoteFor(context.State, outcome.Effective ? null : outcome.Note),
+            Note = VortoxInterference.NoteFor(
+                context.State,
+                context.Question.Seat,
+                outcome.Effective ? null : outcome.Note),
             Events =
             [
                 new InformationResultIssuedEvent
@@ -112,6 +116,7 @@ internal sealed class ArtistQuestionSource : IArtistQuestionSource
                     MayBeFalse = !outcome.Effective || vortox,
                     Note = VortoxInterference.NoteFor(
                         context.State,
+                        context.Question.Seat,
                         outcome.Effective ? null : outcome.Note),
                 },
             ],

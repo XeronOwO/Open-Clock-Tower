@@ -50,6 +50,12 @@ internal sealed class SeamstressNightAction : INightAction, IAbilityResolution
     public bool CountsAsUse(AbilityResolutionContext context) =>
         !string.Equals(context.Choice, Decline, StringComparison.Ordinal);
 
+    /// <summary>
+    /// 「每局限一次」：咖啡师「行动两次」窗口内把上限放宽到**总使用次数 2**（R-0052 第 3 条）——
+    /// 用过一次还能再用一次；一次没用过则下个黄昏前可以合计用两次。
+    /// </summary>
+    public bool IsLimitedPerGame => true;
+
     /// <inheritdoc />
     public ChoicePrompt BuildPrompt(NightActionContext context)
     {
@@ -105,7 +111,7 @@ internal sealed class SeamstressNightAction : INightAction, IAbilityResolution
         var contextText = $"女裁缝选择了 {pair.First.Value} 号与 {pair.Second.Value} 号。"
             + DescribeLean(context, pair)
             + " 请裁定要告诉她的信息：";
-        if (VortoxInterference.IsActive(context.State))
+        if (VortoxInterference.IsActiveFor(context.State, context.Actor))
         {
             contextText += " 涡流在场：这条信息必须为假（R-0028），请选与真实关系相反的一项。";
         }
@@ -145,7 +151,7 @@ internal sealed class SeamstressNightAction : INightAction, IAbilityResolution
             ? $"{pair.First.Value} 号与 {pair.Second.Value} 号玩家属于同一阵营"
             : $"{pair.First.Value} 号与 {pair.Second.Value} 号玩家不属于同一阵营";
 
-        var vortox = VortoxInterference.IsActive(context.State);
+        var vortox = VortoxInterference.IsActiveFor(context.State, context.Actor);
         return
         [
             new InformationResultIssuedEvent
@@ -156,6 +162,7 @@ internal sealed class SeamstressNightAction : INightAction, IAbilityResolution
                 MayBeFalse = !context.Outcome.Effective || vortox,
                 Note = VortoxInterference.NoteFor(
                     context.State,
+                    context.Actor,
                     context.Outcome.Effective ? null : context.Outcome.Note),
             },
         ];

@@ -78,12 +78,18 @@ internal static class ArtistQuestionMachine
                 $"{input.Seat.Value} 号（{seatCharacter.Value}）不是可以提问的艺术家");
         }
 
-        if (context.State.AbilityUses.WasUsed(input.Seat, source.Ability))
+        // 「每局限一次」的放宽（咖啡师「行动两次」，R-0052 第 3 条）：窗口**确认生效**且总使用次数
+        // 还没到 2 时还能再问一次（用过一次 → 再用一次；没用过 → 下个黄昏前合计可用两次）。
+        // 窗口生效与否判定不了时按"不能再问"处理：不猜、也不多给一次机会。
+        var uses = context.State.AbilityUses.UseCount(input.Seat, source.Ability);
+        var boosted = context.State.WindowOn(input.Seat, EffectWindowKind.SecondAction) == true && uses < 2;
+        if (uses > 0 && !boosted)
         {
             return Reject(
                 state,
                 "artist.already_used",
-                "艺术家的能力已经用过了（每局限一次）：本局不能再提问（R-0040）");
+                "艺术家的能力已经用过了（每局限一次）：本局不能再提问（R-0040；"
+                    + "咖啡师「行动两次」窗口内、未满两次时可以再用，R-0052 第 3 条）");
         }
 
         var question = input.Question?.Trim() ?? string.Empty;

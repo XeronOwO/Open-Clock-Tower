@@ -201,14 +201,16 @@ public static class NightPlanBuilder
         // 女裁缝的「每局限一次」已经用掉（含醉酒 / 中毒时使用）：不再唤醒她——
         // 「为她放置"失去能力"提示标记，并从夜晚顺序表上移除她的夜晚标记」（百科《女裁缝》· 运作方式 6；
         // 平台口径 R-0040；与哲学家的「机会已浪费」同族，R-0036 第 2 条）。
+        // 例外（咖啡师「行动两次」，R-0052 第 3 条）：窗口**确认生效**且总使用次数还没到 2 时仍唤醒她。
         if (character == SeamstressNightAction.Seamstress
-            && request.State.AbilityUses.WasUsed(actor.Seat, SeamstressNightAction.InfoAbility))
+            && !CanUseLimitedAbility(request.State, actor.Seat, SeamstressNightAction.InfoAbility))
         {
             return (NoActionSlot(
                 tag,
                 actor.Seat,
                 character,
-                "女裁缝的「每局限一次」已经用掉：本局不再被唤醒（百科《女裁缝》· 运作方式 6；R-0040）"), null);
+                "女裁缝的「每局限一次」已经用满（两次）：本局不再被唤醒（百科《女裁缝》· 运作方式 6；"
+                    + "R-0040；咖啡师窗口把上限放宽到 2，R-0052 第 3 条）"), null);
         }
 
         if (character == PhilosopherAbility.Character
@@ -265,11 +267,18 @@ public static class NightPlanBuilder
             if (request.State.AbilityUses.WasUsed(actor, PhilosopherAbility.GrantAbility))
             {
                 // 「限次能力在醉酒 / 中毒期间被使用 = 已浪费」：不能再获得能力（百科《重要细节》三-3）。
+                // 咖啡师「行动两次」窗口内的「二次获得」语义未定稿（R-0053 Open）：显式说明、
+                // 不重开本格——绝不静默给出第二条授予。
+                var boostNote = request.State.WindowOn(actor, EffectWindowKind.SecondAction) == true
+                    ? "；他此刻处于咖啡师「行动两次」窗口内，但「获得能力」的二次获得语义未定稿"
+                        + "（rulings.md R-0053 Open）：本次不重开"
+                    : string.Empty;
                 return NoActionSlot(
                     tag,
                     actor,
                     PhilosopherAbility.Character,
-                    "哲学家的「每局限一次」已经用掉（当时能力未生效，机会被浪费）：本局不能再获得能力");
+                    "哲学家的「每局限一次」已经用掉（当时能力未生效，机会被浪费）：本局不能再获得能力"
+                        + boostNote);
             }
 
             return null;
@@ -389,4 +398,16 @@ public static class NightPlanBuilder
 
         return (StepSlot.Trigger(new StepSlotId(tag), character), null);
     }
+
+    /// <summary>
+    /// 「每局限一次」的能力此刻还能不能用：没用过 → 能；已经用过 → 只有咖啡师「行动两次」窗口
+    /// **确认生效**且总次数还没到 2 时才能再用（R-0052 第 3 条）。
+    /// </summary>
+    /// <remarks>
+    /// 窗口生效与否判定不了时按"不能"处理：不猜、也不多给一次机会（与 D-0015 的保守姿态一致）。
+    /// </remarks>
+    private static bool CanUseLimitedAbility(GameState state, SeatId actor, AbilityId ability) =>
+        !state.AbilityUses.WasUsed(actor, ability)
+        || (state.WindowOn(actor, EffectWindowKind.SecondAction) == true
+            && state.AbilityUses.UseCount(actor, ability) < 2);
 }

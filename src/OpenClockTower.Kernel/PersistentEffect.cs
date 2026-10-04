@@ -63,6 +63,22 @@ public sealed record PersistentEffect
     public EffectDimension? Dimension { get; init; }
 
     /// <summary>
+    /// 这条效果在目标身上开启的「窗口」（咖啡师的效果 1 / 2）；null = 普通效果。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 与 <see cref="Dimension"/> 的分工：那个声明「压制目标的哪一格维度」，这个声明「改变目标身上
+    /// 哪一种机制的结算方式」——两者可以各自独立，<see cref="EffectWindowKind"/> 族自己**不**压制维度。
+    /// </para>
+    /// <para>
+    /// 窗口自身的生效判定仍走来源状态（R-0012 的挂起口径，见 <see cref="GameState.IsOperative(PersistentEffect)"/>）；
+    /// 目标侧的消费方按具体窗口分类取值：<see cref="GameState.WindowOn"/>（生效 / 判定不了），
+    /// 口径见 <c>docs/standard/rulings.md</c> R-0047 与 R-0052。
+    /// </para>
+    /// </remarks>
+    public EffectWindowKind? Window { get; init; }
+
+    /// <summary>
     /// 生效判定是否与来源状态无关：true = 只看「是否已终止」，不看来源的生死 / 醉酒 / 中毒。
     /// </summary>
     /// <remarks>

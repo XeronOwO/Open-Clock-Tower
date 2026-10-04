@@ -81,7 +81,7 @@ internal sealed class DreamerNightAction : INightAction, IAbilityResolution
             };
         }
 
-        if (VortoxInterference.IsActive(context.State))
+        if (VortoxInterference.IsActiveFor(context.State, context.Actor))
         {
             // 涡流在场：这条信息必须为假——平台不生成也不校验真假（D-0002 / R-0028），
             // 因此退回到"说书人自由填写"，而不是继续按"一真一假"的候选去拼（那会拼出一条真信息）。
@@ -139,6 +139,7 @@ internal sealed class DreamerNightAction : INightAction, IAbilityResolution
                 MayBeFalse = true,
                 Note = VortoxInterference.NoteFor(
                     context.State,
+                    context.Actor,
                     context.Outcome.Effective
                         ? "筑梦师的信息按其能力设定本来就是一真一假；平台不判定哪一枚为真（D-0002）"
                         : context.Outcome.Note),
@@ -158,7 +159,7 @@ internal sealed class DreamerNightAction : INightAction, IAbilityResolution
             return context.Decision;
         }
 
-        if (VortoxInterference.IsActive(context.State))
+        if (VortoxInterference.IsActiveFor(context.State, context.Actor))
         {
             if (string.IsNullOrWhiteSpace(context.Decision))
             {

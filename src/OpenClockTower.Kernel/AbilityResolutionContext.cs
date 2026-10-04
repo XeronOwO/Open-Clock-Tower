@@ -66,6 +66,24 @@ public sealed record AbilityResolutionContext
     public int SlotIndex { get; init; }
 
     /// <summary>
+    /// 本槽位的进入遍次：1 = 首次；大于 1 = 同格重进的后续遍次（咖啡师「行动两次」，R-0052 第 2 条）。
+    /// </summary>
+    /// <remarks>
+    /// 契约自己派生的稳定标识（效果 / 疯狂要求 / 配对事实）必须带遍次，否则同一槽位的第二次结算
+    /// 会产出与第一次同标识的效果，被折叠层按"重复施加"显式拒绝。推荐直接用 <see cref="SlotKey"/>。
+    /// </remarks>
+    public int SlotPass { get; init; } = 1;
+
+    /// <summary>
+    /// 本槽位的稳定键：<c>{计划标签}:{槽位标识}</c>；重进的遍次（大于 1）追加 <c>#{遍次}</c>。
+    /// </summary>
+    /// <remarks>
+    /// 操作请求标识、裁定点标识与效果 / 要求标识都从它派生：同一槽位的两次结算各自唯一，
+    /// 重放与终止按同一份标识认人（R-0052 第 2 条）。
+    /// </remarks>
+    public string SlotKey => SlotPass <= 1 ? $"{PlanLabel}:{SlotId}" : $"{PlanLabel}:{SlotId}#{SlotPass}";
+
+    /// <summary>
     /// 今夜是否处于麻脸巫婆的死亡裁量窗口（创造了恶魔 → 当晚死亡由说书人决定）。
     /// </summary>
     /// <remarks>

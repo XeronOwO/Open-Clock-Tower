@@ -48,7 +48,7 @@ internal sealed class MathematicianNightAction : INightAction, IAbilityResolutio
             Context = "数学家获得信息：说书人给出「上一个黎明到此刻有多少名玩家的能力未正常生效」"
                 + "（按玩家去重，不含数学家本人；百科《数学家》· 2026-10-01 抓取 · 角色能力 / 角色简介）。"
                 + $"按失效账本推演：{count}。"
-                + (VortoxInterference.IsActive(context.State)
+                + (VortoxInterference.IsActiveFor(context.State, context.Actor)
                     ? "涡流在场：这条信息必须为假（R-0028）——给出与推演不同的数字。"
                     : string.Empty),
             Options = [],
@@ -77,9 +77,10 @@ internal sealed class MathematicianNightAction : INightAction, IAbilityResolutio
                 Recipient = context.Actor,
                 Ability = Ability,
                 Content = context.Decision,
-                MayBeFalse = !context.Outcome.Effective || VortoxInterference.IsActive(context.State),
+                MayBeFalse = !context.Outcome.Effective || VortoxInterference.IsActiveFor(context.State, context.Actor),
                 Note = VortoxInterference.NoteFor(
                     context.State,
+                    context.Actor,
                     context.Outcome.Effective
                         ? $"平台按失效账本推演：{count}"
                             + "（R-0004：上个黎明起、按玩家去重、不含数学家本人）；数字由说书人给出"

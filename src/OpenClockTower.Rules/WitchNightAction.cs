@@ -98,7 +98,7 @@ internal sealed class WitchNightAction : INightAction, IAbilityResolution
             {
                 Effect = new PersistentEffect
                 {
-                    Id = WitchAbility.CurseEffectId(context.PlanLabel, context.SlotId),
+                    Id = WitchAbility.CurseEffectId(context.SlotKey),
                     Source = context.Actor,
                     Ability = WitchAbility.CurseAbility,
                     Target = target,

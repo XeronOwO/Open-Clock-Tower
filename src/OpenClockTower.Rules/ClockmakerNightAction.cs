@@ -41,7 +41,7 @@ internal sealed class ClockmakerNightAction : INightAction, IAbilityResolution
         return new ChoicePrompt
         {
             Context = "钟表匠获得信息：说书人给出本夜的最小距离（恶魔与最近爪牙之间的人数 + 1）"
-                + (VortoxInterference.IsActive(context.State)
+                + (VortoxInterference.IsActiveFor(context.State, context.Actor)
                     ? "。涡流在场：这条信息必须为假（R-0028）"
                     : string.Empty),
             Options = [],
@@ -69,9 +69,10 @@ internal sealed class ClockmakerNightAction : INightAction, IAbilityResolution
                 Recipient = context.Actor,
                 Ability = Ability,
                 Content = context.Decision,
-                MayBeFalse = !context.Outcome.Effective || VortoxInterference.IsActive(context.State),
+                MayBeFalse = !context.Outcome.Effective || VortoxInterference.IsActiveFor(context.State, context.Actor),
                 Note = VortoxInterference.NoteFor(
                     context.State,
+                    context.Actor,
                     context.Outcome.Effective
                         ? "说书人按场上情况算出的实时信息"
                         : context.Outcome.Note),

@@ -46,6 +46,10 @@ public static class NightOrderTable
         Array.AsReadOnly<NightOrderEntry>(
             [
                 Step(NightOrderEntryKind.Dusk),
+
+                // 旅行者黄昏行动（D5 / R-0052）：咖啡师首个夜晚也行动，插在 Dusk 步之后。
+                // 《夜晚行动顺序一览》· 2026-10-04 抓取 · 首个夜晚黄昏行括号：官员、窃贼、学徒、咖啡师。
+                Action("barista"),
                 Step(NightOrderEntryKind.MinionInfo),
                 Step(NightOrderEntryKind.DemonInfo),
                 Action("philosopher"),
@@ -65,8 +69,10 @@ public static class NightOrderTable
             [
                 Step(NightOrderEntryKind.Dusk),
 
-                // 旅行者黄昏行动（D5 / R-0051）：流莺只在其他夜晚行动，插在 Dusk 步之后。
-                // 咖啡师 / 集骨者按 D5 顺序后续落地（《夜晚行动顺序一览》· 2026-10-04 抓取 · 其他夜晚）。
+                // 旅行者黄昏行动（D5 / R-0051 / R-0052）：其他夜晚的顺序是
+                // 咖啡师 → 流莺 → 集骨者（《夜晚行动顺序一览》· 2026-10-04 抓取 · 其他夜晚黄昏行括号：
+                // 官员、窃贼、学徒、咖啡师、流莺、集骨者、公爵夫人；集骨者属 D5 后续批次）。
+                Action("barista"),
                 Action("harlot"),
                 Action("philosopher"),
                 Action("snake-charmer"),
@@ -94,6 +100,9 @@ public static class NightOrderTable
         Array.AsReadOnly<NightOrderEntry>(
             [
                 Step(NightOrderEntryKind.Dusk),
+
+                // 旅行者黄昏行动（D5 / R-0052）：与 Original 口径同改（推荐口径的首个夜晚黄昏行同样含咖啡师）。
+                Action("barista"),
                 Action("philosopher"),
                 Step(NightOrderEntryKind.MinionInfo),
                 Step(NightOrderEntryKind.DemonInfo),
@@ -113,7 +122,8 @@ public static class NightOrderTable
             [
                 Step(NightOrderEntryKind.Dusk),
 
-                // 旅行者黄昏行动（D5 / R-0051）：与 Original 口径同改（两口径同改见票据 D5）。
+                // 旅行者黄昏行动（D5 / R-0051 / R-0052）：与 Original 口径同改（两口径同改见票据 D5）。
+                Action("barista"),
                 Action("harlot"),
                 Action("philosopher"),
                 Action("pit-hag"),

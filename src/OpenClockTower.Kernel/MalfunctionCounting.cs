@@ -6,9 +6,11 @@ namespace OpenClockTower.Kernel;
 /// <remarks>
 /// 依据 <c>docs/standard/rulings.md</c> R-0004：
 /// **计入**中毒 / 醉酒 / 涡流，以及原因未定（<see cref="MalfunctionKind.Open"/>——它只表示原因待核对，
-/// 不改变"确实失效"这一事实）；**不计入**相克规则（<see cref="MalfunctionKind.Jinx"/>）与
-/// 能力自身设定（<see cref="MalfunctionKind.AbilityDesign"/>）；咖啡师与说书人裁定两条路径 R-0004 尚未核对，
-/// 在补齐前**不计入**，也不得由引擎自行写这两类记录。
+/// 不改变"确实失效"这一事实）；**不计入**相克规则（<see cref="MalfunctionKind.Jinx"/>）、
+/// 能力自身设定（<see cref="MalfunctionKind.AbilityDesign"/>）与咖啡师（<see cref="MalfunctionKind.Barista"/>——
+/// R-0047 第 5 条已收口：两个效果都是"让能力更有效"，引擎不写该类记录）；说书人裁定
+/// （<see cref="MalfunctionKind.StorytellerRuling"/>）**仍待核对**（当前没有实现路径），在补齐前不计入、
+/// 也不得由引擎自行写。
 /// 数字按**玩家**去重、窗口为「上一个黎明到数学家被唤醒」，且数学家自身不计——前两条需要失效记录带白天号、
 /// 第三条要在取值时排除数学家席位，随数学家角色实现（另票）。本类只回答"这个分类算不算"。
 /// </remarks>

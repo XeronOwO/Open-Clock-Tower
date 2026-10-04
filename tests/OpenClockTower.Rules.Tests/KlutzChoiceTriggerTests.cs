@@ -173,6 +173,106 @@ public sealed class KlutzChoiceTriggerTests
         Assert.Contains("作废", skipped.Reason, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// 咖啡师「行动两次」窗口生效：呆瓜必须选**两次**——第一次作答后紧接着开第二条请求（标识带 #2），
+    /// 第二次答完不再开。依据：百科《咖啡师》· 2026-10-04 抓取 · 范例「呆瓜需要行动两次。他死亡了，
+    /// 且必须要选择两名玩家，只要其中存在邪恶玩家，邪恶阵营获胜」；平台口径 R-0052 第 3 条。
+    /// </summary>
+    [Fact]
+    public void BoostedKlutz_OpensSecondChoice_ThenStops()
+    {
+        var state = Boosted(
+            State(
+                (1, "klutz", LifeState.Dead, DrunkState.Sober),
+                (2, "clockmaker", LifeState.Alive, DrunkState.Sober),
+                (3, "barista", LifeState.Alive, DrunkState.Sober)),
+            klutz: 1);
+
+        var first = Assert.IsType<OperationRequestIssuedEvent>(Assert.Single(
+            Trigger.Evaluate(Context(state, events: [new DayStartedEvent { DayNumber = 1 }]))));
+        Assert.Equal("klutz:1", first.Request.Id.Value);
+        Assert.Contains("行动两次", first.Request.Prompt.Context, StringComparison.Ordinal);
+
+        var answered = Trigger.Evaluate(Context(
+            state,
+            events:
+            [
+                new OperationRequestAnsweredEvent
+                {
+                    RequestId = first.Request.Id,
+                    Answer = new OperationRequestAnswer { OptionValue = "seat:2", Source = ResponseSource.Player },
+                },
+            ]));
+
+        var made = Assert.IsType<KlutzChoiceMadeEvent>(answered.Single(gameEvent => gameEvent is KlutzChoiceMadeEvent));
+        Assert.Equal(new SeatId(2), made.Target);
+        var second = Assert.IsType<OperationRequestIssuedEvent>(
+            answered.Single(gameEvent => gameEvent is OperationRequestIssuedEvent));
+        Assert.Equal("klutz:1#2", second.Request.Id.Value);
+
+        // 第二次作答：记第二条；到顶后不再开第三条。
+        var done = Trigger.Evaluate(Context(
+            state,
+            machine: Machine(new KlutzChoiceRecord
+            {
+                Klutz = new SeatId(1),
+                Target = new SeatId(2),
+                Detail = "第一次",
+            }),
+            events:
+            [
+                new OperationRequestAnsweredEvent
+                {
+                    RequestId = second.Request.Id,
+                    Answer = new OperationRequestAnswer { OptionValue = "seat:2", Source = ResponseSource.Player },
+                },
+            ]));
+
+        Assert.IsType<KlutzChoiceMadeEvent>(Assert.Single(done));
+    }
+
+    /// <summary>没有窗口：第一次作答后不再开第二条（保持 R-0027 的单次选择）。</summary>
+    [Fact]
+    public void UnboostedKlutz_OpensOnlyOneChoice()
+    {
+        var state = State(
+            (1, "klutz", LifeState.Dead, DrunkState.Sober),
+            (2, "clockmaker", LifeState.Alive, DrunkState.Sober));
+        var first = Assert.IsType<OperationRequestIssuedEvent>(Assert.Single(
+            Trigger.Evaluate(Context(state, events: [new DayStartedEvent { DayNumber = 1 }]))));
+
+        var answered = Trigger.Evaluate(Context(
+            state,
+            events:
+            [
+                new OperationRequestAnsweredEvent
+                {
+                    RequestId = first.Request.Id,
+                    Answer = new OperationRequestAnswer { OptionValue = "seat:2", Source = ResponseSource.Player },
+                },
+            ]));
+
+        Assert.Single(answered.OfType<KlutzChoiceMadeEvent>());
+        Assert.Empty(answered.OfType<OperationRequestIssuedEvent>());
+    }
+
+    private static GameState Boosted(GameState state, int klutz) =>
+        state with
+        {
+            PersistentEffects =
+            [
+                new PersistentEffect
+                {
+                    Id = new EffectId("test:barista-twice"),
+                    Source = new SeatId(3),
+                    Ability = new AbilityId("barista"),
+                    Target = new SeatId(klutz),
+                    SourceCharacter = new CharacterId("barista"),
+                    Window = EffectWindowKind.SecondAction,
+                },
+            ],
+        };
+
     private static OperationRequest OpenRequest(GameState state)
     {
         var produced = Trigger.Evaluate(Context(state, events: [new DayStartedEvent { DayNumber = 1 }]));

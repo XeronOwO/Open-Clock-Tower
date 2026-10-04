@@ -47,7 +47,7 @@ internal sealed class TownCrierNightAction : INightAction, IAbilityResolution
                 + "（百科《城镇公告员》· 2026-10-01 抓取 · 角色简介）。"
                 + $"按白天账推演：{RetrospectiveReadings.Describe(reading)}"
                 + (reading is null ? "——记录读不出来，请说书人按现场判断。" : "。")
-                + (VortoxInterference.IsActive(context.State)
+                + (VortoxInterference.IsActiveFor(context.State, context.Actor)
                     ? "涡流在场：这条信息必须为假（R-0028）——给出与推演相反的说法。"
                     : string.Empty),
             Options = [],
@@ -76,9 +76,10 @@ internal sealed class TownCrierNightAction : INightAction, IAbilityResolution
                 Recipient = context.Actor,
                 Ability = Ability,
                 Content = context.Decision,
-                MayBeFalse = !context.Outcome.Effective || VortoxInterference.IsActive(context.State),
+                MayBeFalse = !context.Outcome.Effective || VortoxInterference.IsActiveFor(context.State, context.Actor),
                 Note = VortoxInterference.NoteFor(
                     context.State,
+                    context.Actor,
                     context.Outcome.Effective
                         ? $"平台按白天账推演：{RetrospectiveReadings.Describe(reading)}"
                             + "（R-0037：按提名动作的角色快照）；信息由说书人给出"

@@ -294,7 +294,7 @@ internal sealed class HarlotNightAction : INightAction, IAbilityResolution
     /// </summary>
     private static IReadOnlyList<GameEvent> Death(AbilityResolutionContext context, SeatId seat, string reason)
     {
-        var effectId = new EffectId($"{context.PlanLabel}:{context.SlotId}:harlot-death:{seat.Value}");
+        var effectId = new EffectId($"{context.SlotKey}:harlot-death:{seat.Value}");
         return
         [
             new InstantaneousEffectAppliedEvent

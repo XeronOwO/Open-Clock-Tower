@@ -9,17 +9,17 @@ namespace OpenClockTower.Rules.Tests;
 /// </summary>
 public sealed class NightOrderVariantDiffTests
 {
-    /// <summary>首夜：两版均为 13 条，唯一差异是哲学家与信息环节的先后。</summary>
+    /// <summary>首夜：两版均为 14 条，唯一差异是哲学家与信息环节的先后。</summary>
     [Fact]
     public void FirstNight_DiffersOnlyInPhilosopherVersusInfoSectionOrder()
     {
         var original = NightOrderTable.For(GamePhase.FirstNight, NightOrderVariant.Original);
         var recommended = NightOrderTable.For(GamePhase.FirstNight, NightOrderVariant.Recommended);
 
-        Assert.Equal(13, original.Count);
-        Assert.Equal(13, recommended.Count);
-        Assert.Equal(3, IndexOf(original, "philosopher"));
-        Assert.Equal(1, IndexOf(recommended, "philosopher"));
+        Assert.Equal(14, original.Count);
+        Assert.Equal(14, recommended.Count);
+        Assert.Equal(4, IndexOf(original, "philosopher"));
+        Assert.Equal(2, IndexOf(recommended, "philosopher"));
 
         Assert.Equal(
             NightOrderText.DescribeAll(WithoutCharacters(original, "philosopher")),
@@ -36,12 +36,12 @@ public sealed class NightOrderVariantDiffTests
         var original = NightOrderTable.For(GamePhase.OtherNight, NightOrderVariant.Original);
         var recommended = NightOrderTable.For(GamePhase.OtherNight, NightOrderVariant.Recommended);
 
-        Assert.Equal(22, original.Count);
-        Assert.Equal(23, recommended.Count);
-        Assert.Equal(6, IndexOf(original, "pit-hag"));
-        Assert.Equal(3, IndexOf(recommended, "pit-hag"));
-        Assert.Equal(8, IndexOf(original, "vigormortis"));
-        Assert.Equal(10, IndexOf(recommended, "vigormortis"));
+        Assert.Equal(23, original.Count);
+        Assert.Equal(24, recommended.Count);
+        Assert.Equal(7, IndexOf(original, "pit-hag"));
+        Assert.Equal(4, IndexOf(recommended, "pit-hag"));
+        Assert.Equal(9, IndexOf(original, "vigormortis"));
+        Assert.Equal(11, IndexOf(recommended, "vigormortis"));
 
         Assert.Equal(
             NightOrderText.DescribeAll(
@@ -62,9 +62,9 @@ public sealed class NightOrderVariantDiffTests
             .Select((entry, index) => (entry, index))
             .Single(item => item.entry.Kind == NightOrderEntryKind.InformationActionsBegin);
 
-        Assert.Equal(14, marker.index);
-        Assert.Equal(13, IndexOf(recommended, "sage"));
-        Assert.Equal(15, IndexOf(recommended, "dreamer"));
+        Assert.Equal(15, marker.index);
+        Assert.Equal(14, IndexOf(recommended, "sage"));
+        Assert.Equal(16, IndexOf(recommended, "dreamer"));
     }
 
     private static int IndexOf(IReadOnlyList<NightOrderEntry> entries, string character)

@@ -90,6 +90,25 @@ public sealed class ArtistQuestionMachineTests
         Assert.Equal("artist.already_used", outcome.RejectionCode);
     }
 
+    /// <summary>
+    /// 咖啡师「行动两次」（R-0052 第 3 条）：艺术家用过一次后还能再问一次（总次数 &lt; 2 且窗口确认生效）；
+    /// 用满两次之后照样拒绝——窗口只是把上限放宽到 2，不是"想再问几次都行"。
+    /// </summary>
+    [Fact]
+    public void Ask_BoostedArtist_AllowsSecondQuestion_ThenStops()
+    {
+        var context = Context(used: true, boosted: true);
+
+        var second = Ask(Day(), context);
+        Assert.Equal(StepMachineOutcomeKind.Applied, second.Kind);
+
+        var useEvent = Assert.Single(Resolve(second.State, context, "yes").Events.OfType<AbilityResolvedEvent>());
+        var usedTwice = context.WithState(GameStateMachine.Apply(context.State, useEvent));
+
+        var third = Ask(Day(), usedTwice);
+        Assert.Equal("artist.already_used", third.RejectionCode);
+    }
+
     /// <summary>空问题 / 超长问题 / 控制字符显式拒绝；问题文本先 trim。</summary>
     [Fact]
     public void Ask_RejectsEmptyAndTooLong()
@@ -302,8 +321,11 @@ public sealed class ArtistQuestionMachineTests
             },
             dayNumber: 1).State;
 
-    /// <summary>结算上下文：1 号是指定角色；<paramref name="used"/> 预置一条使用记录。</summary>
-    private static SettlementContext Context(string character = "artist", bool used = false)
+    /// <summary>
+    /// 结算上下文：1 号是指定角色；<paramref name="used"/> 预置一条使用记录；
+    /// <paramref name="boosted"/> 预置咖啡师「行动两次」窗口（来源 2 号，R-0052 第 3 条）。
+    /// </summary>
+    private static SettlementContext Context(string character = "artist", bool used = false, bool boosted = false)
     {
         var events = new List<GameEvent>
         {
@@ -323,6 +345,31 @@ public sealed class ArtistQuestionMachineTests
                 Actor = Artist,
                 Ability = new AbilityId("artist"),
                 Effective = true,
+            });
+        }
+
+        if (boosted)
+        {
+            events.Add(new SeatStateChangedEvent
+            {
+                Seat = new SeatId(2),
+                Life = LifeState.Alive,
+                Drunk = DrunkState.Sober,
+                Poison = PoisonState.Healthy,
+                Character = new CharacterId("barista"),
+                Reason = "test.setup",
+            });
+            events.Add(new PersistentEffectAppliedEvent
+            {
+                Effect = new PersistentEffect
+                {
+                    Id = new EffectId("test:barista-twice"),
+                    Source = new SeatId(2),
+                    Ability = new AbilityId("barista"),
+                    Target = Artist,
+                    SourceCharacter = new CharacterId("barista"),
+                    Window = EffectWindowKind.SecondAction,
+                },
             });
         }
 

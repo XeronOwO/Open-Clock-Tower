@@ -17,8 +17,9 @@
 黄昏行的旅行者清单（D5 / R-0051）：《夜晚行动顺序一览》的黄昏行在括号里列了玩家角色
 （首个夜晚：官员、窃贼、学徒、咖啡师；其他夜晚：……咖啡师、流莺、集骨者、公爵夫人）。
 本脚本按**术语表 §9** 的旅行者映射与该行清单对齐，但只核对**已经注册夜间行动契约**
-（src/OpenClockTower.Rules/NightActions.cs）的旅行者——D5 未落地的角色尚不在顺序表上，
-属票据 docs/backlog/in-progress/traveller-and-exile.md 的进度，不在本脚本的失败面。
+（src/OpenClockTower.Rules/NightActions.cs）的旅行者——已注册的（2026-10-04：咖啡师 / 流莺）
+进期望序列；D5 未落地的角色（集骨者）尚不在顺序表上，属票据
+docs/backlog/in-progress/traveller-and-exile.md 的进度，不在本脚本的失败面（落地后自动纳入）。
 《梦殒春宵》页的黄昏行不列旅行者（只写「部分旅行者和传奇角色会在这时行动」），
 因此 Original 口径的旅行者序列取推荐口径的同一清单（两口径同改，票据 D5）。
 

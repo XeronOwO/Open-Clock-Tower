@@ -268,7 +268,7 @@ public sealed class NightBuildHostTests
             Wait);
 
         Assert.NotNull(view);
-        Assert.Equal(13, view!.SlotCount); // 首夜原本口径的槽位数
+        Assert.Equal(14, view!.SlotCount); // 首夜原本口径的槽位数（含 D5 的咖啡师黄昏槽）
         Assert.Equal("dusk", view.CurrentSlotId);
         var seat = Assert.Single(view.Seats, entry => entry.Seat == 1);
         Assert.Contains(seat.Facts, fact => fact.Dimension == "Character" && fact.Value == "dreamer");

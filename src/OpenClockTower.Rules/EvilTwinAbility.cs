@@ -18,7 +18,9 @@ internal static class EvilTwinAbility
     /// <summary>配对标记的能力标识（一条 `Dimension = null` 的持续型效果，R-0025 第 1 条）。</summary>
     internal static readonly AbilityId PairAbility = new("evil-twin.pair");
 
-    /// <summary>配对效果的稳定标识：`{PlanLabel}:{SlotId}:pair`（重放与终止按它认人）。</summary>
-    internal static EffectId PairEffectId(string planLabel, StepSlotId slotId) =>
-        new($"{planLabel}:{slotId}:pair");
+    /// <summary>
+    /// 配对效果的稳定标识：<c>{槽位稳定键}:pair</c>（重放的遍次带 <c>#N</c> 时同样带进键里；终止按它认人）。
+    /// </summary>
+    internal static EffectId PairEffectId(string slotKey) =>
+        new($"{slotKey}:pair");
 }

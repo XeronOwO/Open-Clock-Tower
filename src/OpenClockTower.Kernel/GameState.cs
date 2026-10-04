@@ -66,10 +66,48 @@ public sealed record GameState
 
     /// <summary>
     /// 作用在某席位上、当前**确实生效**的持续型效果。
-    /// 来源状态还没观测齐的效果不进结果——无法判定不等于生效，见 <see cref="IsOperative"/>。
+    /// 来源状态还没观测齐的效果不进结果——无法判定不等于生效，见 <see cref="IsOperative(PersistentEffect)"/>。
     /// </summary>
     public IReadOnlyList<PersistentEffect> OperativeEffectsOn(SeatId target) =>
         [.. LiveEffectsOn(target).Where(effect => IsOperative(effect) == true)];
+
+    /// <summary>
+    /// 某个席位上是否有一个**生效中**的指定窗口（咖啡师的效果 1 / 2，R-0047 / R-0052）。
+    /// </summary>
+    /// <returns>
+    /// true = 至少一条窗口效果生效；false = 没有窗口，或窗口全部确定不生效；
+    /// null = 有窗口，但生效与否判定不了（来源的生死 / 醉酒 / 中毒还没观测齐）——**不猜**。
+    /// </returns>
+    /// <remarks>
+    /// 多条窗口并存（同一夜重复施加 / 不同来源）时，只要有一条判定为生效即为生效：窗口是
+    /// 「能力存续」的表达，不因另一条窗口判定不了而被拖成"不知道"（R-0052 第 1 条）。
+    /// </remarks>
+    public bool? WindowOn(SeatId target, EffectWindowKind kind)
+    {
+        var unknown = false;
+        foreach (var effect in LiveEffectsOn(target))
+        {
+            // 只认「纯窗口」效果：窗口与维度压制是两件事，本族自己不带 Dimension
+            // （同时带两者的混合效果不是本模型的表达；把它排除在外也避免了生效判定的自指）。
+            if (effect.Window != kind || effect.Dimension is not null)
+            {
+                continue;
+            }
+
+            switch (IsOperative(effect))
+            {
+                case true:
+                    return true;
+                case null:
+                    unknown = true;
+                    break;
+                default:
+                    break;
+            }
+        }
+
+        return unknown ? null : false;
+    }
 
     /// <summary>
     /// 一条持续型效果当前是否生效。
@@ -79,6 +117,22 @@ public sealed record GameState
     public bool? IsOperative(PersistentEffect effect)
     {
         ArgumentNullException.ThrowIfNull(effect);
+
+        // 目标免疫（咖啡师效果 1，R-0047 第 1 条）：窗口存续期间，目标身上**压制维度**的效果
+        // 一律挂起——标记照记、暂不生效；窗口结束且效果仍在时按同一 EffectId 恢复（第 3 条）。
+        // 排在来源判定之前：窗口判定不了时同样返回 null，不猜。
+        if (effect.Dimension is not null)
+        {
+            switch (WindowOn(effect.Target, EffectWindowKind.AfflictionImmunity))
+            {
+                case true:
+                    return false;
+                case null:
+                    return null;
+                default:
+                    break;
+            }
+        }
 
         // 与来源状态无关的效果（R-0031）：只看终止与否——来源维度没观测齐也不影响这条判定。
         if (effect.SourceStateIndependent)

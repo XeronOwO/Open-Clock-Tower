@@ -24,6 +24,16 @@ public sealed record AbilityUseLedger
     public bool WasUsed(SeatId seat, AbilityId ability) =>
         Entries.Any(entry => entry.Seat == seat && entry.Ability == ability);
 
+    /// <summary>
+    /// 该席位的该能力**被使用过几次**（无论是否生效）。
+    /// </summary>
+    /// <remarks>
+    /// 「每局限一次」的能力在咖啡师「行动两次」窗口内把上限放宽到 2（R-0052 第 3 条）：
+    /// 判定 = 总次数 &lt; 2，而不是"再给一次机会"的计数。
+    /// </remarks>
+    public int UseCount(SeatId seat, AbilityId ability) =>
+        Entries.Count(entry => entry.Seat == seat && entry.Ability == ability);
+
     /// <summary>该席位的该能力是否**至少正常生效过一次**。</summary>
     public bool WasEffective(SeatId seat, AbilityId ability) =>
         Entries.Any(entry => entry.Seat == seat && entry.Ability == ability && entry.Effective);

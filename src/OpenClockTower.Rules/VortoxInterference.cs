@@ -26,8 +26,24 @@ internal static class VortoxInterference
     }
 
     /// <summary>
-    /// R-0004：本条信息能力是否因涡流留下失效记录——涡流存活且实施者**本人**的角色是镇民时返回
-    /// <see cref="MalfunctionKind.Vortox"/>，否则空列表。
+    /// 这个席位的信息能力此刻是否受涡流约束：涡流在场且该席位**本人**是镇民；
+    /// 但处于咖啡师「清醒且健康」窗口内时不成立——「该玩家一定会获得正确信息，即使涡流在场」
+    /// （百科《咖啡师》· 2026-10-04 抓取 · 角色简介；R-0047 第 4 条）。
+    /// </summary>
+    /// <remarks>
+    /// 免疫窗口是否生效**判定不了**时不开覆盖（按涡流口径照常标「可能为假」）：不猜（D-0015 姿态）。
+    /// </remarks>
+    internal static bool IsActiveFor(GameState state, SeatId actor)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+
+        return IsActive(state)
+            && BaristaAbility.ImmunityWindowOn(state, actor) is not true;
+    }
+
+    /// <summary>
+    /// R-0004：本条信息能力是否因涡流留下失效记录——涡流存活、实施者**本人**的角色是镇民，
+    /// 且实施者不在「清醒且健康」窗口内时返回 <see cref="MalfunctionKind.Vortox"/>，否则空列表。
     /// </summary>
     /// <remarks>
     /// 用 <see cref="AbilityResolutionContext.ActorOwnCharacter"/> 而不是 <c>ActorCharacter</c>：
@@ -37,7 +53,7 @@ internal static class VortoxInterference
     {
         ArgumentNullException.ThrowIfNull(context);
 
-        if (!IsActive(context.State)
+        if (!IsActiveFor(context.State, context.Actor)
             || SectsAndVioletsRoster.TypeOf(context.ActorOwnCharacter) != CharacterType.Townsfolk)
         {
             return [];
@@ -46,12 +62,12 @@ internal static class VortoxInterference
         return [MalfunctionKind.Vortox];
     }
 
-    /// <summary>涡流在场时给信息结果加的说书人说明；不在场返回 null。</summary>
-    internal static string? NoteFor(GameState state, string? fallback)
+    /// <summary>涡流在场时给信息结果加的说书人说明；不在场（或被咖啡师覆盖）返回兜底文案。</summary>
+    internal static string? NoteFor(GameState state, SeatId actor, string? fallback)
     {
         ArgumentNullException.ThrowIfNull(state);
 
-        return IsActive(state)
+        return IsActiveFor(state, actor)
             ? "涡流在场：这条信息必须为假（百科《涡流》· 2026-10-01 抓取 · 运作方式）"
             : fallback;
     }

@@ -23,6 +23,67 @@ internal static class StepSlotEntry
         && state.Quota == SlotQuotaState.Elapsed
         && !state.IsHeld;
 
+    /// <summary>
+    /// 槽位工作完成后的一次推进机会：满足自动推进条件时，「行动两次」窗口生效 → 重进本格
+    /// （第二次结算），否则推进到下一格。两个出口都在本方法里，调用方只管把本批事件交进来。
+    /// </summary>
+    /// <remarks>
+    /// 依据 <c>docs/standard/rulings.md</c> R-0052 第 2 条：咖啡师效果 2 的第二次结算发生在
+    /// **同一槽位的下一次进入**，配额重新起算；请求 / 裁定标识带遍次（<see cref="SlotKeyOf"/>）。
+    /// </remarks>
+    internal static void AutoAdvance(StepMachineState state, SettlementContext context, List<GameEvent> events)
+    {
+        var after = StepMachineFolder.ApplyAll(state, events)
+            ?? throw new InvalidOperationException("事件流损坏：处理输入后丢失步骤机状态");
+        if (!CanAutoAdvance(after))
+        {
+            return;
+        }
+
+        if (SecondActionSettlement.IsDue(after, context, events))
+        {
+            AppendSecondPass(after, context, events);
+            return;
+        }
+
+        AppendAdvance(after, context, events);
+    }
+
+    /// <summary>
+    /// 「行动两次」的第二次结算：重进本格——同一槽位再走一遍进入流程（新请求 / 新裁定点，
+    /// 标识带遍次），配额重新起算，由下一次输入推进。
+    /// </summary>
+    /// <remarks>
+    /// 进入前用**折完本批事件之后的账**再确认一次行动者还站得住：第一遍的效果可能已经换掉他的角色
+    /// （舞蛇人换角）或杀死他，第二遍就不该再唤醒（跳过并记原因，直接推进）——与入槽检查同一把尺子，
+    /// 只是口径更保守（第一遍确实已经落地）。
+    /// </remarks>
+    internal static void AppendSecondPass(StepMachineState state, SettlementContext context, List<GameEvent> events)
+    {
+        var slot = state.CurrentSlot
+            ?? throw new InvalidOperationException("重进槽位失败：计划已走完");
+
+        if (UnavailableReason(SecondActionSettlement.Fold(context.State, events), slot) is { } unavailable)
+        {
+            events.Add(new PromptSkippedEvent
+            {
+                SlotId = slot.Id,
+                Reason = $"第二次结算前的再确认：{unavailable}（咖啡师「行动两次」不重开，R-0052 第 5 条）",
+            });
+            AppendAdvance(state, context, events);
+            return;
+        }
+
+        // 遍次先折进一份临时状态，再交给 Enter 产出进入事件（Enter 自己会追加 SlotEnteredEvent，
+        // 这里不能重复追加）：请求 / 裁定标识要读到"这是第 2 遍"。
+        var entered = StepMachineFolder.Apply(
+            state,
+            new SlotEnteredEvent { SlotIndex = state.SlotIndex, SlotId = slot.Id })
+            ?? throw new InvalidOperationException("事件流损坏：重进槽位后丢失步骤机状态");
+
+        Enter(entered, context.State, context.Seats, context.SlotPrompts, events);
+    }
+
     /// <summary>产出一条自动推进事件；推进后进入新槽位（计划走完则补阶段完成事件）。</summary>
     internal static void AppendAdvance(StepMachineState state, SettlementContext context, List<GameEvent> events)
     {
@@ -347,7 +408,7 @@ internal static class StepSlotEntry
     /// 账里查不到这一席（内核夹具 / 半初始化场景）时返回 null——**判定不了就不改变行为**，
     /// 与「一次只报本次观测到的维度」是同一副保守姿态。
     /// </remarks>
-    private static string? UnavailableReason(GameState ledger, StepSlot slot)
+    internal static string? UnavailableReason(GameState ledger, StepSlot slot)
     {
         var entry = ledger.Seat(slot.Actor!.Value);
         if (entry is null)
@@ -373,10 +434,22 @@ internal static class StepSlotEntry
     private static OperationRequest BuildRequest(StepMachineState state, StepSlot slot) =>
         new()
         {
-            Id = new OperationRequestId($"{state.Plan.Label}:{slot.Id}"),
+            Id = new OperationRequestId(SlotKeyOf(state, slot)),
             Addressee = slot.Actor!.Value,
             Origin = OperationRequestOrigin.ForSlot(slot.Id, state.Plan.Label, state.SlotIndex),
             Prompt = slot.Prompt!,
             Dependencies = slot.Dependencies,
         };
+
+    /// <summary>
+    /// 槽位的稳定键：首遍 <c>{计划标签}:{槽位标识}</c>，重进遍次（大于 1）追加 <c>#{遍次}</c>。
+    /// </summary>
+    /// <remarks>
+    /// 操作请求标识、裁定点标识与契约派生的效果标识都从它派生——同一槽位的两次结算各自唯一，
+    /// 否则第二次会被折叠层按"重复标识"显式拒绝（R-0052 第 2 条）。
+    /// </remarks>
+    internal static string SlotKeyOf(StepMachineState state, StepSlot slot) =>
+        state.SlotPass <= 1
+            ? $"{state.Plan.Label}:{slot.Id}"
+            : $"{state.Plan.Label}:{slot.Id}#{state.SlotPass}";
 }

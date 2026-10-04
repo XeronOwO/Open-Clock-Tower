@@ -247,9 +247,10 @@ StepMachine（步骤机）
 
 | 概念 | 实现（`src/OpenClockTower.Kernel` / `.Application` / `.Server`） |
 |---|---|
-| 同源选择原语 | `ChoicePrompt`；`DecisionPoint`（说书人）与 `OperationRequest`（玩家）是它的两套投影 |
+| 同源选择原语 | `ChoicePrompt`；`DecisionPoint`（说书人）与 `OperationRequest`（玩家）是它的两套投影。**受众由 `ChoicePrompt.Audience` 显式声明**：`Actor`（默认）→ 行动者的操作请求；`Storyteller` → 说书人裁定点，且 `Options` 是说书人的**结构化候选**（首位消费者：咖啡师的「目标 × 效果」原子二选一，R-0052） |
 | 步骤表与槽位 | `StepPlan` / `StepSlot`（`Action` / `Empty` / `Beat` 节拍 / `DawnWait` / `DayWindow` 白天窗口）；空槽位与节拍照样消耗配额，白天窗口不消耗、不自动推进 |
 | 挂起 | `StepMachineState` 的 `PendingRequest` / `AwaitingDecision` / `Block`；裁定挂起带**归属席位**（`AwaitingDecisionSeat`，与裁定点同步置位 / 清空）；请求**没有超时字段**（门禁锁死） |
+| 同格重进（行动两次） | `StepMachineState.SlotPass`（进入遍次）/ `SlotAbilityResolved`（本格确实结算过）由事件流折叠派生；`StepSlotEntry` 重进本格时请求 / 裁定标识带 `#N`，配额重新起算（R-0052） |
 | 推进条件 | `SlotQuotaState`：配额是**最短**时间；自动推进 = 配额走完 **且** 无挂起；强推可越过（D-0014） |
 | 事件与重放 | 50 种 `GameEvent`（覆盖阶段 / 槽位 / 请求 / 裁定 / 阻塞、状态账与效果、白天、胜负、裁决与死亡触发各事件族）；`StepMachine.Handle` 产事件、`StepMachineFolder` 折叠重建；**账事件可先于任何阶段**（开局分配），此时步骤机保持"尚未开始"；重启 = 重放，恢复 = 重放后替换快照 |
 | 开局分配 | `AssignCharactersCommand`：每席一条 `SeatStateChangedEvent`（角色 + 初始生死 = 存活），只允许在首个阶段开始前使用（D-0017 / R-0015） |

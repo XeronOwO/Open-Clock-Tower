@@ -25,6 +25,8 @@ public static class StepMachineStateComparer
         return left.SlotIndex == right.SlotIndex
                && left.Quota == right.Quota
                && left.Control == right.Control
+               && left.SlotPass == right.SlotPass
+               && left.SlotAbilityResolved == right.SlotAbilityResolved
                && PlanEquivalent(left.Plan, right.Plan)
                && RequestEquivalent(left.PendingRequest, right.PendingRequest)
                && DecisionEquivalent(left.AwaitingDecision, right.AwaitingDecision)
@@ -472,6 +474,7 @@ public static class StepMachineStateComparer
 
         if (!string.Equals(left.Context, right.Context, StringComparison.Ordinal)
             || left.OnNoOption != right.OnNoOption
+            || left.Audience != right.Audience
             || left.Options.Count != right.Options.Count
             || left.SecondaryOptions.Count != right.SecondaryOptions.Count)
         {

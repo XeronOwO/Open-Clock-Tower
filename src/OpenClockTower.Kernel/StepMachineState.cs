@@ -19,6 +19,26 @@ public sealed record StepMachineState
     /// <summary>当前槽位的最短配额是否已走完。</summary>
     public required SlotQuotaState Quota { get; init; }
 
+    /// <summary>
+    /// 当前槽位的进入次数：0 = 还没进入；1 = 首次；2 及以上 = 同格重进的后续遍次。
+    /// </summary>
+    /// <remarks>
+    /// 由事件流折叠派生（<see cref="SlotEnteredEvent"/> 加一、推进到下一格清零），不是新的事实来源。
+    /// 操作请求 / 裁定点的稳定标识按它带遍次（<c>…:slot#2</c>），「行动两次」据此只重进一次——
+    /// 口径见 <c>docs/standard/rulings.md</c> R-0052 第 2 条。
+    /// </remarks>
+    public int SlotPass { get; init; }
+
+    /// <summary>
+    /// 当前槽位是否已经产出过能力结算（<see cref="AbilityResolvedEvent"/> 已折入）。
+    /// </summary>
+    /// <remarks>
+    /// 「行动两次」的第二次结算以它为凭据：被跳过 / 被作废 / 被阻塞的格子没有能力可再结算一次，
+    /// 玩家摇头不算使用（<see cref="IAbilityResolution.CountsAsUse"/> 为 false 时不产结算事件）。
+    /// 同样由事件流折叠派生，重放稳定。
+    /// </remarks>
+    public bool SlotAbilityResolved { get; init; }
+
     /// <summary>自动 / 说书人接管。</summary>
     public required ControlMode Control { get; init; }
 

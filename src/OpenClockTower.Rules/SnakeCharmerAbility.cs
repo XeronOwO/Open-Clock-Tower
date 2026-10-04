@@ -26,7 +26,9 @@ internal static class SnakeCharmerAbility
     internal const string SwapReason =
         "舞蛇人与恶魔交换角色与阵营（百科《舞蛇人》· 2026-10-01 抓取 · 运作方式）";
 
-    /// <summary>永久中毒效果的标识：计划 + 槽位唯一（<c>sv:night-2:snake-charmer:poison</c>），重放稳定。</summary>
-    internal static EffectId PoisonEffectId(string planLabel, StepSlotId slotId) =>
-        new($"{planLabel}:{slotId}:poison");
+    /// <summary>
+    /// 永久中毒效果的标识：槽位稳定键（<c>sv:night-2:snake-charmer</c>，重进的遍次带 <c>#N</c>）加后缀，重放稳定。
+    /// </summary>
+    internal static EffectId PoisonEffectId(string slotKey) =>
+        new($"{slotKey}:poison");
 }
