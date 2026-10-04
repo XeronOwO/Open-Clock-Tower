@@ -22,7 +22,8 @@ R-0018 暂取「允许自我提名」，依据是中文百科《提名》没有�
 - R-0018 转 `Decided`，保留现有实现与回归用例
   （`DayMachineTests.Nominate_DeadPlayerCanBeNominated_AndSelfNominationIsAllowed`）；
 - **无需改代码**，故本票进 `resolved/`；
-- 来源与访问日期登记在 `docs/standard/sources.md`（印刷规则书提取文本，2026-10-04 访问；官方原件待回核）；
+- 来源与访问日期登记在 `docs/standard/sources.md`（印刷规则书提取文本，2026-10-04 访问；
+  2026-10-04 需求方定案：不再要求实物复核）；
 - 中文百科 2026-10-04 抓取《提名》页仍无禁止表述，与结论不冲突。
 
 ## 验收矩阵

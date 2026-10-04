@@ -60,8 +60,6 @@ todo/  →  in-progress/  →  review/  →  done/
 
 ### Todo
 
-- [印刷规则书原件回核：R-0005 / R-0012 / R-0013 / R-0018 引文（R-0029 顺带）](todo/rulebook-original-crosscheck.md) — **Medium** — 三条裁定依第三方逐字提取文本收口，官方原件不在手；拿到实物后回核引文
-
 ### In progress
 
 ### Review
@@ -146,6 +144,7 @@ todo/  →  in-progress/  →  review/  →  done/
 
 ### Resolved
 
+- [印刷规则书原件回核：R-0005 / R-0012 / R-0013 / R-0018 引文（R-0029 顺带）](resolved/rulebook-original-crosscheck.md) — 已收口（2026-10-04）— 需求方定：不依赖实物规则书；百科为唯一权威公开来源且持续更新，提取文本保留来源 URL + 哈希；无需改代码
 - [自我提名口径取证](resolved/self-nomination-source.md) — 已收口（2026-10-04）— R-0018 依印刷规则书 FAQ 转 `Decided`（允许自我提名）；现有实现与回归用例保留，无需改代码
 - [R-0041 的 6 人分布行取证](resolved/setup-distribution-6p-source.md) — 已收口（2026-10-04）— 需求方拍板 6 人行按 3 / 1 / 1 / 1 采纳，R-0041 转 `Decided`；实物素材出现时按复核路径可选回填
 - [R-0017 在线投票口径收口](resolved/online-vote-ruling-followup.md) — 已收口（2026-10-04）— 需求方给出目标形态「钟盘投票」；实现改造另立 `done/clock-vote-flow.md`

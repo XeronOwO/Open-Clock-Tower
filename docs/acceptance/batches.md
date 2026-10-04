@@ -732,7 +732,8 @@ Integration 188 · NormativeGates 24）；`dotnet format` 就地通过；`npm ru
   「第十一批」与「验收矩阵」）→ 票据移入 `done/`。
 - 残余（不阻塞判行，随票据保留）：「待保护裁定」无精确投影指示；屠夫额外提名落靶 / 二次处决
   只有内核 + 集成证据；集骨者两条登记边界（R-0054 第 6 / 10 条）；处罚处决未接死亡保护查询
-  （R-0020 路径）；R-0046 / R-0044 §5 待实物回核。
+  （R-0020 路径）；R-0046 / R-0044 §5 待实物回核（后于 2026-10-04 改为「实物素材可选回源、
+  不阻塞」，见 `resolved/rulebook-original-crosscheck.md`）。
 - 本批后 `in-progress/`、`review/` 清空；`todo/` 三张（日期偏移核查 / 夜序默认值对齐 /
   印刷规则书回核）；`done/` 新增 `traveller-and-exile.md`。
 
