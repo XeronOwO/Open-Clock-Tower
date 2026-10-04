@@ -9,7 +9,8 @@
 | `wiki/` | 百科页面的原始 wikitext 快照 | **否**（gitignored） |
 | `rulebook-index.json` | 规则书提取文本索引：来源 URL + 抓取日期 + 字节数 + SHA256 | **是** |
 | `rulebook/` | 印刷规则书逐字提取文本快照（第三方 boardgame-rules 项目产物；官方原件待核） | **否**（gitignored） |
-| `images/` | 本机缓存的图片（**当前不使用**：角色图在运行期热链百科，见 `docs/decisions/active.md` D-0007） | **否**（gitignored） |
+| `source-images-index.json` | 需求方提供的官方素材索引：文件 + 来源 + 字节数 + SHA256 | **是** |
+| `images/` | 本机素材留档（如官方魔典行动顺序图）；角色图仍在运行期热链百科，见 D-0007 | **否**（gitignored） |
 
 ## 为什么正文不提交
 

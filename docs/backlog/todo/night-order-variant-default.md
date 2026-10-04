@@ -1,30 +1,29 @@
-# 夜晚顺序口径默认值统一（引擎默认 Original / 面板默认 Recommended）
+# 夜晚顺序默认值对齐：命令层默认值改为官方魔典顺序（Recommended）
 
 - Status: Todo
-- Priority: Medium
-- Depends on: `docs/standard/rulings.md` R-0014；`docs/backlog/done/settlement-engine.md` 残余事项 2
+- Priority: Low
+- Depends on: `docs/standard/rulings.md` R-0014（已定案：默认 = 官方魔典顺序 = `Recommended` 变体）
 
 ## 要解决的问题
 
-R-0014 第 2 条写「平台默认取 `Original`」，但说书人面板的「口径」下拉初始选中值是
-`Recommended`（`web/src/features/storyteller/OperationsControl.vue`）——说书人直接点「开夜」时
-实际用的是 Recommended，与登记口径不一致。命令层 `StartNightCommand.Variant` 的默认值虽是
-`Original`，但面板总会显式传值，实际默认由 UI 决定。
+R-0014 已定案：平台默认取**官方魔典行动顺序**（= `NightOrderTable.Recommended`；需求方 2026-10-04
+提供魔典表，逐条核对一致）。现状：
 
-这是 2026-10-04 过 R-0014 时发现的、登记在案的不一致；必须有一个方向收口，不能两处各说各话。
+- 说书人面板初始选中 `Recommended`（`web/src/features/storyteller/OperationsControl.vue`）——**已符合**；
+- 命令层 `StartNightCommand.Variant` 的默认值仍是 `Original`——只在无参调用路径（宿主脚本 / 装置 /
+  集成夹具）可见，与定案的默认准则不一致。
+
+本票把命令层默认值对齐到 `Recommended`，消除「文档默认 vs 无参默认」的最后一处偏差。
 
 ## 验收矩阵
 
 | # | 场景 | 期望 | 证据 |
 |---|---|---|---|
-| 1 | 说书人打开面板直接开夜 | 实际生效口径与 R-0014 的「平台默认」表述一致 | 装置断言 + 截图 |
-| 2 | 重启 / 重连后再开面板 | 默认值稳定且与条目一致（若改「记住上次选择」，口径须写进 R-0014） | 装置断言 |
+| 1 | 无参开夜 | 未显式给口径时建出的表是官方魔典顺序（`Recommended`） | 内核用例 / 集成用例 |
+| 2 | 面板开夜 | 行为不变（面板显式传值，默认仍是 `Recommended`） | 前端门禁 + 装置断言 |
+| 3 | 显式选 Original | 仍可按说书人选择走原本顺序，记录进 `StepPlan.Variant` | 既有 `NightOrderVariantDiffTests` |
 
 ## 决定与依据
 
-- 两条收口路线（二选一，开工时定）：
-  - A. 面板默认值改为 `Original`（与 R-0014 第 2 条一致；代价：说书人要手动切到 Recommended）；
-  - B. 保留面板默认 `Recommended`，把 R-0014 第 2 条改成「引擎默认 Original、面板默认 Recommended」
-     并说明理由（推荐顺序本来就是百科给说书人的推荐档）——同时更新「对局前告知玩家」的表述。
-- 依据：`docs/standard/rulings.md` R-0014（2026-10-04 核对段）；百科《夜晚行动顺序一览》开头
-  （说书人可自行选择两套顺序）。
+- 定案与魔典表来源：`docs/standard/rulings.md` R-0014（留档索引 `references/source-images-index.json`，含 SHA256）；
+- 两套口径仍都保留（百科明示说书人可选），本票只动「默认值」这一处。

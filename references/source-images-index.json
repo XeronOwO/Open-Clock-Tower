@@ -1,0 +1,14 @@
+{
+  "note": "需求方提供的官方素材留档。正文（图片）不提交，只提交本索引与哈希，口径同 docs/standard/sources.md §4。",
+  "images": [
+    {
+      "file": "images/official-grimoire-night-order.png",
+      "description": "官方魔典行动顺序表（《梦殒春宵》首个夜晚 / 其他夜晚，含角色颜色条与图标）",
+      "providedBy": "需求方会话附件（2026-10-04）",
+      "fetchedAt": "2026-10-04",
+      "bytes": 262947,
+      "sha256": "39980a08b0c6e7470581c8e13fddc8f7d416062c798235872ffd0f0183a9323b",
+      "usedBy": "docs/standard/rulings.md R-0014（默认口径：官方魔典顺序 = Recommended 变体）"
+    }
+  ]
+}
