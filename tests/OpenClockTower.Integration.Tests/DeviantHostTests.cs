@@ -1,6 +1,8 @@
+using System.Text.Json;
 using OpenClockTower.Application;
 using OpenClockTower.Contracts;
 using OpenClockTower.Kernel;
+using OpenClockTower.Server;
 
 namespace OpenClockTower.Integration.Tests;
 
@@ -110,7 +112,8 @@ public sealed class DeviantHostTests
         var storyteller = session.Storyteller;
         var seat = session.TravellerSeat.Value;
 
-        // 还没有任何流放：不受理（不提前问、不预缓存）。
+        // 还没有任何流放：不受理（不提前问、不预缓存）；说书人投影也没有入口。
+        Assert.Null((await storyteller.InvokeAsync<StorytellerViewDto>("GetStorytellerView")).PendingProtection);
         var tooEarly = await storyteller.InvokeAsync<CommandResultDto>(
             "ResolveDayProtection",
             seat,
@@ -130,8 +133,9 @@ public sealed class DeviantHostTests
             "test-deviant-propose");
         Assert.Equal("Accepted", proposed.Kind);
 
-        // 收票没走完：不受理。
+        // 收票没走完：不受理；说书人投影也没有入口。
         await ExileSweepTestDriver.StartAsync(host, 1, "test-deviant-sweep");
+        Assert.Null((await storyteller.InvokeAsync<StorytellerViewDto>("GetStorytellerView")).PendingProtection);
         var beforeSweep = await storyteller.InvokeAsync<CommandResultDto>(
             "ResolveDayProtection",
             seat,
@@ -145,6 +149,8 @@ public sealed class DeviantHostTests
         var firstVote = await seat1.InvokeAsync<CommandResultDto>("CastExileVote", 1, true, "test-deviant-vote-1");
         Assert.Equal("Accepted", firstVote.Kind);
         await ExileSweepTestDriver.CollectAllAsync(host, 1, Seats(1, 6), "test-deviant-sweep");
+        // 收完但未达线：机器不受理，投影也没有入口（不提前提问）。
+        Assert.Null((await storyteller.InvokeAsync<StorytellerViewDto>("GetStorytellerView")).PendingProtection);
         var notReached = await storyteller.InvokeAsync<CommandResultDto>(
             "ResolveDayProtection",
             seat,
@@ -162,6 +168,43 @@ public sealed class DeviantHostTests
             null,
             "test-deviant-unknown-seat");
         Assert.Equal("Rejected", unknownSeat.Kind);
+    }
+
+    /// <summary>说书人投影的裁定提示只在受理窗口出现：达线未裁定 → NeedsRuling；裁定后消失（R-0048）。</summary>
+    [Fact]
+    public async Task DeviantRuling_PromptAppearsAtTheAcceptanceWindow_ThenDisappears()
+    {
+        await using var host = new TestServerHost(seatCount: 5, autoStartTestNight: false);
+        await using var session = await SetUpDayWithDeviantAsync(host);
+        var storyteller = session.Storyteller;
+
+        await using var seat1 = await host.ConnectSeatAsync(new SeatId(1));
+        await using var seat2 = await host.ConnectSeatAsync(new SeatId(2));
+        await using var seat3 = await host.ConnectSeatAsync(new SeatId(3));
+
+        await ProposeSweepAndVoteAsync(host, session, seat1, seat2, seat3);
+
+        // 达线且未裁定：提示出现，席位 = 流放目标，状态 = NeedsRuling（与机器受理同源）。
+        var pending = (await storyteller.InvokeAsync<StorytellerViewDto>("GetStorytellerView")).PendingProtection;
+        Assert.NotNull(pending);
+        Assert.Equal(session.TravellerSeat.Value, pending.Seat);
+        Assert.Equal(nameof(DeathProtectionOutcome.NeedsRuling), pending.Outcome);
+        Assert.Contains("先说书人裁定", pending.Note, StringComparison.Ordinal);
+
+        // 玩家投影零新增：同一时刻玩家那一份（公开事实）里没有说书人提示字段（D-0012 §4.3）。
+        var playerJson = JsonSerializer.Serialize(
+            ProjectionMapper.ToDto(host.Session.GetPlayerView(new SeatId(1))));
+        Assert.DoesNotContain("PendingProtection", playerJson, StringComparison.OrdinalIgnoreCase);
+
+        // 裁定后入口消失（每席位每天至多一条）。
+        var ruled = await storyteller.InvokeAsync<CommandResultDto>(
+            "ResolveDayProtection",
+            session.TravellerSeat.Value,
+            true,
+            "说书人：今天怪咖很有趣",
+            "test-deviant-prompt-rule");
+        Assert.Equal("Accepted", ruled.Kind);
+        Assert.Null((await storyteller.InvokeAsync<StorytellerViewDto>("GetStorytellerView")).PendingProtection);
     }
 
     [Fact]

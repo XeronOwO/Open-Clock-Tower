@@ -80,15 +80,16 @@ const canStartExileSweep = computed(
 const canResumeExileSweep = computed(() => exileSweep.value?.phase === 'Interrupted')
 const canCountExileVotes = computed(() => exileSweep.value?.phase === 'AwaitingCount')
 
-/** 保护裁定入口：该流放收票走完且今天还没裁定过时给出（最终受理由服务端判，R-0048）。 */
-const protectionSeat = computed(() => openExile.value?.target ?? null)
+/** 死亡保护裁定提示：服务端算好的「这一席此刻真能被裁定」入口（R-0048；不提前提问）。 */
+const pendingProtection = computed(() => props.view.pendingProtection)
+const protectionSeat = computed(() => pendingProtection.value?.seat ?? null)
 const protectionSeatText = computed(() => seatTextOf(protectionSeat.value, props.view.seatNames))
 const canResolveProtection = computed(
-  () =>
-    day.value?.status === 'Open'
-    && exileSweep.value?.phase === 'AwaitingCount'
-    && protectionSeat.value !== null
-    && !(day.value?.protections ?? []).some((entry) => entry.seat === protectionSeat.value),
+  () => day.value?.status === 'Open' && pendingProtection.value?.outcome === 'NeedsRuling',
+)
+/** 判定不了（观测不齐）：给「先补观测」提示，不给裁定按钮（与服务端拒绝口径同源）。 */
+const protectionIndeterminate = computed(
+  () => day.value?.status === 'Open' && pendingProtection.value?.outcome === 'Indeterminate',
 )
 
 /** 屠夫窗口（R-0050）：窗口公开；额外提名由屠夫本人在玩家端发起。 */
@@ -387,7 +388,7 @@ async function beginSweep(): Promise<void> {
         />
         <p v-if="exilePhaseLabel" class="hint" data-testid="st-exile-phase">{{ exilePhaseLabel }}</p>
         <div v-if="canResolveProtection" class="row" data-testid="st-protection">
-          <span class="hint">死亡保护裁定（{{ protectionSeatText }}；达线时才受理，R-0048）：</span>
+          <span class="hint">死亡保护裁定（{{ protectionSeatText }}；达线且待裁定，R-0048）：</span>
           <button
             type="button"
             :disabled="busy"
@@ -405,6 +406,13 @@ async function beginSweep(): Promise<void> {
             不受保护
           </button>
         </div>
+        <p
+          v-if="protectionIndeterminate"
+          class="hint"
+          data-testid="st-protection-indeterminate"
+        >
+          死亡保护无法裁定（{{ protectionSeatText }}）：{{ pendingProtection?.note }}
+        </p>
       </template>
     </div>
     <p v-else class="hint" data-testid="st-day-none">还没有开过白天。</p>

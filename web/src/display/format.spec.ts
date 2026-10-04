@@ -10,6 +10,7 @@ import {
   clockTimeOf,
   displayNameOf,
   normalizeBarberNight,
+  normalizeDayProtectionPrompt,
   normalizeDayView,
   normalizeFangGuInfection,
   normalizeRoomHealth,
@@ -423,5 +424,34 @@ describe('白天流放 / 保护 / 额外提名窗口的归一化（票据 travel
     expect(view?.openExileIndex).toBeNull()
     expect(view?.protections).toEqual([])
     expect(view?.extraNomination).toBeNull()
+  })
+})
+
+describe('死亡保护裁定提示的归一化（R-0048）', () => {
+  it('两态提示按形状归一化；席位 / 结论不合法时退化成"没有入口"', () => {
+    expect(normalizeDayProtectionPrompt(null)).toBeNull()
+    expect(normalizeDayProtectionPrompt('x')).toBeNull()
+    expect(normalizeDayProtectionPrompt({ seat: 2, outcome: 'NeedsRuling' })).toEqual({
+      seat: 2,
+      outcome: 'NeedsRuling',
+      note: '',
+    })
+    expect(
+      normalizeDayProtectionPrompt({ seat: 5, outcome: 'Indeterminate', note: '先补观测' }),
+    ).toEqual({ seat: 5, outcome: 'Indeterminate', note: '先补观测' })
+
+    // 结论不在两态内 / 席位非法：宁可不给入口，也不让说书人对坏数据做裁定。
+    expect(normalizeDayProtectionPrompt({ seat: 2, outcome: 'Protected' })).toBeNull()
+    expect(normalizeDayProtectionPrompt({ seat: 0, outcome: 'NeedsRuling' })).toBeNull()
+    expect(normalizeDayProtectionPrompt({ seat: '2', outcome: 'NeedsRuling' })).toBeNull()
+  })
+
+  it('说书人视图缺省该字段为 null（旧服务端形状不编入口）', () => {
+    expect(normalizeStorytellerView({}).pendingProtection).toBeNull()
+    expect(
+      normalizeStorytellerView({
+        pendingProtection: { seat: 3, outcome: 'NeedsRuling', note: '怪咖还没裁定' },
+      }).pendingProtection,
+    ).toEqual({ seat: 3, outcome: 'NeedsRuling', note: '怪咖还没裁定' })
   })
 })

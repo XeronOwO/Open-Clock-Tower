@@ -96,6 +96,9 @@ public sealed record StorytellerViewDto
     /// <summary>「今晚理发」待处理事实；null = 没有待处理（R-0033）。只说书人可见。</summary>
     public BarberNightDto? BarberNight { get; init; }
 
+    /// <summary>死亡保护裁定提示（R-0048）：只在这一席此刻真能被裁定时非 null。只说书人可见。</summary>
+    public DayProtectionPromptDto? PendingProtection { get; init; }
+
     /// <summary>说书人注记（D-0019）：自由文本提示标记，按发生顺序；玩家投影里没有它。</summary>
     public required SeatAnnotationDto[] Annotations { get; init; }
 

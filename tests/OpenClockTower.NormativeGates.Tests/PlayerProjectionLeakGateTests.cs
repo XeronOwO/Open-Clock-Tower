@@ -53,6 +53,7 @@ public sealed partial class PlayerProjectionLeakGateTests
         "AbilityUseDto.cs",
         "BarberNightDto.cs",
         "CommandResultDto.cs",
+        "DayProtectionPromptDto.cs",
         "DeferredDeathDto.cs",
         "EffectDto.cs",
         "FangGuInfectionDto.cs",

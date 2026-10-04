@@ -119,6 +119,13 @@ public sealed record StorytellerView
     public BarberNight? BarberNight { get; init; }
 
     /// <summary>
+    /// 死亡保护裁定提示（R-0048）：只在这一席此刻真能被裁定时非 null——收票收完 + 达线 + 目标存活 +
+    /// 未裁定 + 保护来源要求裁定（NeedsRuling）或维度观测不齐（Indeterminate）。
+    /// 玩家投影里没有它（D-0012 §4.3）。
+    /// </summary>
+    public DayProtectionPrompt? PendingProtection { get; init; }
+
+    /// <summary>
     /// 说书人注记（D-0019）：自由文本提示标记，按发生顺序。
     /// 它是独立注记账的投影（D-0015：自由文本不进状态账），玩家投影里没有它（D-0012 §4.3）。
     /// </summary>

@@ -12,6 +12,7 @@ import type {
   DayExtraNominationDto,
   DayNominationDto,
   DayProtectionDto,
+  DayProtectionPromptDto,
   DayViewDto,
   DayVoteSweepDto,
   DecisionOptionDto,
@@ -500,6 +501,25 @@ export function normalizeDayProtection(raw: unknown): DayProtectionDto | null {
   return seat === null || isProtected === null ? null : { seat, protected: isProtected }
 }
 
+/**
+ * 归一化死亡保护裁定提示（R-0048）：形状不对 / 结论不在两态内 → null
+ * （宁可不给入口，也不让说书人对着坏数据做裁定）；说明按长度上限截断。
+ */
+export function normalizeDayProtectionPrompt(raw: unknown): DayProtectionPromptDto | null {
+  if (raw === null || typeof raw !== 'object') {
+    return null
+  }
+
+  const prompt = raw as Record<string, unknown>
+  const seat = asCount(prompt['seat'], 1_000)
+  const outcome = asText(prompt['outcome'])
+  if (seat === null || seat < 1 || (outcome !== 'NeedsRuling' && outcome !== 'Indeterminate')) {
+    return null
+  }
+
+  return { seat, outcome, note: asSizedText(prompt['note'], 512) ?? '' }
+}
+
 /** 归一化额外提名窗口；缺席位 / 状态时返回 null（窗口不存在比编一个更安全）。 */
 export function normalizeDayExtraNomination(raw: unknown): DayExtraNominationDto | null {
   if (raw === null || typeof raw !== 'object') {
@@ -778,6 +798,7 @@ export function normalizeStorytellerView(raw: unknown): StorytellerViewDto {
     pitHagNight: normalizePitHagNight(view['pitHagNight']),
     fangGuInfection: normalizeFangGuInfection(view['fangGuInfection']),
     barberNight: normalizeBarberNight(view['barberNight']),
+    pendingProtection: normalizeDayProtectionPrompt(view['pendingProtection']),
     annotations: asArray<unknown>(view['annotations'])
       .map(normalizeSeatAnnotation)
       .filter((annotation): annotation is SeatAnnotationDto => annotation !== null)

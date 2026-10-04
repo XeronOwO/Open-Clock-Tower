@@ -222,7 +222,9 @@ public sealed class GameSession
                 _trackers,
                 _clock.UtcNow,
                 _abilities,
-                _seatNames.Snapshot());
+                _seatNames.Snapshot(),
+                _setup,
+                _standingEffects);
         }
         finally
         {

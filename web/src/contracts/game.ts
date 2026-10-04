@@ -296,6 +296,16 @@ export interface DayProtectionDto {
   protected: boolean
 }
 
+/** 说书人的死亡保护裁定提示（R-0048）：只在这一席此刻真能被裁定时下发；玩家投影里没有它。 */
+export interface DayProtectionPromptDto {
+  /** 待裁定的席位（当前开放流放的目标）。 */
+  seat: number
+  /** NeedsRuling（先说书人裁定）/ Indeterminate（先补观测）。 */
+  outcome: string
+  /** 给说书人的说明（差什么、下一步做什么）。 */
+  note: string
+}
+
 /** 当天打开的额外提名窗口（屠夫；R-0050）。 */
 export interface DayExtraNominationDto {
   /** 窗口授予的席位（屠夫）：只能由本人发起额外提名。 */
@@ -421,6 +431,8 @@ export interface StorytellerViewDto {
   fangGuInfection: FangGuInfectionDto | null
   /** 「今晚理发」待处理事实；null = 没有待处理（R-0033）。 */
   barberNight: BarberNightDto | null
+  /** 死亡保护裁定提示（R-0048）：只在这一席此刻真能被裁定时非 null；玩家投影里没有它。 */
+  pendingProtection: DayProtectionPromptDto | null
   /** 说书人注记（D-0019）：自由文本提示标记，按发生顺序；玩家投影里没有它。 */
   annotations: SeatAnnotationDto[]
   /** 「失去能力」提示标记（R-0040）：限次能力用尽后挂在角色标记旁；玩家投影里没有它。 */

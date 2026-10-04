@@ -423,6 +423,15 @@ public static class ProjectionMapper
                 Note = barber.Note,
             }
             : null,
+        // 死亡保护裁定提示（R-0048）：只在「这一席此刻真能被裁定」时非 null；玩家投影里没有它。
+        PendingProtection = view.PendingProtection is { } protectionPrompt
+            ? new DayProtectionPromptDto
+            {
+                Seat = protectionPrompt.Seat.Value,
+                Outcome = protectionPrompt.Outcome.ToString(),
+                Note = protectionPrompt.Note,
+            }
+            : null,
         Annotations = [.. view.Annotations.Select(ToDto)],
         LostAbilityMarkers =
         [

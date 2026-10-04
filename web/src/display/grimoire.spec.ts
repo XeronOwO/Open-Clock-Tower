@@ -60,6 +60,7 @@ function viewOf(overrides: Partial<StorytellerViewDto> = {}): StorytellerViewDto
     pitHagNight: null,
     fangGuInfection: null,
     barberNight: null,
+    pendingProtection: null,
     annotations: [],
     lostAbilityMarkers: [],
     ...overrides,

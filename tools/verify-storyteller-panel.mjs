@@ -1265,6 +1265,14 @@ async function main() {
   )
   check('行 3：说书人开始流放收票被受理', startExileSweep.kind === 'Accepted', startExileSweep.raw)
 
+  // R-0048：死亡保护裁定入口只在「收完 + 达线 + 待裁定」时出现——收票期间不该有（不提前提问）。
+  const earlyProtectionCount = await storyteller.page.getByTestId('st-protection').count()
+  check(
+    '行 3 / 行 5：流放收票期间没有死亡保护裁定入口（不提前提问）',
+    earlyProtectionCount === 0,
+    `st-protection 计数=${earlyProtectionCount}`,
+  )
+
   const exileDial = storyteller.page.getByTestId('exile-dial')
   const exileDialNominator = await waitForAttribute(exileDial, 'data-nominator', String(dreamerSeat), 30_000)
   const exileDialNominee = await waitForAttribute(exileDial, 'data-nominee', String(deviantSeat), 30_000)
@@ -1365,6 +1373,14 @@ async function main() {
     '行 3：第 2 条流放同样逐席冻结 5 票',
     secondHands === expectedExileHands && secondVotes === '5',
     `举手=${secondHands}；票数=${secondVotes}`,
+  )
+
+  // 目标屠夫没有任何保护来源：达线也不该出现裁定入口（旧启发式会先亮按钮、再被服务端拒绝）。
+  const secondProtectionCount = await storyteller.page.getByTestId('st-protection').count()
+  check(
+    '行 3 / 行 5：无保护来源的流放达线不出现死亡保护裁定入口（R-0048）',
+    secondProtectionCount === 0,
+    `st-protection 计数=${secondProtectionCount}`,
   )
 
   const secondCountOutcome = await runCommand(storyteller.page, '流放计票-屠夫', () =>

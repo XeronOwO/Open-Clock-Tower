@@ -262,6 +262,122 @@ public sealed class DayProtectionTests
         Assert.Throws<InvalidOperationException>(() => StepMachine.Apply(applied, orphan with { Protected = false }));
     }
 
+    /// <summary>提示只在「收票收完 + 达线」之后出现；收票中 / 未达线一律没有入口（R-0048 第 2 条）。</summary>
+    [Fact]
+    public void ProtectionPromptQuery_AppearsOnlyAfterReachedSweep()
+    {
+        var context = WithProtection(
+            ExilePhaseFixture.Context(
+                (1, "clockmaker", LifeState.Alive),
+                (2, "harlot", LifeState.Alive),
+                (3, "clockmaker", LifeState.Alive)),
+            _ => NeedsRuling("测试来源：待裁定"));
+
+        // 没有白天 / 没有流放：没有提示。
+        Assert.Null(DayProtectionPromptQuery.ForOpenExile(context, dayState: null));
+        var day = ExilePhaseFixture.StartDay();
+        Assert.Null(DayProtectionPromptQuery.ForOpenExile(context, day.Day));
+
+        // 有流放但还没开始收票：没有提示。
+        var proposed = ExilePhaseFixture.Propose(day, context, proposer: 1, target: 2);
+        Assert.Null(DayProtectionPromptQuery.ForOpenExile(context, proposed.State.Day));
+
+        // 收票中：没有提示。
+        var started = ExilePhaseFixture.StartSweep(proposed.State, context, index: 1);
+        Assert.Null(DayProtectionPromptQuery.ForOpenExile(context, started.State.Day));
+
+        // 收完但未达线：没有提示。
+        var insufficient = ExilePhaseFixture.RunSweep(proposed.State, context, index: 1, raised: [1]);
+        Assert.Null(DayProtectionPromptQuery.ForOpenExile(context, insufficient.Day));
+
+        // 收完且达线：提示出现，席位 = 流放目标。
+        var reached = ExilePhaseFixture.RunSweep(proposed.State, context, index: 1, raised: [1, 2]);
+        var prompt = DayProtectionPromptQuery.ForOpenExile(context, reached.Day);
+        Assert.NotNull(prompt);
+        Assert.Equal(new SeatId(2), prompt.Seat);
+        Assert.Equal(DeathProtectionOutcome.NeedsRuling, prompt.Outcome);
+        Assert.Contains("待裁定", prompt.Note, StringComparison.Ordinal);
+    }
+
+    /// <summary>维度观测不齐时给 Indeterminate 提示（先补观测），不是裁定入口。</summary>
+    [Fact]
+    public void ProtectionPromptQuery_Indeterminate_IsPromptedWithObservationNote()
+    {
+        var context = WithProtection(
+            ExilePhaseFixture.Context(
+                (1, "clockmaker", LifeState.Alive),
+                (2, "harlot", LifeState.Alive),
+                (3, "clockmaker", LifeState.Alive)),
+            _ => Indeterminate("测试来源：判定不了"));
+
+        var proposed = ExilePhaseFixture.Propose(ExilePhaseFixture.StartDay(), context, proposer: 1, target: 2);
+        var reached = ExilePhaseFixture.RunSweep(proposed.State, context, index: 1, raised: [1, 2]);
+
+        var prompt = DayProtectionPromptQuery.ForOpenExile(context, reached.Day);
+        Assert.NotNull(prompt);
+        Assert.Equal(new SeatId(2), prompt.Seat);
+        Assert.Equal(DeathProtectionOutcome.Indeterminate, prompt.Outcome);
+        Assert.Contains("先补观测", prompt.Note, StringComparison.Ordinal);
+    }
+
+    /// <summary>没有来源要求裁定时不出现入口（来源明确「不受保护」）。</summary>
+    [Fact]
+    public void ProtectionPromptQuery_WithoutARulingToMake_IsNull()
+    {
+        var context = WithProtection(
+            ExilePhaseFixture.Context(
+                (1, "clockmaker", LifeState.Alive),
+                (2, "harlot", LifeState.Alive),
+                (3, "clockmaker", LifeState.Alive)),
+            _ => NotProtected("测试来源：不受保护"));
+
+        var proposed = ExilePhaseFixture.Propose(ExilePhaseFixture.StartDay(), context, proposer: 1, target: 2);
+        var reached = ExilePhaseFixture.RunSweep(proposed.State, context, index: 1, raised: [1, 2]);
+
+        Assert.Null(DayProtectionPromptQuery.ForOpenExile(context, reached.Day));
+    }
+
+    /// <summary>裁定记录之后入口消失（每席位每天至多一条）。</summary>
+    [Fact]
+    public void ProtectionPromptQuery_AfterTheDecision_IsNull()
+    {
+        var context = WithProtection(
+            ExilePhaseFixture.Context(
+                (1, "clockmaker", LifeState.Alive),
+                (2, "harlot", LifeState.Alive),
+                (3, "clockmaker", LifeState.Alive)),
+            ctx => ctx.Day?.ProtectionDecisionFor(ctx.Seat) is { } decision
+                ? decision.Protected
+                    ? Protected("已裁定：受保护")
+                    : NotProtected("已裁定：不受保护")
+                : NeedsRuling("还没裁定"));
+
+        var proposed = ExilePhaseFixture.Propose(ExilePhaseFixture.StartDay(), context, proposer: 1, target: 2);
+        var reached = ExilePhaseFixture.RunSweep(proposed.State, context, index: 1, raised: [1, 2]);
+        Assert.NotNull(DayProtectionPromptQuery.ForOpenExile(context, reached.Day));
+
+        var resolved = Resolve(reached, context, seat: 2, isProtected: true);
+        Assert.Equal(StepMachineOutcomeKind.Applied, resolved.Kind);
+        Assert.Null(DayProtectionPromptQuery.ForOpenExile(context, resolved.State.Day));
+    }
+
+    /// <summary>目标已死时不出现入口：裁定改变不了结果，条件链先于查询短路。</summary>
+    [Fact]
+    public void ProtectionPromptQuery_WhenTargetIsAlreadyDead_IsNull()
+    {
+        var context = WithProtection(
+            ExilePhaseFixture.Context(
+                (1, "clockmaker", LifeState.Alive),
+                (2, "harlot", LifeState.Dead),
+                (3, "clockmaker", LifeState.Alive)),
+            _ => NeedsRuling("测试来源：待裁定"));
+
+        var proposed = ExilePhaseFixture.Propose(ExilePhaseFixture.StartDay(), context, proposer: 1, target: 2);
+        var reached = ExilePhaseFixture.RunSweep(proposed.State, context, index: 1, raised: [1, 2]);
+
+        Assert.Null(DayProtectionPromptQuery.ForOpenExile(context, reached.Day));
+    }
+
     private static StepMachineOutcome Resolve(
         StepMachineState state,
         SettlementContext context,

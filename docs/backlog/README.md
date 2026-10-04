@@ -61,10 +61,13 @@ todo/  →  in-progress/  →  review/  →  done/
 ### Todo
 
 - [印刷规则书原件回核：R-0005 / R-0012 / R-0013 / R-0018 引文（R-0029 顺带）](todo/rulebook-original-crosscheck.md) — **Medium** — 三条裁定依第三方逐字提取文本收口，官方原件不在手；拿到实物后回核引文
+- [屠夫额外提名落靶 / 二次处决真机夹具](todo/butcher-second-execution-fixture.md) — **Low** — 让真机装置覆盖额外提名收票达线 → 二次处决的落靶路径（现只有内核 + 集成证据）
 
 ### In progress
 
 ### Review
+
+- [死亡保护裁定提示：只在该裁定时给出（说书人投影字段）](review/day-protection-prompt-projection.md) — **Medium** — 说书人裁定入口改为服务端投影驱动：`NeedsRuling` 才给按钮、`Indeterminate` 给补观测提示，受理条件与裁判机器同源
 
 ### Done
 
