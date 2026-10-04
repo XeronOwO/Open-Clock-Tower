@@ -63,6 +63,7 @@ describe('说书人抽屉 / 面板按统一席位口径渲染玩家名（E30 残
           target: 2,
           sourceCharacter: 'no-dashii',
           grantedCharacter: null,
+          window: null,
           terminated: false,
           terminationKind: null,
           terminationReason: null,

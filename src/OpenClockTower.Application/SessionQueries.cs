@@ -1,4 +1,5 @@
 using OpenClockTower.Kernel;
+using OpenClockTower.Rules;
 
 namespace OpenClockTower.Application;
 
@@ -57,7 +58,8 @@ internal static class SessionQueries
                 trackers.VoteSweepStartedAt,
                 seat,
                 trackers,
-                seatNames),
+                seatNames,
+                WinConditionFacts.Instance),
             EventsSince = events,
         };
     }

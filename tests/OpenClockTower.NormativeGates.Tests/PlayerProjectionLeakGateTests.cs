@@ -24,6 +24,11 @@ public sealed partial class PlayerProjectionLeakGateTests
         Path.Combine("src", "OpenClockTower.Contracts", "DecisionOptionDto.cs"),
         Path.Combine("src", "OpenClockTower.Contracts", "DayNominationDto.cs"),
         Path.Combine("src", "OpenClockTower.Contracts", "DayVoteSweepDto.cs"),
+        // 流放 / 死亡保护 / 额外提名窗口（票据 traveller-and-exile · D7）：都是白天公开事实
+        // （R-0044 / R-0048 / R-0050），玩家与说书人看到同一份。
+        Path.Combine("src", "OpenClockTower.Contracts", "DayExileDto.cs"),
+        Path.Combine("src", "OpenClockTower.Contracts", "DayProtectionDto.cs"),
+        Path.Combine("src", "OpenClockTower.Contracts", "DayExtraNominationDto.cs"),
         Path.Combine("src", "OpenClockTower.Contracts", "InformationResultDto.cs"),
         Path.Combine("src", "OpenClockTower.Contracts", "OperationRequestVoidedDto.cs"),
         Path.Combine("src", "OpenClockTower.Contracts", "ReconnectBundleDto.cs"),

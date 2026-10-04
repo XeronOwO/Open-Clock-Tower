@@ -17,6 +17,7 @@ import { seatDisplayOf } from '@/display/format'
 import { newIdempotencyKey } from '@/services/idempotency'
 import {
   assignCharacters,
+  localFailure,
   proposeSetup,
   type CommandOutcome,
   type CommandSender,
@@ -99,7 +100,7 @@ async function submit(): Promise<void> {
     .map(([seat, character]) => ({ seat: Number(seat), character }))
 
   if (assignments.length === 0) {
-    emit('outcome', { ok: false, kind: 'Rejected', sequence: null, message: '还没有选择任何角色', rebuild: null })
+    emit('outcome', localFailure('还没有选择任何角色'))
     return
   }
 

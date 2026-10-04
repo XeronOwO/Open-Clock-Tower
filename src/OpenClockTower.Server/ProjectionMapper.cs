@@ -139,11 +139,11 @@ public static class ProjectionMapper
         Detail = $"呆瓜（{choice.Klutz.Value} 号）公开选择了 {choice.Target.Value} 号",
     };
 
-    /// <summary>玩家白天投影 → DTO（公开事实 + 公开生死面 + 权限位 + 可提名目标 + 收票呈现）。</summary>
+    /// <summary>玩家白天投影 → DTO（公开事实 + 公开生死面 + 权限位 + 可提名 / 可流放目标 + 收票呈现）。</summary>
     public static PlayerDayDto ToDto(PlayerDay day, long sequence) => new()
     {
         Sequence = sequence,
-        PublicView = ToDto(day.PublicView, day.VoteSweep),
+        PublicView = ToDto(day.PublicView, day.VoteSweep, day.ExileSweep),
         Lives = [.. day.Lives.Select(ToDto)],
         Announcements = [.. day.Announcements.Select(ToDto)],
         CanNominate = day.CanNominate,
@@ -151,6 +151,13 @@ public static class ProjectionMapper
         Voted = day.Voted,
         SeatCollected = day.SeatCollected,
         Candidates = [.. day.NominationCandidates.Select(seat => seat.Value)],
+        CanProposeExile = day.CanProposeExile,
+        ExileCandidates = [.. day.ExileCandidates.Select(seat => seat.Value)],
+        CanVoteExile = day.CanVoteExile,
+        ExileVoted = day.ExileVoted,
+        ExileSeatCollected = day.ExileSeatCollected,
+        CanNominateExtra = day.CanNominateExtra,
+        ExtraNominationCandidates = [.. day.ExtraNominationCandidates.Select(seat => seat.Value)],
     };
 
     /// <summary>公开生死面条目 → DTO（席位 + 对外可见生死；不含死因）。</summary>
@@ -160,13 +167,24 @@ public static class ProjectionMapper
         State = entry.State.ToString(),
     };
 
-    /// <summary>白天公开事实 → DTO（最新一天；收票呈现只挂在当前开放的那一项提名上）。</summary>
-    public static DayViewDto ToDto(DayRecord day, VoteSweepView? sweep) => new()
+    /// <summary>白天公开事实 → DTO（最新一天；收票呈现只挂在当前开放的那一项提名 / 流放上）。</summary>
+    public static DayViewDto ToDto(DayRecord day, VoteSweepView? nominationSweep, VoteSweepView? exileSweep) => new()
     {
         DayNumber = day.DayNumber,
         Status = day.Status.ToString(),
         Nominations = [.. day.Nominations.Select(nomination =>
-            ToDto(nomination, nomination.Index == day.OpenNomination?.Index ? sweep : null))],
+            ToDto(nomination, nomination.Index == day.OpenNomination?.Index ? nominationSweep : null))],
+        Exiles = [.. day.Exiles.Select(exile =>
+            ToDto(exile, exile.Index == day.OpenExile?.Index ? exileSweep : null))],
+        OpenExileIndex = day.OpenExile?.Index,
+        Protections = [.. day.ProtectionDecisions.Select(ToDto)],
+        ExtraNomination = day.ExtraNomination is { } window
+            ? new DayExtraNominationDto
+            {
+                Seat = window.Seat.Value,
+                Status = window.Status.ToString(),
+            }
+            : null,
         AboutToBeExecuted = day.AboutToBeExecuted?.Value,
         Executed = day.Executed?.Value,
         OpenNominationIndex = day.OpenNomination?.Index,
@@ -186,17 +204,43 @@ public static class ProjectionMapper
         Votes = nomination.Ballot.Count,
         Voters = [.. nomination.Ballot.Select(seat => seat.Value)],
         HandsRaised = [.. nomination.HandsRaised.Select(seat => seat.Value)],
-        Sweep = sweep is null
-            ? null
-            : new DayVoteSweepDto
-            {
-                Phase = sweep.Phase,
-                CurrentSeat = sweep.CurrentSeat,
-                Collected = [.. sweep.Collected.Select(seat => seat.Value)],
-                CountdownMilliseconds = sweep.CountdownMilliseconds,
-                IntervalMilliseconds = sweep.IntervalMilliseconds,
-                NextBeatMilliseconds = sweep.NextBeatMilliseconds,
-            },
+        Sweep = sweep is null ? null : ToDto(sweep),
+    };
+
+    /// <summary>
+    /// 一次流放 → DTO：票数 = 已收票的赞成数（计票后为最终票数）；举手与已收票都是公开面
+    /// （R-0044 第 10 条）。钟盘收票呈现与提名共用 <see cref="DayVoteSweepDto"/> 形状。
+    /// </summary>
+    /// <param name="sweep">钟盘收票的呈现快照；这条流放没在收票时为 null（还没点「开始」/ 已计票）。</param>
+    public static DayExileDto ToDto(ExileRecord exile, VoteSweepView? sweep) => new()
+    {
+        Index = exile.Index,
+        Proposer = exile.Proposer.Value,
+        Target = exile.Target.Value,
+        Status = exile.Status.ToString(),
+        Votes = exile.Ballot.Count,
+        Voters = [.. exile.Ballot.Select(seat => seat.Value)],
+        HandsRaised = [.. exile.HandsRaised.Select(seat => seat.Value)],
+        Sweep = sweep is null ? null : ToDto(sweep),
+        Conclusion = exile.Conclusion?.ToString(),
+    };
+
+    /// <summary>钟盘收票呈现 → DTO（提名与流放共用同一形状；R-0017 目标形态）。</summary>
+    public static DayVoteSweepDto ToDto(VoteSweepView sweep) => new()
+    {
+        Phase = sweep.Phase,
+        CurrentSeat = sweep.CurrentSeat,
+        Collected = [.. sweep.Collected.Select(seat => seat.Value)],
+        CountdownMilliseconds = sweep.CountdownMilliseconds,
+        IntervalMilliseconds = sweep.IntervalMilliseconds,
+        NextBeatMilliseconds = sweep.NextBeatMilliseconds,
+    };
+
+    /// <summary>死亡保护裁定 → DTO（R-0048；每席位每天至多一条）。</summary>
+    public static DayProtectionDto ToDto(DayProtectionDecision decision) => new()
+    {
+        Seat = decision.Seat.Value,
+        Protected = decision.Protected,
     };
 
     /// <summary>信息结果投影 → DTO（只有内容；「可能为假」不出去；序号取快照条目自己的事件序号）。</summary>
@@ -340,7 +384,7 @@ public static class ProjectionMapper
                 Note = voided.Note,
             }
             : null,
-        Day = view.Day is { } day ? ToDto(day, view.VoteSweep) : null,
+        Day = view.Day is { } day ? ToDto(day, view.VoteSweep, view.ExileSweep) : null,
         Outcome = view.Outcome is { } outcome ? ToDto(outcome, view.Sequence) : null,
         KlutzChoices = [.. view.KlutzChoices.Select(record => ToDto(record, view.Sequence))],
         SeatNames = [.. view.SeatNames.Select(ToDto)],
@@ -440,6 +484,7 @@ public static class ProjectionMapper
         Target = effect.Target.Value,
         SourceCharacter = effect.SourceCharacter.Value,
         GrantedCharacter = effect.GrantedCharacter?.Value,
+        Window = effect.Window?.ToString(),
         Terminated = effect.IsTerminated,
         TerminationKind = effect.Termination?.Kind.ToString(),
         TerminationReason = effect.Termination?.Reason,

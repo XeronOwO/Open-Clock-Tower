@@ -6,19 +6,21 @@ namespace OpenClockTower.Application;
 /// 玩家视角的白天投影：把白天账折算成"公开事实 + 我能做什么"。
 /// </summary>
 /// <remarks>
-/// 权限判定与服务端命令校验同源（<see cref="DayMachine"/>）：这里给的是 UI 使能条件，
-/// 真正的拒绝在服务端；观测不齐时一律给 false（保守），不允许前端自行推算（web/AGENTS §4）。
+/// 权限判定与服务端命令校验同源（<see cref="DayMachine"/> / <see cref="ExileMachine"/> /
+/// <see cref="ExtraNominationMachine"/>）：这里给的是 UI 使能条件，真正的拒绝在服务端；
+/// 观测不齐时一律给 false（保守），不允许前端自行推算（web/AGENTS §4）。
 /// </remarks>
 public static class DayProjection
 {
     /// <summary>某个席位当前看到的白天信息；还没有开过白天时为 null。</summary>
     /// <param name="day">白天账。</param>
     /// <param name="state">状态账（判定生死与投票权）。</param>
-    /// <param name="seats">本局完整座次（算可提名目标用；读不到时给空表，宁可少给、不猜）。</param>
+    /// <param name="seats">本局**在局**座次（算可提名 / 可流放目标与「本席在不在局」用；读不到时给空表，宁可少给、不猜）。</param>
     /// <param name="seat">接收者席位。</param>
     /// <param name="board">公开生死面（`rulings.md` R-0022）：对外可见生死 + 本日公告；不含死因。</param>
     /// <param name="now">应用层当前时刻（算收票剩余时间；不驱动推进）。</param>
     /// <param name="voteSweepStartedAt">收票时间轴锚点；为空 = 未开始或已中断。</param>
+    /// <param name="characters">角色事实端口（判定流放目标是不是旅行者）；缺失 = 不给流放候选（不猜）。</param>
     public static PlayerDay? ForSeat(
         DayState? day,
         GameState state,
@@ -26,7 +28,8 @@ public static class DayProjection
         SeatId seat,
         PublicLifeBoard board,
         DateTimeOffset now,
-        DateTimeOffset? voteSweepStartedAt)
+        DateTimeOffset? voteSweepStartedAt,
+        IWinConditionFacts? characters = null)
     {
         ArgumentNullException.ThrowIfNull(state);
         ArgumentNullException.ThrowIfNull(seats);
@@ -39,7 +42,9 @@ public static class DayProjection
 
         var facts = day.Days[^1];
         var life = state.Seat(seat)?.LifeValue;
+        var inGame = seats.Contains(seat);
         var openNomination = facts.OpenNomination;
+        var openExile = facts.OpenExile;
 
         var canNominate = facts.Status == DayStatus.Open
             && openNomination is null
@@ -68,6 +73,50 @@ public static class DayProjection
             .OrderBy(candidate => candidate.Value)
             .ToArray();
 
+        // 流放提议（R-0044 第 2 / 3 条）：任何在局玩家（含死者）随时可提；同一天必须一条结清后再提下一条。
+        var canProposeExile = facts.Status == DayStatus.Open
+            && openExile is null
+            && inGame;
+
+        // 可流放目标 = 在局旅行者里今天还没被提议过的（角色未观测 / 端口缺失一律不列——不猜）。
+        var exileCandidates = characters is null
+            ? Array.Empty<SeatId>()
+            : seats
+                .Where(candidate => !facts.HasExileProposed(candidate))
+                .Where(candidate => state.Seat(candidate)?.CharacterValue is { } character
+                    && characters.IsTraveller(character))
+                .OrderBy(candidate => candidate.Value)
+                .ToArray();
+
+        // 流放表决（R-0044 第 6 / 10 条）：名单 = 开始收票时的在局座次快照；含死者、不查也不耗投票标记。
+        var exileSweep = openExile?.Sweep;
+        var exileCollected = exileSweep?.Collected.FirstOrDefault(vote => vote.Seat == seat);
+        var canVoteExile = facts.Status == DayStatus.Open
+            && exileSweep is not null
+            && exileCollected is null
+            && inGame
+            && exileSweep.Seats.Contains(seat);
+
+        var exileVoted = exileCollected is { } frozenExile
+            ? frozenExile.Voted
+            : exileSweep is not null
+                ? openExile!.HandsRaised.Contains(seat)
+                : openExile is not null && openExile.Ballot.Contains(seat);
+
+        // 额外提名窗口（R-0050）：窗口开着、本席是授予席位、没有开放提名，且本席此刻握有角色能力
+        // （存活，或死亡但有生效中的重获窗口——《集骨者》范例；判定不了不给入口）。
+        var extraNomination = facts.ExtraNomination;
+        var canNominateExtra = facts.Status == DayStatus.Open
+            && openNomination is null
+            && extraNomination is { Status: ExtraNominationWindowStatus.Open }
+            && extraNomination.Seat == seat
+            && inGame
+            && state.AbilityPresentOn(seat) == true;
+
+        var extraNominationCandidates = canNominateExtra
+            ? seats.OrderBy(candidate => candidate.Value).ToArray()
+            : Array.Empty<SeatId>();
+
         return new PlayerDay
         {
             PublicView = facts,
@@ -79,6 +128,14 @@ public static class DayProjection
             SeatCollected = collectedVote is not null,
             VoteSweep = VoteSweepProjection.Build(openNomination, now, voteSweepStartedAt),
             NominationCandidates = candidates,
+            ExileSweep = VoteSweepProjection.Build(openExile, now, voteSweepStartedAt),
+            CanProposeExile = canProposeExile,
+            ExileCandidates = exileCandidates,
+            CanVoteExile = canVoteExile,
+            ExileVoted = exileVoted,
+            ExileSeatCollected = exileCollected is not null,
+            CanNominateExtra = canNominateExtra,
+            ExtraNominationCandidates = extraNominationCandidates,
         };
     }
 }

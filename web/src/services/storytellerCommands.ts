@@ -37,12 +37,24 @@ export interface CommandOutcome {
   message: string
   /** 重建对比报告；非重建命令为 null。 */
   rebuild: RebuildReport | null
+  /** 加入旅行者且由服务端分配席位时签发的席位号；其它命令为 null（D1）。 */
+  issuedSeat: number | null
+  /** 签发的席位票据（只回给出命令的说书人，不进事件流 / 任何投影）；其它命令为 null。 */
+  issuedSeatTicket: string | null
 }
 
 /** 未知响应 → 回执；服务端字段缺失时降级，不编造"成功"。 */
 export function normalizeOutcome(raw: unknown): CommandOutcome {
   if (raw === null || typeof raw !== 'object') {
-    return { ok: false, kind: 'Failed', sequence: null, message: '回执形状不可识别', rebuild: null }
+    return {
+      ok: false,
+      kind: 'Failed',
+      sequence: null,
+      message: '回执形状不可识别',
+      rebuild: null,
+      issuedSeat: null,
+      issuedSeatTicket: null,
+    }
   }
 
   const result = raw as Record<string, unknown>
@@ -70,17 +82,42 @@ export function normalizeOutcome(raw: unknown): CommandOutcome {
     sequence,
     message: parts.length > 0 ? parts.join('：') : '',
     rebuild,
+    issuedSeat: asNumber(result['issuedSeat']),
+    issuedSeatTicket: asText(result['issuedSeatTicket']),
   }
 }
 
-/** 发一条命令（凭据永远随方法参数先出示）并规范化回执；传输层异常不吞，收敛成 Transport 回执。 */
-export async function invokeCommand(
+/**
+ * 本地合成的失败回执：客户端在发命令之前就拒绝（没选目标、没有凭据等）。
+ * 统一在这里构造——`CommandOutcome` 增字段时只改一处，各组件不必各自补齐。
+ */
+export function localFailure(message: string, kind: 'Rejected' | 'Failed' = 'Rejected'): CommandOutcome {
+  return {
+    ok: false,
+    kind,
+    sequence: null,
+    message,
+    rebuild: null,
+    issuedSeat: null,
+    issuedSeatTicket: null,
+  }
+}
+
+/** 发一条命令（凭据永远随方法参数先出示）并规范化回执；传输层异常不吞，收敛成 Transport 回执。 */export async function invokeCommand(
   sender: CommandSender,
   method: string,
   ...args: readonly unknown[]
 ): Promise<CommandOutcome> {
   if (sender.credential.length === 0) {
-    return { ok: false, kind: 'Rejected', sequence: null, message: '尚未加入：没有连接凭据', rebuild: null }
+    return {
+      ok: false,
+      kind: 'Rejected',
+      sequence: null,
+      message: '尚未加入：没有连接凭据',
+      rebuild: null,
+      issuedSeat: null,
+      issuedSeatTicket: null,
+    }
   }
 
   try {
@@ -93,6 +130,8 @@ export async function invokeCommand(
       sequence: null,
       message: error instanceof Error ? error.message : String(error),
       rebuild: null,
+      issuedSeat: null,
+      issuedSeatTicket: null,
     }
   }
 }
@@ -377,4 +416,82 @@ export function rebuildRoom(
   idempotencyKey: string,
 ): Promise<CommandOutcome> {
   return invokeCommand(sender, 'RebuildRoom', reason, idempotencyKey)
+}
+
+// ===== 旅行者与流放（票据 traveller-and-exile；D7 补齐说书人控制台入口）=====
+
+/**
+ * 加入一名旅行者（说书人 / 宿主；任意时刻可用，含开局前与阶段中）。
+ *
+ * `seat` = null 时由服务端**追加新席位**并签发新票据（回执里的 `issuedSeat` / `issuedSeatTicket`）；
+ * 指定席位 = 落在本局**尚未分配**的席位（如 15+ 开局提前占好的高号席）。
+ * `alignment` 是说书人私下裁定的阵营（Good / Evil），不进任何公开投影；
+ * `revealDemonSeats` = 邪恶旅行者要被告知的存活恶魔席位（一名或全部；善良必须为空）。
+ */
+export function joinTraveller(
+  sender: CommandSender,
+  seat: number | null,
+  character: string,
+  alignment: string,
+  revealDemonSeats: readonly number[] | null,
+  idempotencyKey: string,
+): Promise<CommandOutcome> {
+  return invokeCommand(sender, 'JoinTraveller', seat, character, alignment, revealDemonSeats, idempotencyKey)
+}
+
+/** 移出一名旅行者：席位与票据保留，离场后不计入任何人数口径（R-0044 第 6 条）。 */
+export function removeTraveller(
+  sender: CommandSender,
+  seat: number,
+  note: string | null,
+  idempotencyKey: string,
+): Promise<CommandOutcome> {
+  return invokeCommand(sender, 'RemoveTraveller', seat, note, idempotencyKey)
+}
+
+/** 裁定某席位「今天的死亡保护」（R-0048；怪咖：有趣 → 受保护）。只在流放达线待裁定时受理。 */
+export function resolveDayProtection(
+  sender: CommandSender,
+  seat: number,
+  isProtected: boolean,
+  note: string | null,
+  idempotencyKey: string,
+): Promise<CommandOutcome> {
+  return invokeCommand(sender, 'ResolveDayProtection', seat, isProtected, note, idempotencyKey)
+}
+
+/** 开始流放收票（R-0044 第 10 条沿用 R-0017 钟盘：倒计时 + 分针逐席旋转）。 */
+export function startExileSweep(
+  sender: CommandSender,
+  exileIndex: number,
+  countdownMilliseconds: number,
+  intervalMilliseconds: number,
+  idempotencyKey: string,
+): Promise<CommandOutcome> {
+  return invokeCommand(
+    sender,
+    'StartExileSweep',
+    exileIndex,
+    countdownMilliseconds,
+    intervalMilliseconds,
+    idempotencyKey,
+  )
+}
+
+/** 继续中断的流放收票（重新起倒计时，从下一未收席位接着收）。 */
+export function resumeExileSweep(
+  sender: CommandSender,
+  exileIndex: number,
+  idempotencyKey: string,
+): Promise<CommandOutcome> {
+  return invokeCommand(sender, 'ResumeExileSweep', exileIndex, idempotencyKey)
+}
+
+/** 流放收票全部完成后计票（达线 = 赞成 × 2 ≥ 收票开始时的在局人数；R-0044 第 5 条）。 */
+export function countExileVotes(
+  sender: CommandSender,
+  exileIndex: number,
+  idempotencyKey: string,
+): Promise<CommandOutcome> {
+  return invokeCommand(sender, 'CountExileVotes', exileIndex, idempotencyKey)
 }

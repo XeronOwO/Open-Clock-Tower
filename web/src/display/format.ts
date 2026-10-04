@@ -8,7 +8,10 @@
 
 import type {
   BarberNightDto,
+  DayExileDto,
+  DayExtraNominationDto,
   DayNominationDto,
+  DayProtectionDto,
   DayViewDto,
   DayVoteSweepDto,
   DecisionOptionDto,
@@ -314,6 +317,7 @@ export function normalizeEffect(raw: unknown): EffectDto | null {
     target,
     sourceCharacter: asText(effect['sourceCharacter']),
     grantedCharacter: asText(effect['grantedCharacter']),
+    window: asText(effect['window']),
     // 契约上 Terminated 必有（服务端每条路径都显式赋值）；缺失只可能是篡改或服务端 bug，
     // 那时按 false 渲染是**在坏载荷上保守**，不是把"未知"说成结论（生产者不会漏）。
     terminated: asBoolean(effect['terminated']) ?? false,
@@ -439,6 +443,62 @@ export function normalizeDayNomination(raw: unknown): DayNominationDto | null {
   }
 }
 
+/** 归一化一条流放账目；缺关键字段时返回 null（宁可少显示，不编造票数）。 */
+export function normalizeDayExile(raw: unknown): DayExileDto | null {
+  if (raw === null || typeof raw !== 'object') {
+    return null
+  }
+
+  const exile = raw as Record<string, unknown>
+  const index = asCount(exile['index'])
+  const proposer = asCount(exile['proposer'])
+  const target = asCount(exile['target'])
+  const status = asText(exile['status'])
+  if (index === null || proposer === null || target === null || status === null) {
+    return null
+  }
+
+  return {
+    index,
+    proposer,
+    target,
+    status,
+    votes: asCount(exile['votes']) ?? 0,
+    voters: asArray<unknown>(exile['voters'])
+      .map((voter) => asCount(voter))
+      .filter((voter): voter is number => voter !== null),
+    handsRaised: asArray<unknown>(exile['handsRaised'])
+      .map((seat) => asCount(seat))
+      .filter((seat): seat is number => seat !== null),
+    sweep: normalizeDayVoteSweep(exile['sweep']),
+    conclusion: asText(exile['conclusion']),
+  }
+}
+
+/** 归一化一条死亡保护裁定；缺席位 / 结论时返回 null（不编"受保护"）。 */
+export function normalizeDayProtection(raw: unknown): DayProtectionDto | null {
+  if (raw === null || typeof raw !== 'object') {
+    return null
+  }
+
+  const protection = raw as Record<string, unknown>
+  const seat = asCount(protection['seat'])
+  const isProtected = asBoolean(protection['protected'])
+  return seat === null || isProtected === null ? null : { seat, protected: isProtected }
+}
+
+/** 归一化额外提名窗口；缺席位 / 状态时返回 null（窗口不存在比编一个更安全）。 */
+export function normalizeDayExtraNomination(raw: unknown): DayExtraNominationDto | null {
+  if (raw === null || typeof raw !== 'object') {
+    return null
+  }
+
+  const window = raw as Record<string, unknown>
+  const seat = asCount(window['seat'])
+  const status = asText(window['status'])
+  return seat === null || status === null ? null : { seat, status }
+}
+
 /** 归一化白天公开事实；缺天数 / 状态时返回 null（不编造"某一天"）。 */
 export function normalizeDayView(raw: unknown): DayViewDto | null {
   if (raw === null || typeof raw !== 'object') {
@@ -458,6 +518,14 @@ export function normalizeDayView(raw: unknown): DayViewDto | null {
     nominations: asArray<unknown>(day['nominations'])
       .map(normalizeDayNomination)
       .filter((nomination): nomination is DayNominationDto => nomination !== null),
+    exiles: asArray<unknown>(day['exiles'])
+      .map(normalizeDayExile)
+      .filter((exile): exile is DayExileDto => exile !== null),
+    openExileIndex: asCount(day['openExileIndex']),
+    protections: asArray<unknown>(day['protections'])
+      .map(normalizeDayProtection)
+      .filter((protection): protection is DayProtectionDto => protection !== null),
+    extraNomination: normalizeDayExtraNomination(day['extraNomination']),
     aboutToBeExecuted: asCount(day['aboutToBeExecuted']),
     executed: asCount(day['executed']),
     openNominationIndex: asCount(day['openNominationIndex']),

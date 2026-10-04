@@ -12,6 +12,18 @@ public sealed record DayViewDto
     /// <summary>当天已发起的提名，按发生顺序。</summary>
     public required DayNominationDto[] Nominations { get; init; }
 
+    /// <summary>当天已发起的流放提议，按发生顺序（旅行者流程；R-0044）。</summary>
+    public required DayExileDto[] Exiles { get; init; }
+
+    /// <summary>当前未结清的流放（表决中的那一条）序号；没有时为 null。</summary>
+    public int? OpenExileIndex { get; init; }
+
+    /// <summary>当天已裁定的死亡保护，按裁定顺序（每席位至多一条；R-0048）。</summary>
+    public required DayProtectionDto[] Protections { get; init; }
+
+    /// <summary>当天打开的额外提名窗口（屠夫）；null = 没有窗口（R-0050）。</summary>
+    public DayExtraNominationDto? ExtraNomination { get; init; }
+
     /// <summary>当前「即将被处决」的席位；没有时为 null。</summary>
     public int? AboutToBeExecuted { get; init; }
 

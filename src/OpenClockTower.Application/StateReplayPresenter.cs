@@ -174,6 +174,20 @@ internal sealed class StateReplayPresenter : IReplayStepPresenter
             details.Add($"获得角色：{ReplayText.CharacterValue(granted)}");
         }
 
+        // 窗口类效果在圆盘上留标记（D7）：被重获能力的席位与「免疫 / 行动两次」窗口在终局复盘里
+        // 必须一眼能认出来——窗口是 R-0047 / R-0052 / R-0054 的可见载体。
+        var markers = new List<ReplayMarker>();
+        if (effect.Window is { } window)
+        {
+            details.Add($"窗口：{WindowText(window)}");
+            markers.Add(new ReplayMarker
+            {
+                Kind = window == EffectWindowKind.RegainedAbility ? "regained-ability" : "effect-window",
+                Seat = effect.Target,
+                Text = WindowText(window),
+            });
+        }
+
         return new ReplayStep
         {
             Sequence = context.Stored.Sequence,
@@ -181,6 +195,7 @@ internal sealed class StateReplayPresenter : IReplayStepPresenter
             Phase = context.Phase,
             Summary = $"效果施加：{ReplayText.Ability(effect.Ability)} → {context.SeatText.Seat(effect.Target)}",
             Detail = string.Join("；", details),
+            Markers = markers,
         };
     }
 
@@ -229,5 +244,14 @@ internal sealed class StateReplayPresenter : IReplayStepPresenter
         EffectDimension.Poison => "中毒",
         EffectDimension.Drunk => "醉酒",
         _ => dimension.ToString(),
+    };
+
+    /// <summary>效果窗口 → 中文文案（R-0047 / R-0052 / R-0054；未知取值原样回显，不猜）。</summary>
+    private static string WindowText(EffectWindowKind window) => window switch
+    {
+        EffectWindowKind.AfflictionImmunity => "清醒且健康（免疫窗口）",
+        EffectWindowKind.SecondAction => "行动两次",
+        EffectWindowKind.RegainedAbility => "重获能力（直到下个黄昏）",
+        _ => window.ToString(),
     };
 }

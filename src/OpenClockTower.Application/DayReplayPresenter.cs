@@ -104,7 +104,7 @@ internal sealed class DayReplayPresenter : IReplayStepPresenter
         },
 
         // 流放（票据 traveller-and-exile · D2）：与提名同族但各自成步（流放不是提名 / 投票 / 处决，
-        // R-0044 第 1 条）；D7 的复盘圆盘标记在此基础上细化。
+        // R-0044 第 1 条）；圆盘在目标席位上画流放标记（D7）。
         ExileProposedEvent proposed => new ReplayStep
         {
             Sequence = context.Stored.Sequence,
@@ -112,6 +112,15 @@ internal sealed class DayReplayPresenter : IReplayStepPresenter
             Phase = GamePhase.Day,
             Summary = $"{context.SeatText.Seat(proposed.Proposer)} 提议流放 {context.SeatText.Seat(proposed.Target)}"
                 + $"（第 {proposed.DayNumber} 天第 {proposed.ExileIndex} 条）",
+            Markers =
+            [
+                new ReplayMarker
+                {
+                    Kind = "exile",
+                    Seat = proposed.Target,
+                    Text = $"由 {context.SeatText.Seat(proposed.Proposer)} 提议",
+                },
+            ],
         },
         ExileSweepStartedEvent exileSweepStarted => new ReplayStep
         {
@@ -165,6 +174,7 @@ internal sealed class DayReplayPresenter : IReplayStepPresenter
         },
 
         // 死亡保护裁定（D3 / R-0048）：说书人对某席位「今天的死亡保护」的裁定，进复盘。
+        // 只有「受保护」才是圆盘上要记住的状态；「不受保护」不画标记（D7）。
         DayProtectionDecidedEvent protectionDecided => new ReplayStep
         {
             Sequence = context.Stored.Sequence,
@@ -174,8 +184,18 @@ internal sealed class DayReplayPresenter : IReplayStepPresenter
                 + $"{context.SeatText.Seat(protectionDecided.Seat)} "
                 + (protectionDecided.Protected ? "今天受保护（不因流放死亡）" : "不受保护"),
             Detail = protectionDecided.Note,
+            Markers = protectionDecided.Protected
+                ?
+                [
+                    new ReplayMarker
+                    {
+                        Kind = "protected",
+                        Seat = protectionDecided.Seat,
+                        Text = "今天受死亡保护",
+                    },
+                ]
+                : [],
         },
-
         // 屠夫窗口（D4 / R-0050）：首次处决后开窗、窗口内由屠夫本人额外提名，各成一步。
         ExtraNominationWindowOpenedEvent windowOpened => new ReplayStep
         {
@@ -184,6 +204,15 @@ internal sealed class DayReplayPresenter : IReplayStepPresenter
             Phase = GamePhase.Day,
             Summary = $"第 {windowOpened.DayNumber} 天首次处决后打开额外提名窗口："
                 + $"{context.SeatText.Seat(windowOpened.Seat)}（屠夫）可以再次发起提名",
+            Markers =
+            [
+                new ReplayMarker
+                {
+                    Kind = "extra-nomination",
+                    Seat = windowOpened.Seat,
+                    Text = "额外提名窗口",
+                },
+            ],
         },
         ExtraNominationMadeEvent extraMade => new ReplayStep
         {

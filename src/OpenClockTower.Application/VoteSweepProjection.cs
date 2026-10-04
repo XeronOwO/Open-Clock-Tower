@@ -8,17 +8,22 @@ namespace OpenClockTower.Application;
 /// <remarks>
 /// 时间只在应用层出现（D-0008）：这里用调用方给的 <c>now</c> 与 <c>startedAt</c> 做差，
 /// 不读时钟；判定完全不看这些量。锚点为空 = 中断（服务端重启 / 重建后不追补），等待说书人继续。
+/// 提名与流放各持一份收票状态（R-0044：两种选票的账各自独立），呈现形状共用
+/// <see cref="VoteSweepView"/>——外层靠提名 / 流放的序号区分。
 /// </remarks>
 public static class VoteSweepProjection
 {
     /// <summary>折算一次提名的收票呈现；没有提名或没有开始收票时为 null。</summary>
-    public static VoteSweepView? Build(NominationRecord? nomination, DateTimeOffset now, DateTimeOffset? startedAt)
-    {
-        if (nomination?.Sweep is not { } sweep)
-        {
-            return null;
-        }
+    public static VoteSweepView? Build(NominationRecord? nomination, DateTimeOffset now, DateTimeOffset? startedAt) =>
+        nomination?.Sweep is { } sweep ? BuildCore(sweep, now, startedAt) : null;
 
+    /// <summary>折算一次流放的收票呈现；没有流放或没有开始收票时为 null。</summary>
+    public static VoteSweepView? Build(ExileRecord? exile, DateTimeOffset now, DateTimeOffset? startedAt) =>
+        exile?.Sweep is { } sweep ? BuildCore(sweep, now, startedAt) : null;
+
+    /// <summary>收票状态 → 呈现；提名与流放共用同一份相位 / 时间轴口径（R-0017 目标形态）。</summary>
+    private static VoteSweepView BuildCore(VoteSweepState sweep, DateTimeOffset now, DateTimeOffset? startedAt)
+    {
         var collected = sweep.Collected.Select(vote => vote.Seat).ToArray();
         if (sweep.IsComplete)
         {

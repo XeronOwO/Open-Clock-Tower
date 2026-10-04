@@ -40,4 +40,31 @@ public sealed record PlayerDay
 
     /// <summary>今天还没被提名过的席位（可提名目标，按席位号升序）；服务端算好，前端不猜。</summary>
     public required IReadOnlyList<SeatId> NominationCandidates { get; init; }
+
+    /// <summary>当前开放流放（表决中那一条）的钟盘收票呈现；没有流放收票时为 null。</summary>
+    public required VoteSweepView? ExileSweep { get; init; }
+
+    /// <summary>现在能不能发起流放提议（白天开着、本席在局、当前没有未结清的流放）。</summary>
+    public required bool CanProposeExile { get; init; }
+
+    /// <summary>今天还没被提议过流放的在局旅行者席位（可流放目标，按席位号升序）；无法判定时为空，不猜。</summary>
+    public required IReadOnlyList<SeatId> ExileCandidates { get; init; }
+
+    /// <summary>
+    /// 现在能不能在流放表决里举手 / 放下（白天开着、收票已开始、本席在收票名单里且还没被收票）。
+    /// 全体在局玩家含死者（R-0044）；死者不耗投票标记。
+    /// </summary>
+    public required bool CanVoteExile { get; init; }
+
+    /// <summary>本席在流放表决里的举手状态；本席已被收票时为**冻结结论**。</summary>
+    public required bool ExileVoted { get; init; }
+
+    /// <summary>本席是否已经被流放收票（先举也算、过时不候）。</summary>
+    public required bool ExileSeatCollected { get; init; }
+
+    /// <summary>现在能不能发起额外提名（屠夫窗口开着且本席是窗口授予席位；R-0050）。</summary>
+    public required bool CanNominateExtra { get; init; }
+
+    /// <summary>额外提名的可提名席位（窗口授予本席时 = 在局座次全部，含今天已被提名过的人；R-0050）。</summary>
+    public required IReadOnlyList<SeatId> ExtraNominationCandidates { get; init; }
 }

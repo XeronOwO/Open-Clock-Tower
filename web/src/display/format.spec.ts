@@ -10,6 +10,7 @@ import {
   clockTimeOf,
   displayNameOf,
   normalizeBarberNight,
+  normalizeDayView,
   normalizeFangGuInfection,
   normalizeRoomHealth,
   normalizeSeatAnnotation,
@@ -369,5 +370,58 @@ describe('说书人注记的归一化（D-0019）', () => {
 
   it('控制字符逐字符折成空格（刻意不用控制字符正则）', () => {
     expect(replaceControlCharacters('甲\u0000乙\u007f丙')).toBe('甲 乙 丙')
+  })
+})
+
+describe('白天流放 / 保护 / 额外提名窗口的归一化（票据 traveller-and-exile · D7）', () => {
+  it('流放账、保护裁定与窗口按形状归一化；坏条目只丢自己', () => {
+    const view = normalizeDayView({
+      dayNumber: 2,
+      status: 'Open',
+      nominations: [],
+      exiles: [
+        {
+          index: 1,
+          proposer: 1,
+          target: 3,
+          status: 'Voting',
+          votes: 2,
+          voters: [1, 2],
+          handsRaised: [2],
+          sweep: null,
+          conclusion: null,
+        },
+        { index: 'x', proposer: 1, target: 3, status: 'Voting' },
+      ],
+      openExileIndex: 1,
+      protections: [{ seat: 3, protected: true }, { seat: 3, protected: 'yes' }],
+      extraNomination: { seat: 4, status: 'Open' },
+    })
+
+    expect(view?.exiles).toEqual([
+      {
+        index: 1,
+        proposer: 1,
+        target: 3,
+        status: 'Voting',
+        votes: 2,
+        voters: [1, 2],
+        handsRaised: [2],
+        sweep: null,
+        conclusion: null,
+      },
+    ])
+    expect(view?.openExileIndex).toBe(1)
+    expect(view?.protections).toEqual([{ seat: 3, protected: true }])
+    expect(view?.extraNomination).toEqual({ seat: 4, status: 'Open' })
+  })
+
+  it('旧服务端形状（还没有这些字段）退化成空集合 / null，不编造', () => {
+    const view = normalizeDayView({ dayNumber: 1, status: 'Closed', nominations: [] })
+
+    expect(view?.exiles).toEqual([])
+    expect(view?.openExileIndex).toBeNull()
+    expect(view?.protections).toEqual([])
+    expect(view?.extraNomination).toBeNull()
   })
 })

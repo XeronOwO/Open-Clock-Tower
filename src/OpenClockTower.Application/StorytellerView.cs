@@ -91,6 +91,9 @@ public sealed record StorytellerView
     /// <summary>当前开放提名的钟盘收票呈现（相位 / 当前席位 / 已收席位 / 剩余时间）；没有收票时为 null。</summary>
     public VoteSweepView? VoteSweep { get; init; }
 
+    /// <summary>当前开放流放的钟盘收票呈现（R-0044）；没有流放收票时为 null。</summary>
+    public VoteSweepView? ExileSweep { get; init; }
+
     /// <summary>胜负结论；null = 游戏仍在进行。结束后一切命令被拒（R-0024）。</summary>
     public GameOutcome? Outcome { get; init; }
 

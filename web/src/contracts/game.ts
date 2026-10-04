@@ -44,6 +44,11 @@ export interface EffectDto {
   sourceCharacter: string | null  /** 契约上必有（服务端每条路径都显式赋值，见 ProjectionMapper）；缺失只可能来自篡改或服务端 bug。 */
   /** 「获得能力」类效果被获得的角色（哲学家）；普通效果为 null。口径见 rulings.md R-0036。 */
   grantedCharacter: string | null
+  /**
+   * 这条效果开启的窗口分类（EffectWindowKind 名）：AfflictionImmunity / SecondAction / RegainedAbility；
+   * null = 普通效果。口径见 rulings.md R-0047 / R-0052 / R-0054。
+   */
+  window: string | null
   terminated: boolean
   terminationKind: string | null
   terminationReason: string | null
@@ -262,12 +267,57 @@ export interface DayNominationDto {
   sweep: DayVoteSweepDto | null
 }
 
+/** 当天一条流放提议的公开账目（R-0044：流放不是提名 / 投票 / 处决）。 */
+export interface DayExileDto {
+  /** 当天第几条流放（从 1 起）。 */
+  index: number
+  /** 发起提议的席位（在局玩家均可，含死者）。 */
+  proposer: number
+  /** 被提议流放的席位（在局旅行者）。 */
+  target: number
+  /** Voting（表决中）/ Counted（已计票）。 */
+  status: string
+  /** 当前 / 最终票数（钟盘形态 = 已收票的赞成数）。 */
+  votes: number
+  /** 当前 / 最终投赞成者的席位（按席位号升序）。 */
+  voters: number[]
+  /** 当前举着手（赞成）的席位，按席位号升序；钟盘形态的公开面。 */
+  handsRaised: number[]
+  /** 钟盘收票呈现；这条流放没在收票时为 null。 */
+  sweep: DayVoteSweepDto | null
+  /** 计票结论：Exiled / Protected / VotesInsufficient；还没计票时为 null。 */
+  conclusion: string | null
+}
+
+/** 当天说书人已裁定的死亡保护（公开账目；R-0048）。 */
+export interface DayProtectionDto {
+  seat: number
+  /** true = 今天受死亡保护（不因流放死亡）。 */
+  protected: boolean
+}
+
+/** 当天打开的额外提名窗口（屠夫；R-0050）。 */
+export interface DayExtraNominationDto {
+  /** 窗口授予的席位（屠夫）：只能由本人发起额外提名。 */
+  seat: number
+  /** Open（窗口开着）/ Used（已被用掉）。 */
+  status: string
+}
+
 /** 白天公开事实（最新一天：进行中或最近结束）。 */
 export interface DayViewDto {
   dayNumber: number
   /** Open（进行中）/ Closed（已结束）。 */
   status: string
   nominations: DayNominationDto[]
+  /** 当天已发起的流放提议，按发生顺序。 */
+  exiles: DayExileDto[]
+  /** 当前未结清的流放序号；没有时为 null。 */
+  openExileIndex: number | null
+  /** 当天已裁定的死亡保护，按裁定顺序（每席位至多一条）。 */
+  protections: DayProtectionDto[]
+  /** 当天打开的额外提名窗口；null = 没有窗口。 */
+  extraNomination: DayExtraNominationDto | null
   aboutToBeExecuted: number | null
   executed: number | null
   openNominationIndex: number | null
@@ -297,6 +347,20 @@ export interface PlayerDayDto {
   seatCollected: boolean
   /** 今天还没被提名过的席位（可提名目标，按席位号升序）。 */
   candidates: number[]
+  /** 现在能不能发起流放提议（白天开着、本席在局、当前没有未结清的流放）。 */
+  canProposeExile: boolean
+  /** 今天还没被提议过流放的在局旅行者席位（可流放目标，按席位号升序）。 */
+  exileCandidates: number[]
+  /** 现在能不能在流放表决里举手 / 放下（含死者，不耗投票标记；R-0044）。 */
+  canVoteExile: boolean
+  /** 本席在流放表决里的举手状态；本席已被收票时为冻结结论。 */
+  exileVoted: boolean
+  /** 本席是否已经被流放收票。 */
+  exileSeatCollected: boolean
+  /** 现在能不能发起额外提名（屠夫窗口开着且本席是窗口授予席位；R-0050）。 */
+  canNominateExtra: boolean
+  /** 额外提名的可提名席位（窗口授予本席时 = 在局座次全部）；窗口不开时为空。 */
+  extraNominationCandidates: number[]
 }
 
 /** 一条说书人注记（D-0019）：魔典上挂在席位旁的自由文本提示标记。只说书人视图下发。 */

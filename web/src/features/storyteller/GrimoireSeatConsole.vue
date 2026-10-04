@@ -21,6 +21,7 @@ import {
 } from '@/display/grimoire'
 import { newIdempotencyKey } from '@/services/idempotency'
 import {
+  localFailure,
   proxyFill,
   punishExecution,
   reportSeatState,
@@ -161,7 +162,7 @@ async function run(action: () => Promise<CommandOutcome>): Promise<CommandOutcom
 }
 
 function reject(message: string): void {
-  emit('outcome', { ok: false, kind: 'Rejected', sequence: null, message, rebuild: null })
+  emit('outcome', localFailure(message))
 }
 
 /** 用户开始填写上报表单 → 锁定"目标席位"（父组件把选中态钉在该席，对抗性复核 H-2）。 */

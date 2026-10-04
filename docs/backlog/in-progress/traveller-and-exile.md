@@ -604,6 +604,41 @@ D4 / 未来免死角色需要时再收。
 
 未做（属 D7 / D8）：集骨者 / 咖啡师窗口的控制台入口、`EffectDto` 字段与复盘圆盘标记；真机批次取证。
 
+## 实施进度（2026-10-04，第九批：D7 第一批——投影与契约层）
+
+已落地（代码 + 测试 + 文档同一提交；口径按上方设计定稿 D7 块与 R-0044 / R-0048 / R-0050 /
+R-0054，未改任何已登记裁定）：
+
+- **Contracts（公开面）**：`DayViewDto` 增 `Exiles`（`DayExileDto`：提议 / 收票 / 结论，钟盘收票
+  沿用 `DayVoteSweepDto` 形状）、`OpenExileIndex`、`Protections`（`DayProtectionDto`）与
+  `ExtraNomination`（`DayExtraNominationDto`）；`PlayerDayDto` 增流放与额外提名的权限位与候选；
+  `EffectDto` 增 `Window`（`EffectWindowKind` 名：咖啡师 / 集骨者窗口的说书人呈现面）。
+- **Application（投影）**：`DayProjection` 计算流放发起（在局含死者、没有未结清流放）、可流放候选
+  （在局旅行者且今天未被提议过；端口缺失 / 角色未观测不列——不猜）、流放举手（收票名单快照 + 未收票，
+  死者不耗票权）与额外提名窗口（授予席位本人 + 此刻握有角色能力）；`VoteSweepProjection` 抽出提名 /
+  流放共用的相位折算；`GameProjection` / `SessionQueries` / `GameSession` 接角色事实端口。
+- **复盘标记**：加入 / 离场（`traveller-joined` / `traveller-departed`）、流放（`exile`）、
+  保护（`protected`）、屠夫窗口（`extra-nomination`）、效果窗口（`regained-ability` /
+  `effect-window`）——术语表 §7 先登记 7 个 slug 再落码（D-0020 第 5 条）。
+- **web（契约与命令面，未动 UI）**：`contracts/game.ts` 镜像同步；`storytellerCommands` 增
+  加入 / 移出 / 保护裁定 / 流放钟盘五条；`playerGateway` 增发起流放 / 举手 / 额外提名三条；
+  `CommandOutcome` 带出加入签发的 `issuedSeat` / `issuedSeatTicket`；本地失败回执收口成
+  `localFailure` 工厂（`CommandOutcome` 再增字段只改一处）。
+- **护栏**：`PlayerProjectionLeakGateTests` 把三个新 DTO 登记进玩家投影扫描面；契约镜像门禁逐字段对账。
+
+验证证据（2026-10-04，冻结工作树）：
+
+- `dotnet build` **0 警告 0 错误**；`dotnet test` **1075 通过 / 0 失败**（门禁 25 / 内核 430 /
+  规则 390 / 集成 230；基线 1066 → +9）；`dotnet format` 退出 0；
+- `npm run gate` 退出 0（typecheck + lint + vitest **168** + vite build；基线 163 → +5）；
+- 新增用例（逐类在跑）：集成 `DayProjectionTests` 九条（候选 / 已提议与同日串行 / 在局座次口径 /
+  端口缺失 / 死者发起与举手 / 收票冻结 / 屠夫窗口 / `DayViewDto` 字段 / `EffectDto` 窗口）；
+  前端 `format.spec` 白天新字段两条、`playerGateway.spec` 权限位一条、`storytellerCommands.spec`
+  新命令与签发席位两条。
+
+未做（属 D7 第二批 / D8）：说书人控制台与玩家端入口（加入 / 离开 / 流放钟盘 / 保护裁定 /
+额外提名）、窗口的界面呈现、`ReplayCircle` 新标记渲染、装置与真机批次取证。
+
 ## 验收矩阵
 
 （维度细化；证据列在实现时逐行落）

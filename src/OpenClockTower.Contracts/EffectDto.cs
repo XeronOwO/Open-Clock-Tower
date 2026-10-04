@@ -29,6 +29,12 @@ public sealed record EffectDto
     /// </summary>
     public string? GrantedCharacter { get; init; }
 
+    /// <summary>
+    /// 这条效果在目标身上开启的窗口分类（EffectWindowKind 名：AfflictionImmunity / SecondAction /
+    /// RegainedAbility）；null = 普通效果。窗口的判定口径见 R-0047 / R-0052 / R-0054。
+    /// </summary>
+    public string? Window { get; init; }
+
     /// <summary>是否已终止（终止不可逆）。</summary>
     public required bool Terminated { get; init; }
 

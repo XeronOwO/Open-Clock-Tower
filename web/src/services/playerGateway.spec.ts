@@ -166,6 +166,36 @@ describe('白天投影规范化', () => {
     expect(normalizePlayerDay(null)).toBeNull()
   })
 
+  it('流放 / 额外提名的权限位与候选：坏字段退化成 false / 空集合，不编（D7）', () => {
+    const day = normalizePlayerDay({
+      sequence: 11,
+      publicView: { dayNumber: 1, status: 'Open' },
+      canProposeExile: true,
+      exileCandidates: [3, 4, 'x'],
+      canVoteExile: true,
+      exileVoted: false,
+      exileSeatCollected: false,
+      canNominateExtra: true,
+      extraNominationCandidates: [1, 2, 3],
+    })
+
+    expect(day?.canProposeExile).toBe(true)
+    expect(day?.exileCandidates).toEqual([3, 4])
+    expect(day?.canVoteExile).toBe(true)
+    expect(day?.exileVoted).toBe(false)
+    expect(day?.exileSeatCollected).toBe(false)
+    expect(day?.canNominateExtra).toBe(true)
+    expect(day?.extraNominationCandidates).toEqual([1, 2, 3])
+
+    // 旧服务端形状：缺失的权限位退化成 false、候选退化成空集合（保守，不猜）。
+    const legacy = normalizePlayerDay({ sequence: 12, publicView: { dayNumber: 1, status: 'Open' } })
+    expect(legacy?.canProposeExile).toBe(false)
+    expect(legacy?.exileCandidates).toEqual([])
+    expect(legacy?.canVoteExile).toBe(false)
+    expect(legacy?.canNominateExtra).toBe(false)
+    expect(legacy?.extraNominationCandidates).toEqual([])
+  })
+
   it('公开生死面：坏条目单条丢弃、空数组不崩；缺字段的历史数据退化成空集合', () => {
     const day = normalizePlayerDay({
       sequence: 10,

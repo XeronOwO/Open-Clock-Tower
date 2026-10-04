@@ -4,15 +4,21 @@ import type { SetupProposalDto } from '@/contracts/game'
 import { newIdempotencyKey } from '@/services/idempotency'
 import {
   closeDay,
+  countExileVotes,
   countVotes,
   forceAdvance,
   invokeCommand,
+  joinTraveller,
   normalizeOutcome,
   pitHagCasualty,
   proposeSetup,
+  removeTraveller,
+  resolveDayProtection,
   resolveDeferredDeath,
+  resumeExileSweep,
   resumeVoteSweep,
   startDay,
+  startExileSweep,
   startVoteSweep,
   type CommandSender,
 } from '@/services/storytellerCommands'
@@ -34,8 +40,25 @@ describe('命令回执规范化', () => {
       sequence: 12,
       message: '',
       rebuild: null,
+      issuedSeat: null,
+      issuedSeatTicket: null,
     })
     expect(normalizeOutcome({ kind: 'Duplicate', sequence: 12 }).ok).toBe(true)
+  })
+
+  it('加入旅行者的回执带签发席位与票据；普通命令为 null（D1）', () => {
+    const joined = normalizeOutcome({
+      kind: 'Accepted',
+      sequence: 20,
+      issuedSeat: 16,
+      issuedSeatTicket: 'T'.repeat(43),
+    })
+    expect(joined.issuedSeat).toBe(16)
+    expect(joined.issuedSeatTicket).toBe('T'.repeat(43))
+
+    const plain = normalizeOutcome({ kind: 'Accepted', sequence: 21 })
+    expect(plain.issuedSeat).toBeNull()
+    expect(plain.issuedSeatTicket).toBeNull()
   })
 
   it('重建回执带三项等价结论；非重建命令不带报告', () => {
@@ -136,6 +159,42 @@ describe('命令必须出示连接凭据（D-0012）', () => {
 
     await resolveDeferredDeath(sender, 4, false, null, 'key-resolve')
     expect(invoke).toHaveBeenCalledWith('ResolveDeferredDeath', credential, 4, false, null, 'key-resolve')
+  })
+
+  it('旅行者与流放命令按 Hub 方法名与参数顺序发出（票据 traveller-and-exile · D7）', async () => {
+    const invoke = vi.fn(async () => ({ kind: 'Accepted', sequence: 13 }))
+    const sender: CommandSender = { connection: { invoke } as unknown as HubConnection, credential }
+
+    // 追加席位（seat = null）：服务端签发新席位与新票据，回执字段由 normalizeOutcome 带出。
+    await joinTraveller(sender, null, 'bone-collector', 'Good', null, 'key-join')
+    expect(invoke).toHaveBeenCalledWith(
+      'JoinTraveller',
+      credential,
+      null,
+      'bone-collector',
+      'Good',
+      null,
+      'key-join',
+    )
+
+    // 指定席位 + 邪恶揭示名单：数组原样透传（平台只转达，不替说书人拍板）。
+    await joinTraveller(sender, 16, 'deviant', 'Evil', [1, 2], 'key-join-2')
+    expect(invoke).toHaveBeenCalledWith('JoinTraveller', credential, 16, 'deviant', 'Evil', [1, 2], 'key-join-2')
+
+    await removeTraveller(sender, 16, '玩家离席', 'key-leave')
+    expect(invoke).toHaveBeenCalledWith('RemoveTraveller', credential, 16, '玩家离席', 'key-leave')
+
+    await resolveDayProtection(sender, 5, true, '有趣', 'key-protect')
+    expect(invoke).toHaveBeenCalledWith('ResolveDayProtection', credential, 5, true, '有趣', 'key-protect')
+
+    await startExileSweep(sender, 1, 3000, 1000, 'key-exile-sweep')
+    expect(invoke).toHaveBeenCalledWith('StartExileSweep', credential, 1, 3000, 1000, 'key-exile-sweep')
+
+    await resumeExileSweep(sender, 1, 'key-exile-resume')
+    expect(invoke).toHaveBeenCalledWith('ResumeExileSweep', credential, 1, 'key-exile-resume')
+
+    await countExileVotes(sender, 1, 'key-exile-count')
+    expect(invoke).toHaveBeenCalledWith('CountExileVotes', credential, 1, 'key-exile-count')
   })
 })
 

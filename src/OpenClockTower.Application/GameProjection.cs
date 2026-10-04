@@ -21,6 +21,7 @@ public static class GameProjection
     /// <param name="seat">接收者席位。</param>
     /// <param name="trackers">会话派生跟踪器：发给该席位的信息结果与公开生死面（R-0022）。</param>
     /// <param name="seatNames">公开的「席位 → 玩家名」映射（D-0021；无名字的席位不出现）。</param>
+    /// <param name="characters">角色事实端口（判定流放目标是不是旅行者；R-0044）；缺失 = 不给流放候选（不猜）。</param>
     public static PlayerView ForSeat(
         StepMachineState? machine,
         GameState state,
@@ -30,7 +31,8 @@ public static class GameProjection
         DateTimeOffset? voteSweepStartedAt,
         SeatId seat,
         SessionTrackers trackers,
-        IReadOnlyList<SeatDisplayName> seatNames)
+        IReadOnlyList<SeatDisplayName> seatNames,
+        IWinConditionFacts? characters = null)
     {
         ArgumentNullException.ThrowIfNull(state);
         ArgumentNullException.ThrowIfNull(seats);
@@ -59,7 +61,8 @@ public static class GameProjection
                 seat,
                 trackers.PublicLife,
                 now,
-                voteSweepStartedAt),
+                voteSweepStartedAt,
+                characters),
             Outcome = machine?.Outcome,
             KlutzChoices = [.. (machine?.KlutzChoices ?? []).Select(PublicKlutzChoice)],
             SeatNames = seatNames,
@@ -214,6 +217,9 @@ public static class GameProjection
 
             // 钟盘收票的呈现相位（剩余时间在读取时算出；R-0017 目标形态）。
             VoteSweep = VoteSweepProjection.Build(machine?.Day?.OpenDay?.OpenNomination, now, voteSweepStartedAt),
+
+            // 流放钟盘同款呈现（R-0044）：提名与流放各持一份收票状态，同一时刻至多一条未收完。
+            ExileSweep = VoteSweepProjection.Build(machine?.Day?.OpenDay?.OpenExile, now, voteSweepStartedAt),
             Outcome = machine?.Outcome,
             KlutzChoices = machine?.KlutzChoices ?? [],
             SeatNames = seatNames,

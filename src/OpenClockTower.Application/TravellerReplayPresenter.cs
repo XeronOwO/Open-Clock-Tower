@@ -42,6 +42,15 @@ internal sealed class TravellerReplayPresenter : IReplayStepPresenter
                     Reason = "旅行者加入",
                 },
             ],
+            Markers =
+            [
+                new ReplayMarker
+                {
+                    Kind = "traveller-joined",
+                    Seat = joined.Seat,
+                    Text = ReplayText.CharacterValue(joined.Character),
+                },
+            ],
         },
         TravellerDepartedEvent departed => new ReplayStep
         {
@@ -54,6 +63,7 @@ internal sealed class TravellerReplayPresenter : IReplayStepPresenter
                 : $"说书人说明：{departed.Note}；席位与票据保留，离场后不计入任何人数口径"
                     + "（rulings.md R-0044 第 6 条）。",
             Seats = [new ReplaySeatDelta { Seat = departed.Seat, Reason = "旅行者离场" }],
+            Markers = [new ReplayMarker { Kind = "traveller-departed", Seat = departed.Seat }],
         },
         _ => throw new InvalidOperationException(
             $"TravellerReplayPresenter 不认领事件 {context.Stored.Event.GetType().Name}"),

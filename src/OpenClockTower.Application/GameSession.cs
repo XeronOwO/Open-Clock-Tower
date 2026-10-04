@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using OpenClockTower.Kernel;
+using OpenClockTower.Rules;
 
 namespace OpenClockTower.Application;
 
@@ -198,7 +199,8 @@ public sealed class GameSession
                 _trackers.VoteSweepStartedAt,
                 seat,
                 _trackers,
-                _seatNames.Snapshot());
+                _seatNames.Snapshot(),
+                WinConditionFacts.Instance);
         }
         finally
         {

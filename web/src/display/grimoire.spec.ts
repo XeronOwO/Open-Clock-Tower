@@ -90,6 +90,8 @@ function effectOf(target: number, overrides: Partial<EffectDto> = {}): EffectDto
     sourceCharacter: 'no-dashii',
     // 契约上必有（服务端每条路径都显式赋值）；只有「获得能力」类效果才有值。
     grantedCharacter: null,
+    // 效果窗口（咖啡师 / 集骨者）；普通效果为 null。
+    window: null,
     terminated: false,
     terminationKind: null,
     terminationReason: null,

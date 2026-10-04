@@ -17,6 +17,7 @@ import {
 import { newIdempotencyKey } from '@/services/idempotency'
 import {
   addSeatAnnotation,
+  localFailure,
   removeSeatAnnotation,
   updateSeatAnnotation,
   type CommandOutcome,
@@ -58,7 +59,7 @@ watch(
 )
 
 function reject(message: string): void {
-  emit('outcome', { ok: false, kind: 'Rejected', sequence: null, message, rebuild: null })
+  emit('outcome', localFailure(message))
 }
 
 async function run(action: () => Promise<CommandOutcome>): Promise<CommandOutcome> {

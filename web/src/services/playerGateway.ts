@@ -266,6 +266,37 @@ export class PlayerGateway {
     )
   }
 
+  /** 发起流放提议（发起人由服务端从凭据推导；目标必须是本局在局旅行者；R-0044 第 2 条）。 */
+  async proposeExile(targetSeat: number, idempotencyKey: string): Promise<unknown> {
+    return this.connection.invoke<unknown>(
+      'ProposeExile',
+      this.requireCredential(),
+      targetSeat,
+      idempotencyKey,
+    )
+  }
+
+  /** 在当前开放的流放上举手 / 放下（全体在局玩家含死者；死者不耗投票标记，R-0044 第 4 条）。 */
+  async castExileVote(exileIndex: number, voted: boolean, idempotencyKey: string): Promise<unknown> {
+    return this.connection.invoke<unknown>(
+      'CastExileVote',
+      this.requireCredential(),
+      exileIndex,
+      voted,
+      idempotencyKey,
+    )
+  }
+
+  /** 屠夫本人在额外提名窗口里发起提名（R-0050；提名者由服务端从凭据推导，窗口不合法会被显式拒绝）。 */
+  async nominateExtra(nomineeSeat: number, idempotencyKey: string): Promise<unknown> {
+    return this.connection.invoke<unknown>(
+      'NominateExtra',
+      this.requireCredential(),
+      nomineeSeat,
+      idempotencyKey,
+    )
+  }
+
   /** 艺术家在白天向说书人提一个是 / 否问题（R-0040；幂等键由调用方持有）。 */
   async askArtistQuestion(question: string, idempotencyKey: string): Promise<unknown> {
     return this.connection.invoke<unknown>(
@@ -494,6 +525,18 @@ export function normalizePlayerDay(raw: unknown): PlayerDayDto | null {
     voted: asBoolean(day['voted']) ?? false,
     seatCollected: asBoolean(day['seatCollected']) ?? false,
     candidates: asArray<unknown>(day['candidates'])
+      .map((candidate) => asCount(candidate))
+      .filter((candidate): candidate is number => candidate !== null),
+    // 旅行者与流放（D7）：权限位与候选都是服务端算好的公开使能条件；坏字段退化成 false / 空集。
+    canProposeExile: asBoolean(day['canProposeExile']) ?? false,
+    exileCandidates: asArray<unknown>(day['exileCandidates'])
+      .map((candidate) => asCount(candidate))
+      .filter((candidate): candidate is number => candidate !== null),
+    canVoteExile: asBoolean(day['canVoteExile']) ?? false,
+    exileVoted: asBoolean(day['exileVoted']) ?? false,
+    exileSeatCollected: asBoolean(day['exileSeatCollected']) ?? false,
+    canNominateExtra: asBoolean(day['canNominateExtra']) ?? false,
+    extraNominationCandidates: asArray<unknown>(day['extraNominationCandidates'])
       .map((candidate) => asCount(candidate))
       .filter((candidate): candidate is number => candidate !== null),
   }
