@@ -142,11 +142,11 @@
 
 ### R-0006 · 百科图片热链的可用性
 
-- **状态**：Decided（2026-10-04 实测：无防盗链、`<img>` 无需 CORS；桌面 Chromium + 移动端仿真 + 局域网 origin 探针全过；2026-10-05 花名册 30 张全量复核 `200` + `image/png`；回归 = 单元 / SSR 测试 + `tools/check-character-art.mjs`）
+- **状态**：Decided（2026-10-04 实测：无防盗链、`<img>` 无需 CORS；桌面 Chromium + 移动端仿真 + 局域网 origin 探针全过；同日花名册扩到 30 人后全量复核 `200` + `image/png`；回归 = 单元 / SSR 测试 + `tools/check-character-art.mjs`）
 - **问题**：程序在运行期外链 `clocktower-wiki.gstonegames.com` 的图片，是否会遇到防盗链 / Referer 校验 / 跨域限制？
 - **依据**：2026-10-04 首轮实测（见下）。方案由需求方选定（见 `docs/decisions/active.md` D-0007）。
 - **实测（2026-10-04）**：
-  1. 角色图：2026-10-04 首次 25 张逐张 `200` + `image/png`；2026-10-05 花名册扩到 30 人后**全量复核 30 张**
+  1. 角色图：2026-10-04 首次 25 张逐张 `200` + `image/png`；同日花名册扩到 30 人后**全量复核 30 张**
      （含 5 名旅行者）依旧全部 `200` + `image/png`（地址取自 `web/src/display/character-art.ts`；
      `artifacts/web/wiki-image-probe.log`）；
   2. Referer：带本站 Referer 与不带均 `200`——**无防盗链**；响应无 `Access-Control-Allow-Origin`，
