@@ -14,6 +14,11 @@ namespace OpenClockTower.Kernel;
 /// 依据是否成立由规则层契约 <see cref="IAdjudicatedExecutionSource"/> 给出（内核不认角色 slug）；
 /// 不成立或判定不了时**显式拒绝、不产出任何事件**（R-0020 / D-0015：不猜）。
 /// </para>
+/// <para>
+/// 存活目标是否真的死亡，先问统一死亡保护查询（死因 <see cref="DeathProtectionCause.Execution"/>，
+/// R-0048 第 6 条 / R-0020 第 7 条）：受保护只记「被处决」、不产生死亡；待裁定 / 判定不了整条拒绝——
+/// 与 <see cref="DayMachine.CloseDay"/> 的处决收口同源。
+/// </para>
 /// </remarks>
 internal static class AdjudicatedExecutionMachine
 {
@@ -137,15 +142,37 @@ internal static class AdjudicatedExecutionMachine
 
         if (life == LifeState.Alive)
         {
-            events.Add(new SeatStateChangedEvent
+            // 存活者被处罚处决是否产生死亡，先问统一死亡保护查询（R-0048 第 6 条 / R-0020 第 7 条，按死因）：
+            // 受保护只记「被处决」、不产生死亡；待裁定 / 判定不了整条输入显式拒绝（不猜）。
+            // 与 DayMachine.CloseDay 的处决收口同源——两条处决致死路径不允许各判各的。
+            var protection = DeathProtectionQuery.Resolve(
+                context,
+                state.Day?.OpenDay,
+                input.Seat,
+                DeathProtectionCause.Execution);
+            switch (protection.Outcome)
             {
-                Seat = input.Seat,
-                Life = LifeState.Dead,
-                Reason = eligibility.DeathReason
-                    ?? throw new InvalidOperationException($"处罚处决契约 {input.Source} 成立但没有给出死亡原因"),
-                CausedBy = eligibility.CausedBy,
-                EffectId = eligibility.EffectId,
-            });
+                case DeathProtectionOutcome.Protected:
+                    break;
+                case DeathProtectionOutcome.NeedsRuling:
+                    return Reject(state, "punishment.execution_protection_required", protection.Note);
+                case DeathProtectionOutcome.Indeterminate:
+                    return Reject(
+                        state,
+                        "punishment.execution_protection_indeterminate",
+                        $"{protection.Note}（先补观测，再处罚处决；R-0048）");
+                default:
+                    events.Add(new SeatStateChangedEvent
+                    {
+                        Seat = input.Seat,
+                        Life = LifeState.Dead,
+                        Reason = eligibility.DeathReason
+                            ?? throw new InvalidOperationException($"处罚处决契约 {input.Source} 成立但没有给出死亡原因"),
+                        CausedBy = eligibility.CausedBy,
+                        EffectId = eligibility.EffectId,
+                    });
+                    break;
+            }
         }
 
         if (!duringDay)

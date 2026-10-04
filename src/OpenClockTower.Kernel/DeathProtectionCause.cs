@@ -5,7 +5,8 @@ namespace OpenClockTower.Kernel;
 /// </summary>
 /// <remarks>
 /// 收口点按死因向契约提问；范围由规则层来源自行回答（内核不认识角色 slug，D-0008）。
-/// 目前只有白天两条收口：流放计票与 <see cref="DayMachine.CloseDay"/> 的处决收口。
+/// 目前三条收口：流放计票、<see cref="DayMachine.CloseDay"/> 的处决收口与处罚处决
+/// （<c>AdjudicatedExecutionMachine</c>，R-0020 第 7 条）。
 /// </remarks>
 public enum DeathProtectionCause
 {

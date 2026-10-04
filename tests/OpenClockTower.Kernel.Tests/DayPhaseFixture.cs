@@ -13,6 +13,18 @@ internal static class DayPhaseFixture
         Slots = [StepSlot.DayWindow(new StepSlotId("day-window"))],
     };
 
+    /// <summary>最小夜晚计划（两个空槽位）：只用来判"夜晚形态不推进阶段"一类的用例。</summary>
+    internal static StepPlan NightPlan() => new()
+    {
+        Label = "sv:night-2",
+        Phase = GamePhase.OtherNight,
+        Slots =
+        [
+            StepSlot.Empty(new StepSlotId("dusk")),
+            StepSlot.Empty(new StepSlotId("dawn")),
+        ],
+    };
+
     /// <summary>
     /// 按"席位 + 生死"构造状态账：每席补一个默认非旅行者角色（D4 起计票 / 关账要判目标是不是旅行者，
     /// R-0049），其余维度不观测。

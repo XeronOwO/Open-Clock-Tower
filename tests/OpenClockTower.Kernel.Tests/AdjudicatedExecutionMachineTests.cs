@@ -78,7 +78,7 @@ public sealed class AdjudicatedExecutionMachineTests
     public void Punishment_DuringANight_DoesNotAdvanceThePlanNorTouchTheDayLedger()
     {
         var context = Context(applicable: true);
-        var night = StepMachine.StartPhase(NightPlan()).State;
+        var night = StepMachine.StartPhase(DayPhaseFixture.NightPlan()).State;
 
         var outcome = DayPhaseFixture.Apply(night, context, Input(2));
 
@@ -147,18 +147,6 @@ public sealed class AdjudicatedExecutionMachineTests
         DayPhaseFixture.Context((1, LifeState.Alive), (2, LifeState.Alive), (3, LifeState.Alive))
         with
         { AdjudicatedExecutions = [new FixedSource(applicable)] };
-
-    /// <summary>一个最小的真实夜晚计划（两个空槽位）：用来证明"夜晚处罚不动阶段"。</summary>
-    private static StepPlan NightPlan() => new()
-    {
-        Label = "sv:night-2",
-        Phase = GamePhase.OtherNight,
-        Slots =
-        [
-            StepSlot.Empty(new StepSlotId("dusk")),
-            StepSlot.Empty(new StepSlotId("dawn")),
-        ],
-    };
 
     private static PunishExecutionInput Input(int seat) => new()
     {
