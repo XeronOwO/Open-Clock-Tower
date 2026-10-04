@@ -1,5 +1,5 @@
 /**
- * 数学家（mathematician）批次装置 —— 票据 docs/backlog/in-progress/mathematician.md 的验收矩阵。
+ * 数学家（mathematician）批次装置 —— 票据 docs/backlog/done/mathematician.md 的验收矩阵。
  *
  * 它回答：**「窗口推演 + 说书人裁定 + 数字只到本人」这条链路在真界面上跑得通吗？**
  * 场景（固定 6 席：1 诺-达鲺 / 2 筑梦师 / 3 数学家 / 4 畸形秀演员（白天上报为涡流）/ 5 呆瓜 / 6 钟表匠）：
@@ -509,7 +509,7 @@ async function readDecisionText(page) {
     return ''
   }
 
-  return compact(await block.first().innerText())
+  return compact(await readTextBounded(block.first()))
 }
 
 async function waitForDecision(page, predicate, timeoutMs) {
@@ -545,7 +545,7 @@ async function panelText(page, heading) {
     return ''
   }
 
-  return compact(await section.first().innerText())
+  return compact(await readTextBounded(section.first()))
 }
 
 /** 数据抽屉里「失效账本」那一块（只取账本本身：裁定提示里也会出现"失效账本"四个字）。 */
@@ -556,7 +556,7 @@ async function malfunctionLedgerText(page) {
     return ''
   }
 
-  return compact(await block.first().innerText())
+  return compact(await readTextBounded(block.first()))
 }
 
 async function readPlayerInformationCount(page) {  const panel = page.locator('[data-testid="player-information"]')
@@ -573,7 +573,7 @@ async function readPlayerInformationText(page) {
     return ''
   }
 
-  return compact(await panel.innerText())
+  return compact(await readTextBounded(panel))
 }
 
 /** 轮询一个异步取值函数直到等于期望值（waitUntil 只收同步谓词，DOM 取值得走这里）。 */

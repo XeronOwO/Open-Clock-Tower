@@ -747,7 +747,7 @@ async function readDecisionText(page) {
     return ''
   }
 
-  return compact(await block.first().innerText())
+  return compact(await readTextBounded(block.first()))
 }
 
 async function waitForDecision(page, predicate, timeoutMs) {
@@ -852,7 +852,7 @@ async function infoText(page) {
     return ''
   }
 
-  return await info.innerText()
+  return await readTextBounded(info)
 }
 
 /** 玩家信息面板的信息计数（data-information-count）；面板不在时返回 -1。 */

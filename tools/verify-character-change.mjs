@@ -475,7 +475,7 @@ async function runPresentGrantScene() {
   }
   const swappedPending =
     (await storytellerPage.locator('[data-testid="console-pending"]').count()) > 0
-      ? compact(await storytellerPage.locator('[data-testid="console-pending"]').first().innerText())
+      ? compact(await readTextBounded(storytellerPage.locator('[data-testid="console-pending"]').first()))
       : '（说书人挂起面：当前没有挂起请求）'
   check(
     '换手后尚未进入的筑梦师格重绑给新持有者（1 号收到筑梦师提示）',
@@ -791,7 +791,7 @@ async function replayMarkerText(page) {
     return ''
   }
 
-  return compact(await list.innerText())
+  return compact(await readTextBounded(list))
 }
 
 /**
@@ -838,7 +838,7 @@ async function readDecisionText(page) {
     return ''
   }
 
-  return compact(await block.first().innerText())
+  return compact(await readTextBounded(block.first()))
 }
 
 async function waitForDecision(page, predicate, timeoutMs) {
@@ -874,7 +874,7 @@ async function panelText(page, heading) {
     return ''
   }
 
-  return compact(await section.first().innerText())
+  return compact(await readTextBounded(section.first()))
 }
 
 /**
@@ -890,7 +890,7 @@ async function waitForHubToken(page, testId, timeoutMs = 30_000) {
     if (await token.isVisible().catch(() => false)) {
       snapshot = {
         visible: true,
-        text: compact(await token.innerText().catch(() => '')),
+        text: compact(await readTextBounded(token)),
         title: (await token.getAttribute('title').catch(() => null)) ?? '',
       }
       if (snapshot.text.length > 0) {

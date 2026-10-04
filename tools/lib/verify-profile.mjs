@@ -5,7 +5,7 @@
  *   1) 这次按什么档跑？（迭代档 = 默认；取证档 = 显式开关）
  *   2) 宿主产物能直接用吗，还是必须先重建？
  *
- * 口径（票据 docs/backlog/todo/device-verification-fast-lane.md）：
+ * 口径（票据 docs/backlog/done/device-verification-fast-lane.md）：
  *   - 迭代档（默认）：节拍 0.3 秒/槽、截图不落盘、复用已构建产物——把"改一行跑几分钟"压成几十秒的回路；
  *   - 取证档（显式）：--quota 2 --screenshots-all（必要时 --build）——一批只跑一次，只对冻结版本跑；
  *   - 构建默认"自动"：产物不存在、或 src/ 下源码比产物新，就重建；--build 强制重建，--skip-build 显式复用（产物缺失即报错）。

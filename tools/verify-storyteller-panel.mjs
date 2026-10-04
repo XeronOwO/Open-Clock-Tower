@@ -1909,7 +1909,7 @@ async function infoText(page) {
     return ''
   }
 
-  return await info.innerText()
+  return await readTextBounded(info)
 }
 
 /** 玩家信息面板的信息计数（data-information-count）；面板不在时返回 -1。 */
@@ -2010,7 +2010,7 @@ async function panelText(page, heading) {
     return ''
   }
 
-  return await panel.first().innerText()
+  return await readTextBounded(panel.first())
 }
 
 /** 等某个 section.panel 的文本出现目标子串（服务端推送驱动的变化）。 */
@@ -2212,7 +2212,7 @@ async function readPlayerDiagnostics(page) {
     return ''
   }
 
-  return (await panel.innerText()).replace(/\s+/g, ' ').trim()
+  return (await readTextBounded(panel)).replace(/\s+/g, ' ').trim()
 }
 
 /** 重连补包坏数据的指纹：applyBundle 的诊断都以"重连补齐"开头（成功提示"重新补齐"不匹配）。 */
@@ -2233,7 +2233,7 @@ async function readSettledNote(page) {
     return ''
   }
 
-  return (await note.first().innerText()).trim()
+  return (await readTextBounded(note.first())).trim()
 }
 
 /** 玩家端"活动快照"：请求区状态 + 了结说明。窗口内它必须保持不变。 */
@@ -2318,7 +2318,7 @@ async function readDecisionText(page) {
     return ''
   }
 
-  return (await block.first().innerText()).replace(/\s+/g, ' ').trim()
+  return (await readTextBounded(block.first())).replace(/\s+/g, ' ').trim()
 }
 
 /** 等一个满足条件的裁定点出现（标题里带出裁定上下文）；超时返回最后一次读到的文本。 */

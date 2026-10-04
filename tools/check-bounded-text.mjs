@@ -1,6 +1,7 @@
 /**
- * 「轮询文本读取必须有界」的最小复现（验证 tools/lib/bounded-text.mjs）——
- * 票据 docs/backlog/done/device-poll-innertext-unbounded-wait.md 的验收矩阵行 1、2。
+ * 「轮询 / 守卫式文本读取必须有界」的最小复现（验证 tools/lib/bounded-text.mjs）——
+ * 票据 docs/backlog/done/device-poll-innertext-unbounded-wait.md 的验收矩阵行 1、2
+ * 与 docs/backlog/in-progress/device-guarded-reads-unbounded-wait.md 的探针 E。
  *
  * 为什么单独有这个脚本：装置里的轮询助手只在"元素缺失 / 晚到"的失败路径上才会咬人，
  * 正常路径的元素都在——真机装置跑绿证明不了这个修复。这里用假页面直接构造失败路径：
@@ -8,6 +9,8 @@
  *   探针 B（缺失元素单读）：readTextBounded 应立即返回 ''（约 0.5s），而不是默认的 30s 白等；
  *   探针 C（15s 档轮询缺失元素）：助手应在自己的 deadline 附近放弃（~15s），而不是被首读拖到 30s；
  *   探针 D（1.2s 晚到元素）：助手应在 deadline 内读到文本，不假红。
+ *   探针 E（守卫后脱离）：先 count() 看到元素、读取前元素被移除——守卫式助手（readDecisionText /
+ *     panelText / readTextOrNull 等）的真实竞态窗口；有界读取应返回 ''（约 0.5s），旧写法同样等满 30s。
  *
  * 用法（仓库根）：node tools/check-bounded-text.mjs
  * 退出码：0 = 探针全过；1 = 有探针失败；2 = 缺 Playwright / Chromium。
@@ -107,6 +110,22 @@ try {
     'D 晚到元素在 deadline 内读到',
     pollD.found && pollD.elapsedMs < 5_000,
     pollD.found ? `读到「${pollD.text}」于 ${(pollD.elapsedMs / 1000).toFixed(1)}s` : `未读到（${pollD.elapsedMs}ms）`,
+  )
+
+  // 探针 E：守卫后脱离——守卫（count）看到元素，读取前元素被移除。
+  // 守卫式助手（readDecisionText / panelText / readTextOrNull / infoText…）的竞态窗口就在这里：
+  // 旧写法（守卫后裸 innerText）会等满 30s，有界读取必须立即返回 ''。
+  await page.setContent('<html><body><div id="vanish">守卫时还在</div></body></html>')
+  const vanishing = page.locator('#vanish')
+  const guardedCount = await vanishing.count()
+  await page.evaluate(() => document.querySelector('#vanish')?.remove())
+  const tE = Date.now()
+  const vanishedText = await readTextBounded(vanishing)
+  const elapsedE = Date.now() - tE
+  record(
+    'E 守卫后脱离：有界读取返回空串',
+    guardedCount === 1 && vanishedText === '' && elapsedE < 1_000,
+    `守卫 count=${guardedCount}・返回「${vanishedText}」· ${elapsedE}ms（旧写法等满 30s）`,
   )
 } finally {
   await browser.close()

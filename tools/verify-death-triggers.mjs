@@ -1,6 +1,6 @@
 /**
  * 死亡触发族（贤者 / 心上人）批次装置 —— 票据
- * docs/backlog/in-progress/sage-and-sweetheart.md 的验收矩阵行 1 / 9 / 14 / 15（界面级），
+ * docs/backlog/done/sage-and-sweetheart.md 的验收矩阵行 1 / 9 / 14 / 15（界面级），
  * 平台口径见 docs/standard/rulings.md R-0038（贤者判据与当晚展示）/ R-0039（心上人即时醉酒）。
  *
  * 它回答：**「死亡时立即产生效果 / 当晚开裁定点 + 推进被挡 + 信息只到本人」这条链路
@@ -920,7 +920,7 @@ async function decisionId(page) {
     return null
   }
 
-  const text = compact(await block.first().innerText())
+  const text = compact(await readTextBounded(block.first()))
   const matched = text.match(/[A-Za-z0-9_.:-]+/g) ?? []
   return matched.find((token) => token.includes(':')) ?? text.slice(0, 120)
 }
@@ -931,7 +931,7 @@ async function readDecisionText(page) {
     return ''
   }
 
-  return compact(await block.first().innerText())
+  return compact(await readTextBounded(block.first()))
 }
 
 async function waitForDecision(page, predicate, timeoutMs) {
@@ -998,7 +998,7 @@ async function readDecisionSeatHint(page) {
     return ''
   }
 
-  return compact(await hint.first().innerText())
+  return compact(await readTextBounded(hint.first()))
 }
 
 /** 等归属文案出现且含某个席位号（视图推送与裁定块同一次到达，这里只兜渲染时序）；超时返回最后读到的文本。 */
@@ -1024,7 +1024,7 @@ async function readSlotContext(page) {
     return ''
   }
 
-  return compact(await line.first().innerText())
+  return compact(await readTextBounded(line.first()))
 }
 
 /** 等环区上下文行出现且含 token（值随视图推送到达）；超时返回最后一次读到的文本。 */
@@ -1057,7 +1057,7 @@ async function waitForGrimoireLocate(page, seat, timeoutMs = 20_000) {
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
     if ((await button.count()) > 0) {
-      return compact(await button.first().innerText())
+      return compact(await readTextBounded(button.first()))
     }
 
     await sleep(150)
@@ -1190,7 +1190,7 @@ async function readTextOrNull(page, testId) {
     return null
   }
 
-  return compact(await locator.first().innerText())
+  return compact(await readTextBounded(locator.first()))
 }
 
 /**
@@ -1297,7 +1297,7 @@ async function readPlayerInformationText(page) {
     return ''
   }
 
-  return compact(await panel.innerText())
+  return compact(await readTextBounded(panel))
 }
 
 /** 等玩家端请求区回到空态（data-request-state=idle：提交被受理后的界面事实）。 */

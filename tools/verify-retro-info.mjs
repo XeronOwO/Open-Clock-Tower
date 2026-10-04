@@ -1,6 +1,6 @@
 /**
  * 回溯型信息族（卖花女孩 / 城镇公告员 / 神谕者）批次装置 —— 票据
- * docs/backlog/in-progress/retrospective-info-family.md 的验收矩阵行 1、5、6、8。
+ * docs/backlog/done/retrospective-info-family.md 的验收矩阵行 1、5、6、8。
  *
  * 它回答：**「读白天账推演 + 说书人裁定 + 信息只到本人」这条链路在真界面上跑得通吗？**
  * 三个角色都是「除首夜外每夜」的**记录读者**：无玩家选项 → 说书人裁定点 → 信息只发本人。
@@ -703,7 +703,7 @@ async function decisionId(page) {
     return null
   }
 
-  const text = compact(await block.first().innerText())
+  const text = compact(await readTextBounded(block.first()))
   const matched = text.match(/[A-Za-z0-9_.:-]+/g) ?? []
   return matched.find((token) => token.includes(':')) ?? text.slice(0, 120)
 }
@@ -714,7 +714,7 @@ async function readDecisionText(page) {
     return ''
   }
 
-  return compact(await block.first().innerText())
+  return compact(await readTextBounded(block.first()))
 }
 
 async function waitForDecision(page, predicate, timeoutMs) {
@@ -746,7 +746,7 @@ async function panelText(page, heading) {
     return ''
   }
 
-  return compact(await section.first().innerText())
+  return compact(await readTextBounded(section.first()))
 }
 
 /**
@@ -796,7 +796,7 @@ async function readTextOrNull(page, testId) {
     return null
   }
 
-  return compact(await locator.first().innerText())
+  return compact(await readTextBounded(locator.first()))
 }
 
 /**
@@ -903,7 +903,7 @@ async function readPlayerInformationText(page) {
     return ''
   }
 
-  return compact(await panel.innerText())
+  return compact(await readTextBounded(panel))
 }
 
 /** 等玩家端请求区回到空态（data-request-state=idle：提交被受理后的界面事实）。 */

@@ -1,5 +1,6 @@
 /**
- * 装置轮询的**有界**文本读取 —— 票据 docs/backlog/done/device-poll-innertext-unbounded-wait.md。
+ * 装置**轮询 / 守卫式**读取的**有界**文本助手 —— 票据 docs/backlog/done/device-poll-innertext-unbounded-wait.md
+ * 与 docs/backlog/in-progress/device-guarded-reads-unbounded-wait.md。
  *
  * 为什么必须有界：Playwright 的 `locator.innerText()` 默认等 30 秒。轮询助手在元素缺失时
  * 每个周期都会白等满 30 秒再被 `.catch` 吞成空串——助手自己的 deadline（15s / 30s）被悄悄突破；

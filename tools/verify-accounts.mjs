@@ -300,7 +300,7 @@ async function main() {
   // 分段耗时把 guest 段钉在 30.3s 才暴露出来）。缺失 = 没有诊断，不是失败。
   const diagnosticsBox = guestPage.locator('[data-testid="player-diagnostics"]')
   const guestDiagnostics =
-    (await diagnosticsBox.count()) === 0 ? '' : compact(await diagnosticsBox.first().innerText())
+    (await diagnosticsBox.count()) === 0 ? '' : compact(await readTextBounded(diagnosticsBox.first()))
   check(
     '游客 C 页面不白屏：席位标签在位、诊断区没有「加入失败」',
     (await guestPage.getByTestId('player-seat').count()) === 1 && !guestDiagnostics.includes('加入失败'),

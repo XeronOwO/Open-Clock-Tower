@@ -60,11 +60,15 @@ todo/  →  in-progress/  →  review/  →  done/
 
 ### Todo
 
+- [装置属性读取未收口：轮询/守卫式 `getAttribute` 仍可能吃满 30s](todo/device-attribute-poll-unbounded-wait.md) — **Low** — 11 个装置的 `waitForAttribute` 与 `read*Count` / 日状态 / 标记 `title` 等守卫式属性读取统一到有界助手，元素脱离时不再白等 30s
+
 ### In progress
 
 ### Review
 
 ### Done
+
+- [装置守卫式读取未收口：条件读取仍可能吃满 30s](done/device-guarded-reads-unbounded-wait.md) — **Low** — 11 个装置的 `readDecisionText` / `panelText` / `readSlotContext` / `readTextOrNull` 等守卫式文本读取统一改走 `readTextBounded`（40 处），读取期间脱离不再吃 30s
 
 - [装置轮询读文本必须有界：元素缺失时不再白等 30s](done/device-poll-innertext-unbounded-wait.md) — **Low** — 十二个装置的 `waitForText` / `waitForLocatorContains` / `waitForLocatorText` / `waitForSeedChange` 统一改走 `tools/lib/bounded-text.mjs` 的有界读取（单次 500ms），并落一个假页面最小复现脚本 `tools/check-bounded-text.mjs`
 

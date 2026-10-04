@@ -919,7 +919,7 @@ async function decisionId(page) {
     return null
   }
 
-  const text = compact(await block.first().innerText())
+  const text = compact(await readTextBounded(block.first()))
   const matched = text.match(/[A-Za-z0-9_.:-]+/g) ?? []
   return matched.find((token) => token.includes(':')) ?? text.slice(0, 120)
 }
@@ -930,7 +930,7 @@ async function readDecisionText(page) {
     return ''
   }
 
-  return compact(await block.first().innerText())
+  return compact(await readTextBounded(block.first()))
 }
 
 async function waitForDecision(page, predicate, timeoutMs) {
@@ -980,7 +980,7 @@ async function readDecisionSeatHint(page) {
     return ''
   }
 
-  return compact(await hint.first().innerText())
+  return compact(await readTextBounded(hint.first()))
 }
 
 /** 等归属文案出现且含某个席位号（视图推送与裁定块同一次到达，这里只兜渲染时序）；超时返回最后读到的文本。 */
@@ -1006,7 +1006,7 @@ async function readSlotContext(page) {
     return ''
   }
 
-  return compact(await line.first().innerText())
+  return compact(await readTextBounded(line.first()))
 }
 
 /** 等待裁定块消失（裁定被消费后 v-if 撤掉）；超时返回 false。 */
@@ -1491,7 +1491,7 @@ async function readTextOrNull(page, testId) {
     return null
   }
 
-  return compact(await locator.first().innerText())
+  return compact(await readTextBounded(locator.first()))
 }
 
 async function screenshot(page, name) {

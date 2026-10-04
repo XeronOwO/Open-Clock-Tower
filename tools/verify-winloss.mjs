@@ -439,7 +439,7 @@ async function readDecisionText(page) {
     return ''
   }
 
-  return compact(await block.first().innerText())
+  return compact(await readTextBounded(block.first()))
 }
 
 async function waitForDecision(page, predicate, timeoutMs) {
@@ -475,7 +475,7 @@ async function panelText(page, heading) {
     return ''
   }
 
-  return compact(await section.first().innerText())
+  return compact(await readTextBounded(section.first()))
 }
 
 async function waitForAttribute(locator, name, expected, timeoutMs) {
