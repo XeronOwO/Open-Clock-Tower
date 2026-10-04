@@ -1,6 +1,6 @@
 # 死亡保护裁定提示：只在该裁定时给出（说书人投影字段）
 
-- Status: Review
+- Status: Done
 - Priority: Medium
 - Depends on: `docs/standard/rulings.md` R-0048（Decided）；`docs/backlog/done/traveller-and-exile.md`（E34 残余）
 
@@ -44,6 +44,21 @@ E34 残余：说书人面板的「死亡保护裁定」入口由前端本地启�
   `DayViewDto` 是玩家可见的白天公开事实。
 - 受理条件单点：机器与投影共用 `DayProtectionEligibility`，既有 `DayProtectionTests` 守备面保证行为与拒绝码不变。
 
-## 验收判出（批次 E36）
+## 验收判出（批次 E36 · 2026-10-04）
 
-（待跑；结论与逐行证据在批次完成后回填。）
+冻结版本 `main` @ `86dd663`（跑批期间工作树干净）；主装置
+`node tools/verify-storyteller-panel.mjs --quota 2 --screenshots-all --build`：**286 项通过 / 0 失败 /
+0 跳过、退出码 0**（172.1s，54 张截图本次运行写入）。矩阵 4 行判出：
+
+- 行 1 **通过**：断言「达线后出现死亡保护裁定入口（待裁定）」（`exile-sweep-done` 截图可见
+  「受保护（怪咖有趣）/ 不受保护」两键 + 文案「达线且待裁定，R-0048」）；裁定后断言入口消失
+  （`exile-protected` 截图）。
+- 行 2 **通过**：收票期间断言入口计数 = 0（`exile-dial` 截图同证：收票 2/7 席时无两键）；
+  屠夫（无保护来源）达线断言入口计数 = 0、直接计票成立（`exile-exiled` 截图：流放成立、目标死亡）。
+- 行 3 **通过（真机不可达）**：内核 `ProtectionPromptQuery_Indeterminate_IsPromptedWithObservationNote` +
+  前端归一化用例；装置不制造「怪咖维度未观测」状态，未做组件级用例——如实记录。
+- 行 4 **通过**：门禁 `PlayerProjectionLeakGateTests` + 集成玩家 DTO 序列化零命中断言。
+
+诚实记录（范围）：其余十二个装置未重跑——新增字段为说书人视图专属（玩家 DTO 未动，契约由门禁登记）；
+装置 stderr 的重启窗口 `ECONNRESET` / `ECONNREFUSED` 噪声来自 `rebuild` 段故意重启宿主
+（装置自记「重启窗口噪音=63（非预期 0）」并判过），与本票无关。批次记录见 `docs/acceptance/batches.md` 批次 E36。

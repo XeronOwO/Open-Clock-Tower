@@ -772,6 +772,38 @@ Integration 188 · NormativeGates 24）；`dotnet format` 就地通过；`npm ru
 - 本批后 `review/`、`in-progress/` 清空；`todo/` 只剩印刷规则书回核一张；`done/` 新增
   `night-order-variant-default.md`。
 
+## 批次 E36（2026-10-04，死亡保护裁定提示投影：说书人入口与裁判机器同源）
+
+冻结版本：`main` @ `86dd663`（先提交内核 / 应用 / 契约 / 前端 / 测试 / 装置断言，再对冻结版跑取证档；
+跑批期间工作树干净）。
+
+本批按「主装置面板路径」取证：
+
+- 主装置 `tools/verify-storyteller-panel.mjs`（取证档 `--quota 2 --screenshots-all --build`）：
+  **286 项全部通过 / 0 失败 / 0 跳过、退出码 0**；54 张截图均为本次运行写入（合计 172.1s）。与本票相关的：
+  - `traveller` 段：流放收票期间断言 `st-protection` 计数 = 0（不提前提问）；怪咖达线后入口出现、
+    裁定后消失；屠夫（无保护来源）达线时入口计数 = 0、直接计票成立（流放死亡）。
+  - 其余 15 段零失败——说书人专属提示字段未影响任何既有面板 / 玩家路径。
+
+截图复核 4 张（其余 50 张为同一次运行写入，未逐张复核，如实记录）：`exile-dial`（收票中：无裁定入口）、
+`exile-sweep-done`（达线待裁定：两键出现 + 文案「达线且待裁定，R-0048」）、`exile-protected`
+（裁定后入口消失、结论「达线但受死亡保护」）、`exile-exiled`（无保护来源目标流放死亡）——逐张与断言一致。
+
+冻结版门禁（提交前跑）：`dotnet build` 0 警告 0 错误；`dotnet test` **1084 通过 / 0 失败**
+（内核 435 · 规则 390 · 集成 234 · 门禁 25）；`dotnet format` 退出 0（未重写工作树）；
+`npm run gate` 退出 0（typecheck + lint + 171 测试 + 构建）。
+
+诚实记录（范围）：其余十二个装置未重跑——本批新增字段为说书人视图专属（玩家 DTO 未动，契约由 leak gate
+登记、集成用例对玩家 DTO 序列化做零命中断言）；装置 stderr 的重启窗口 `ECONNRESET` / `ECONNREFUSED`
+噪声来自 `rebuild` 段故意重启宿主（装置自记「重启窗口噪音=63（非预期 0）」并判过），与本批改动无关。
+
+批次 E36 判出：
+
+- **死亡保护裁定提示投影票验收矩阵 4 行全部通过**（行 1 待裁定窗口 / 行 2 不提前提问 /
+  行 3 判定不了（真机不可达，内核 + 前端覆盖，如实记录）/ 行 4 信息隔离）→ 票据移入 `done/`。
+- 本批后 `review/`、`in-progress/` 清空；`todo/` 两张（印刷规则书回核 / 屠夫落靶夹具）；
+  `done/` 新增 `day-protection-prompt-projection.md`。
+
 ## 相关阅读
 
 - 验收规程：`docs/acceptance/AGENTS.md`

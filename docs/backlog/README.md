@@ -67,9 +67,9 @@ todo/  →  in-progress/  →  review/  →  done/
 
 ### Review
 
-- [死亡保护裁定提示：只在该裁定时给出（说书人投影字段）](review/day-protection-prompt-projection.md) — **Medium** — 说书人裁定入口改为服务端投影驱动：`NeedsRuling` 才给按钮、`Indeterminate` 给补观测提示，受理条件与裁判机器同源
-
 ### Done
+
+- [死亡保护裁定提示：只在该裁定时给出（说书人投影字段）](done/day-protection-prompt-projection.md) — **Medium** — 说书人裁定入口改为服务端投影驱动：`NeedsRuling` 才给按钮、`Indeterminate` 给补观测提示，受理条件与裁判机器同源；批次 E36 判出矩阵 4 行全过（主装置取证档 286 项；冻结版门禁 1084 通过）
 
 - [夜晚顺序默认值对齐：命令层默认改为官方魔典顺序](done/night-order-variant-default.md) — 命令层 `StartNightCommand.Variant` 默认值对齐官方魔典顺序（Recommended）；批次 E35 判出矩阵 3 行全过（主装置取证档 284 项；冻结版门禁 1078 通过）
 
