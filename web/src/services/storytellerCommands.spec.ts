@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { HubConnection } from '@microsoft/signalr'
+import type { SetupProposalDto } from '@/contracts/game'
 import { newIdempotencyKey } from '@/services/idempotency'
 import {
   closeDay,
@@ -8,6 +9,7 @@ import {
   invokeCommand,
   normalizeOutcome,
   pitHagCasualty,
+  proposeSetup,
   resolveDeferredDeath,
   startDay,
   type CommandSender,
@@ -126,5 +128,61 @@ describe('命令必须出示连接凭据（D-0012）', () => {
 
     await resolveDeferredDeath(sender, 4, false, null, 'key-resolve')
     expect(invoke).toHaveBeenCalledWith('ResolveDeferredDeath', credential, 4, false, null, 'key-resolve')
+  })
+})
+
+describe('配板建议是只读查询（R-0041 / R-0042）', () => {
+  const credential = 'C'.repeat(43)
+
+  it('按 Hub 方法名与参数顺序发出，并把服务端建议原样交还（UI 不加工）', async () => {
+    const proposal: SetupProposalDto = {
+      ok: true,
+      seed: 'a'.repeat(32),
+      assignments: [
+        { seat: 1, character: 'clockmaker' },
+        { seat: 2, character: 'dreamer' },
+      ],
+      distribution: [{ type: 'Townsfolk', count: 3 }],
+      notes: ['设置调整 · 方古：外来者 +1（缺额由镇民补偿）'],
+      failureCode: null,
+      failureMessage: null,
+    }
+    const invoke = vi.fn(async () => proposal)
+    const sender: CommandSender = { connection: { invoke } as unknown as HubConnection, credential }
+
+    const result = await proposeSetup(sender, null)
+
+    expect(result).toBe(proposal)
+    expect(invoke).toHaveBeenCalledWith('ProposeSetup', credential, null)
+  })
+
+  it('没有凭据就不查：本地先拒绝，UI 拿到的失败形态字段齐备', async () => {
+    const invoke = vi.fn()
+    const sender: CommandSender = { connection: { invoke } as unknown as HubConnection, credential: '' }
+
+    const result = await proposeSetup(sender, 'seed-1')
+
+    expect(result.ok).toBe(false)
+    expect(result.failureCode).toBe('setup.no_credential')
+    expect(result.seed).toBe('')
+    expect(result.assignments).toEqual([])
+    expect(result.distribution).toEqual([])
+    expect(result.notes).toEqual([])
+    expect(invoke).not.toHaveBeenCalled()
+  })
+
+  it('传输异常收敛成建议的失败形态，不把异常抛给 UI', async () => {
+    const invoke = vi.fn(async () => {
+      throw new Error('connection lost')
+    })
+    const sender: CommandSender = { connection: { invoke } as unknown as HubConnection, credential }
+
+    const result = await proposeSetup(sender, null)
+
+    expect(result.ok).toBe(false)
+    expect(result.failureCode).toBe('setup.transport')
+    expect(result.failureMessage).toContain('connection lost')
+    expect(result.seed).toBe('')
+    expect(result.assignments).toEqual([])
   })
 })
