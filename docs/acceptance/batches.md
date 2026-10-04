@@ -736,6 +736,42 @@ Integration 188 · NormativeGates 24）；`dotnet format` 就地通过；`npm ru
 - 本批后 `in-progress/`、`review/` 清空；`todo/` 三张（日期偏移核查 / 夜序默认值对齐 /
   印刷规则书回核）；`done/` 新增 `traveller-and-exile.md`。
 
+## 批次 E35（2026-10-04，夜晚顺序默认值对齐：命令层默认 Recommended）
+
+冻结版本：`main` @ `d8b4816`（先提交命令默认值对齐 + 新集成测试 + R-0014 / 票据同步，再对冻结版
+跑取证档；跑批期间工作树干净）。
+
+本批按「主装置面板路径」取证：
+
+- 主装置 `tools/verify-storyteller-panel.mjs`（取证档 `--quota 2 --screenshots-all --build`）：
+  **284 项全部通过 / 0 跳过、退出码 0**；54 张截图均为本次运行写入（合计 173.7s）。与本票相关的：
+  - `night1-clockmaker`：「首夜真实建表：14 个槽位（面板默认 Recommended 全表；含 D5 咖啡师黄昏槽）」
+    ——面板不额外传口径，也从默认下拉（Recommended）开夜成功；
+  - `night2-3`：「第二夜（Recommended）开夜被受理」「第三夜（Recommended）开夜被受理」，夜间
+    全链路（请求 / 代填 / 强制作废 / 依赖失效）照常推进；
+  - 其余 14 段（旅行者 / 涡流 / 重建 / 重连等）零失败——默认值改动未影响任何既有面板路径。
+
+截图复核 4 张（其余 50 张为同一次运行写入，未逐张复核，如实记录）：`01-storyteller-joined`
+（兜底面板口径下拉初始 = Recommended）、`03-night-started`（面板开夜后首夜 14 槽）、
+`night2-barista-options`（第二夜 2/25 槽 + 咖啡师裁定点）、`14-player-phase-night-two`
+（玩家端夜晚相位、无说书人字段）——逐张与断言一致。
+
+冻结版门禁（提交前跑）：`dotnet build` 0 警告 0 错误；`dotnet test` **1078 通过 / 0 失败**
+（内核 430 · 规则 390 · 集成 233 · 门禁 25）；`dotnet format` 退出 0（未重写工作树）；
+`npm run gate` 退出 0（typecheck + lint + 169 测试 + 构建）。
+
+诚实记录（范围）：其余十二个装置未重跑——本批产品改动只有命令层默认值一处（生产面板 / Hub 路径
+始终显式传口径），面板全流程由主装置覆盖、命令层由集成用例覆盖；零信任投影未动。
+装置 stderr 的重启窗口 `ECONNRESET` / 代理 `ECONNREFUSED` 噪声来自 `rebuild` 段**故意重启宿主**
+（装置自记「重启窗口噪音=63（非预期 0）」并判过），与本批改动无关。
+
+批次 E35 判出：
+
+- **夜晚顺序默认值对齐票验收矩阵 3 行全部通过**（行 1 无参开夜 → Recommended 建表与槽位顺序；
+  行 2 面板路径行为不变；行 3 显式 Original 仍生效并进 `StepPlan.Variant`）→ 票据移入 `done/`。
+- 本批后 `review/`、`in-progress/` 清空；`todo/` 只剩印刷规则书回核一张；`done/` 新增
+  `night-order-variant-default.md`。
+
 ## 相关阅读
 
 - 验收规程：`docs/acceptance/AGENTS.md`

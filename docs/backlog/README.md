@@ -66,9 +66,9 @@ todo/  →  in-progress/  →  review/  →  done/
 
 ### Review
 
-- [夜晚顺序默认值对齐：命令层默认改为官方魔典顺序](review/night-order-variant-default.md) — **Low** — 命令层 `StartNightCommand.Variant` 默认值对齐官方魔典顺序（Recommended），消除「文档默认 vs 无参默认」的偏差
-
 ### Done
+
+- [夜晚顺序默认值对齐：命令层默认改为官方魔典顺序](done/night-order-variant-default.md) — 命令层 `StartNightCommand.Variant` 默认值对齐官方魔典顺序（Recommended）；批次 E35 判出矩阵 3 行全过（主装置取证档 284 项；冻结版门禁 1078 通过）
 
 - [文档日期偏移核查：50 处「未来日期」记录按 git 时间线回填](done/doc-date-offset-audit.md) — 全仓扫描「记录日期晚于写入提交」的硬矛盾 56 处，50 处逐条回填真实日期（E14/E15/E16 → 10-02、E25 → 10-03、E31/E32 → 10-04；另含 madness / player-death / step-insights / rulings 等），其余 6 处为描述性叙述与合成夹具并写明；复扫脚本与输出随票留档
 
