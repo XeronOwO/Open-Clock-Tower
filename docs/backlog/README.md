@@ -62,6 +62,10 @@ todo/  →  in-progress/  →  review/  →  done/
 
 - [旅行者与流放流程（首版纳入）](todo/traveller-and-exile.md) — **High** — 《梦殒春宵》5 名旅行者（怪咖 / 集骨者 / 咖啡师 / 流莺 / 屠夫）+ 流放流程 + 加入 / 离开；范围决策 D-0022（需求方 2026-10-04 确认纳入 MVP），开工第一步是补来源与细则清点
 - [夜晚顺序口径默认值统一](todo/night-order-variant-default.md) — **Medium** — 引擎默认 Original、面板默认 Recommended 的口径不一致（R-0014 的 2026-10-04 核对发现）；两条收口路线二选一
+- [印刷规则书原件回核：R-0005 / R-0012 / R-0013 / R-0018 引文与 R-0029 取证](todo/rulebook-original-crosscheck.md) — **Medium** — 三条裁定依第三方逐字提取文本收口，官方原件不在手；拿到实物后回核引文，并顺手找「恶魔清零」条文
+- [R-0017 在线投票口径收口](todo/online-vote-ruling-followup.md) — **Low** — 默认口径已实现，等一轮实际对局反馈或需求方拍板后转 Decided
+- [R-0041 的 6 人分布行取证](todo/setup-distribution-6p-source.md) — **Low** — 唯一外推行（3 / 1 / 1 / 1）需实物《旅行者列表 / 初始设置表》照片或等价素材
+- [文档日期偏移核查](todo/doc-date-offset-audit.md) — **Low** — 多处记录写 2026-10-05（E31/E32 等），git 时间戳与外部服务器时间均为 2026-10-04；需统一核查
 
 ### In progress
 
