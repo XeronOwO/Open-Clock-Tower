@@ -58,7 +58,8 @@
  *
  * 段落（按序执行；--only 与 --from 互斥；前面段作为必要前置照跑，但只有选中段计入判定）：
  *   boot · tickets · join · assign · opening · annotation · night1-clockmaker · night1-dreamer-request
- *   · night1-dreamer-resolution · night1-finish · day1 · night2-3 · vortox · rebuild · reconnect · final
+ *   · night1-dreamer-resolution · night1-finish · day1 · traveller · night2-3 · vortox · rebuild ·
+ *   reconnect · final
  *
  * 外部耦合（换机器前先核对，见 web/AGENTS.md §3.1）：
  *   - 宿主编译产物路径 src/OpenClockTower.Server/bin/Release/net10.0/OpenClockTower.Server[.exe]；
@@ -104,8 +105,9 @@ const SECTIONS = [
   { id: 'night1-dreamer-request', title: '筑梦师槽位：2 号玩家收到定向请求（无关玩家零活动）' },
   { id: 'night1-dreamer-resolution', title: '2 号玩家作答 → 说书人自由裁定（能力未生效）→ 信息单播' },
   { id: 'night1-finish', title: '说书人结算归因（第一夜）→ 等第一夜走完' },
-  { id: 'day1', title: '白天阶段：开白天 → 提名 → 投票 → 计票 → 处决' },
-  { id: 'night2-3', title: '第二夜与第三夜：代填 / 强制作废 / 阶段推送 → 依赖变化' },
+  { id: 'day1', title: '白天阶段：开白天 → 加入五名旅行者 → 提名 → 处决 → 屠夫窗口' },
+  { id: 'traveller', title: '旅行者段：同一天流放（保护 / 死亡）+ 移出 + 复盘 + 关账' },
+  { id: 'night2-3', title: '第二夜与第三夜：旅行者黄昏格 → 代填 / 强制作废 → 依赖变化' },
   { id: 'vortox', title: '涡流干扰：涡流存活下的镇民信息结算 → 账本落 Vortox + 玩家隔离' },
   { id: 'rebuild', title: '恢复与重建：状态账对比 + 降级位' },
   { id: 'reconnect', title: '重连补齐与日志面：快照权威 watermark + 隐藏事件' },
@@ -895,6 +897,127 @@ async function main() {
   )
   await screenshot(players.get(dreamerSeat).page, '30b-player-day-open')
 
+  // —— 旅行者加入（票据 traveller-and-exile 行 1；D1 / D7）——
+  // 五名旅行者一次到位：加入 = 追加新席位（6..10），说书人把签发的票据转交给新到场玩家。
+  // 需要玩家端动作的三人（屠夫额外提名 / 流莺夜访选目标 / 集骨者选重获目标）各开一个独立上下文；
+  // 怪咖与咖啡师没有玩家端动作（咖啡师的二选一是说书人受众，R-0052）。
+  const mutantSeat = options.assign.indexOf('mutant') + 1
+  const klutzSeat = options.assign.indexOf('klutz') + 1
+  const travellerOrder = ['butcher', 'deviant', 'barista', 'harlot', 'bone-collector']
+  const travellerActors = new Set(['butcher', 'harlot', 'bone-collector'])
+  const evilTravellerSlug = 'harlot'
+  const travellerSeats = new Map()
+  for (const [index, slug] of travellerOrder.entries()) {
+    const expectedSeat = options.assign.length + index + 1
+    await storyteller.page.getByTestId('traveller-character').selectOption(slug)
+    await storyteller.page
+      .getByTestId('traveller-alignment')
+      .selectOption(slug === evilTravellerSlug ? 'Evil' : 'Good')
+    await storyteller.page.getByTestId('traveller-seat').fill('')
+    if (slug === evilTravellerSlug) {
+      // 邪恶旅行者：说书人指定要告知的存活恶魔（一名或全部；服务端校验「在局 + 存活 + 恶魔」）。
+      await storyteller.page
+        .locator(`[data-testid="traveller-reveal"] input[data-seat="${demonSeat}"]`)
+        .check()
+    }
+
+    const joinOutcome = await runCommand(storyteller.page, `加入旅行者-${slug}`, () =>
+      storyteller.page.getByTestId('traveller-join').click(),
+    )
+    check(`行 1：加入旅行者 ${slug} 被受理`, joinOutcome.kind === 'Accepted', joinOutcome.raw)
+
+    const issued = storyteller.page.getByTestId('traveller-issued')
+    const issuedSeat = await waitForAttribute(issued, 'data-seat', String(expectedSeat), 20_000)
+    const issuedTicket = (await issued.locator('.mono').innerText()).trim()
+    check(
+      `行 1：加入 ${slug} 签发第 ${expectedSeat} 席与票据（转交新到场玩家）`,
+      issuedSeat === String(expectedSeat) && issuedTicket.length > 0,
+      `seat=${issuedSeat}；ticket=${issuedTicket.slice(0, 10)}…`,
+    )
+    travellerSeats.set(slug, expectedSeat)
+
+    if (travellerActors.has(slug)) {
+      const client = await newClient(browser, { width: 900, height: 900 }, consoleErrors)
+      await client.page.goto(`${viteUrl}/#player`)
+      await client.page.getByPlaceholder('席位票据').fill(issuedTicket)
+      await client.page.getByRole('button', { name: '加入' }).click()
+      const badge = client.page.locator('[data-testid="player-seat"]')
+      await badge.waitFor({ timeout: 30_000 })
+      const badgeText = (await badge.innerText()).trim()
+      check(
+        `行 1：旅行者 ${expectedSeat} 号（${slug}）用签发票据加入成功`,
+        badgeText.includes(`${expectedSeat} 号`),
+        badgeText,
+      )
+      players.set(expectedSeat, client)
+    }
+  }
+
+  // —— 行 1 的公开面 / 隔离面 ——
+  // 公开：说书人魔典按宣告渲染「席位 + 角色」；「谁在桌上」对所有人公开（公开生死面含全部旅行者席位）。
+  // 隔离：旅行者阵营不进无关玩家的任何面；邪恶旅行者的揭示只对本人单播。
+  const travellerCardText = []
+  for (const slug of travellerOrder) {
+    const seat = travellerSeats.get(slug)
+    const cardText = (await cardOf(seat).innerText()).replace(/\s+/g, ' ')
+    travellerCardText.push(`${seat}:${cardText.includes(characterNameOf(slug)) ? 'OK' : cardText.slice(0, 40)}`)
+  }
+  check(
+    '行 1：说书人魔典按公开宣告渲染五名旅行者（席位 + 角色）',
+    travellerCardText.every((entry) => entry.endsWith(':OK')),
+    travellerCardText.join('；'),
+  )
+  const expectedTravellerSeats = travellerOrder.map((_, index) => options.assign.length + index + 1)
+  const publicLifeSeats = await players
+    .get(dreamerSeat)
+    .page.locator('[data-testid="player-lives"] li')
+    .evaluateAll((nodes) => nodes.map((node) => Number(node.getAttribute('data-seat'))))
+  check(
+    '行 1：玩家端公开生死面含全部旅行者席位（谁在桌上对所有人公开）',
+    expectedTravellerSeats.every((seat) => publicLifeSeats.includes(seat)),
+    `公开席位=${publicLifeSeats.join(',')}`,
+  )
+  const harlotSeat = travellerSeats.get(evilTravellerSlug)
+  const travellerFactionLeaks = []
+  for (const [seat, client] of players) {
+    if (seat === harlotSeat) {
+      continue // 邪恶旅行者本人知道自己是邪恶（私密面），不算越权。
+    }
+
+    const shellText = await client.page.locator('.shell').innerText()
+    const hits = ['善良', '邪恶', 'Good', 'Evil'].filter((word) => shellText.includes(word))
+    if (hits.length > 0) {
+      travellerFactionLeaks.push(`${seat} 号:${hits.join('/')}`)
+    }
+  }
+  check(
+    '行 1：旅行者阵营不进无关玩家的任何面（善良 / 邪恶 / Good / Evil 零命中）',
+    travellerFactionLeaks.length === 0,
+    travellerFactionLeaks.join('，') || `${players.size} 席已扫描（本人除外）`,
+  )
+  const harlotReveal = await infoText(players.get(harlotSeat).page)
+  check(
+    `行 1：邪恶旅行者（${harlotSeat} 号流莺）得知一名存活恶魔（${demonSeat} 号，只单播到本人）`,
+    harlotReveal.includes(`${demonSeat} 号玩家是恶魔`),
+    harlotReveal.replace(/\s+/g, ' ').slice(0, 200),
+  )
+  check(
+    `行 1：无关玩家（${dreamerSeat} 号）的信息列表不含邪恶揭示`,
+    !(await infoText(players.get(dreamerSeat).page)).includes('号玩家是恶魔'),
+    (await infoText(players.get(dreamerSeat).page)).replace(/\s+/g, ' ').slice(0, 160),
+  )
+  const travellerRemoveOptions = await storyteller.page
+    .getByTestId('traveller-remove-seat')
+    .locator('option')
+    .evaluateAll((nodes) => nodes.map((node) => node.getAttribute('value')))
+  check(
+    '行 1（前置）：说书人席位列表含全部旅行者席位（可移出）',
+    expectedTravellerSeats.every((seat) => travellerRemoveOptions.includes(String(seat))),
+    travellerRemoveOptions.join(','),
+  )
+  await screenshot(storyteller.page, '30c-travellers-joined')
+  await screenshot(players.get(dreamerSeat).page, '30d-player-traveller-roster')
+
   // 2 号提名 1 号（1 号被处决，不影响后续夜晚剧情需要存活的 2 / 3 号）。
   const nominatorPage = players.get(dreamerSeat).page
   await nominatorPage.getByTestId('player-nominee-select').selectOption(String(clockmakerSeat))
@@ -933,16 +1056,18 @@ async function main() {
   check('白天阶段：开始收票后进入倒计时', countdownPhase === 'Countdown', `data-sweep-phase=${countdownPhase}`)
   await screenshot(storyteller.page, '32-day-dial-countdown')
 
-  // 三名存活玩家各举一次手（2 号提名者也举；1 号作为被提名者可以举自己——百科《规则概要》三-2）。
+  // 五名存活玩家各举一次手（2 号提名者也举；1 号作为被提名者可以举自己——百科《规则概要》三-2）。
+  // 加入五名旅行者后在局 10 席，落靶线 = 赞成 × 2 ≥ 10，恰好要 5 票。
   // 举手窗口 = 开始收票之后、本席被收票之前；判据是公开举手面随推送变化。
-  for (const voteSeat of [clockmakerSeat, dreamerSeat, demonSeat]) {
+  const dayOneVoters = [clockmakerSeat, dreamerSeat, demonSeat, mutantSeat, klutzSeat]
+  for (const voteSeat of dayOneVoters) {
     await players.get(voteSeat).page.getByTestId('player-vote-yes').click()
   }
 
   const firstNomination = nominationList.locator('li').first()
-  const expectedHands = [clockmakerSeat, dreamerSeat, demonSeat].sort((left, right) => left - right).join(',')
+  const expectedHands = [...dayOneVoters].sort((left, right) => left - right).join(',')
   const handsRaised = await waitForAttribute(firstNomination, 'data-nomination-hands', expectedHands, 30_000)
-  check('白天阶段：三次举手都到服务端（举手公开面）', handsRaised === expectedHands, `data-nomination-hands=${handsRaised}`)
+  check('白天阶段：五次举手都到服务端（举手公开面）', handsRaised === expectedHands, `data-nomination-hands=${handsRaised}`)
 
   // 分针逐席旋转收票 → 收完一圈后才能计票。
   const collectingPhase = await waitForAttribute(dayPanel, 'data-sweep-phase', 'Collecting', 10_000)
@@ -951,8 +1076,8 @@ async function main() {
 
   const sweepDone = await waitForAttribute(dayPanel, 'data-sweep-phase', 'AwaitingCount', 30_000)
   check('白天阶段：分针走完一圈、收票全部完成', sweepDone === 'AwaitingCount', `data-sweep-phase=${sweepDone}`)
-  const voteCount = await waitForAttribute(firstNomination, 'data-nomination-votes', '3', 30_000)
-  check('白天阶段：逐席收票冻结 3 票', voteCount === '3', `data-nomination-votes=${voteCount}`)
+  const voteCount = await waitForAttribute(firstNomination, 'data-nomination-votes', '5', 30_000)
+  check('白天阶段：逐席收票冻结 5 票', voteCount === '5', `data-nomination-votes=${voteCount}`)
   await screenshot(storyteller.page, '34-day-sweep-done')
 
   const countVotesOutcome = await runCommand(storyteller.page, '计票', () =>
@@ -976,12 +1101,73 @@ async function main() {
 
   const executed = storyteller.page.getByTestId('st-executed')
   const executedSeat = await waitForAttribute(executed, 'data-seat', String(clockmakerSeat), 30_000)
-  const dayClosed = await waitForAttribute(dayPanel, 'data-day-status', 'Closed', 30_000)
   const executedLife = await waitForAttribute(cardOf(clockmakerSeat), 'data-life', 'Dead', 15_000)
   check(
     '白天阶段：处决被记录且死亡另行落账（处决 ≠ 死亡）',
-    executedSeat === String(clockmakerSeat) && dayClosed === 'Closed' && executedLife === 'Dead',
-    `处决=${executedSeat}；白天=${dayClosed}；牌面=${executedLife}`,
+    executedSeat === String(clockmakerSeat) && executedLife === 'Dead',
+    `处决=${executedSeat}；牌面=${executedLife}`,
+  )
+
+  // —— 屠夫窗口（票据行 4 / D4 · R-0050）：当日首次处决后开窗，白天保持 Open 等额外提名 ——
+  // 屠夫（6 号）此刻在局且能力生效 → 这次 CloseDay 只处决、不开「关账」而开窗；窗口只能由屠夫本人用掉。
+  const butcherSeat = travellerSeats.get('butcher')
+  const butcherWindow = storyteller.page.getByTestId('st-extra-nomination')
+  const windowSeat = await waitForAttribute(butcherWindow, 'data-seat', String(butcherSeat), 30_000)
+  const windowStatus = await waitForAttribute(butcherWindow, 'data-status', 'Open', 15_000)
+  const dayStillOpen = await waitForAttribute(dayPanel, 'data-day-status', 'Open', 15_000)
+  check(
+    '行 4：屠夫在局时首次处决后开窗、白天保持进行中（R-0050）',
+    windowSeat === String(butcherSeat) && windowStatus === 'Open' && dayStillOpen === 'Open',
+    `窗口=${windowSeat}/${windowStatus}；白天=${dayStillOpen}`,
+  )
+  await screenshot(storyteller.page, '31b-day-butcher-window')
+
+  const butcherPlayer = players.get(butcherSeat)
+  const butcherExtraRow = butcherPlayer.page.getByTestId('player-extra-nomination')
+  await butcherExtraRow.waitFor({ state: 'visible', timeout: 20_000 })
+  check('行 4：屠夫本人看到额外提名入口（窗口公开，入口按能力生效算）', (await butcherExtraRow.count()) >= 1)
+  await butcherPlayer.page.getByTestId('player-extra-nominee-select').selectOption(String(mutantSeat))
+  await butcherPlayer.page.getByTestId('player-nominate-extra').click()
+
+  // 玩家端没有 outcome 回执区（回执在说书人端）：以公开账目的变化作为受理证据。
+  const extraCount = await waitForAttribute(nominationList, 'data-nomination-count', '2', 30_000)
+  check(
+    '行 4：屠夫额外提名被受理、进入公开账目（不占当日提名次数）',
+    extraCount === '2',
+    `data-nomination-count=${extraCount}`,
+  )
+
+  // 额外提名照样走钟盘收票；只让屠夫自己举手（1 票）——落靶线是「赞成 × 2 ≥ 存活数」（此刻 9 席存活），
+  // 所以这次计票必须**不落靶**：没有二次处决，白天随后可以正常关账。
+  const extraSweepOutcome = await runCommand(storyteller.page, '额外提名收票', () =>
+    storyteller.page.getByTestId('st-start-vote-sweep').click(),
+  )
+  check('行 4：额外提名开始收票被受理', extraSweepOutcome.kind === 'Accepted', extraSweepOutcome.raw)
+  await butcherPlayer.page.getByTestId('player-vote-yes').click()
+
+  const extraNomination = nominationList.locator('li').nth(1)
+  const extraVotes = await waitForAttribute(extraNomination, 'data-nomination-votes', '1', 60_000)
+  const extraSweepDone = await waitForAttribute(dayPanel, 'data-sweep-phase', 'AwaitingCount', 60_000)
+  check(
+    '行 4：额外提名收票走完、冻结 1 票',
+    extraVotes === '1' && extraSweepDone === 'AwaitingCount',
+    `票数=${extraVotes}；相位=${extraSweepDone}`,
+  )
+  const extraCountOutcome = await runCommand(storyteller.page, '额外提名计票', () =>
+    storyteller.page.getByTestId('st-count-votes').click(),
+  )
+  check('行 4：额外提名计票被受理', extraCountOutcome.kind === 'Accepted', extraCountOutcome.raw)
+  await waitForAttribute(extraNomination, 'data-nomination-status', 'Counted', 30_000)
+  check(
+    '行 4：1 票不达「赞成 × 2 ≥ 存活数」→ 不落靶、无二次处决',
+    (await storyteller.page.getByTestId('st-about-to-be-executed').count()) === 0
+      && (await butcherPlayer.page.getByTestId('player-about-to-be-executed').count()) === 0,
+  )
+
+  // 关账留到旅行者段末尾：流放要在**同一个白天**里跑完（白天只能跟在夜晚之后，不能连开两个白天）。
+  check(
+    '行 4：窗口用掉后白天保持进行中（等流放结清再关账）',
+    (await readAttributeBounded(dayPanel, 'data-day-status')) === 'Open',
   )
 
   // 玩家侧同一条公开事实：无关玩家也能看到「1 号被处决」。
@@ -1025,6 +1211,249 @@ async function main() {
   )
   await screenshot(players.get(clockmakerSeat).page, '34-player-self-dead')
 
+  // ============================================================================================
+  // 旅行者段（票据 traveller-and-exile D2 / D3 / D4 · 行 2 / 3 / 4 / 5 / 8 / 12）：
+  // **同一个白天**（第 1 天）继续——流放全链路（含死者表决与死者发起）+ 怪咖死亡保护 +
+  // 流放死亡即时公开 + 移出 + 说书人实时面复盘标记，最后关账（CloseDay）。
+  // ============================================================================================
+  if (!runner.begin('traveller')) return
+
+  check('行 4：流放与提名并行不互斥——屠夫窗口已用掉、白天仍开着', (await butcherWindow.count()) >= 1)
+
+  // —— 第 1 条流放：目标怪咖（7 号）——达线后由说书人裁定「有趣」→ 不死亡（R-0048）——
+  const deviantSeat = travellerSeats.get('deviant')
+  const proposerPage = players.get(dreamerSeat).page
+  const exileCandidates = await proposerPage
+    .getByTestId('player-exile-select')
+    .locator('option')
+    .evaluateAll((nodes) =>
+      nodes.map((node) => node.getAttribute('value')).filter((value) => /^\d+$/.test(value ?? '')),
+    )
+  check(
+    '行 3：可流放候选 = 全部五名旅行者（在局且今天还没被提议过）',
+    expectedTravellerSeats.every((seat) => exileCandidates.includes(String(seat))),
+    exileCandidates.join(','),
+  )
+  await proposerPage.getByTestId('player-exile-select').selectOption(String(deviantSeat))
+  await proposerPage.getByTestId('player-propose-exile').click()
+
+  const exileList = storyteller.page.getByTestId('st-exile-list')
+  const exileCount = await waitForAttribute(exileList, 'data-exile-count', '1', 30_000)
+  check(
+    '行 3：任意在局玩家随时可发起流放——2 号发起第 1 条（公开账目出现）',
+    exileCount === '1',
+    `data-exile-count=${exileCount}`,
+  )
+  const firstExile = exileList.locator('li').first()
+  const firstTarget = await waitForAttribute(firstExile, 'data-exile-target', String(deviantSeat), 15_000)
+  check(
+    '行 3：流放进入公开账目（发起 / 目标 / 状态全体可见）',
+    firstTarget === String(deviantSeat),
+    `目标=${firstTarget}`,
+  )
+  const proposeHintAfter = await readTextBounded(proposerPage.getByTestId('player-exile-hint'))
+  check(
+    '行 3 / 行 4：未结清的流放期间入口收起（同一天必须一条结清后再提下一条）',
+    (await proposerPage.getByTestId('player-exile-select').count()) === 0
+      && proposeHintAfter.includes('现在不能发起流放'),
+    proposeHintAfter.replace(/\s+/g, ' ').slice(0, 160),
+  )
+  await screenshot(storyteller.page, 'exile-proposed')
+
+  const startExileSweep = await runCommand(storyteller.page, '流放收票', () =>
+    storyteller.page.getByTestId('st-start-exile-sweep').click(),
+  )
+  check('行 3：说书人开始流放收票被受理', startExileSweep.kind === 'Accepted', startExileSweep.raw)
+
+  const exileDial = storyteller.page.getByTestId('exile-dial')
+  const exileDialNominator = await waitForAttribute(exileDial, 'data-nominator', String(dreamerSeat), 30_000)
+  const exileDialNominee = await waitForAttribute(exileDial, 'data-nominee', String(deviantSeat), 30_000)
+  check(
+    '行 3：流放钟盘蓝针指发起人、红针指目标（与提名钟盘同款口径）',
+    exileDialNominator === String(dreamerSeat) && exileDialNominee === String(deviantSeat),
+    `蓝针=${exileDialNominator}；红针=${exileDialNominee}`,
+  )
+  await screenshot(storyteller.page, 'exile-dial')
+
+  // 死者（1 号）照样表决且不耗投票标记：1 号本人 + 2 / 3 / 4 / 5 号各举一次手 = 5 票（在局 10 席的达线）。
+  const exileVoters = [clockmakerSeat, dreamerSeat, demonSeat, mutantSeat, klutzSeat]
+  for (const voteSeat of exileVoters) {
+    await players.get(voteSeat).page.getByTestId('player-exile-vote-yes').click()
+  }
+
+  const expectedExileHands = [...exileVoters].sort((left, right) => left - right).join(',')
+  const exileHands = await waitForAttribute(firstExile, 'data-exile-hands', expectedExileHands, 30_000)
+  check(
+    '行 3：逐席举手到服务端（含已死亡的 1 号；死者不查也不耗投票标记）',
+    exileHands === expectedExileHands,
+    `data-exile-hands=${exileHands}`,
+  )
+
+  const exileVotes = await waitForAttribute(firstExile, 'data-exile-votes', '5', 60_000)
+  const exilePhaseDone = await waitForLocatorContains(
+    storyteller.page.getByTestId('st-exile-phase'),
+    '可以计票',
+    60_000,
+  )
+  check(
+    '行 3：流放收票走完、逐席冻结 5 票',
+    exileVotes === '5' && exilePhaseDone.includes('可以计票'),
+    `票数=${exileVotes}；相位=${exilePhaseDone}`,
+  )
+  await screenshot(storyteller.page, 'exile-sweep-done')
+
+  // 死亡保护裁定（D3 · R-0048）：只有「收完 + 达线 + 目标存活 + 未裁定」时受理；怪咖有趣 → 不死亡。
+  const protectionRow = storyteller.page.getByTestId('st-protection')
+  await protectionRow.waitFor({ state: 'visible', timeout: 30_000 })
+  check('行 3 / 行 5：达线后出现死亡保护裁定入口（待裁定）', (await protectionRow.count()) >= 1)
+  const protectOutcome = await runCommand(storyteller.page, '保护裁定-受保护', () =>
+    storyteller.page.getByTestId('st-protection-protected').click(),
+  )
+  check('行 3 / 行 5：怪咖裁定「有趣」被受理（受保护）', protectOutcome.kind === 'Accepted', protectOutcome.raw)
+  check('行 3 / 行 5：裁定后保护入口消失（每席位每天至多一条）', await waitForGone(protectionRow, 15_000))
+
+  const countExileOutcome = await runCommand(storyteller.page, '流放计票-怪咖', () =>
+    storyteller.page.getByTestId('st-count-exile-votes').click(),
+  )
+  check('行 3：流放计票被受理（达线但受保护）', countExileOutcome.kind === 'Accepted', countExileOutcome.raw)
+  await waitForAttribute(firstExile, 'data-exile-status', 'Counted', 30_000)
+  await waitForLocatorContains(firstExile, '达线但受死亡保护', 30_000)
+  const deviantLife = await waitForAttribute(cardOf(deviantSeat), 'data-life', 'Alive', 15_000)
+  check(
+    '行 3 / 行 5：怪咖达线但受死亡保护 → 目标存活、不产生死亡事件',
+    deviantLife === 'Alive',
+    `怪咖牌面=${deviantLife}`,
+  )
+  await screenshot(storyteller.page, 'exile-protected')
+
+  // —— 第 2 条流放：目标屠夫（6 号），由**死者 1 号**发起——无保护来源覆盖 → 达线即流放死亡 ——
+  const deadProposerPage = players.get(clockmakerSeat).page
+  const deadCandidates = await deadProposerPage
+    .getByTestId('player-exile-select')
+    .locator('option')
+    .evaluateAll((nodes) =>
+      nodes.map((node) => node.getAttribute('value')).filter((value) => /^\d+$/.test(value ?? '')),
+    )
+  check(
+    '行 4：已被提议过的旅行者从候选里消失（每名旅行者每天一次，成败都算）',
+    !deadCandidates.includes(String(deviantSeat)) && deadCandidates.includes(String(butcherSeat)),
+    deadCandidates.join(','),
+  )
+  await deadProposerPage.getByTestId('player-exile-select').selectOption(String(butcherSeat))
+  await deadProposerPage.getByTestId('player-propose-exile').click()
+
+  const secondExile = exileList.locator('li').nth(1)
+  const secondCount = await waitForAttribute(exileList, 'data-exile-count', '2', 30_000)
+  const secondTarget = await waitForAttribute(secondExile, 'data-exile-target', String(butcherSeat), 15_000)
+  check(
+    '行 3 / 行 4：同日第 2 条流放由**已死亡的 1 号**发起、顺序进行（目标 = 屠夫）',
+    secondCount === '2' && secondTarget === String(butcherSeat),
+    `条数=${secondCount}；目标=${secondTarget}`,
+  )
+
+  const startSecondSweep = await runCommand(storyteller.page, '第 2 条流放收票', () =>
+    storyteller.page.getByTestId('st-start-exile-sweep').click(),
+  )
+  check('行 3：第 2 条流放开始收票被受理', startSecondSweep.kind === 'Accepted', startSecondSweep.raw)
+  for (const voteSeat of exileVoters) {
+    await players.get(voteSeat).page.getByTestId('player-exile-vote-yes').click()
+  }
+
+  const secondHands = await waitForAttribute(secondExile, 'data-exile-hands', expectedExileHands, 30_000)
+  const secondVotes = await waitForAttribute(secondExile, 'data-exile-votes', '5', 60_000)
+  check(
+    '行 3：第 2 条流放同样逐席冻结 5 票',
+    secondHands === expectedExileHands && secondVotes === '5',
+    `举手=${secondHands}；票数=${secondVotes}`,
+  )
+
+  const secondCountOutcome = await runCommand(storyteller.page, '流放计票-屠夫', () =>
+    storyteller.page.getByTestId('st-count-exile-votes').click(),
+  )
+  check('行 3 / 行 8：第 2 条流放计票被受理', secondCountOutcome.kind === 'Accepted', secondCountOutcome.raw)
+
+  const butcherLife = await waitForAttribute(cardOf(butcherSeat), 'data-life', 'Dead', 30_000)
+  const witnessExileLife = await waitForAttribute(
+    players.get(demonSeat).page.locator(`[data-testid="player-lives"] li[data-seat="${butcherSeat}"]`),
+    'data-life',
+    'Dead',
+    30_000,
+  )
+  const exileAnnouncement = await players
+    .get(demonSeat)
+    .page.locator(`[data-testid="player-life-announcements"] li[data-seat="${butcherSeat}"][data-state="Dead"]`)
+    .count()
+  check(
+    '行 3 / 行 8：达线且不受保护 → 流放死亡，且即时公开（无关玩家牌面翻死亡 + 当日公告，不等黎明）',
+    butcherLife === 'Dead' && witnessExileLife === 'Dead' && exileAnnouncement >= 1,
+    `魔典=${butcherLife}；公开牌面=${witnessExileLife}；公告=${exileAnnouncement}`,
+  )
+  const butcherSelfDead = await players.get(butcherSeat).page.getByTestId('player-self-dead').count()
+  check('行 8：被流放者自己的界面显式可见死亡（横幅）', butcherSelfDead >= 1, `横幅=${butcherSelfDead}`)
+  await screenshot(players.get(demonSeat).page, 'exile-death')
+  await screenshot(storyteller.page, 'exile-exiled')
+
+  // —— 移出（行 2）：离场者不计任何人数口径、公开生死面同步撤下（D1 · R-0044 第 6 条）——
+  const lifeCountBeforeRemove = await readAttributeBounded(
+    players.get(demonSeat).page.locator('[data-testid="player-lives"]'),
+    'data-life-count',
+  )
+  await storyteller.page.getByTestId('traveller-remove-seat').selectOption(String(butcherSeat))
+  const removeOutcome = await runCommand(storyteller.page, '移出屠夫', () =>
+    storyteller.page.getByTestId('traveller-remove').click(),
+  )
+  check('行 2：说书人移出旅行者被受理', removeOutcome.kind === 'Accepted', removeOutcome.raw)
+  const lifeCountAfterRemove = await waitForAttribute(
+    players.get(demonSeat).page.locator('[data-testid="player-lives"]'),
+    'data-life-count',
+    '9',
+    30_000,
+  )
+  const cardGone = await waitForGone(cardOf(butcherSeat), 20_000)
+  check(
+    '行 2：移出后公开生死面撤下该席位（10 → 9 席）、魔典圆环同步撤下',
+    lifeCountBeforeRemove === '10' && lifeCountAfterRemove === '9' && cardGone,
+    `移出前=${lifeCountBeforeRemove}；移出后=${lifeCountAfterRemove}；牌面撤下=${cardGone}`,
+  )
+  await screenshot(storyteller.page, 'traveller-departed')
+
+  // —— 复盘（行 12 · D-0020）：加入 / 流放 / 保护 / 离场都是原子步骤，说书人实时面可逐步回放 ——
+  await storyteller.page.getByTestId('storyteller-replay-open').click()
+  const replayPanel = storyteller.page.getByTestId('replay-panel')
+  await replayPanel.waitFor({ state: 'visible', timeout: 30_000 })
+  const replayScope = (await readTextBounded(storyteller.page.getByTestId('replay-scope'))).replace(/\s+/g, ' ')
+  check(
+    '行 12：说书人实时面复盘可用（玩家端进行中零泄露由零信任门禁与装置另行守）',
+    replayScope.includes('说书人实时面'),
+    replayScope,
+  )
+  const replayTargets = [
+    { label: '旅行者加入', name: 'replay-joined' },
+    { label: '流放', name: 'replay-exile' },
+    { label: '受死亡保护', name: 'replay-protected' },
+    { label: '旅行者离场', name: 'replay-departed' },
+  ]
+  for (const target of replayTargets) {
+    const found = await scanReplayForMarker(storyteller.page, target.label)
+    check(`行 12：复盘按原子步骤回放到「${target.label}」标记`, found.found, found.progress)
+    if (found.found) {
+      await screenshot(storyteller.page, target.name)
+    }
+  }
+  await storyteller.page.getByTestId('replay-close').click()
+  await waitForGone(replayPanel, 15_000)
+
+  // —— 关账：流放都结清、屠夫已移出、没有待处决者 → 第二次 CloseDay 直接关账（不再开窗）——
+  const closeAfterWindow = await runCommand(storyteller.page, '窗口用完后关账', () =>
+    storyteller.page.getByTestId('st-close-day').click(),
+  )
+  const dayClosed = await waitForAttribute(dayPanel, 'data-day-status', 'Closed', 30_000)
+  check(
+    '白天阶段：窗口用掉、流放结清后关账 → 白天结束（关闭时不开第二个窗口）',
+    closeAfterWindow.kind === 'Accepted' && dayClosed === 'Closed',
+    `回执=${closeAfterWindow.kind}；白天=${dayClosed}`,
+  )
+
   if (!runner.begin('night2-3')) return
   const nightTwo = await runCommand(storyteller.page, '开夜2', async () => {
     await storyteller.page
@@ -1042,11 +1471,133 @@ async function main() {
     ),
   )
   check(
-    `行 3：第二夜推送让 ${options.seatCount} 席玩家页头变「夜晚」（未点补齐、未刷新）`,
+    `行 3：第二夜推送让 ${players.size} 席玩家页头变「夜晚」（未点补齐、未刷新）`,
     phaseAfterNightTwo.every((entry) => entry.endsWith(':夜晚')),
     phaseAfterNightTwo.join(', '),
   )
   await screenshot(players.get(clockmakerSeat).page, '14-player-phase-night-two')
+
+  // —— 旅行者的黄昏格（D5）：其他夜晚顺序 = 咖啡师（8）→ 流莺（9）→ 集骨者（10）——
+  // 三个格都必须结清：流莺 / 集骨者是玩家受众的挂起请求，不结清就撞「不强推」。
+  // 咖啡师：说书人二选一（R-0052），候选按席位生死打「已死亡」徽标（D8 要的徽标 + 窗口呈现截图）。
+  const baristaSeat = travellerSeats.get('barista')
+  const boneCollectorSeat = travellerSeats.get('bone-collector')
+  const baristaDecision = await waitForDecision(
+    storyteller.page,
+    (text) => text.includes('咖啡师'),
+    180_000,
+  )
+  check('行 9（咖啡师）：黄昏格进入说书人二选一裁定', baristaDecision.includes('咖啡师'), baristaDecision.slice(0, 200))
+  const baristaAttribution = await readTextBounded(storyteller.page.getByTestId('console-decision-seat'))
+  check(
+    `行 9（咖啡师）：裁定点归属 ${baristaSeat} 号（旅行者席位）`,
+    baristaAttribution.includes(`${baristaSeat} 号`),
+    baristaAttribution,
+  )
+  const deadBadges = await storyteller.page.getByTestId('option-dead').count()
+  check(
+    '行 9（咖啡师）：候选按席位生死打「已死亡」徽标（{效果}:seat:N 形状，R-0052）',
+    deadBadges === 2,
+    `徽标数=${deadBadges}（期望 2 = 1 号已死 × 两个效果候选；6 号已离场不进候选）`,
+  )
+  await screenshot(storyteller.page, 'night2-barista-options')
+  await storyteller.page
+    .locator('[data-testid="console-decision"] button')
+    .filter({ hasText: `${clockmakerSeat} 号玩家：清醒且健康` })
+    .first()
+    .click()
+  const baristaWindowText = await waitForLocatorContains(
+    storyteller.page.locator('[data-window="true"]').filter({ hasText: '清醒且健康' }).first(),
+    '清醒且健康',
+    30_000,
+  )
+  check(
+    '行 9（咖啡师）：效果链显示窗口「清醒且健康（免疫窗口）」（已死席位照样可标记）',
+    baristaWindowText.includes('清醒且健康'),
+    baristaWindowText.slice(0, 200),
+  )
+  await screenshot(storyteller.page, 'night2-barista-window')
+
+  // 流莺（R-0051）：本人选一名存活玩家 → 说书人裁定同意（不共死）→ 真实角色只到她本人。
+  const harlotPage = players.get(harlotSeat).page
+  const harlotRequest = harlotPage.locator('[data-testid="player-request-panel"]')
+  const harlotPending = await waitForAttribute(harlotRequest, 'data-request-state', 'pending', 120_000)
+  check('行 9（流莺）：黄昏格唤醒本人选目标（玩家受众）', harlotPending === 'pending', `state=${harlotPending}`)
+  const harlotOptions = await harlotPage
+    .locator('[data-testid="player-request-options"] label')
+    .evaluateAll((nodes) => nodes.map((node) => node.getAttribute('data-option-value')))
+  check(
+    '行 9（流莺）：候选 = 全部存活席位（含自己；来源没有排除条款）',
+    harlotOptions.includes(`seat:${dreamerSeat}`) && harlotOptions.includes(`seat:${harlotSeat}`),
+    harlotOptions.join(','),
+  )
+  await harlotPage
+    .locator('[data-testid="player-request-options"] label', { hasText: `${dreamerSeat} 号玩家` })
+    .locator('input[type=radio]')
+    .check()
+  await harlotPage.getByTestId('player-submit').click()
+  check(
+    '行 9（流莺）：选目标提交被受理',
+    (await waitForAttribute(harlotRequest, 'data-request-state', 'idle', 30_000)) === 'idle',
+  )
+  const harlotDecision = await waitForDecision(storyteller.page, (text) => text.includes('流莺'), 60_000)
+  check('行 9（流莺）：说书人三选一裁定点出现', harlotDecision.includes('流莺'), harlotDecision.slice(0, 200))
+  await storyteller.page
+    .locator('[data-testid="console-decision"] button')
+    .filter({ hasText: '同意：把真实角色' })
+    .first()
+    .click()
+  const harlotInfo = await waitForLocatorContains(
+    harlotPage.locator('[data-testid="player-information"]'),
+    `${dreamerSeat} 号玩家的角色是`,
+    30_000,
+  )
+  check(
+    '行 9（流莺）：真实角色只到本人（不含阵营）',
+    harlotInfo.includes(`「${characterNameOf('dreamer')}」`),
+    harlotInfo.replace(/\s+/g, ' ').slice(0, 200),
+  )
+  check(
+    `行 9（流莺）：无关玩家（${mutantSeat} 号）收不到这条信息`,
+    !(await infoText(players.get(mutantSeat).page)).includes(`${dreamerSeat} 号玩家的角色是`),
+  )
+  await screenshot(harlotPage, 'night2-harlot-info')
+
+  // 集骨者（R-0054）：本人选一名已死玩家（候选只有 1 号 + 摇头）→ 重获窗口 + 效果链呈现。
+  const bonePage = players.get(boneCollectorSeat).page
+  const boneRequest = bonePage.locator('[data-testid="player-request-panel"]')
+  const bonePending = await waitForAttribute(boneRequest, 'data-request-state', 'pending', 120_000)
+  check('行 9（集骨者）：黄昏格唤醒本人（候选 = 在局已死席位 + 摇头）', bonePending === 'pending', `state=${bonePending}`)
+  const boneOptions = await bonePage
+    .locator('[data-testid="player-request-options"] label')
+    .evaluateAll((nodes) => nodes.map((node) => node.getAttribute('data-option-value')))
+  check(
+    `行 9（集骨者）：候选只含在局已死席位（${clockmakerSeat} 号）+ 摇头；已离场的 6 号不进候选`,
+    boneOptions.includes(`seat:${clockmakerSeat}`)
+      && boneOptions.includes('decline')
+      && !boneOptions.includes(`seat:${dreamerSeat}`),
+    boneOptions.join(','),
+  )
+  await bonePage
+    .locator('[data-testid="player-request-options"] label', { hasText: `${clockmakerSeat} 号玩家` })
+    .locator('input[type=radio]')
+    .check()
+  await bonePage.getByTestId('player-submit').click()
+  check(
+    '行 9（集骨者）：选已死玩家提交被受理（选择即结算）',
+    (await waitForAttribute(boneRequest, 'data-request-state', 'idle', 30_000)) === 'idle',
+  )
+  const regainWindowText = await waitForLocatorContains(
+    storyteller.page.locator('[data-window="true"]').filter({ hasText: '重获能力' }).first(),
+    '重获能力',
+    30_000,
+  )
+  check(
+    '行 9（集骨者）：目标重获角色能力，效果链显示「重获能力」窗口',
+    regainWindowText.includes('重获能力'),
+    regainWindowText.slice(0, 200),
+  )
+  await screenshot(storyteller.page, 'night2-bone-collector-window')
 
   // 行 2：第二夜诺-达鲺击杀请求 → 说书人代填 → 3 号玩家不刷新就回空态，并注明由谁了结。
   const demonPlayer = players.get(demonSeat)
@@ -1199,6 +1750,70 @@ async function main() {
     await storyteller.page.getByRole('button', { name: /开夜/ }).click()
   })
   check('第三夜（Recommended）开夜被受理', nightThree.kind === 'Accepted', nightThree.raw)
+
+  // —— 第三夜（取证档专属块）：旅行者格与窗口收口（D5 / R-0054 / R-0052）——
+  // 开夜命令先做 DuskExpiry 收口：咖啡师 / 集骨者的窗口都在「下个黄昏」到期；已终止的条目留在
+  // 效果链里（可追溯），所以判「状态 = 已终止」而不是元素消失。
+  const baristaWindowLine = await waitForEffectTerminated(storyteller.page, '清醒且健康', 20_000)
+  check(
+    '行 9（咖啡师）：免疫窗口在下个黄昏收口（DuskExpiry / BaristaWindowTrigger）',
+    baristaWindowLine.includes('已终止'),
+    baristaWindowLine.slice(0, 200),
+  )
+  const regainWindowLine = await waitForEffectTerminated(storyteller.page, '重获能力', 20_000)
+  check(
+    '行 9（集骨者）：重获窗口在下个黄昏收口（DuskExpiry，R-0054）',
+    regainWindowLine.includes('已终止'),
+    regainWindowLine.slice(0, 200),
+  )
+
+  // 咖啡师每晚入槽：第三夜选「5 号行动两次」——覆盖效果 2 的窗口文案，也不改任何既有剧情。
+  const baristaNightThree = await waitForDecision(
+    storyteller.page,
+    (text) => text.includes('咖啡师'),
+    180_000,
+  )
+  check(
+    '行 9（咖啡师）：第三夜照常入槽（每晚能力）',
+    baristaNightThree.includes('咖啡师'),
+    baristaNightThree.slice(0, 160),
+  )
+  await storyteller.page
+    .locator('[data-testid="console-decision"] button')
+    .filter({ hasText: `${klutzSeat} 号玩家：行动两次` })
+    .first()
+    .click()
+  const secondActionWindow = await waitForLocatorContains(
+    storyteller.page.locator('[data-window="true"]').filter({ hasText: '行动两次' }).first(),
+    '行动两次',
+    30_000,
+  )
+  check(
+    '行 9（咖啡师）：效果 2「行动两次」窗口呈现',
+    secondActionWindow.includes('行动两次'),
+    secondActionWindow.slice(0, 160),
+  )
+  await screenshot(storyteller.page, 'night3-barista-second-action')
+
+  // 流莺每夜入槽：第三夜再选 2 号、说书人裁定「拒绝」→ 零信息零死亡（R-0051）。
+  const harlotNightThree = await waitForAttribute(harlotRequest, 'data-request-state', 'pending', 180_000)
+  check('行 9（流莺）：第三夜照常唤醒（每晚能力）', harlotNightThree === 'pending', `state=${harlotNightThree}`)
+  await harlotPage
+    .locator('[data-testid="player-request-options"] label', { hasText: `${dreamerSeat} 号玩家` })
+    .locator('input[type=radio]')
+    .check()
+  await harlotPage.getByTestId('player-submit').click()
+  const harlotDecisionThree = await waitForDecision(storyteller.page, (text) => text.includes('流莺'), 60_000)
+  check('行 9（流莺）：第三夜再开三选一裁定点', harlotDecisionThree.includes('流莺'), harlotDecisionThree.slice(0, 160))
+  await storyteller.page
+    .locator('[data-testid="console-decision"] button')
+    .filter({ hasText: '拒绝：该玩家没有披露角色' })
+    .first()
+    .click()
+  check(
+    '行 9（流莺）：拒绝 → 无事发生、裁定点结清（集骨者「每局限一次」已用尽 → 显式跳过）',
+    await waitForGone(storyteller.page.locator('[data-testid="console-decision"]'), 30_000),
+  )
 
   // 第三夜诺-达鲺击杀请求由 3 号玩家本人作答：保留玩家提交链路的真机覆盖。
   const demonThirdAdvance = await advanceSlotsUntil(
@@ -1415,6 +2030,26 @@ async function main() {
     guardOutcome.raw,
   )
 
+  // —— 收尾：把「每晚」旅行者移出本局 ——
+  // 咖啡师 / 流莺是每晚能力，后续夜（涡流段开的那一夜）会照常入槽；它们的真机证据已在第二夜 /
+  // 第三夜取到，移出后不再重复结清。集骨者「每局限一次」已用尽（后续夜显式跳过），留在局里。
+  for (const slug of ['barista', 'harlot']) {
+    const seat = travellerSeats.get(slug)
+    await storyteller.page.getByTestId('traveller-remove-seat').selectOption(String(seat))
+    const nightRemoveOutcome = await runCommand(storyteller.page, `移出-${slug}`, () =>
+      storyteller.page.getByTestId('traveller-remove').click(),
+    )
+    check(
+      `行 2：第二夜之后移出旅行者 ${slug}（${seat} 号）被受理（任意时刻可移出）`,
+      nightRemoveOutcome.kind === 'Accepted',
+      nightRemoveOutcome.raw,
+    )
+  }
+  check(
+    '行 2：离场者从魔典圆环撤下（后续夜不再入槽）',
+    await waitForGone(cardOf(travellerSeats.get('harlot')), 20_000),
+  )
+
   // —— 第 11 步（涡流票行 1 / 4）：涡流存活时的镇民信息能力结算 ——
   // 快档没有第三夜依赖块：先按同一条角色上报把诺-达鲺换成涡流（常驻中毒随之解除），再开第 3 夜；
   // 取证档复用第三夜依赖块已经换好的 3 号（涡流）——先把第三夜收尾，再开第 4 夜。
@@ -1548,7 +2183,9 @@ async function main() {
   await screenshot(dreamerPlayer.page, '37-player-vortox-info')
 
   // 行 4 反方向：失效归因与涡流场景的信息都不许出现在除说书人以外的任何视图。
-  const vortoxLeakTokens = ['原因：涡流', '未正常生效', '失效账本', 'malfunctions', '涡流在场']
+  // '涡流在场' 只按**说书人裁定点 / 信息注记**的带冒号形状收：咖啡师给玩家的宣告里合法地写着
+  // 「（即使涡流在场）」（R-0047），不能当泄漏——2026-10-04 装置实跑踩到，token 收窄。
+  const vortoxLeakTokens = ['原因：涡流', '未正常生效', '失效账本', 'malfunctions', '涡流在场：']
   const vortoxLeaks = []
   for (const [seat, client] of players) {
     const shellText = (await client.page.locator('.shell').innerText()).replace(/\s+/g, ' ')
@@ -1562,7 +2199,7 @@ async function main() {
     }
   }
   check(
-    `行 4：${options.seatCount} 席玩家视图都看不到失效归因，且只有 ${dreamerSeat} 号收到该信息`,
+    `行 4：${players.size} 席玩家视图都看不到失效归因，且只有 ${dreamerSeat} 号收到该信息`,
     vortoxLeaks.length === 0,
     vortoxLeaks.join('，') || '已逐席扫描页面文本与信息列表',
   )
@@ -1928,6 +2565,21 @@ async function main() {
     '32-day-counted',
     '33-day-executed',
     '34-player-self-dead',
+    '30c-travellers-joined',
+    '30d-player-traveller-roster',
+    '31b-day-butcher-window',
+    'exile-proposed',
+    'exile-dial',
+    'exile-sweep-done',
+    'exile-protected',
+    'exile-death',
+    'exile-exiled',
+    'traveller-departed',
+    'night2-barista-options',
+    'night2-barista-window',
+    'night2-harlot-info',
+    'night2-bone-collector-window',
+    'night3-barista-second-action',
     '35-vortox-dreamer-decision',
     '36-storyteller-vortox-ledger',
     '37-player-vortox-info',
@@ -2083,6 +2735,26 @@ async function waitForPanelContains(page, heading, needle, timeoutMs) {
   }
 
   return (await panelText(page, heading)).includes(needle)
+}
+
+/**
+ * 等「效果归因链」里含目标文案的行进入「已终止」状态（服务端推送驱动的状态更新）。
+ * 已终止的效果不隐藏（EffectChainPanel 的设计：因为什么解毒必须查得到），
+ * 所以判窗口收口要看**状态列**，不能判元素消失（2026-10-04 装置实跑踩到）。
+ */
+async function waitForEffectTerminated(page, needle, timeoutMs) {
+  const deadline = Date.now() + timeoutMs
+  let line = ''
+  while (Date.now() < deadline) {
+    line = linesOf(await panelText(page, '效果归因链'), needle)
+    if (line.includes('已终止')) {
+      return line
+    }
+
+    await sleep(200)
+  }
+
+  return line
 }
 
 /** 当前步骤面板是否显示"本计划已走完"。 */
@@ -2366,6 +3038,41 @@ async function forceVoidPending(page, reason, note) {
 
   return runCommand(page, '强制作废', () =>
     pending.getByRole('button', { name: '强制作废', exact: true }).click(),
+  )
+}
+
+/**
+ * 在复盘面板上逐步向前扫描，直到当前步骤的标记列表出现目标文案（D-0020 / E29 同款口径：
+ * 只读 `replay-marker-list`，避免复盘摘要与牌面同名词误判；单向扫描，从当前位置继续）。
+ */
+async function scanReplayForMarker(page, label, maxSteps = 2000) {
+  return page.evaluate(
+    async ({ wanted, limit }) => {
+      const next = document.querySelector('[data-testid="replay-next"]')
+      const progress = document.querySelector('[data-testid="replay-progress"]')
+      if (next === null || progress === null) {
+        return { found: false, progress: '（复盘面板未渲染）', markers: '' }
+      }
+
+      const readMarkers = () => {
+        const list = document.querySelector('[data-testid="replay-marker-list"]')
+        return (list?.textContent ?? '').replace(/\s+/g, ' ').trim()
+      }
+      const readProgress = () => (progress.textContent ?? '').replace(/\s+/g, ' ').trim()
+
+      for (let index = 0; index < limit; index += 1) {
+        const markers = readMarkers()
+        if (markers.includes(wanted)) {
+          return { found: true, progress: readProgress(), markers }
+        }
+
+        next.click()
+        await new Promise((resolve) => setTimeout(resolve, 0))
+      }
+
+      return { found: false, progress: readProgress(), markers: readMarkers() }
+    },
+    { wanted: label, limit: maxSteps },
   )
 }
 
@@ -2793,6 +3500,12 @@ function characterNameOf(slug) {
     vigormortis: '亡骨魔',
     'no-dashii': '诺-达鲺',
     vortox: '涡流',
+    // 旅行者（票据 traveller-and-exile D1 花名册；主装置在 day1 段一次加入五名）。
+    butcher: '屠夫',
+    deviant: '怪咖',
+    barista: '咖啡师',
+    harlot: '流莺',
+    'bone-collector': '集骨者',
   }
 
   return roster[slug] ?? slug
