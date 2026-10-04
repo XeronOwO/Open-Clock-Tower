@@ -67,9 +67,9 @@ todo/  →  in-progress/  →  review/  →  done/
 
 ### Review
 
-- [处罚处决接入统一死亡保护查询（R-0020 路径）](review/punishment-execution-death-protection.md) — **Medium** — 把第二条处决致死路径（处罚处决）接进统一死亡保护查询，消除「新来源只在一半处决路径上生效」的隐患
-
 ### Done
+
+- [处罚处决接入统一死亡保护查询（R-0020 路径）](done/punishment-execution-death-protection.md) — **Medium** — 把第二条处决致死路径（处罚处决）接进统一死亡保护查询，消除「新来源只在一半处决路径上生效」的隐患
 
 - [死亡保护裁定提示：只在该裁定时给出（说书人投影字段）](done/day-protection-prompt-projection.md) — **Medium** — 说书人裁定入口改为服务端投影驱动：`NeedsRuling` 才给按钮、`Indeterminate` 给补观测提示，受理条件与裁判机器同源；批次 E36 判出矩阵 4 行全过（主装置取证档 286 项；冻结版门禁 1084 通过）
 

@@ -804,6 +804,37 @@ Integration 188 · NormativeGates 24）；`dotnet format` 就地通过；`npm ru
 - 本批后 `review/`、`in-progress/` 清空；`todo/` 两张（印刷规则书回核 / 屠夫落靶夹具）；
   `done/` 新增 `day-protection-prompt-projection.md`。
 
+## 批次 E37（2026-10-04，处罚处决接入统一死亡保护查询）
+
+冻结版本：`main` @ `58d5aa6`（实现 + 用例 + rulings + 票据同批提交；跑批期间工作树干净）。
+
+本批按「内核用例（先红后绿）+ 处罚处决真机链路」取证：
+
+- 内核过滤集（`DayProtectionTests` / `AdjudicatedExecutionMachineTests`）：**先红**——实现前 2 条新用例失败
+  （白天 / 夜晚的「受保护」分支仍写死亡）；实现后 **23 项全过**。
+- 冻结版门禁（提交前跑）：`dotnet build` 0 警告 0 错误；`dotnet test` **1088 通过 / 0 失败**
+  （内核 439 · 规则 390 · 集成 234 · 门禁 25）；`dotnet format` 退出 0（未重写工作树）。
+- 真机装置 `tools/verify-madness.mjs`（取证档 `--quota 2 --screenshots-all --build`）：
+  **28 项全部通过 / 0 失败、退出码 0**；5 张截图均为本次运行写入（含强制构建 4.6s）。
+- 截图复核 2 张（其余 3 张为同一次运行写入，未逐张复核，如实记录）：`madness-03-mutant-night-punished`
+  （夜晚处罚：4 号牌面翻死亡、事件序号 37、白天账未占上限）、`madness-04-day-punished`
+  （白天处罚：2 号死亡、白天立即结束并记上限、事件序号 70）——与断言一致。
+
+批次 E37 判出：
+
+- **处罚处决接死亡保护票验收矩阵 5 行全部通过**：行 1 / 2 / 3 / 5 的保护短路面真机不可达
+  （今天没有任何覆盖 `Execution` 的来源：`RoleContracts.DeathProtections` 只注册怪咖，且它对非流放死因
+  返回 null），由内核用例判出并如实记录；行 4 由真机装置（28 项零回归）+ 集成
+  `MadnessPunishmentHostTests`（3 项）+ 内核阴性对照判出。→ 票据移入 `done/`。
+- 残余（随票据留档）：行 5 的记账面真机可达但既有装置未走死席处罚；女巫诅咒 / 夜杀族等致死点没有
+  `DeathProtectionCause` 分类，等对应保护来源出现时另立票。
+- 本批后 `review/`、`in-progress/` 清空；`todo/` 两张（印刷规则书回核 / 屠夫落靶夹具）；
+  `done/` 新增 `punishment-execution-death-protection.md`。
+
+诚实记录（范围）：其余十三个装置未重跑——改动只在内核 `AdjudicatedExecutionMachine`（只由
+`PunishExecution` 命令面触达，唯一真机覆盖就是 `verify-madness`），且生产行为零改变（怪咖对处决死因
+返回 null → 默认「不受保护」，与接线前一致）。
+
 ## 相关阅读
 
 - 验收规程：`docs/acceptance/AGENTS.md`
