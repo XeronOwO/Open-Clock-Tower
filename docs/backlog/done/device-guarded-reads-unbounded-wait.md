@@ -1,6 +1,6 @@
 # 装置守卫式读取未收口：条件读取仍可能吃满 30s
 
-- Status: Done（2026-10-05）
+- Status: Done（2026-10-04）
 - Priority: Low
 - Depends on: 无（是 `done/device-poll-innertext-unbounded-wait.md` 写明的边界项；同族的**属性**读取另立 `todo/device-attribute-poll-unbounded-wait.md`，本轮不混做）
 
@@ -55,7 +55,7 @@ return compact(await block.first().innerText())   // 无界读：默认 30s
   `todo/device-attribute-poll-unbounded-wait.md`，不动代码：两类原语的收口各自成票，避免一次大扫描
   跨文件混做（上一票的教训：迁移一次只做一类，diff 才审得清）。
 
-## 结果（2026-10-05 · 探针 + 11 装置迭代档 + 门禁）
+## 结果（2026-10-04 · 探针 + 11 装置迭代档 + 门禁）
 
 | # | 判据 | 实测 | 结论 |
 |---|---|---|---|

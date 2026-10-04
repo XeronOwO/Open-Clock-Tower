@@ -2,7 +2,7 @@
 
 - Status: Done
 - Priority: High
-- 验收：批次 E14（2026-10-04）矩阵 1–11 全过（`docs/acceptance/batches.md`；逐行证据见本票「已落地与运行证据」）。
+- 验收：批次 E14（2026-10-02）矩阵 1–11 全过（`docs/acceptance/batches.md`；逐行证据见本票「已落地与运行证据」）。
 - Depends on: 白天阶段（`done/day-phase.md`）；事件触发与能力存续（`done/witch-curse.md`）；处罚处决（`done/madness-and-adjudicated-execution.md`）；公开生死面与公告时点（`done/player-death-announcement.md`）
 - 来源口径：`references/wiki/特殊胜利失败条件.wiki`、`规则概要.wiki` 四、`处决.wiki`、`涡流.wiki`、`镜像双子.wiki`、`呆瓜.wiki`（均为 2026-10-01 抓取）
 

@@ -1,6 +1,6 @@
 # 账号装置分段选择器：把 37–40s 的固定开销拆开定位
 
-- Status: Done（2026-10-05）
+- Status: Done（2026-10-04）
 - Priority: Medium
 - Depends on: 无（机制复用 `docs/backlog/done/device-verification-fast-lane.md` 落下的 `tools/lib/verify-sections.mjs`）
 
@@ -55,7 +55,7 @@
   （元素缺失时同样白等 30s，且会突破自己的 deadline），但一次要动 12 个装置、各需一次运行回归，
   另立 `docs/backlog/done/device-poll-innertext-unbounded-wait.md`（Low）。
 
-## 结果（2026-10-05 · 五次真机运行 + 门禁）
+## 结果（2026-10-04 · 五次真机运行 + 门禁）
 
 | # | 判据 | 实测 | 结论 |
 |---|---|---|---|

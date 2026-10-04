@@ -31,7 +31,7 @@
 | 13 | 引擎不判定疯狂 | 说书人对"是否疯狂"有最终裁决权；引擎只负责产生要求、计时提醒、按裁定触发后果 | R-0003；《疯狂》· 术语介绍 |
 | 14 | 暗示自己疯狂 | 玩家明示或暗示自己处于疯狂状态 = 没有做出疯狂行为，说书人可据此处罚 | 《疯狂》· 术语介绍 |
 
-## 实施方案（2026-10-03 架构审视）
+## 实施方案（2026-10-02 架构审视）
 
 ### 1. 现状与缺口
 
@@ -85,7 +85,7 @@
 | 10 | 契约闸 | 两名角色在场时开夜 / 开天不再被拒；其余白天相关角色仍 `legality.day_contract_missing`；其余夜晚角色仍 `plan.contract_missing` | 规范门禁测试 + 规则 / 集成用例 |
 | 11 | 重启 / 重连 / 重放 | 要求与处决随快照恢复、随事件折叠；重放等价；进行中的白天在重启后仍可处罚 | 集成用例 + 装置 |
 
-> **2026-10-04 修正（R-0022）**：行 9 的"被处决……对无关玩家不可见"指**处罚理由与来源**
+> **2026-10-02 修正（R-0022）**：行 9 的"被处决……对无关玩家不可见"指**处罚理由与来源**
 > （疯狂要求、谁被洗脑）；处罚处决造成的**死亡**自本日起进入公开生死面——玩家端只看到"谁死了"，
 > 看不到"为什么被处决"（衔接 `docs/backlog/done/player-death-announcement.md`）。
 
@@ -96,7 +96,7 @@
 - 引擎不判定疯狂：R-0003；效果与要求的挂起 / 终止口径：R-0012；事件唯一事实来源：D-0010；投影强制：D-0012；账边界与唯一写入方：D-0015；说书人兜底与无超时：D-0011 / D-0014。
 - 白天不替说书人拍板计票：`done/day-phase.md` 对抗性复核 F-2（强推与未计票提名）。
 
-## 已落地与运行证据（2026-10-03，批次 E12）
+## 已落地与运行证据（2026-10-02，批次 E12）
 
 **实现**：
 
@@ -122,7 +122,7 @@
 | `dotnet format OpenClockTower.slnx --verify-no-changes` | exit 0 |
 | `npm run gate`（typecheck + lint + vitest 88 + build） | exit 0 |
 
-**装置（批次 E12，2026-10-03）**：
+**装置（批次 E12，2026-10-02）**：
 
 | 装置 | 结果 |
 |---|---|
@@ -143,7 +143,7 @@
 **验收矩阵逐行**：1 洗脑师选人（`Resolve_Effective_*` + `Prompt_*` + 装置 ①② + 目标收包正断言）·
 2 醉酒 / 中毒不产要求（`Resolve_Ineffective_ProducesNothing`）· 3 白天处罚（`DayPunishment_ConsumesTheDailyLimit_AndClosesTheDay` + 集成 `CerenovusMadness_DayPunishment_...` + 装置 ④）· 4 夜晚处罚不占次日（`Mutant_NightPunishment_DoesNotConsumeTheNextDay` + `Punishment_DuringANight_...` + 装置 ③ 与「白天账无执行记录」断言）· 5 白天处罚（畸形秀演员，同一命令面）· 6 已死亡目标（`Punishment_OnADeadSeat_RecordsOnlyTheExecution`）· 7 存续与撤销（`Termination_IsRecordedAndIrreversible` + `SourceDeathOrRoleChange_...` + `TargetDeath_DoesNotTerminate` + `Trigger_ExpiresOnTheNextDawn_...` + `IsOperative_...` + 集成到期断言）· 8 拒绝面（`Rejections_AreExplicit` + `DayPunishment_WithAnOpenNomination_...` + `DayPunishment_WhenTheDayAlreadyExecuted_...`）· 9 视角与隔离（集成 wire 扫描 + 装置 ⑤ 与两席收包扫描）· 10 契约闸（`Catalog_...` + `OnlyImplementedDayContractsAreCovered` + 集成开夜 / 开天受理）· 11 重启 / 重放（`RestartDuringTheMadnessDay_...` + `StepMachineStateComparerTests` + 折叠负向用例）。
 
-## 对抗性复核处置（2026-10-03，独立上下文只读复核）
+## 对抗性复核处置（2026-10-02，独立上下文只读复核）
 
 | 发现 | 严重度 | 处置 |
 |---|---|---|

@@ -65,5 +65,5 @@ text = compact(await locator.innerText().catch(() => ''))
   本票只证明"不是本票引入的回归"（基线 stash 复现同红），修复后同一批装置全绿；
 - 日志留 `artifacts/web/`（gitignored）：`bounded-text-check.log`、`bounded-<装置>.log`、
   `bounded-<装置>-fixed.log`、`gates.log`；
-- E32 补证（2026-10-05）：三张受影响装置（retro-info / seamstress-artist / death-triggers）在本票
+- E32 补证（2026-10-04）：三张受影响装置（retro-info / seamstress-artist / death-triggers）在本票
   有界读取 + 守卫式收口后的冻结版 `407eea2` 上重跑**取证档**，**53 / 82 / 70 全绿**；见批次 E32。

@@ -2,7 +2,7 @@
 
 - Status: Done
 - Priority: Medium
-- 验收：批次 E15（2026-10-05）矩阵 1–8 全过（`docs/acceptance/batches.md`；逐行证据见「E15 验收判定」）。
+- 验收：批次 E15（2026-10-02）矩阵 1–8 全过（`docs/acceptance/batches.md`；逐行证据见「E15 验收判定」）。
 - Depends on: 胜败判定与游戏结束（`done/win-loss-and-game-end.md`）；操作请求与四道兜底闸（`done/operation-request-step-machine.md`）
 - 来源：胜负票独立对抗性复核 F-3 的残余（`done/win-loss-and-game-end.md`）
 
@@ -113,7 +113,7 @@
 `[作废, 结束]` 折叠与重启恢复自洽；作废通知的收件人解析在「同批新开」与「此前挂起」两条路径上都成立；
 ② 不可达论证的前提核实成立；新增枚举对 DTO / 前端标签 / 规范门禁无越权或镜像缺口。
 
-## E15 验收判定（2026-10-05）
+## E15 验收判定（2026-10-02）
 
 冻结版本 `main` @ `3cd6d2d`；批次记录见 `docs/acceptance/batches.md`。本批运行：`EndedGamePendingRequestVoidTests` 四条 + `WinLossHostTests` 两条（真宿主 + 真 SignalR + 真 SQLite）6/6 通过；六个装置取证档全绿（主装置含结束态 / 重连面）。
 

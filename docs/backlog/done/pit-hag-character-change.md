@@ -2,8 +2,8 @@
 
 - Status: Done
 - Priority: High
-- 验收：批次 E15（2026-10-05）判定不通过——行 12（创造镜像双子）未实现；行 3 / 4 / 13 / 15 缺运行证据。
-  **批次 E16（2026-10-06）重判行 12 / 3 / 4 / 13 / 15 / 11：全部通过 → 移入 `done/`**；其余 11 行结论累计有效
+- 验收：批次 E15（2026-10-02）判定不通过——行 12（创造镜像双子）未实现；行 3 / 4 / 13 / 15 缺运行证据。
+  **批次 E16（2026-10-02）重判行 12 / 3 / 4 / 13 / 15 / 11：全部通过 → 移入 `done/`**；其余 11 行结论累计有效
   （详见下文两批判定与 `docs/acceptance/batches.md`）。
 - Depends on: 胜负判定与游戏结束（`done/win-loss-and-game-end.md`）；结算引擎（`done/settlement-engine.md`）；镜像双子配对（同胜负票）；处罚处决命令面（`done/madness-and-adjudicated-execution.md`）
 - 来源口径：`references/wiki/麻脸巫婆.wiki`、`夜晚行动顺序一览.wiki`、`重要细节.wiki`、`术语汇总.wiki`、`规则概要.wiki`、`镜像双子.wiki`、`诺-达鲺.wiki`、`贤者.wiki`、`免死.wiki`、`额外死亡.wiki`、`设计师总结的国内玩家对染的错误理解.wiki`（均为 2026-10-01 抓取）
@@ -131,13 +131,13 @@
 修复（提交 `edd0273`）：把 `IsPlanCompleted` 检查移到触发来源旁路之后，与作答路径对称；
 回归 `TriggerRequestVoidTests` 先红后绿——触发来源 + 计划走完 → 作废成功；槽位来源 + 计划走完 → 仍被拒（不放松原有约束）。
 
-**收口记录（2026-10-05）**：
+**收口记录（2026-10-02）**：
 
 1. **装置清单登记**：已外移到 `docs/acceptance/devices.md`（登记六个装置：主装置 / 胜负 / 麻脸巫婆 / 女巫 /
    处罚处决 / 零信任；`web/AGENTS.md` §3.1 只留运行入口与外部耦合，体积不再随装置增长）；
 2. **登记残余（上报换角槽位激活）**：已移交 `in-progress/character-change-family.md`，与该族其余角色一起收口。
 
-## E15 验收判定（2026-10-05）
+## E15 验收判定（2026-10-02）
 
 冻结版本 `main` @ `3cd6d2d`；批次记录见 `docs/acceptance/batches.md`（六装置取证档全绿 + 冻结版门禁 465 / 90 全绿 + 真宿主用例复跑）。
 判据：**通过** = 本次运行有与该行期望直接对应的断言；**无法判定** = 该行关键面本次没有运行覆盖（写明缺什么）；**不通过** = 运行证据显示行为与期望不符。
@@ -169,7 +169,7 @@ dotnet test tests/OpenClockTower.Integration.Tests --filter FullyQualifiedName~T
   事件流末段：SlotQuotaElapsedEvent, SlotAdvancedEvent, SlotEnteredEvent, …（机器照常推进）
 ```
 
-### E15 残余修复记录（2026-10-05，等待 E16 重判）
+### E15 残余修复记录（2026-10-02，等待 E16 重判）
 
 判据同 E15：**通过** = 本次运行有与该行期望直接对应的断言。以下每条都给出落点与运行证据。
 
@@ -182,7 +182,7 @@ dotnet test tests/OpenClockTower.Integration.Tests --filter FullyQualifiedName~T
 
 提交：`87901f4`（行 12 实现 + 规则 / 集成用例）、`e7382e7`（行 13 组合）、`c972dba`（行 3 / 4 / 11 / 15）。冻结版门禁：全解决方案 475 项 + `npm run gate`（90 项）全绿。
 
-## E16 验收判定（2026-10-06）
+## E16 验收判定（2026-10-02）
 
 冻结版本 `main` @ `2f8c4e6`（跑批期间工作树干净、未改产品代码）。判据同 E15：
 **通过** = 本次运行有与该行期望直接对应的断言；其余 11 行（1 / 2 / 5–10 / 14 / 16）的 E15 结论累计有效。

@@ -296,7 +296,7 @@ async function main() {
     `li[data-seat="${SEAT_GUEST}"] 条数 ${await guestPage.locator(`[data-testid="player-roster"] li[data-seat="${SEAT_GUEST}"]`).count()}`,
   )
   // 诊断区只在有内容时渲染，所以这里必须**非等待**读取：`innerText()` 在元素缺失时会白等满
-  // Playwright 默认的 30s 超时（2026-10-05 实测：光是这一处就把本装置从 ~7s 拖到 ~37s，
+  // Playwright 默认的 30s 超时（2026-10-04 实测：光是这一处就把本装置从 ~7s 拖到 ~37s，
   // 分段耗时把 guest 段钉在 30.3s 才暴露出来）。缺失 = 没有诊断，不是失败。
   const diagnosticsBox = guestPage.locator('[data-testid="player-diagnostics"]')
   const guestDiagnostics =

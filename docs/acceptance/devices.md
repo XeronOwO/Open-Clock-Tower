@@ -33,7 +33,7 @@
 | 默认（迭代档） | `0.3s/槽` 快节拍 + 截图不落盘 + 复用产物；用于调试与回归 |
 | 正式取证 | **必须显式** `--quota 2 --screenshots-all`（必要时加 `--build`）；一批一次、只对**冻结版本**；默认档与分段跑都不作交付证据（`docs/acceptance/AGENTS.md` §3） |
 | 分段（主装置 / 账号装置） | `--list-sections` 列段名（账号装置 12 段）；`--only <段>` 执行到该段为止（前置段照跑，**只有该段的断言计入判定**）；`--from <段>` 全程执行、从该段起计入判定——只作定位，不作证据；每次运行打印**按段耗时**表 |
-| 装置成本（迭代参考） | 主装置 **72.7s**（2026-10-04 旅行者段落地后；历史 27.0s——新增五名旅行者加入 + 两条流放收票 + 三个黄昏格 + 复盘扫描；同版取证档 173.5s）；**账号装置 7.3s**（2026-10-05 前 37–40s：分段耗时咬出 guest 段一处无界 `innerText()` 白等满 30s，已修）；其余辅助装置 7–13s |
+| 装置成本（迭代参考） | 主装置 **72.7s**（2026-10-04 旅行者段落地后；历史 27.0s——新增五名旅行者加入 + 两条流放收票 + 三个黄昏格 + 复盘扫描；同版取证档 173.5s）；**账号装置 7.3s**（2026-10-04 前 37–40s：分段耗时咬出 guest 段一处无界 `innerText()` 白等满 30s，已修）；其余辅助装置 7–13s |
 | 轮询 / 守卫式读 DOM | 装置的轮询助手与守卫式助手读 DOM 一律走 `tools/lib/bounded-text.mjs`：文本（`readDecisionText` / `panelText` / `readTextOrNull` / `infoText` / `decisionId` 等）走 `readTextBounded`，属性（`waitForAttribute` / `readPlayerInformationCount` / `informationCount` / `waitForRequestPanelIdle` / 日状态 / 标记 `title` 等）走 `readAttributeBounded`（单次读取均 500ms 上限）——Playwright 默认 30s 不再参与读取，助手自己的 15s / 20s / 30s deadline 不被突破；元素预期在场的直接读取保持 auto-wait。改动该助手后跑一次假页面六探针自检 `node tools/check-bounded-text.mjs`（在场 / 缺失 / 守时 / 晚到 / 文本守卫后脱离 / 属性守卫后脱离） |
 | 退出码 | `0` 全部断言通过；`1` 有断言失败（含前置段）；`2` 环境缺依赖（Playwright / Chromium 等） |
 | 产物 | 截图与日志进 `artifacts/web/`（gitignored，可重生成）；装置自建临时库与工作目录由脚本收尾自清理 |

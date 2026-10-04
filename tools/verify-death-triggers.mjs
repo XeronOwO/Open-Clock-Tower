@@ -971,7 +971,7 @@ async function waitForDecision(page, predicate, timeoutMs) {
  * 读文本时必须**把死亡标签摘掉**：界面把它嵌在按钮里
  * （`<button>{{preview}}<span data-testid="option-dead">已死亡</span></button>`），直接取
  * `textContent` 会把标签文案混进 preview，让"候选 = 全体 N 席"这类按候选集合比对的断言假红
- * （2026-10-05 本轮实测踩到）。
+ * （2026-10-03 本轮实测踩到）。
  */
 async function readDecisionOptionTags(page) {
   const block = page.locator('[data-testid="console-decision"]')
