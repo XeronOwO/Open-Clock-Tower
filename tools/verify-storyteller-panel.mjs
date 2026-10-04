@@ -76,7 +76,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { DatabaseSync } from 'node:sqlite'
-import { readTextBounded } from './lib/bounded-text.mjs'
+import { readAttributeBounded, readTextBounded } from './lib/bounded-text.mjs'
 import { describeProfile, ensureServerArtifacts, extractProfileFlags, resolveProfile } from './lib/verify-profile.mjs'
 import { createChecker, createSectionRunner } from './lib/verify-sections.mjs'
 
@@ -995,7 +995,7 @@ async function main() {
   const demonRequestPanel = demonPlayer.page.locator('[data-testid="player-request-panel"]')
   const demonAdvance = await advanceSlotsUntil(
     storyteller.page,
-    async () => (await demonRequestPanel.getAttribute('data-request-state').catch(() => null)) === 'pending',
+    async () => (await readAttributeBounded(demonRequestPanel, 'data-request-state')) === 'pending',
     '第二夜推进到恶魔槽位',
   )
   if (demonAdvance.blockedBy !== undefined) {
@@ -1145,7 +1145,7 @@ async function main() {
   // 第三夜诺-达鲺击杀请求由 3 号玩家本人作答：保留玩家提交链路的真机覆盖。
   const demonThirdAdvance = await advanceSlotsUntil(
     storyteller.page,
-    async () => (await demonRequestPanel.getAttribute('data-request-state').catch(() => null)) === 'pending',
+    async () => (await readAttributeBounded(demonRequestPanel, 'data-request-state')) === 'pending',
     '第三夜推进到恶魔槽位',
   )
   if (demonThirdAdvance.blockedBy !== undefined) {
@@ -1406,7 +1406,7 @@ async function main() {
   // 再把节奏交给筑梦师槽——涡流在场时镇民的信息类能力照常「有请求、能结算」，只是信息必假。
   const vortoxKillAdvance = await advanceSlotsUntil(
     storyteller.page,
-    async () => (await demonRequestPanel.getAttribute('data-request-state').catch(() => null)) === 'pending',
+    async () => (await readAttributeBounded(demonRequestPanel, 'data-request-state')) === 'pending',
     '涡流票推进到涡流击杀槽',
   )
   if (vortoxKillAdvance.blockedBy !== undefined) {
@@ -1919,7 +1919,7 @@ async function informationCount(page) {
     return -1
   }
 
-  const raw = await panel.getAttribute('data-information-count')
+  const raw = await readAttributeBounded(panel, 'data-information-count')
   return raw === null ? -1 : Number(raw)
 }
 
@@ -2118,7 +2118,7 @@ async function waitForAttribute(locator, name, expected, timeoutMs) {
   const deadline = Date.now() + timeoutMs
   let value = null
   while (Date.now() < deadline) {
-    value = await locator.getAttribute(name).catch(() => null)
+    value = await readAttributeBounded(locator, name)
     if (value === expected) {
       return value
     }
@@ -2223,7 +2223,7 @@ function reconnectDiagnosticIn(text) {
 /** 读玩家端公开生死面上某席位的对外状态；没有该条目时返回 null（不猜，R-0022）。 */
 async function readPlayerLifeOf(page, seat) {
   const entry = page.locator(`[data-testid="player-lives"] li[data-seat="${seat}"]`)
-  return (await entry.count()) > 0 ? entry.first().getAttribute('data-life') : null
+  return (await entry.count()) > 0 ? readAttributeBounded(entry.first(), 'data-life') : null
 }
 
 /** 玩家端"上一次请求怎么结束"的说明文本；没有这条说明时返回空串。 */

@@ -38,7 +38,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { DatabaseSync } from 'node:sqlite'
-import { readTextBounded } from './lib/bounded-text.mjs'
+import { readAttributeBounded, readTextBounded } from './lib/bounded-text.mjs'
 import { describeProfile, ensureServerArtifacts, extractProfileFlags, resolveProfile } from './lib/verify-profile.mjs'
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -862,7 +862,7 @@ async function informationCount(page) {
     return -1
   }
 
-  const raw = await panel.getAttribute('data-information-count')
+  const raw = await readAttributeBounded(panel, 'data-information-count')
   return raw === null ? -1 : Number(raw)
 }
 
@@ -872,7 +872,7 @@ async function waitForAttribute(locator, name, expected, timeoutMs) {
   const deadline = Date.now() + timeoutMs
   let value = null
   while (Date.now() < deadline) {
-    value = await locator.getAttribute(name).catch(() => null)
+    value = await readAttributeBounded(locator, name)
     if (value === expected) {
       return value
     }

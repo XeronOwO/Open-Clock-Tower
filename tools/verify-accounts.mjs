@@ -50,7 +50,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { DatabaseSync } from 'node:sqlite'
-import { readTextBounded } from './lib/bounded-text.mjs'
+import { readAttributeBounded, readTextBounded } from './lib/bounded-text.mjs'
 import { describeProfile, ensureServerArtifacts, extractProfileFlags, resolveProfile } from './lib/verify-profile.mjs'
 import { createChecker, createSectionRunner } from './lib/verify-sections.mjs'
 
@@ -563,7 +563,7 @@ async function main() {
   // 说书人页量之前先收起数据抽屉（展开与否是本地呈现态，不能混进量度）。
   // B 页的账号区保持默认态，正是要量的那个状态；数值只记录、不断言。
   const drawer = storytellerPage.getByTestId('data-drawer-toggle')
-  if ((await drawer.count()) > 0 && (await drawer.getAttribute('aria-expanded')) === 'true') {
+  if ((await drawer.count()) > 0 && (await readAttributeBounded(drawer, 'aria-expanded')) === 'true') {
     await drawer.click()
   }
   const contentHeightOf = (page) =>

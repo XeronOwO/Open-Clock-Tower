@@ -86,7 +86,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { DatabaseSync } from 'node:sqlite'
-import { readTextBounded } from './lib/bounded-text.mjs'
+import { readAttributeBounded, readTextBounded } from './lib/bounded-text.mjs'
 import { describeProfile, ensureServerArtifacts, extractProfileFlags, resolveProfile } from './lib/verify-profile.mjs'
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -1155,7 +1155,7 @@ async function readPlayerInformationCount(page) {
     return null
   }
 
-  return panel.getAttribute('data-information-count')
+  return readAttributeBounded(panel, 'data-information-count')
 }
 
 /** 玩家页信息面板的每一行（真 DOM：能力中文标签 + 说书人给的内容）。 */
@@ -1183,14 +1183,14 @@ async function waitForRequestPanelIdle(page, timeoutMs) {
   const panel = page.getByTestId('player-request-panel')
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
-    if ((await panel.getAttribute('data-request-state')) === 'idle') {
+    if ((await readAttributeBounded(panel, 'data-request-state')) === 'idle') {
       return true
     }
 
     await sleep(150)
   }
 
-  return (await panel.getAttribute('data-request-state')) === 'idle'
+  return (await readAttributeBounded(panel, 'data-request-state')) === 'idle'
 }
 
 /** 玩家请求面板的当前上下文与选项（值 + 可见文案）；空态返回空集。 */
@@ -1243,7 +1243,7 @@ async function readArtistPanel(page) {
   }
 
   return {
-    state: (await panel.getAttribute('data-question-state')) ?? '',
+    state: (await readAttributeBounded(panel, 'data-question-state')) ?? '',
     pending: (await readTextOrNull(page, 'player-artist-question-pending')) ?? '',
   }
 }
@@ -1459,7 +1459,7 @@ async function waitForAttribute(locator, name, expected, timeoutMs) {
   const deadline = Date.now() + timeoutMs
   let value = null
   while (Date.now() < deadline) {
-    value = await locator.getAttribute(name)
+    value = await readAttributeBounded(locator, name)
     if (value === expected) {
       return value
     }

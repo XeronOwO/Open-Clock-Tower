@@ -1,7 +1,8 @@
 /**
- * 「轮询 / 守卫式文本读取必须有界」的最小复现（验证 tools/lib/bounded-text.mjs）——
- * 票据 docs/backlog/done/device-poll-innertext-unbounded-wait.md 的验收矩阵行 1、2
- * 与 docs/backlog/in-progress/device-guarded-reads-unbounded-wait.md 的探针 E。
+ * 「轮询 / 守卫式读取必须有界」的最小复现（验证 tools/lib/bounded-text.mjs）——
+ * 票据 docs/backlog/done/device-poll-innertext-unbounded-wait.md 的验收矩阵行 1、2、
+ * docs/backlog/done/device-guarded-reads-unbounded-wait.md 的探针 E，与
+ * docs/backlog/done/device-attribute-poll-unbounded-wait.md 的验收矩阵行 1（探针 F）。
  *
  * 为什么单独有这个脚本：装置里的轮询助手只在"元素缺失 / 晚到"的失败路径上才会咬人，
  * 正常路径的元素都在——真机装置跑绿证明不了这个修复。这里用假页面直接构造失败路径：
@@ -11,6 +12,9 @@
  *   探针 D（1.2s 晚到元素）：助手应在 deadline 内读到文本，不假红。
  *   探针 E（守卫后脱离）：先 count() 看到元素、读取前元素被移除——守卫式助手（readDecisionText /
  *     panelText / readTextOrNull 等）的真实竞态窗口；有界读取应返回 ''（约 0.5s），旧写法同样等满 30s。
+ *   探针 F（守卫后脱离·属性版）：同一竞态读的是属性——守卫式属性读（readPlayerInformationCount /
+ *     informationCount / waitForAttribute / readPlayerLifeOf 等）的真实窗口；readAttributeBounded
+ *     应返回 null（约 0.5s），旧写法裸 getAttribute 同样等满 30s。
  *
  * 用法（仓库根）：node tools/check-bounded-text.mjs
  * 退出码：0 = 探针全过；1 = 有探针失败；2 = 缺 Playwright / Chromium。
@@ -19,7 +23,7 @@
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
-import { readTextBounded } from './lib/bounded-text.mjs'
+import { readAttributeBounded, readTextBounded } from './lib/bounded-text.mjs'
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const requireFromWeb = createRequire(path.join(repositoryRoot, 'web', 'package.json'))
@@ -126,6 +130,20 @@ try {
     'E 守卫后脱离：有界读取返回空串',
     guardedCount === 1 && vanishedText === '' && elapsedE < 1_000,
     `守卫 count=${guardedCount}・返回「${vanishedText}」· ${elapsedE}ms（旧写法等满 30s）`,
+  )
+
+  // 探针 F：守卫后脱离（属性版）——与探针 E 同址同形，读的是属性。
+  await page.setContent('<html><body><div id="attr-vanish" data-token="守卫时还在"></div></body></html>')
+  const attrVanishing = page.locator('#attr-vanish')
+  const guardedAttrCount = await attrVanishing.count()
+  await page.evaluate(() => document.querySelector('#attr-vanish')?.remove())
+  const tF = Date.now()
+  const vanishedAttr = await readAttributeBounded(attrVanishing, 'data-token')
+  const elapsedF = Date.now() - tF
+  record(
+    'F 守卫后脱离：有界属性读取返回 null',
+    guardedAttrCount === 1 && vanishedAttr === null && elapsedF < 1_000,
+    `守卫 count=${guardedAttrCount}・返回「${String(vanishedAttr)}」· ${elapsedF}ms（旧写法裸 getAttribute 等满 30s）`,
   )
 } finally {
   await browser.close()

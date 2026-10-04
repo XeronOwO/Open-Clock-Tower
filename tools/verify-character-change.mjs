@@ -49,7 +49,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { DatabaseSync } from 'node:sqlite'
-import { readTextBounded } from './lib/bounded-text.mjs'
+import { readAttributeBounded, readTextBounded } from './lib/bounded-text.mjs'
 import { describeProfile, ensureServerArtifacts, extractProfileFlags, resolveProfile } from './lib/verify-profile.mjs'
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -891,7 +891,7 @@ async function waitForHubToken(page, testId, timeoutMs = 30_000) {
       snapshot = {
         visible: true,
         text: compact(await readTextBounded(token)),
-        title: (await token.getAttribute('title').catch(() => null)) ?? '',
+        title: (await readAttributeBounded(token, 'title')) ?? '',
       }
       if (snapshot.text.length > 0) {
         return snapshot
@@ -1021,7 +1021,7 @@ async function waitForAttribute(locator, name, expected, timeoutMs) {
   const deadline = Date.now() + timeoutMs
   let value = null
   while (Date.now() < deadline) {
-    value = await locator.getAttribute(name)
+    value = await readAttributeBounded(locator, name)
     if (value === expected) {
       return value
     }

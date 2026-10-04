@@ -30,7 +30,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { DatabaseSync } from 'node:sqlite'
-import { readTextBounded } from './lib/bounded-text.mjs'
+import { readAttributeBounded, readTextBounded } from './lib/bounded-text.mjs'
 import { describeProfile, ensureServerArtifacts, extractProfileFlags, resolveProfile } from './lib/verify-profile.mjs'
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -423,7 +423,7 @@ async function forceVoidPending(page, reason, note) {
 /** 处罚处决默认收起（票据 ui-layout-and-onboarding 降密度）：点开才出现来源 / 说明 / 执行。 */
 async function openPunishControls(page) {
   const toggle = page.getByTestId('console-punish-toggle')
-  if ((await toggle.count()) > 0 && (await toggle.getAttribute('aria-expanded')) !== 'true') {
+  if ((await toggle.count()) > 0 && (await readAttributeBounded(toggle, 'aria-expanded')) !== 'true') {
     await toggle.click()
   }
 }
@@ -477,7 +477,7 @@ async function waitForAttribute(locator, name, expected, timeoutMs) {
   const deadline = Date.now() + timeoutMs
   let value = null
   while (Date.now() < deadline) {
-    value = await locator.getAttribute(name)
+    value = await readAttributeBounded(locator, name)
     if (value === expected) {
       return value
     }

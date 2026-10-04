@@ -60,13 +60,13 @@ todo/  →  in-progress/  →  review/  →  done/
 
 ### Todo
 
-- [装置属性读取未收口：轮询/守卫式 `getAttribute` 仍可能吃满 30s](todo/device-attribute-poll-unbounded-wait.md) — **Low** — 11 个装置的 `waitForAttribute` 与 `read*Count` / 日状态 / 标记 `title` 等守卫式属性读取统一到有界助手，元素脱离时不再白等 30s
-
 ### In progress
 
 ### Review
 
 ### Done
+
+- [装置属性读取未收口：轮询/守卫式 `getAttribute` 仍可能吃满 30s](done/device-attribute-poll-unbounded-wait.md) — **Low** — 12 个装置的 `waitForAttribute` / `read*Count` / 日状态 / 标记 `title` 等 37 处守卫式属性读取统一改走 `readAttributeBounded`（单次 500ms），元素脱离不再白等 30s
 
 - [装置守卫式读取未收口：条件读取仍可能吃满 30s](done/device-guarded-reads-unbounded-wait.md) — **Low** — 11 个装置的 `readDecisionText` / `panelText` / `readSlotContext` / `readTextOrNull` 等守卫式文本读取统一改走 `readTextBounded`（40 处），读取期间脱离不再吃 30s
 
