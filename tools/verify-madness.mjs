@@ -211,6 +211,7 @@ async function main() {
 
   console.log('=== 5/7 夜晚处罚畸形秀演员（4 号）：夜晚继续、不占次日上限 ===')
   await storytellerPage.locator(`[data-testid="grimoire-seat"][data-seat="${MUTANT_SEAT}"]`).click()
+  await openPunishControls(storytellerPage)
   await storytellerPage.getByTestId('console-punish-source').selectOption('Mutant')
   const nightPunished = await runCommand(storytellerPage, '夜晚处罚处决', () =>
     storytellerPage.getByTestId('console-punish').click(),
@@ -269,6 +270,7 @@ async function main() {
 
   console.log('=== 6/7 白天处罚洗脑师目标（2 号）：占上限、立即入夜 ===')
   await storytellerPage.locator(`[data-testid="grimoire-seat"][data-seat="${TARGET_SEAT}"]`).click()
+  await openPunishControls(storytellerPage)
   // 处罚来源不随选席复位：换成 2 号后必须显式改回洗脑师。
   await storytellerPage.getByTestId('console-punish-source').selectOption('Cerenovus')
   const consoleMadness = await waitForLocatorContains(
@@ -415,6 +417,14 @@ async function forceVoidPending(page, reason, note) {
   }
 
   return runCommand(page, '强制作废', () => pending.getByRole('button', { name: '强制作废', exact: true }).click())
+}
+
+/** 处罚处决默认收起（票据 ui-layout-and-onboarding 降密度）：点开才出现来源 / 说明 / 执行。 */
+async function openPunishControls(page) {
+  const toggle = page.getByTestId('console-punish-toggle')
+  if ((await toggle.count()) > 0 && (await toggle.getAttribute('aria-expanded')) !== 'true') {
+    await toggle.click()
+  }
 }
 
 async function readDecisionText(page) {
