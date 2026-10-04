@@ -480,6 +480,25 @@ async function main() {
   await alicePage.getByTestId('player-account').scrollIntoViewIfNeeded()
   await screenshot(alicePage, 'accounts-06-account-panel-recovery-code')
 
+  // 上手引导的说明入口（票据 ui-layout-and-onboarding 矩阵行 2）：悬停（键鼠）与点按（触屏路径）都能打开，
+  // 文案来自 `display/help.ts` 登记表；Esc 关闭。截图 `accounts-10-explain-tip` 留证。
+  console.log('=== 收尾：说明入口（悬停 / 点按 / Esc）===')
+  const helpButton = bobPage.getByTestId('player-roster').getByRole('button', { name: '说明：玩家名' })
+  await helpButton.hover()
+  const hoverBubble = await waitForLocatorText(bobPage.getByRole('tooltip'), 10_000)
+  check(
+    '说明入口：悬停显示登记表文案（「玩家名」条目）',
+    hoverBubble.includes('玩家名') && hoverBubble.includes('不参与授权'),
+    hoverBubble,
+  )
+  await bobPage.mouse.move(0, 0)
+  await helpButton.click()
+  const tapBubble = await waitForLocatorText(bobPage.getByRole('tooltip'), 10_000)
+  check('说明入口：点按（触屏路径）同样能打开', tapBubble.includes('不参与授权'), tapBubble)
+  await screenshot(bobPage, 'accounts-10-explain-tip')
+  await bobPage.keyboard.press('Escape')
+  check('说明入口：Esc 关闭气泡', (await bobPage.getByRole('tooltip').count()) === 0, '气泡已撤下')
+
   // 版面量度（票据 `ui-layout-and-onboarding` 矩阵行 3）：固定状态下的整页截图 + 内容高度，
   // 供"前后对比"引用。量的是 `.shell` 的内容底边——`documentElement.scrollHeight` 会被视口高度钳制；
   // 说书人页量之前先收起数据抽屉（展开与否是本地呈现态，不能混进量度）。
