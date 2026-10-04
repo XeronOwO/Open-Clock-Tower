@@ -601,6 +601,8 @@ Integration 188 · NormativeGates 24）；`dotnet format` 就地通过；`npm ru
   账号折叠后不受影响。
 - `tools/verify-madness.mjs`（同族回归，取证档）：**28 项全绿**——处罚处决默认收起后，装置改为
   先展开再交互（`openPunishControls`）。
+- `tools/verify-setup-randomizer.mjs`（同族回归，迭代档）：**58 项全绿**——开局分配面板在"可用时
+  默认展开"的口径下未变；它是最依赖该面板的装置。
 
 冻结版门禁：`dotnet build` 0 警告 0 错误；`dotnet test` **853 通过 / 0 失败**（Kernel 327 · Rules 314 ·
 Integration 188 · NormativeGates 24）；`dotnet format` 就地通过；`npm run gate` 全绿
