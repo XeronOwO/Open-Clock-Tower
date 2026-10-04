@@ -248,8 +248,10 @@ onBeforeUnmount(() => {
             :seat-count="seatCount"
             @outcome="showOutcome"
           />
-          <ReplayPanel v-if="replayOpen" :fetch-replay="fetchReplay" @close="replayOpen = false" />
+          <!-- 占位提示只在"连接了但还没拿到连接级凭据"时出现（此前 v-else 误绑在复盘开关上，
+               于是复盘收起时它一直挂在魔典下面，说了一句与状态不符的话）。 -->
           <p v-else class="placeholder">已连接，但还没有可用的连接级凭据——先在登录区重新加入。</p>
+          <ReplayPanel v-if="replayOpen" :fetch-replay="fetchReplay" @close="replayOpen = false" />
         </main>
 
         <aside class="dock">

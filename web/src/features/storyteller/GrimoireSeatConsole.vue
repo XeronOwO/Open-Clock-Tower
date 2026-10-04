@@ -75,6 +75,8 @@ const freeDecision = ref('')
 /** 服务端只认枚举名：Cerenovus（洗脑师）/ Mutant（畸形秀演员）。 */
 const punishSource = ref('Cerenovus')
 const punishNote = ref('')
+/** 低频危险操作默认收起（票据矩阵行 3）。 */
+const punishOpen = ref(false)
 
 // —— 状态上报 ——
 const reason = ref('')
@@ -459,20 +461,32 @@ async function submitReport(): Promise<void> {
         />
 
         <div class="punish">
-          <div class="line">
+          <!-- 低频且不可逆：默认收起，点开才出现来源 / 说明 / 执行（票据矩阵行 3 的降密度）。 -->
+          <button
+            type="button"
+            class="toggle"
+            data-testid="console-punish-toggle"
+            :aria-expanded="punishOpen ? 'true' : 'false'"
+            @click="punishOpen = !punishOpen"
+          >
             <span class="tag evil">处罚处决</span>
-            <select v-model="punishSource" data-testid="console-punish-source">
-              <option value="Cerenovus">洗脑师：未按疯狂要求行动</option>
-              <option value="Mutant">畸形秀演员：疯狂地证明自己是外来者</option>
-            </select>
-            <button type="button" :disabled="busy" data-testid="console-punish" @click="punish()">
-              处罚处决 {{ seatDisplayOf(model.seat, view.seatNames) }}
-            </button>
+            <span class="hint">{{ punishOpen ? '收起' : '展开' }}</span>
+          </button>
+          <div v-show="punishOpen" class="punish-body">
+            <div class="line">
+              <select v-model="punishSource" data-testid="console-punish-source">
+                <option value="Cerenovus">洗脑师：未按疯狂要求行动</option>
+                <option value="Mutant">畸形秀演员：疯狂地证明自己是外来者</option>
+              </select>
+              <button type="button" :disabled="busy" data-testid="console-punish" @click="punish()">
+                处罚处决 {{ seatDisplayOf(model.seat, view.seatNames) }}
+              </button>
+            </div>
+            <input v-model="punishNote" placeholder="执行说明（可选，会记进事件流）" />
+            <p class="hint">
+              白天处罚会立即结束白天并占用当天处决上限；夜晚处罚不占次日上限（R-0020）。
+            </p>
           </div>
-          <input v-model="punishNote" placeholder="执行说明（可选，会记进事件流）" />
-          <p class="hint">
-            白天处罚会立即结束白天并占用当天处决上限；夜晚处罚不占次日上限（R-0020）。
-          </p>
         </div>
 
         <div class="report" @focusin="engage()">
@@ -642,6 +656,21 @@ async function submitReport(): Promise<void> {
 .punish {
   border-top: 1px dashed var(--line);
   padding-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.toggle {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+}
+
+.punish-body {
   display: flex;
   flex-direction: column;
   gap: 6px;
