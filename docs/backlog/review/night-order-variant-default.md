@@ -1,6 +1,6 @@
 # 夜晚顺序默认值对齐：命令层默认值改为官方魔典顺序（Recommended）
 
-- Status: Todo
+- Status: Review
 - Priority: Low
 - Depends on: `docs/standard/rulings.md` R-0014（已定案：默认 = 官方魔典顺序 = `Recommended` 变体）
 

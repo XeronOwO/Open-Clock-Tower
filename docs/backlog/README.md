@@ -60,12 +60,13 @@ todo/  →  in-progress/  →  review/  →  done/
 
 ### Todo
 
-- [夜晚顺序默认值对齐：命令层默认改为官方魔典顺序](todo/night-order-variant-default.md) — **Low** — 面板已默认 Recommended（= 官方魔典顺序，R-0014 已定案）；只剩命令层 `StartNightCommand.Variant` 默认值仍是 Original
 - [印刷规则书原件回核：R-0005 / R-0012 / R-0013 / R-0018 引文（R-0029 顺带）](todo/rulebook-original-crosscheck.md) — **Medium** — 三条裁定依第三方逐字提取文本收口，官方原件不在手；拿到实物后回核引文
 
 ### In progress
 
 ### Review
+
+- [夜晚顺序默认值对齐：命令层默认改为官方魔典顺序](review/night-order-variant-default.md) — **Low** — 命令层 `StartNightCommand.Variant` 默认值对齐官方魔典顺序（Recommended），消除「文档默认 vs 无参默认」的偏差
 
 ### Done
 

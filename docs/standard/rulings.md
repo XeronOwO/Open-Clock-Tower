@@ -330,9 +330,9 @@
   3. 对局前须告知玩家本局实际使用的口径（本表维护规则）。
 - **2026-10-04 定案（需求方口径：官方魔典顺序）**：以官方魔典的行动顺序为默认准则——该顺序与
   `Recommended` 变体逐条一致（四处差异全部吻合），面板初始选中 `Recommended`，实际对局默认即为
-  官方魔典顺序，**无需改面板**。剩余实现差异：命令层 `StartNightCommand.Variant` 的默认值仍是
-  `Original`（仅无参调用路径可见）——对齐任务保留在
-  `docs/backlog/todo/night-order-variant-default.md`（低优先，不影响面板路径）。
+  官方魔典顺序，**无需改面板**。命令层 `StartNightCommand.Variant` 的默认值已同步对齐为
+  `Recommended`（无参调用路径默认即官方魔典顺序）；显式 `Original` 仍可选，回归见
+  `tests/OpenClockTower.Integration.Tests/StartNightVariantDefaultTests.cs`。
 - **影响面**：`OpenClockTower.Rules` 顺序表数据；结算引擎建表；说书人面板；术语 night-order。
 
 ---
