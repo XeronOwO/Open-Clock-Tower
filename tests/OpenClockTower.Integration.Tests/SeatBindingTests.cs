@@ -22,11 +22,13 @@ public sealed class SeatBindingTests
         var first = await service.ClaimAsync(Game, new SeatId(1), new AccountId(1), CancellationToken.None);
         Assert.True(first.Accepted);
         Assert.Equal("ok", first.Code);
+        Assert.True(first.Created);
         Assert.Equal(new SeatId(1), first.Binding!.Seat);
         Assert.Equal(Now, first.Binding.BoundAt);
 
         var again = await service.ClaimAsync(Game, new SeatId(1), new AccountId(1), CancellationToken.None);
         Assert.True(again.Accepted);
+        Assert.False(again.Created);
         Assert.Equal(first.Binding, again.Binding);
         Assert.Single(store.Bindings);
     }
@@ -97,6 +99,26 @@ public sealed class SeatBindingTests
 
         Assert.False(outcome.Accepted);
         Assert.Equal("seat_taken", outcome.Code);
+        Assert.False(outcome.Created);
+    }
+
+    /// <summary>绑定按对局隔离：同一账号在下一局要重新认领，旧局绑定不影响新局（D-0021 跨局口径）。</summary>
+    [Fact]
+    public async Task Claim_IsScopedPerGame()
+    {
+        var store = new FakeBindingStore();
+        var service = new SeatBindingService(store, new FixedClock(Now));
+        var nextGame = new GameId("next-game");
+        await service.ClaimAsync(Game, new SeatId(1), new AccountId(1), CancellationToken.None);
+
+        var next = await service.ClaimAsync(nextGame, new SeatId(1), new AccountId(1), CancellationToken.None);
+
+        Assert.True(next.Accepted);
+        Assert.True(next.Created);
+        Assert.Equal(nextGame, next.Binding!.GameId);
+        Assert.Equal(2, store.Bindings.Count);
+        Assert.Equal(new SeatId(1), (await service.ResolveSeatAsync(Game, new AccountId(1), CancellationToken.None))!.Seat);
+        Assert.Equal(new SeatId(1), (await service.ResolveSeatAsync(nextGame, new AccountId(1), CancellationToken.None))!.Seat);
     }
 
     /// <summary>内存绑定表：语义（席位唯一 + 账号唯一）与真实存储的唯一索引一致。</summary>

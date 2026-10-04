@@ -95,7 +95,7 @@ public sealed class TestServerHost : IAsyncDisposable
         await _factory.Services.GetRequiredService<IGameCatalog>().FindAsync(GameId, CancellationToken.None)
         ?? throw new InvalidOperationException("测试宿主尚未播种会话票据");
 
-    /// <summary>以某席位加入（可挂收件回调）；返回带凭据的客户端。</summary>
+    /// <summary>以某席位加入（可挂收件回调）；返回带凭据的客户端。带 <paramref name="accountSession"/> 时同时认领席位（D-0021）。</summary>
     public async Task<GameClient> ConnectSeatAsync(
         SeatId seat,
         Action<OperationRequestDto>? onRequest = null,
@@ -105,7 +105,8 @@ public sealed class TestServerHost : IAsyncDisposable
         Action<InformationResultDto>? onInformation = null,
         Action<OperationRequestAnsweredDto>? onAnswered = null,
         Action<PhaseStartedDto>? onPhaseStarted = null,
-        Action<long, PlayerViewDto>? onPlayerViewChanged = null)
+        Action<long, PlayerViewDto>? onPlayerViewChanged = null,
+        string? accountSession = null)
     {
         var setup = await GetSetupAsync();
         var ticket = setup.Seats.Single(item => item.Seat == seat).Ticket;
@@ -146,11 +147,49 @@ public sealed class TestServerHost : IAsyncDisposable
         }
 
         await connection.StartAsync();
-        var joined = await connection.InvokeAsync<SeatJoinDto>("JoinSeat", ticket, lastSequence);
+        var joined = accountSession is null
+            ? await connection.InvokeCoreAsync<SeatJoinDto>("JoinSeat", [ticket, lastSequence])
+            : await connection.InvokeCoreAsync<SeatJoinDto>(
+                "JoinSeatWithAccount",
+                [ticket, accountSession, lastSequence]);
         Bundles[seat] = joined.Bundle;
         _connections.Add(connection);
         return new GameClient(connection, joined.Credential);
     }
+
+    /// <summary>只凭账号加入（D-0021）：不带票据，服务端按绑定解出席位（"认领之后的重连"路径）。</summary>
+    public async Task<GameClient> ConnectSeatByAccountAsync(string accountSession, long lastSequence = 0)
+    {
+        var connection = CreateConnection();
+        await connection.StartAsync();
+        var joined = await connection.InvokeCoreAsync<SeatJoinDto>(
+            "JoinSeatWithAccount",
+            [string.Empty, accountSession, lastSequence]);
+        Bundles[new SeatId(joined.Bundle.View.Seat)] = joined.Bundle;
+        _connections.Add(connection);
+        return new GameClient(connection, joined.Credential);
+    }
+
+    /// <summary>起一条账号 Hub 连接（D-0021）：注册 / 登录 / 登出 / 改名 / 口令重置用。</summary>
+    public async Task<HubConnection> ConnectAccountAsync()
+    {
+        var connection = CreateConnection("/hub/account");
+        await connection.StartAsync();
+        _connections.Add(connection);
+        return connection;
+    }
+
+    /// <summary>注册账号（D-0021）：返回账号结果（含一次性恢复码与账号会话）。</summary>
+    public static Task<AccountDto> RegisterAccountAsync(
+        HubConnection account,
+        string username,
+        string displayName,
+        string password) =>
+        account.InvokeAsync<AccountDto>("Register", username, displayName, password);
+
+    /// <summary>登录（D-0021）。</summary>
+    public static Task<AccountDto> LoginAccountAsync(HubConnection account, string username, string password) =>
+        account.InvokeAsync<AccountDto>("Login", username, password);
 
     /// <summary>以说书人身份加入；返回带凭据的客户端。</summary>
     public async Task<GameClient> ConnectStorytellerAsync(Action<StorytellerViewDto>? onViewChanged = null)
@@ -289,9 +328,9 @@ public sealed class TestServerHost : IAsyncDisposable
         }
     }
 
-    private HubConnection CreateConnection() =>
+    private HubConnection CreateConnection(string path = "/hub/game") =>
         new HubConnectionBuilder()
-            .WithUrl(new Uri(_factory.Server.BaseAddress, "/hub/game"), options =>
+            .WithUrl(new Uri(_factory.Server.BaseAddress, path), options =>
             {
                 options.HttpMessageHandlerFactory = _ => _factory.Server.CreateHandler();
                 options.Transports = HttpTransportType.LongPolling;

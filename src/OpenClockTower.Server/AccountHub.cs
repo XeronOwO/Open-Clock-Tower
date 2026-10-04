@@ -1,0 +1,181 @@
+using Microsoft.AspNetCore.SignalR;
+using OpenClockTower.Application;
+using OpenClockTower.Contracts;
+
+namespace OpenClockTower.Server;
+
+/// <summary>
+/// 账号自助 Hub（D-0021）：注册 / 登录 / 登出 / 改玩家名 / 恢复码重置。
+/// </summary>
+/// <remarks>
+/// <para>
+/// 账号操作**不是游戏命令**：不过四道闸、不碰游戏状态；它只签发 / 撤销账号会话凭据，
+/// 并在改名后把新玩家名同步给本局已绑定席位（会话读模型 + 视图推送）。
+/// </para>
+/// <para>
+/// 秘密纪律：口令与恢复码只进结果、绝不进日志；日志只写账号标识、登录名与凭据短指纹。
+/// 账号会话是 bearer 凭据——谁出示谁就是这个账号，前端只存内存、不落盘（D-0012 §4.1）。
+/// </para>
+/// </remarks>
+public sealed class AccountHub : Hub
+{
+    private readonly AccountService _accounts;
+    private readonly AccountSessionRegistry _sessions;
+    private readonly SeatNameDirectory _seatNames;
+    private readonly NotificationDispatcher _dispatcher;
+    private readonly ILogger<AccountHub> _logger;
+
+    /// <summary>构造账号 Hub。</summary>
+    public AccountHub(
+        AccountService accounts,
+        AccountSessionRegistry sessions,
+        SeatNameDirectory seatNames,
+        NotificationDispatcher dispatcher,
+        ILogger<AccountHub> logger)
+    {
+        _accounts = accounts;
+        _sessions = sessions;
+        _seatNames = seatNames;
+        _dispatcher = dispatcher;
+        _logger = logger;
+    }
+
+    /// <summary>注册（D-0021）：成功后**同时登录**，返回账号会话与一次性恢复码。</summary>
+    public async Task<AccountDto> Register(string username, string displayName, string password)
+    {
+        var outcome = await _accounts.RegisterAsync(username, displayName, password, Context.ConnectionAborted);
+        if (!outcome.Accepted || outcome.Account is null)
+        {
+            _logger.LogInformation(
+                "注册被拒：connection={ConnectionId} code={Code} 原因={Message}",
+                Context.ConnectionId,
+                outcome.Code,
+                outcome.Message);
+            return Reject(outcome);
+        }
+
+        var session = _sessions.Issue(outcome.Account.Id);
+        _logger.LogInformation(
+            "账号已注册并登录：account={AccountId} username={Username} connection={ConnectionId} 会话指纹={Fingerprint}",
+            outcome.Account.Id,
+            outcome.Account.Username,
+            Context.ConnectionId,
+            AccountSessionCredential.FingerprintOf(session.Value));
+        return Accept(outcome.Account, session.Value, outcome.RecoveryCode);
+    }
+
+    /// <summary>登录：签发账号会话；失败一律中性文案（不暴露登录名是否存在）。</summary>
+    public async Task<AccountDto> Login(string username, string password)
+    {
+        var outcome = await _accounts.AuthenticateAsync(username, password, Context.ConnectionAborted);
+        if (!outcome.Accepted || outcome.Account is null)
+        {
+            _logger.LogWarning(
+                "登录被拒：connection={ConnectionId} code={Code}",
+                Context.ConnectionId,
+                outcome.Code);
+            return Reject(outcome);
+        }
+
+        var session = _sessions.Issue(outcome.Account.Id);
+        _logger.LogInformation(
+            "已登录：account={AccountId} username={Username} connection={ConnectionId} 会话指纹={Fingerprint}",
+            outcome.Account.Id,
+            outcome.Account.Username,
+            Context.ConnectionId,
+            AccountSessionCredential.FingerprintOf(session.Value));
+        return Accept(outcome.Account, session.Value, recoveryCode: null);
+    }
+
+    /// <summary>登出：撤销这条账号会话（重复登出返回 false，语义明确）。</summary>
+    public Task<bool> Logout(string accountSession)
+    {
+        var revoked = _sessions.Revoke(accountSession);
+        _logger.LogInformation(
+            "登出：connection={ConnectionId} 已撤销={Revoked} 会话指纹={Fingerprint}",
+            Context.ConnectionId,
+            revoked,
+            AccountSessionCredential.FingerprintOf(accountSession));
+        return Task.FromResult(revoked);
+    }
+
+    /// <summary>改玩家名（D-0021）：账号设置里随时可改；改名即时同步给本局已绑定席位。</summary>
+    public async Task<AccountDto> ChangeDisplayName(string accountSession, string displayName)
+    {
+        if (!_sessions.TryResolve(accountSession, out var accountId))
+        {
+            _logger.LogWarning(
+                "改玩家名被拒（会话无效）：connection={ConnectionId} 会话指纹={Fingerprint}",
+                Context.ConnectionId,
+                AccountSessionCredential.FingerprintOf(accountSession));
+            return InvalidSession();
+        }
+
+        var outcome = await _accounts.ChangeDisplayNameAsync(accountId, displayName, Context.ConnectionAborted);
+        if (!outcome.Accepted || outcome.Account is null)
+        {
+            _logger.LogInformation(
+                "改玩家名被拒：account={AccountId} code={Code} 原因={Message}",
+                accountId,
+                outcome.Code,
+                outcome.Message);
+            return Reject(outcome);
+        }
+
+        _seatNames.Rename(accountId, outcome.Account.DisplayName);
+        await _dispatcher.PushSeatNamesChangedAsync(Context.ConnectionAborted);
+        _logger.LogInformation(
+            "玩家名已更新：account={AccountId} 新玩家名={DisplayName} 推送=全桌+说书人",
+            accountId,
+            outcome.Account.DisplayName);
+        return Accept(outcome.Account, accountSession: null, recoveryCode: null);
+    }
+
+    /// <summary>恢复码重置口令（D-0021）：成功后撤销该账号全部旧会话、轮换恢复码，并直接重新登录。</summary>
+    public async Task<AccountDto> ResetPassword(string username, string recoveryCode, string newPassword)
+    {
+        var outcome = await _accounts.ResetPasswordAsync(username, recoveryCode, newPassword, Context.ConnectionAborted);
+        if (!outcome.Accepted || outcome.Account is null)
+        {
+            _logger.LogWarning(
+                "口令重置被拒：connection={ConnectionId} code={Code}",
+                Context.ConnectionId,
+                outcome.Code);
+            return Reject(outcome);
+        }
+
+        var revoked = _sessions.RevokeAllForAccount(outcome.Account.Id);
+        var session = _sessions.Issue(outcome.Account.Id);
+        _logger.LogInformation(
+            "口令已重置：account={AccountId} username={Username} 已撤销旧会话={Revoked} 已重新登录",
+            outcome.Account.Id,
+            outcome.Account.Username,
+            revoked);
+        return Accept(outcome.Account, session.Value, outcome.RecoveryCode);
+    }
+
+    private static AccountDto Reject(AccountOutcome outcome) => new()
+    {
+        Ok = false,
+        Code = outcome.Code,
+        Message = outcome.Message,
+    };
+
+    private static AccountDto InvalidSession() => new()
+    {
+        Ok = false,
+        Code = "invalid_session",
+        Message = "账号会话无效或已过期，请重新登录",
+    };
+
+    private static AccountDto Accept(Account account, string? accountSession, string? recoveryCode) => new()
+    {
+        Ok = true,
+        Code = "ok",
+        Id = account.Id.Value,
+        Username = account.Username,
+        DisplayName = account.DisplayName,
+        AccountSession = accountSession,
+        RecoveryCode = recoveryCode,
+    };
+}

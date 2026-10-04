@@ -28,6 +28,9 @@ public sealed class GameHub : Hub<IGameClient>
     private readonly ReplayQueryService _replay;
     private readonly ConnectionRegistry _registry;
     private readonly NotificationDispatcher _dispatcher;
+    private readonly SeatJoinCoordinator _join;
+    private readonly SeatBindingService _bindings;
+    private readonly SeatNameDirectory _seatNames;
     private readonly ILogger<GameHub> _logger;
 
     /// <summary>构造 Hub。</summary>
@@ -38,6 +41,9 @@ public sealed class GameHub : Hub<IGameClient>
         ReplayQueryService replay,
         ConnectionRegistry registry,
         NotificationDispatcher dispatcher,
+        SeatJoinCoordinator join,
+        SeatBindingService bindings,
+        SeatNameDirectory seatNames,
         ILogger<GameHub> logger)
     {
         _catalog = catalog;
@@ -46,63 +52,52 @@ public sealed class GameHub : Hub<IGameClient>
         _replay = replay;
         _registry = registry;
         _dispatcher = dispatcher;
+        _join = join;
+        _bindings = bindings;
+        _seatNames = seatNames;
         _logger = logger;
     }
 
-    /// <summary>玩家加入 / 重连：票据定位席位，签发连接凭据，返回重连包并**重投**未响应请求。</summary>
-    public async Task<SeatJoinDto> JoinSeat(string ticket, long lastSequence)
+    /// <summary>玩家加入 / 重连（只凭票据的路径，D-0012）：签发连接凭据、返回重连包并**重投**未响应请求。</summary>
+    public Task<SeatJoinDto> JoinSeat(string ticket, long lastSequence) =>
+        JoinSeatCoreAsync(ticket, accountSession: null, lastSequence);
+
+    /// <summary>
+    /// 玩家加入 / 重连（带账号会话，D-0021）：票据认领 / 只凭账号回到已认领席位。
+    /// </summary>
+    /// <remarks>
+    /// SignalR **不支持方法重载**（实测会抛 "Duplicate definitions"），所以账号路径单独一个方法名；
+    /// 它与 <see cref="JoinSeat"/> 走同一份实现，只有"是否带账号会话"不同。
+    /// </remarks>
+    public Task<SeatJoinDto> JoinSeatWithAccount(string ticket, string? accountSession, long lastSequence) =>
+        JoinSeatCoreAsync(ticket, accountSession, lastSequence);
+
+    private async Task<SeatJoinDto> JoinSeatCoreAsync(string ticket, string? accountSession, long lastSequence)
     {
-        var setup = await LoadSetupAsync();
-        var seatTicket = setup.Seats.FirstOrDefault(
-            item => string.Equals(item.Ticket, ticket, StringComparison.Ordinal));
-        if (seatTicket is null)
-        {
-            _logger.LogWarning("加入被拒：席位票据无效 connection={ConnectionId}", Context.ConnectionId);
-            throw new HubException("会话票据无效");
-        }
-
-        var credential = _registry.IssueForSeat(seatTicket.Seat, Context.ConnectionId);
-        _logger.LogInformation(
-            "已签发连接凭据：seat={Seat} connection={ConnectionId} 指纹={Fingerprint}（重连需重新出示票据）",
-            seatTicket.Seat,
+        var outcome = await _join.JoinAsync(
+            ticket,
+            accountSession,
+            lastSequence,
             Context.ConnectionId,
-            ConnectionCredential.FingerprintOf(credential.Value));
+            Context.ConnectionAborted);
 
-        try
+        if (outcome.Bundle.View.PendingRequest is { } pending)
         {
-            var bundle = await _session.GetReconnectBundleAsync(seatTicket.Seat, lastSequence, Context.ConnectionAborted);
-
-            if (bundle.View.PendingRequest is { } pending)
-            {
-                // 重投的请求状态属于这份快照：序号取快照序号，客户端合并时与快照同源。
-                await Clients.Caller.ReceiveOperationRequest(ProjectionMapper.ToDto(pending, bundle.View.Sequence));
-            }
-
-            _logger.LogInformation(
-                "玩家已加入：seat={Seat} connection={ConnectionId} 快照序号={Sequence} 本地已知={KnownSequence} 重投请求={Redelivered}",
-                seatTicket.Seat,
-                Context.ConnectionId,
-                bundle.Sequence,
-                lastSequence,
-                bundle.View.PendingRequest is not null);
-
-            return new SeatJoinDto
-            {
-                Credential = credential.Value,
-                Bundle = ProjectionMapper.ToDto(bundle),
-            };
+            // 重投的请求状态属于这份快照：序号取快照序号，客户端合并时与快照同源。
+            await Clients.Caller.ReceiveOperationRequest(ProjectionMapper.ToDto(pending, outcome.Bundle.View.Sequence));
         }
-        catch (InvalidOperationException exception)
+
+        if (outcome.Claimed)
         {
-            // 事件流不可读（恢复失败后的降级房间）：显式失败 + 审计，不让未处理异常抛穿 Hub；
-            // 对玩家只说中性原因——"数据丢了"属于说书人视图（票据 room-health-degradation-flag 的边界）。
-            _logger.LogError(
-                exception,
-                "玩家加入失败：房间事件流不可读（等说书人显式重建）：seat={Seat} connection={ConnectionId}",
-                seatTicket.Seat,
-                Context.ConnectionId);
-            throw new HubException("加入暂时失败，请稍后重试或联系说书人");
+            // 新认领：其他在线席位要立刻看到新名字（本人这份重连包里已经带上了）。
+            await _dispatcher.PushSeatNamesChangedAsync(Context.ConnectionAborted);
         }
+
+        return new SeatJoinDto
+        {
+            Credential = outcome.Credential.Value,
+            Bundle = ProjectionMapper.ToDto(outcome.Bundle),
+        };
     }
 
     /// <summary>说书人加入：票据定位身份，签发连接凭据（同局同一时刻只保留一条有效说书人连接）。</summary>
@@ -366,6 +361,42 @@ public sealed class GameHub : Hub<IGameClient>
             ResolveActor(credential),
             Commands().RemoveSeatAnnotation(annotationId),
             idempotencyKey);
+
+    /// <summary>
+    /// 说书人 / 宿主**解除席位绑定**（D-0021：误认领兜底）：清掉「席位 ↔ 账号」并推送新名字。
+    /// </summary>
+    /// <remarks>
+    /// 这不是游戏命令、不产生事件：绑定是会话信息（与席位票据同类）。说书人身份闸与审计照旧；
+    /// 解除后该席位回到"没有玩家名"（界面回退「N 号」），可被其他账号重新认领。
+    /// </remarks>
+    public async Task<bool> ReleaseSeatBinding(string credential, int seat)
+    {
+        _ = ResolveStorytellerActor(credential);
+        var target = new SeatId(seat);
+        var setup = await LoadSetupAsync();
+        if (!setup.Seats.Any(item => item.Seat == target))
+        {
+            _logger.LogWarning(
+                "解除绑定被拒（席位不在名单）：connection={ConnectionId} seat={Seat}",
+                Context.ConnectionId,
+                seat);
+            throw new HubException("席位不在本局名单里");
+        }
+
+        var released = await _bindings.ReleaseAsync(_gameId, target, Context.ConnectionAborted);
+        if (released)
+        {
+            _seatNames.Remove(target);
+            await _dispatcher.PushSeatNamesChangedAsync(Context.ConnectionAborted);
+        }
+
+        _logger.LogInformation(
+            "解除席位绑定：seat={Seat} 已解除={Released} connection={ConnectionId}",
+            seat,
+            released,
+            Context.ConnectionId);
+        return released;
+    }
 
     /// <summary>
     /// 说书人查询开局配板建议（只读、不落账）：按官方分布表 + 在场角色的设置调整生成建议。

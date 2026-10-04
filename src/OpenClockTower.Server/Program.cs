@@ -51,6 +51,17 @@ builder.Services.AddSingleton(provider => new ReplayQueryService(
     provider.GetRequiredService<ILogger<ReplayQueryService>>()));
 builder.Services.AddSingleton<ConnectionRegistry>();
 builder.Services.AddSingleton<NotificationDispatcher>();
+// 加入 / 认领的席位定位与凭据签发（D-0021）：从 GameHub 拆出（单文件 600 行门禁）。
+builder.Services.AddSingleton(provider => new SeatJoinCoordinator(
+    provider.GetRequiredService<IGameCatalog>(),
+    provider.GetRequiredService<GameId>(),
+    provider.GetRequiredService<GameSession>(),
+    provider.GetRequiredService<ConnectionRegistry>(),
+    provider.GetRequiredService<SeatBindingService>(),
+    provider.GetRequiredService<AccountService>(),
+    provider.GetRequiredService<AccountSessionRegistry>(),
+    provider.GetRequiredService<SeatNameDirectory>(),
+    provider.GetRequiredService<ILogger<SeatJoinCoordinator>>()));
 builder.Services.AddHostedService<GameBootstrapHostedService>();
 builder.Services.AddHostedService<StepPacerHostedService>();
 builder.Services.AddSignalR();
@@ -58,6 +69,7 @@ builder.Services.AddSignalR();
 var app = builder.Build();
 app.MapGet("/healthz", () => Results.Ok(new { status = "ok", game = serverOptions.GameId }));
 app.MapHub<GameHub>("/hub/game");
+app.MapHub<AccountHub>("/hub/account");
 app.Run();
 
 /// <summary>集成测试用的程序入口标记。</summary>

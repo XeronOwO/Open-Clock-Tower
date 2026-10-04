@@ -31,6 +31,10 @@ public sealed class AccountService
         _dummyHash = new Lazy<string>(() => hasher.Hash("account-service-dummy-secret"));
     }
 
+    /// <summary>按标识取账号（认领席位读玩家名、改名同步用）；没有返回 null。</summary>
+    public Task<Account?> FindAsync(AccountId accountId, CancellationToken cancellationToken) =>
+        _accounts.FindByIdAsync(accountId, cancellationToken);
+
     /// <summary>注册：登录名唯一（大小写不敏感）、玩家名有界、口令有最低强度；成功后返回一次性恢复码。</summary>
     public async Task<AccountOutcome> RegisterAsync(
         string? username,

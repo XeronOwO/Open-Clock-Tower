@@ -14,4 +14,7 @@ public sealed record SeatBindingOutcome
 
     /// <summary>生效后的绑定（通过时非空）。</summary>
     public SeatBinding? Binding { get; init; }
+
+    /// <summary>本次调用是否**新建**了绑定（false = 幂等命中已有绑定）。</summary>
+    public required bool Created { get; init; }
 }

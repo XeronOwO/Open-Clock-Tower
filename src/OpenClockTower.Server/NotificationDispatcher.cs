@@ -239,6 +239,16 @@ public sealed class NotificationDispatcher
             targets.Count);
     }
 
+    /// <summary>
+    /// 席位名变化（认领 / 改名 / 解除，D-0021）：把最新整视图推给全部已绑定席位与说书人。
+    /// </summary>
+    /// <remarks>名字是公开信息；未连接的玩家重连时从快照取同一份事实（会话读模型）。</remarks>
+    public async Task PushSeatNamesChangedAsync(CancellationToken cancellationToken)
+    {
+        await PushPlayerViewChangedAsync(seat: null, cancellationToken);
+        await PushStorytellerViewAsync(cancellationToken);
+    }
+
     private async Task PushStorytellerViewAsync(CancellationToken cancellationToken)
     {
         var view = ProjectionMapper.ToDto(_session.GetStorytellerView());

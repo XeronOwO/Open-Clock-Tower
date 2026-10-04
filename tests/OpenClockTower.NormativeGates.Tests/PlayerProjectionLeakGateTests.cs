@@ -36,6 +36,8 @@ public sealed partial class PlayerProjectionLeakGateTests
         Path.Combine("src", "OpenClockTower.Contracts", "KlutzChoiceDto.cs"),
         // 席位 → 玩家名（D-0021）：公开呈现信息，同桌所有人可见——显式登记进玩家投影扫描面。
         Path.Combine("src", "OpenClockTower.Contracts", "SeatDisplayNameDto.cs"),
+        // 账号自助结果（D-0021）：玩家可见契约（口令 / 会话是秘密，不落盘、不进日志）——同样登记进扫描面。
+        Path.Combine("src", "OpenClockTower.Contracts", "AccountDto.cs"),
     ];
 
     /// <summary>说书人专属契约（只在说书人视图 / 说书人命令里出现）；新增项必须人工复核。</summary>

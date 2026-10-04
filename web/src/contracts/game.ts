@@ -382,6 +382,22 @@ export interface SeatDisplayNameDto {
   displayName: string
 }
 
+/**
+ * 账号自助结果（D-0021）：注册 / 登录 / 改玩家名 / 恢复码重置共用。
+ *
+ * `accountSession` 与 `recoveryCode` 都是秘密：只存内存、不落盘、不进日志（D-0012 / D-0021）。
+ */
+export interface AccountDto {
+  ok: boolean
+  code: string
+  message: string
+  id: number
+  username: string
+  displayName: string
+  accountSession: string | null
+  recoveryCode: string | null
+}
+
 /** 玩家视图：只有他自己的席位、当前大阶段与他自己的挂起请求。 */
 export interface PlayerViewDto {
   seat: number

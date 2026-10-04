@@ -32,7 +32,7 @@ public sealed class SeatBindingService
         if (existing is not null)
         {
             return existing.AccountId == accountId
-                ? Accept(existing)
+                ? Accept(existing, created: false)
                 : Reject("seat_taken", $"席位 {seat.Value} 已经由其他账号认领");
         }
 
@@ -52,13 +52,13 @@ public sealed class SeatBindingService
 
         if (await _bindings.TryBindAsync(binding, cancellationToken))
         {
-            return Accept(binding);
+            return Accept(binding, created: true);
         }
 
         // 并发竞态：唯一索引挡下后重新读一次，按结果收敛——幂等成功，或明确拒绝。
         var raced = await _bindings.FindBySeatAsync(gameId, seat, cancellationToken);
         return raced is not null && raced.AccountId == accountId
-            ? Accept(raced)
+            ? Accept(raced, created: false)
             : Reject(
                 raced is null ? "account_already_seated" : "seat_taken",
                 "席位认领冲突：这个席位或这个账号刚刚被占用，请重试");
@@ -75,11 +75,12 @@ public sealed class SeatBindingService
     public async Task<bool> ReleaseAsync(GameId gameId, SeatId seat, CancellationToken cancellationToken) =>
         await _bindings.TryReleaseAsync(gameId, seat, cancellationToken);
 
-    private static SeatBindingOutcome Accept(SeatBinding binding) => new()
+    private static SeatBindingOutcome Accept(SeatBinding binding, bool created) => new()
     {
         Accepted = true,
         Code = "ok",
         Binding = binding,
+        Created = created,
     };
 
     private static SeatBindingOutcome Reject(string code, string message) => new()
@@ -87,5 +88,6 @@ public sealed class SeatBindingService
         Accepted = false,
         Code = code,
         Message = message,
+        Created = false,
     };
 }
