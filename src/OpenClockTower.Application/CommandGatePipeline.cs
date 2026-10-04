@@ -191,6 +191,10 @@ public static class CommandGatePipeline
                 "只有说书人或宿主可以删注记",
                 "identity"),
 
+            // 旅行者加入 / 离开（票据 traveller-and-exile D1）：只说书人（或宿主）能发；阶段不限。
+            JoinTravellerCommand or RemoveTravellerCommand
+                => TravellerGate.IdentityRejection(envelope.Command, actor),
+
             _ when actor.Kind == ActorKind.Storyteller => null,
             _ => Reject("identity.storyteller_only", "这条命令只有说书人可以发出", "identity"),
         };
@@ -348,6 +352,11 @@ public static class CommandGatePipeline
             case AddSeatAnnotationCommand or UpdateSeatAnnotationCommand or RemoveSeatAnnotationCommand:
                 return null;
 
+            // 旅行者加入 / 离场（D1）：任意时刻都能发生（含首个阶段之前、阶段进行中）——
+            // 不能落到下面的 default「machine is null → phase.not_started」。
+            case JoinTravellerCommand or RemoveTravellerCommand:
+                return null;
+
             default:
                 if (machine is null)
                 {
@@ -389,6 +398,10 @@ public static class CommandGatePipeline
             UpdateSeatAnnotationCommand update =>
                 AnnotationGate.CheckTarget(update.Id, annotations) ?? AnnotationGate.CheckText(update.Text),
             RemoveSeatAnnotationCommand remove => AnnotationGate.CheckTarget(remove.Id, annotations),
+
+            // 旅行者加入 / 离场（D1）：形状检查在这里；"能不能加入 / 离场"读状态账，在内核侧判。
+            JoinTravellerCommand join => TravellerGate.LegalityRejection(join, setup),
+            RemoveTravellerCommand remove => TravellerGate.LegalityRejection(remove, setup),
             _ => null,
         };
 

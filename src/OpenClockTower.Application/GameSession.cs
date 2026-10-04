@@ -299,13 +299,18 @@ public sealed class GameSession
                 case GateDecisionKind.Reject:
                     return Reject(envelope, decision.Rejection!);
                 case GateDecisionKind.Duplicate:
-                    return await SessionCommit.ReplayAsync(
-                        _store,
-                        GameId,
-                        _logger,
+                    // 重复投递的加入命令：把首次签发的席位与票据按原样回给说书人（回执里没有票据本身），
+                    // 客户端超时重试拿到的仍是同一张票，而不是第二张。
+                    return AnnotateIssuedTravellerSeat(
+                        await SessionCommit.ReplayAsync(
+                            _store,
+                            GameId,
+                            _logger,
+                            envelope,
+                            decision.Receipt!,
+                            cancellationToken),
                         envelope,
-                        decision.Receipt!,
-                        cancellationToken);
+                        setup);
                 default:
                     break;
             }
@@ -315,16 +320,22 @@ public sealed class GameSession
                 return await RebuildAsync(envelope, rebuild, cancellationToken);
             }
 
+            // 旅行者加入：把"未指定席位"解析成服务端追加的新席位与票据（纯对象，不落库）；
+            // 之后的分派 / 提交都按解析后的命令与席位名单走。
+            var issue = TravellerSeatIssuer.Resolve(setup, envelope.Command);
+            var effectiveSetup = issue?.Setup ?? setup;
+            var effectiveEnvelope = issue is null ? envelope : envelope with { Command = issue.Command };
+
             var settlement = SessionSettlement.BuildContext(
-                _setup,
+                effectiveSetup,
                 _state,
                 _abilities,
                 _standingEffects,
                 _machine);
             var dispatch = GameCommandDispatcher.Dispatch(
-                envelope,
+                effectiveEnvelope,
                 _machine,
-                setup,
+                effectiveSetup,
                 _trackers.AnnotationLedger,
                 settlement,
                 GameId,
@@ -335,31 +346,68 @@ public sealed class GameSession
             }
 
             var recordedAt = _clock.UtcNow;
-            var commit = await SessionPipeline.CommitAsync(
-                _store,
-                GameId,
-                _logger,
-                envelope,
-                dispatch,
-                setup,
-                _state,
-                _machine,
-                _trackers,
-                settlement,
-                _lastSequence,
-                recordedAt,
-                cancellationToken);
 
-            _machine = commit.Machine;
-            _state = commit.State;
-            _lastSequence = commit.Sequence;
-            return new CommandResult
+            // 新席位要落目录（票据是玩家的入场凭据）：先存后提交，提交失败按补偿回滚；
+            // 崩在两者之间时目录里会多一个未入局席位，说书人可对该席位重试加入（票据仍是同一张）。
+            if (issue is { } issued)
             {
-                Kind = CommandResultKind.Accepted,
-                Sequence = commit.Sequence,
-                Events = commit.Events,
-                Notifications = commit.Notifications,
-            };
+                await _catalog.SaveAsync(issued.Setup, cancellationToken);
+                _setup = issued.Setup;
+            }
+
+            try
+            {
+                var commit = await SessionPipeline.CommitAsync(
+                    _store,
+                    GameId,
+                    _logger,
+                    effectiveEnvelope,
+                    dispatch,
+                    effectiveSetup,
+                    _state,
+                    _machine,
+                    _trackers,
+                    settlement,
+                    _lastSequence,
+                    recordedAt,
+                    cancellationToken);
+
+                _machine = commit.Machine;
+                _state = commit.State;
+                _lastSequence = commit.Sequence;
+                return new CommandResult
+                {
+                    Kind = CommandResultKind.Accepted,
+                    Sequence = commit.Sequence,
+                    Events = commit.Events,
+                    Notifications = commit.Notifications,
+                    IssuedSeat = issue?.Ticket.Seat,
+                    IssuedSeatTicket = issue?.Ticket.Ticket,
+                };
+            }
+            catch
+            {
+                if (issue is { } rollback)
+                {
+                    // 补偿：提交失败 = 这条命令整体没有生效，把目录恢复到追加之前。
+                    try
+                    {
+                        await _catalog.SaveAsync(rollback.PreviousSetup, cancellationToken);
+                        _setup = rollback.PreviousSetup;
+                    }
+                    catch (Exception rollbackFailure) when (rollbackFailure is not OperationCanceledException)
+                    {
+                        _logger.LogError(
+                            rollbackFailure,
+                            "旅行者加入失败后目录回滚失败：game={GameId} seat={Seat}——"
+                                + "席位已写入目录但事件未提交，请说书人对该席位重试加入（票据仍是同一张）或重建房间",
+                            GameId,
+                            rollback.Ticket.Seat.Value);
+                    }
+                }
+
+                throw;
+            }
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
@@ -467,9 +515,35 @@ public sealed class GameSession
     private async Task<GameSetup?> EnsureSetupAsync(CancellationToken cancellationToken) =>
         _setup ??= await _catalog.FindAsync(GameId, cancellationToken);
 
-    /// <summary>本局席位名单（投影用）；会话信息还没读到时为空表——宁可少给可提名目标，不猜。</summary>
-    private IReadOnlyList<SeatId> SeatList() =>
-        _setup is { } setup ? [.. setup.Seats.Select(item => item.Seat)] : [];
+    /// <summary>
+    /// 本局**在局座次**（投影用）= 会话席位名单 − 离场账（R-0044 第 6 条）；
+    /// 会话信息还没读到时为空表——宁可少给可提名目标，不猜。
+    /// </summary>
+    private IReadOnlyList<SeatId> SeatList() => InGameSeats.Derive(_setup, _state);
+
+    /// <summary>
+    /// 重复投递的加入命令：从首次落库的事实里取回席位、从会话信息里取回同一张票据，
+    /// 让超时重试的客户端也能把票转交给新到场的玩家（不生成第二张）。
+    /// </summary>
+    private CommandResult AnnotateIssuedTravellerSeat(CommandResult replay, CommandEnvelope envelope, GameSetup? setup)
+    {
+        if (setup is null || envelope.Command is not JoinTravellerCommand { Seat: null })
+        {
+            return replay;
+        }
+
+        var joined = replay.Events.OfType<TravellerJoinedEvent>().LastOrDefault();
+        if (joined is null)
+        {
+            return replay;
+        }
+
+        return replay with
+        {
+            IssuedSeat = joined.Seat,
+            IssuedSeatTicket = setup.Seats.FirstOrDefault(item => item.Seat == joined.Seat)?.Ticket,
+        };
+    }
 
     private CommandResult Reject(CommandEnvelope envelope, CommandRejection rejection)
     {

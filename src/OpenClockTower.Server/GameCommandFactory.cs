@@ -141,6 +141,37 @@ internal sealed class GameCommandFactory
         };
     }
 
+    /// <summary>
+    /// 说书人 / 宿主把一名旅行者加入本局（票据 `traveller-and-exile` D1）：
+    /// 席位可空 = 服务端追加新席位并签发票据（票据在命令结果里回给说书人）。
+    /// </summary>
+    internal GameCommand JoinTraveller(int? seat, string character, string alignment, int[]? revealDemonSeats)
+    {
+        if (string.IsNullOrWhiteSpace(character))
+        {
+            throw Reject("旅行者角色不能为空");
+        }
+
+        var parsedAlignment = ParseDimension<Alignment>(alignment, "阵营")
+            ?? throw Reject("阵营不能为空（只接受 Good / Evil）");
+
+        return new JoinTravellerCommand
+        {
+            Seat = seat is { } value ? new SeatId(value) : null,
+            Character = new CharacterId(character),
+            Alignment = parsedAlignment,
+            RevealDemonSeats = [.. (revealDemonSeats ?? []).Select(value => new SeatId(value))],
+        };
+    }
+
+    /// <summary>说书人 / 宿主把一名旅行者移出本局（D1）：席位与票据保留，不再计入任何人数口径。</summary>
+    internal GameCommand RemoveTraveller(int seat, string? note) =>
+        new RemoveTravellerCommand
+        {
+            Seat = new SeatId(seat),
+            Note = note,
+        };
+
     /// <summary>说书人 / 宿主开夜（口径是引擎输入，R-0014）。</summary>
     internal GameCommand StartNight(int nightNumber, string variant)
     {

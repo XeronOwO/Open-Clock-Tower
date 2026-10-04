@@ -40,6 +40,22 @@ public static class PlayerEventProjection
                 Kind = PlayerEventKind.PhaseStarted,
                 Phase = started.Plan.Phase,
             },
+
+            // 旅行者加入 / 离场是公开事实：所有席位都收到同一份（只含席位与角色，阵营不下发——
+            // 百科《旅行者》· 2026-10-04 抓取 · 旅行者运作方式第 6 步）。
+            TravellerJoinedEvent joined => new PlayerEvent
+            {
+                Sequence = stored.Sequence,
+                Kind = PlayerEventKind.TravellerJoined,
+                Seat = joined.Seat,
+                Character = joined.Character,
+            },
+            TravellerDepartedEvent departed => new PlayerEvent
+            {
+                Sequence = stored.Sequence,
+                Kind = PlayerEventKind.TravellerDeparted,
+                Seat = departed.Seat,
+            },
             OperationRequestIssuedEvent issued when issued.Request.Addressee == seat => new PlayerEvent
             {
                 Sequence = stored.Sequence,

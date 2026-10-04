@@ -44,6 +44,14 @@ public static class GameStateMachine
         return gameEvent switch
         {
             SeatStateChangedEvent changed => ApplySeatStateChanged(current, changed),
+
+            // 旅行者加入：六维度账由同批的 SeatStateChangedEvent 落地（角色 / 阵营 / 初始生死），
+            // 本事件只保留"以旅行者身份入场"这一事实——公开宣告、复盘与投影读它（D-0010）。
+            TravellerJoinedEvent => current,
+
+            // 旅行者离场：席位账移除 + 离场账登记 + 相关持续型效果 / 疯狂要求终止（R-0044 第 6 条）。
+            TravellerDepartedEvent departed => ApplyTravellerDeparted(current, departed),
+
             PersistentEffectAppliedEvent applied => ApplyPersistentEffectApplied(current, applied),
             PersistentEffectTerminatedEvent terminated => ApplyPersistentEffectTerminated(current, terminated),
             InstantaneousEffectAppliedEvent applied => current with
@@ -215,6 +223,68 @@ public static class GameStateMachine
             .ToArray();
 
         return state with { PersistentEffects = effects, Seats = seats };
+    }
+
+    /// <summary>
+    /// 旅行者离场（百科《旅行者》· 2026-10-04 抓取 · 离开流程；`rulings.md` R-0044 第 6 条）：
+    /// 席位账移除（角色与生命标记一并移除）、离场账登记；以该席位为**来源或目标**的持续型效果、
+    /// 以及它下达的疯狂要求立即终止——离场后它们既没有来源、也没有对象。
+    /// 席位票据与座位号保留在会话信息里（不是本账的事）。
+    /// </summary>
+    private static GameState ApplyTravellerDeparted(GameState state, TravellerDepartedEvent departed)
+    {
+        if (state.HasDeparted(departed.Seat))
+        {
+            throw new InvalidOperationException(
+                $"事件流损坏：席位 {departed.Seat.Value} 已经离场，不能重复离场");
+        }
+
+        var note = string.IsNullOrWhiteSpace(departed.Note) ? string.Empty : $"；说书人说明：{departed.Note}";
+        var effectTermination = new EffectTermination
+        {
+            Kind = EffectTerminationKind.SeatLeftGame,
+            Reason = $"席位 {departed.Seat.Value} 以旅行者身份离场：角色与生命标记一并移除，"
+                + $"以它为来源 / 目标的持续型效果立即终止{note}"
+                + "（百科《旅行者》· 2026-10-04 抓取 · 旅行者运作方式；rulings.md R-0044 第 6 条）",
+            CausedBy = departed.Seat,
+        };
+
+        var effects = state.PersistentEffects
+            .Select(effect => !effect.IsTerminated && (effect.Source == departed.Seat || effect.Target == departed.Seat)
+                ? effect.Terminate(effectTermination)
+                : effect)
+            .ToArray();
+
+        // 疯狂要求与持续型效果同源同命运（R-0021）：要求记在**目标席位的账**上，
+        // 所以"来源离场"要逐个目标席位扫一遍，不能只删自己那一条。
+        var requirementTermination = effectTermination with
+        {
+            Reason = $"席位 {departed.Seat.Value} 离场：它下达的疯狂要求立即撤下{note}"
+                + "（rulings.md R-0021 / R-0044 第 6 条）",
+        };
+        var seats = state.Seats
+            .Where(entry => entry.Seat != departed.Seat)
+            .Select(entry => entry.Madnesses.Any(requirement =>
+                    !requirement.IsTerminated && requirement.Source == departed.Seat)
+                ? entry with
+                {
+                    Madnesses =
+                    [
+                        .. entry.Madnesses.Select(requirement =>
+                            !requirement.IsTerminated && requirement.Source == departed.Seat
+                                ? requirement.Terminate(requirementTermination)
+                                : requirement),
+                    ],
+                }
+                : entry)
+            .ToArray();
+
+        return state with
+        {
+            Seats = seats,
+            DepartedSeats = [.. state.DepartedSeats, departed.Seat],
+            PersistentEffects = effects,
+        };
     }
 
     /// <summary>来源死亡一律终止；来源角色与效果记录的施加时角色不同也终止。已终止的不重复处理。</summary>

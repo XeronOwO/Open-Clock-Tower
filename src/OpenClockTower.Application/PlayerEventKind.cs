@@ -21,4 +21,13 @@ public enum PlayerEventKind
 
     /// <summary>发给他的信息类结果（他自己能力得到的信息）。</summary>
     InformationResultIssued,
+
+    /// <summary>
+    /// 旅行者加入（公开事实：谁 + 角色 + 能力；**阵营不下发**。百科《旅行者》· 2026-10-04 抓取 ·
+    /// 旅行者运作方式第 6 步）。
+    /// </summary>
+    TravellerJoined,
+
+    /// <summary>旅行者离场（公开事实：哪个席位离开了游戏；D1 / R-0044 第 6 条）。</summary>
+    TravellerDeparted,
 }

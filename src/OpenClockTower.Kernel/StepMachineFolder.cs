@@ -120,6 +120,12 @@ internal static class StepMachineFolder
             FangGuInfectionRecordedEvent infection => ApplyFangGuInfection(state, infection),
 
             SeatStateChangedEvent => state,
+
+            // 旅行者加入 / 离场：六维度账与离场账都在 GameStateMachine 折叠；步骤机状态不因席位变化而启动——
+            // 两者都可以先于任何阶段出现（首个阶段之前也能加入 / 离场），不允许把 null 变成"已开始"。
+            TravellerJoinedEvent => state,
+            TravellerDepartedEvent => state,
+
             DecisionPointRaisedEvent raised => ApplyDecisionPointRaised(state, raised),
             DecisionPointResolvedEvent resolved => ResolveDecision(state, resolved),
             SlotBlockedEvent blocked => Require(state, blocked) with

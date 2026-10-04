@@ -18,6 +18,8 @@ public static class ProjectionMapper
         MachineEquivalent = result.Rebuild?.MachineEquivalent,
         SnapshotEquivalent = result.Rebuild?.SnapshotEquivalent,
         LedgerEquivalent = result.Rebuild?.LedgerEquivalent,
+        IssuedSeat = result.IssuedSeat?.Value,
+        IssuedSeatTicket = result.IssuedSeatTicket,
     };
 
     /// <summary>配板建议 → DTO（服务端生成的种子、非旅行者 / 旅行者人数、席位映射、净分布与显式说明）。</summary>
@@ -233,6 +235,8 @@ public static class ProjectionMapper
         VoidReason = playerEvent.Void?.Reason.ToString(),
         VoidNote = playerEvent.Void?.Note,
         Information = playerEvent.Information is { } information ? ToDto(information, playerEvent.Sequence) : null,
+        Seat = playerEvent.Seat?.Value,
+        Character = playerEvent.Character?.Value,
     };
 
     /// <summary>说书人视图 → DTO。</summary>

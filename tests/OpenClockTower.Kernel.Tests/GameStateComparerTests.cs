@@ -238,6 +238,20 @@ public sealed class GameStateComparerTests
         Assert.False(GameStateComparer.AreEquivalent(noDawn, afterDawn));
     }
 
+    /// <summary>离场账参与等价判定：席位与离场顺序都要一致（重建报告不能漏比这张账）。</summary>
+    [Fact]
+    public void DepartedSeats_AreComparedInOrder()
+    {
+        var left = new GameState { DepartedSeats = [SeatOne, SeatTwo] };
+        var same = new GameState { DepartedSeats = [SeatOne, SeatTwo] };
+        var reordered = new GameState { DepartedSeats = [SeatTwo, SeatOne] };
+        var missing = new GameState { DepartedSeats = [SeatOne] };
+
+        Assert.True(GameStateComparer.AreEquivalent(left, same));
+        Assert.False(GameStateComparer.AreEquivalent(left, reordered));
+        Assert.False(GameStateComparer.AreEquivalent(left, missing));
+    }
+
     private static bool EquivalentWith(SeatStateEntry left, SeatStateEntry right) =>
         GameStateComparer.AreEquivalent(
             new GameState { Seats = [left] },

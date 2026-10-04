@@ -29,6 +29,7 @@ public static class ReplayStepCatalog
         new TriggerReplayPresenter(),
         new ControlReplayPresenter(),
         new OutcomeReplayPresenter(),
+        new TravellerReplayPresenter(),
     ];
 
     /// <summary>显式排除清单（附规则引用；改它必须同时改门禁测试）。</summary>

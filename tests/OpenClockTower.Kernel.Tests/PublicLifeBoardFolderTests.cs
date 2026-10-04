@@ -223,6 +223,34 @@ public sealed class PublicLifeBoardFolderTests
         Assert.Equal(once.PublicRevision, incremental.PublicRevision);
     }
 
+    /// <summary>
+    /// 旅行者离场：生命标记从公开生死面撤下（百科《旅行者》· 离开流程），并推进公开版本号；
+    /// 本日已经发生的公告是历史事实，不随离场抹掉。
+    /// </summary>
+    [Fact]
+    public void TravellerDeparture_RemovesTheSeatFromThePublicBoard()
+    {
+        var board = Fold(
+            Life(1, LifeState.Alive),
+            Life(2, LifeState.Alive),
+            DayStarted(1),
+            Life(2, LifeState.Dead));
+
+        var departed = PublicLifeBoardFolder.Apply(
+            board,
+            new TravellerDepartedEvent { Seat = new SeatId(2), Note = "测试：离场" });
+
+        AssertLife(departed, (1, LifeState.Alive));
+        Assert.Equal(board.PublicRevision + 1, departed.PublicRevision);
+
+        // 本日公告是已发生的事实，不随离场抹掉（公告只说"当时发生了什么"）。
+        Assert.Single(departed.Announcements);
+
+        // 对不在公开面上的席位离场：没有变化，原样返回（不动版本号）。
+        var untouched = PublicLifeBoardFolder.Apply(departed, new TravellerDepartedEvent { Seat = new SeatId(9) });
+        Assert.Same(departed, untouched);
+    }
+
     private static SeatStateChangedEvent Life(int seat, LifeState life) => new()
     {
         Seat = new SeatId(seat),

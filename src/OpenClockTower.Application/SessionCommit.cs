@@ -88,9 +88,8 @@ internal static class SessionCommit
         return OutcomeEvaluator.Evaluate(new OutcomeContext
         {
             State = state,
-            Seats = setup is null
-                ? []
-                : [.. setup.Seats.Select(ticket => ticket.Seat).OrderBy(seat => seat.Value)],
+            // 在局座次 = 会话席位名单 − 离场账（R-0044 第 6 条）：离场者不参与胜负计数。
+            Seats = InGameSeats.Derive(setup, state),
             Characters = WinConditionFacts.Instance,
             Day = machine?.Day,
             Events = events,

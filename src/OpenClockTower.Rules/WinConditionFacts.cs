@@ -25,6 +25,10 @@ public sealed class WinConditionFacts : IWinConditionFacts
         SectsAndVioletsRoster.TypeOf(character) == CharacterType.Demon;
 
     /// <inheritdoc />
+    public bool IsTraveller(CharacterId character) =>
+        SectsAndVioletsRoster.TypeOf(character) == CharacterType.Traveller;
+
+    /// <inheritdoc />
     public bool IsVortox(CharacterId character) => character == Vortox;
 
     /// <inheritdoc />

@@ -26,4 +26,16 @@ public sealed record CommandResultDto
 
     /// <summary>重建结果与内存状态账是否一致（仅重建命令；非重建命令为 null）。</summary>
     public bool? LedgerEquivalent { get; init; }
+
+    /// <summary>
+    /// 本次为旅行者加入签发的席位号；仅"加入旅行者且服务端分配席位"的命令非空
+    /// （重复投递也按首次签发的席位回填）。
+    /// </summary>
+    public int? IssuedSeat { get; init; }
+
+    /// <summary>
+    /// 本次签发的席位票据（说书人转交给新到场的玩家）；仅"加入旅行者且服务端分配席位"的命令非空。
+    /// 票据是入场凭据：只回给出命令的说书人，不进事件流、不进任何投影。
+    /// </summary>
+    public string? IssuedSeatTicket { get; init; }
 }

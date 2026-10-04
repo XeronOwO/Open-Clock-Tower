@@ -15,8 +15,14 @@ namespace OpenClockTower.Kernel;
 /// </remarks>
 public sealed record GameState
 {
-    /// <summary>已观测到的席位账目，按席位号升序。</summary>
+    /// <summary>已观测到的席位账目，按席位号升序；离场席位不在其中（见 <see cref="DepartedSeats"/>）。</summary>
     public IReadOnlyList<SeatStateEntry> Seats { get; init; } = [];
+
+    /// <summary>
+    /// 已离场的席位（按离场顺序）：席位与票据仍保留在会话信息里，但不再计入任何「人数」口径
+    /// （流放分母、胜负、投票与收票顺序），也不进公开生死面（`rulings.md` R-0044 第 6 条）。
+    /// </summary>
+    public IReadOnlyList<SeatId> DepartedSeats { get; init; } = [];
 
     /// <summary>持续型效果（含已终止的），按施加顺序。</summary>
     public IReadOnlyList<PersistentEffect> PersistentEffects { get; init; } = [];
@@ -35,6 +41,9 @@ public sealed record GameState
 
     /// <summary>取某个席位的账目；该席位一个维度都没被观测过时返回 null。</summary>
     public SeatStateEntry? Seat(SeatId seat) => Seats.FirstOrDefault(entry => entry.Seat == seat);
+
+    /// <summary>该席位是否已经离场（离场者不在席位账里，也不再计任何人数口径）。</summary>
+    public bool HasDeparted(SeatId seat) => DepartedSeats.Contains(seat);
 
     /// <summary>席位五维度齐全时的完整状态；有维度未观测时返回 null（不猜）。</summary>
     public SeatState? KnownStateOf(SeatId seat) => Seat(seat)?.ToSeatState();

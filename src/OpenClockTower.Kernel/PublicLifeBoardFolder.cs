@@ -27,6 +27,10 @@ public static class PublicLifeBoardFolder
         return gameEvent switch
         {
             SeatStateChangedEvent { Life: { } life } changed => ApplyLife(board, changed.Seat, life),
+
+            // 旅行者离场：生命标记从城镇广场撤下（百科《旅行者》· 离开流程）——公开面不留幽灵席位。
+            TravellerDepartedEvent departed => RemoveSeat(board, departed.Seat),
+
             DayClosedEvent => EnterNight(board),
             PhaseStartedEvent { Plan.Phase: GamePhase.FirstNight or GamePhase.OtherNight } => EnterNight(board),
             DayStartedEvent started => Dawn(board, started.DayNumber),
@@ -74,6 +78,33 @@ public static class PublicLifeBoardFolder
         {
             Lives = lives,
             Announcements = [.. board.Announcements, new PublicLifeEntry { Seat = seat, State = life }],
+            PublicRevision = board.PublicRevision + 1,
+        };
+    }
+
+    /// <summary>
+    /// 旅行者离场：把该席位从公开生死面移除（生命标记从城镇广场撤下；百科《旅行者》· 离开流程）。
+    /// 有变化才动公开版本号——没有它就没有"对外可观察的变化"。
+    /// </summary>
+    private static PublicLifeBoard RemoveSeat(PublicLifeBoard board, SeatId seat)
+    {
+        var present = board.Lives.Any(entry => entry.Seat == seat)
+            || board.Pending.ContainsKey(seat)
+            || board.AtDusk.ContainsKey(seat);
+        if (!present)
+        {
+            return board;
+        }
+
+        return board with
+        {
+            Lives = [.. board.Lives.Where(entry => entry.Seat != seat)],
+            Pending = board.Pending
+                .Where(entry => entry.Key != seat)
+                .ToDictionary(entry => entry.Key, entry => entry.Value),
+            AtDusk = board.AtDusk
+                .Where(entry => entry.Key != seat)
+                .ToDictionary(entry => entry.Key, entry => entry.Value),
             PublicRevision = board.PublicRevision + 1,
         };
     }

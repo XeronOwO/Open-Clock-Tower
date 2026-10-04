@@ -242,6 +242,24 @@ public sealed class GameHub : Hub<IGameClient>
         return ExecuteAsync(actor, Commands().AssignCharacters(assignments), idempotencyKey);
     }
 
+    /// <summary>说书人 / 宿主把一名旅行者加入本局（D1）：任意时刻可用（含开局前、阶段中）。</summary>
+    /// <param name="seat">目标席位；null = 服务端追加新席位并签发新票据（结果里的 IssuedSeat / IssuedSeatTicket）。</param>
+    /// <param name="character">旅行者角色 slug（花名册五选一；Application 层按花名册复核）。</param>
+    /// <param name="alignment">说书人私下裁定的阵营（Good / Evil）；不进任何公开投影。</param>
+    /// <param name="revealDemonSeats">邪恶旅行者要告知的存活恶魔席位（说书人选一名或全部；善良必须为空）。</param>
+    public Task<CommandResultDto> JoinTraveller(string credential, int? seat, string character, string alignment, int[]? revealDemonSeats, string idempotencyKey)
+    {
+        var actor = ResolveActor(credential);
+        return ExecuteAsync(actor, Commands().JoinTraveller(seat, character, alignment, revealDemonSeats), idempotencyKey);
+    }
+
+    /// <summary>说书人 / 宿主把一名旅行者移出本局（D1）：席位与票据保留，不再计入任何人数口径（R-0044 第 6 条）。</summary>
+    public Task<CommandResultDto> RemoveTraveller(string credential, int seat, string? note, string idempotencyKey)
+    {
+        var actor = ResolveActor(credential);
+        return ExecuteAsync(actor, Commands().RemoveTraveller(seat, note), idempotencyKey);
+    }
+
     /// <summary>说书人 / 宿主开启夜晚：服务端按规则表建表（口径是引擎输入，R-0014）。</summary>
     public Task<CommandResultDto> StartNight(
         string credential,
@@ -386,39 +404,20 @@ public sealed class GameHub : Hub<IGameClient>
             Commands().RemoveSeatAnnotation(annotationId),
             idempotencyKey);
 
-    /// <summary>
-    /// 说书人 / 宿主**解除席位绑定**（D-0021：误认领兜底）：清掉「席位 ↔ 账号」并推送新名字。
-    /// </summary>
+    /// <summary>说书人 / 宿主解除席位绑定（D-0021：误认领兜底）：清掉「席位 ↔ 账号」并推送新名字。</summary>
     /// <remarks>
-    /// 这不是游戏命令、不产生事件：绑定是会话信息（与席位票据同类）。说书人身份闸与审计照旧；
-    /// 解除后该席位回到"没有玩家名"（界面回退「N 号」），可被其他账号重新认领。
+    /// 不是游戏命令、不产生事件（绑定是会话信息）；解除后席位回到无名状态，可被其他账号重新认领。
+    /// 编排在 <see cref="SeatJoinCoordinator.ReleaseBindingAsync"/>（与加入 / 认领同族）。
     /// </remarks>
     public async Task<bool> ReleaseSeatBinding(string credential, int seat)
     {
         _ = ResolveStorytellerActor(credential);
-        var target = new SeatId(seat);
-        var setup = await LoadSetupAsync();
-        if (!setup.Seats.Any(item => item.Seat == target))
-        {
-            _logger.LogWarning(
-                "解除绑定被拒（席位不在名单）：connection={ConnectionId} seat={Seat}",
-                Context.ConnectionId,
-                seat);
-            throw new HubException("席位不在本局名单里");
-        }
-
-        var released = await _bindings.ReleaseAsync(_gameId, target, Context.ConnectionAborted);
+        var released = await _join.ReleaseBindingAsync(new SeatId(seat), Context.ConnectionAborted);
         if (released)
         {
-            _seatNames.Remove(target);
             await _dispatcher.PushSeatNamesChangedAsync(Context.ConnectionAborted);
         }
 
-        _logger.LogInformation(
-            "解除席位绑定：seat={Seat} 已解除={Released} connection={ConnectionId}",
-            seat,
-            released,
-            Context.ConnectionId);
         return released;
     }
 

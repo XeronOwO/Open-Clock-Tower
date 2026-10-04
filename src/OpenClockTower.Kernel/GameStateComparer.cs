@@ -10,9 +10,9 @@ namespace OpenClockTower.Kernel;
 /// 不依赖集合的枚举顺序——重建与重放枚举顺序相同只是巧合，等价判定不能建立在巧合上。
 /// </para>
 /// <para>
-/// 覆盖 <see cref="GameState"/> 的全部五个集合：席位账（逐维度值 / 原因 / 导致方 / 效果链接）、
-/// 持续型效果（含终止事实）、即时型效果、能力使用账、失效账（含黎明窗口起点）。任何一个不同都算分叉——
-/// 重建报告回答的是"整本账是否与事件流一致"，不能只比其中三张表。
+/// 覆盖 <see cref="GameState"/> 的全部集合：席位账（逐维度值 / 原因 / 导致方 / 效果链接）、
+/// 离场账（按离场顺序）、持续型效果（含终止事实）、即时型效果、能力使用账、失效账（含黎明窗口起点）。
+/// 任何一个不同都算分叉——重建报告回答的是"整本账是否与事件流一致"，不能只比其中几张表。
 /// </para>
 /// <para>
 /// **集合顺序不在等价判定内**：席位按座位号、效果按效果标识配对，两本账与疯狂要求按多重集合比。
@@ -35,6 +35,7 @@ public static class GameStateComparer
         }
 
         return GroupwiseEquivalent(left.Seats, right.Seats, entry => entry.Seat, SeatEntryEquivalent)
+               && left.DepartedSeats.SequenceEqual(right.DepartedSeats)
                && GroupwiseEquivalent(
                    left.PersistentEffects,
                    right.PersistentEffects,

@@ -169,6 +169,17 @@ public static class GameNotificationBuilder
                         KlutzChoice = choice,
                     });
                     break;
+
+                // 旅行者加入 / 离场（D1）：公开事实——广播一次按席位投影的整视图（Seat=null），
+                // 让两端刷新席位名单；重连时同一份事实由快照 + 事件补齐覆盖。
+                case TravellerJoinedEvent:
+                case TravellerDepartedEvent:
+                    notifications.Add(new GameNotification
+                    {
+                        Kind = GameNotificationKind.PlayerViewChanged,
+                        Sequence = draft.Sequence,
+                    });
+                    break;
             }
         }
 

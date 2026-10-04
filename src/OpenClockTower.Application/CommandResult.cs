@@ -25,4 +25,15 @@ public sealed record CommandResult
 
     /// <summary>房间重建报告；仅重建命令非空。</summary>
     public RoomRebuildReport? Rebuild { get; init; }
+
+    /// <summary>
+    /// 本次为旅行者加入签发的席位；仅"加入旅行者且服务端分配席位"的命令非空（含重复投递回填）。
+    /// </summary>
+    public SeatId? IssuedSeat { get; init; }
+
+    /// <summary>
+    /// 本次签发的席位票据（说书人转交给新到场的玩家）；仅"加入旅行者且服务端分配席位"的命令非空。
+    /// 票据是入场凭据：只回给出命令的说书人，不进事件流、不进投影。
+    /// </summary>
+    public string? IssuedSeatTicket { get; init; }
 }

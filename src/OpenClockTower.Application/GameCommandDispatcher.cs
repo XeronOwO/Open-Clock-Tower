@@ -55,6 +55,12 @@ internal static class GameCommandDispatcher
             return DispatchAnnotation(envelope.Command, machine, annotations);
         }
 
+        // 旅行者加入 / 离场（D1）：任意时刻可用，不能落到下面的 kernel.not_started。
+        if (envelope.Command is JoinTravellerCommand or RemoveTravellerCommand)
+        {
+            return setup is null ? MissingSetup() : TravellerCommandDispatch.Dispatch(envelope.Command, machine, setup, settlement.State, gameId, logger);
+        }
+
         if (envelope.Command is StartNightCommand startNight)
         {
             return DispatchStartNight(startNight, machine, setup, settlement.State, gameId, logger);
@@ -270,7 +276,7 @@ internal static class GameCommandDispatcher
             return MissingSetup();
         }
 
-        var seats = setup.Seats.Select(item => item.Seat).OrderBy(seat => seat.Value).ToArray();
+        var seats = InGameSeats.Derive(setup, state);
 
         foreach (var seat in seats)
         {
@@ -310,7 +316,7 @@ internal static class GameCommandDispatcher
             gameId,
             dayNumber,
             plan.Label,
-            seats.Length);
+            seats.Count);
 
         return new CommandDispatchResult(started.State, started.Events, null);
     }
@@ -547,7 +553,7 @@ internal static class GameCommandDispatcher
             return MissingSetup();
         }
 
-        var seats = setup.Seats.Select(item => item.Seat).OrderBy(seat => seat.Value).ToArray();
+        var seats = InGameSeats.Derive(setup, state);
         var outcome = NightPlanBuilder.Build(new NightPlanRequest
         {
             NightNumber = command.NightNumber,

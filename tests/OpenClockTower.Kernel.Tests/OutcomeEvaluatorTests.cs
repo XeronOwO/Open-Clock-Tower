@@ -17,6 +17,8 @@ public sealed class OutcomeEvaluatorTests
 
         public bool IsDemon(CharacterId character) => character.Value is "no-dashii" or "vortox";
 
+        public bool IsTraveller(CharacterId character) => character.Value is "deviant" or "barista" or "butcher";
+
         public bool IsVortox(CharacterId character) => character.Value == "vortox";
 
         public bool IsKlutz(CharacterId character) => character.Value == "klutz";
@@ -91,6 +93,36 @@ public sealed class OutcomeEvaluatorTests
         Assert.NotNull(outcome);
         Assert.Equal(Alignment.Evil, outcome!.Winner);
         Assert.Equal(OutcomeCondition.TwoPlayersAlive, outcome.Condition);
+    }
+
+    /// <summary>
+    /// R-0045 第 4 条 / 百科《旅行者》· 2026-10-04 抓取：「仅有两名玩家存活」不计旅行者——
+    /// 5 人存活里有 3 名旅行者时，非旅行者存活数是 2，邪恶获胜；非旅行者 3 名时条件不成立。
+    /// </summary>
+    [Fact]
+    public void TwoPlayersAlive_DoesNotCountTravellers()
+    {
+        var twoNonTravellersAlive = State(
+            (1, "clockmaker", Alignment.Good, LifeState.Alive),
+            (2, "dreamer", Alignment.Good, LifeState.Alive),
+            (3, "deviant", Alignment.Good, LifeState.Alive),
+            (4, "barista", Alignment.Evil, LifeState.Alive),
+            (5, "butcher", Alignment.Evil, LifeState.Dead));
+
+        var outcome = OutcomeEvaluator.Evaluate(Context(twoNonTravellersAlive));
+
+        Assert.NotNull(outcome);
+        Assert.Equal(Alignment.Evil, outcome!.Winner);
+        Assert.Equal(OutcomeCondition.TwoPlayersAlive, outcome.Condition);
+
+        var threeNonTravellersAlive = State(
+            (1, "clockmaker", Alignment.Good, LifeState.Alive),
+            (2, "dreamer", Alignment.Good, LifeState.Alive),
+            (3, "sage", Alignment.Good, LifeState.Alive),
+            (4, "deviant", Alignment.Good, LifeState.Alive),
+            (5, "barista", Alignment.Evil, LifeState.Dead));
+
+        Assert.Null(OutcomeEvaluator.Evaluate(Context(threeNonTravellersAlive)));
     }
 
     /// <summary>同层同时满足 → 善良获胜：恶魔死亡 + 仅剩两名存活同时成立时善良胜（《规则概要》四）。</summary>

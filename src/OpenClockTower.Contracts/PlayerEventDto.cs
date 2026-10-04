@@ -31,4 +31,10 @@ public sealed record PlayerEventDto
 
     /// <summary>信息类结果（仅 InformationResultIssued；只有内容，没有「可能为假」标记）。</summary>
     public InformationResultDto? Information { get; init; }
+
+    /// <summary>旅行者加入 / 离场的席位（仅 TravellerJoined / TravellerDeparted；公开事实）。</summary>
+    public int? Seat { get; init; }
+
+    /// <summary>旅行者加入时的角色 slug（仅 TravellerJoined；阵营不下发）。</summary>
+    public string? Character { get; init; }
 }

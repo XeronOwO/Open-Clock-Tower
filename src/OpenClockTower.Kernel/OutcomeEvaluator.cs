@@ -13,8 +13,9 @@ namespace OpenClockTower.Kernel;
 /// </para>
 /// <list type="number">
 /// <item><description>特殊条件优先于常规条件；同一层内双方同时满足 → <b>善良获胜</b>；</description></item>
-/// <item><description>常规条件：所有恶魔死亡 → 善良；场上仅剩 ≤2 名玩家存活 → 邪恶（平台口径：一步跨过 2 也成立，
-/// 因为 R-0008 要求事务提交后统一判定，不允许中途插入判定）；</description></item>
+/// <item><description>常规条件：所有恶魔死亡 → 善良；**除旅行者外**场上仅剩 ≤2 名玩家存活 → 邪恶
+/// （平台口径：一步跨过 2 也成立，因为 R-0008 要求事务提交后统一判定，不允许中途插入判定；
+/// 旅行者不计入见 R-0045 第 4 条）；</description></item>
 /// <item><description>镜像双子配对生效且两名双子都存活时，善良的获胜条件（常规与特殊）被阻断（R-0025 第 2 条）。</description></item>
 /// </list>
 /// <para>
@@ -165,7 +166,11 @@ public static class OutcomeEvaluator
         return false;
     }
 
-    /// <summary>常规 · 邪恶：场上仅剩两名玩家存活（旅行者不计入，首版无旅行者）。</summary>
+    /// <summary>
+    /// 常规 · 邪恶：**除旅行者外**场上仅剩两名玩家存活（百科《旅行者》· 2026-10-04 抓取 ·
+    /// 旅行者运作方式「旅行者不计入邪恶阵营获胜所需的条件：仅有两名玩家存活中」；R-0045 第 4 条）。
+    /// 观测不齐（生死缺失、活着但角色未知）→ 不猜、不判。
+    /// </summary>
     private static GameOutcome? TwoPlayersAlive(OutcomeContext context)
     {
         if (context.Seats.Count == 0)
@@ -182,7 +187,18 @@ public static class OutcomeEvaluator
                 return null;
             }
 
-            if (life == LifeState.Alive)
+            if (life != LifeState.Alive)
+            {
+                continue;
+            }
+
+            // 活着但角色未观测：无法判定是不是旅行者，整条条件不成立（D-0015：不猜）。
+            if (entry.CharacterValue is not { } character)
+            {
+                return null;
+            }
+
+            if (!context.Characters.IsTraveller(character))
             {
                 alive++;
             }
@@ -194,8 +210,8 @@ public static class OutcomeEvaluator
             {
                 Winner = Alignment.Evil,
                 Condition = OutcomeCondition.TwoPlayersAlive,
-                Detail = $"场上仅剩 {alive} 名玩家存活：邪恶阵营获胜"
-                    + "（百科《规则概要》四 · 2026-10-01 抓取）。",
+                Detail = $"除旅行者外场上仅剩 {alive} 名玩家存活：邪恶阵营获胜"
+                    + "（百科《规则概要》四 · 2026-10-01 抓取；旅行者不计入见《旅行者》· 2026-10-04 抓取；R-0045 第 4 条）。",
             };
     }
 

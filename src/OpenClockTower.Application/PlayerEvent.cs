@@ -37,4 +37,13 @@ public sealed record PlayerEvent
     /// 事件里的「可能为假」标记**不下发**：那会让玩家立刻知道自己醉酒 / 中毒（《重要细节》三-1）。
     /// </summary>
     public InformationResultIssuedEvent? Information { get; init; }
+
+    /// <summary>旅行者加入 / 离场的席位（仅 TravellerJoined / TravellerDeparted；公开事实）。</summary>
+    public SeatId? Seat { get; init; }
+
+    /// <summary>
+    /// 旅行者加入时的角色（仅 TravellerJoined）：公开宣告「谁 + 角色 + 能力」里的角色；
+    /// **阵营不在事件里下发**（百科《旅行者》· 旅行者运作方式第 6 步）。
+    /// </summary>
+    public CharacterId? Character { get; init; }
 }

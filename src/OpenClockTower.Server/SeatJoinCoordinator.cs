@@ -109,6 +109,38 @@ public sealed class SeatJoinCoordinator
         }
     }
 
+    /// <summary>
+    /// 说书人 / 宿主解除席位绑定（D-0021：误认领兜底）：清掉「席位 ↔ 账号」，席位回到无名状态。
+    /// </summary>
+    /// <remarks>
+    /// 从 <see cref="GameHub"/> 拆出（单文件 600 行门禁）：与加入 / 认领同属"身份 ↔ 席位"的编排；
+    /// 推送仍由 Hub 完成（本类不碰 SignalR）。不是游戏命令、不产生事件：绑定是会话信息。
+    /// </remarks>
+    public async Task<bool> ReleaseBindingAsync(SeatId seat, CancellationToken cancellationToken)
+    {
+        var setup = await _catalog.FindAsync(_gameId, cancellationToken);
+        if (setup is null)
+        {
+            _logger.LogWarning("解除绑定被拒（会话）：原因=本局还没有会话信息");
+            throw new HubException("本局还没有会话信息");
+        }
+
+        if (!setup.Seats.Any(item => item.Seat == seat))
+        {
+            _logger.LogWarning("解除绑定被拒（席位不在名单）：seat={Seat}", seat);
+            throw new HubException("席位不在本局名单里");
+        }
+
+        var released = await _bindings.ReleaseAsync(_gameId, seat, cancellationToken);
+        if (released)
+        {
+            _seatNames.Remove(seat);
+        }
+
+        _logger.LogInformation("解除席位绑定：seat={Seat} 已解除={Released}", seat, released);
+        return released;
+    }
+
     private async Task<GameSetup> LoadSetupAsync(string connectionId, CancellationToken cancellationToken)
     {
         var setup = await _catalog.FindAsync(_gameId, cancellationToken);
