@@ -488,6 +488,46 @@ Integration 122 · NormativeGates 24）；`dotnet format` 就地通过；`npm ru
   （逐行证据见票据「实施结论」）。
 - 本批后 `todo/` 两张（账号与显示名 / 排版与上手引导）、`review/` 一张（本票）。
 
+## 批次 E29（2026-10-04，自动化复盘：收口行 3 / 行 8）
+
+冻结版本：`main` @ `e454032`（先提交复盘呈现修正与两个装置的取证段——`fix(replay)` 自指击杀箭头、
+`test(verify)` 角色变更装置复盘段 / 新规模采样装置；跑批期间工作树干净）。
+
+本批按「本票两条装置 + 同族回归 + 零信任」取证：
+
+- `tools/verify-character-change.mjs`（**本批扩展**，取证档 `--quota 2 --screenshots-all`）：**84 项全绿**——
+  新增说书人实时面复盘段：说书人上报 6 号中毒 → 开「复盘」→ 逐步回放到醉酒（`cc-16`）/ 换角（`cc-17`）/
+  恶魔击杀箭头 5 号 → 4 号（`cc-18`，SVG 连线存在）/ 换手（`cc-19`）/ 中毒（`cc-20`）五步并逐张截图，
+  外加实时面口径图（`cc-15`）与自指自死步（`cc-21`）；断言含「说书人实时面：进行中的事实」、圆盘图例文案、
+  标记归属与红色箭头存在。
+- `tools/verify-replay-scale.mjs`（**本批新增**，取证档）：**18 项全绿**——2600 条真实命令写入 2605 步
+  事件流（分页 6 页 / 492ms、序号严格递增）；服务端投影首页 / 中段 / 深页各 3 次采样 =
+  66–78ms / 66–72ms / 70–74ms；浏览器首屏 91ms、第 200→201 步翻页 55ms、深页定位（第 2000 步）542ms、
+  第 2000→2001 步翻页 75ms；已加载窗口严格 200 → 400 → 2000 → 2200。截图 `replay-scale-01/02` 逐张复核。
+- `tools/verify-winloss.mjs`（同族回归，取证档）：**25 项全绿**——玩家复盘面（结束后入口 / 逐步回放 /
+  刷新按序号恢复）未受修正影响，截图 `winloss-01…05` 本次重跑写入。
+- `tools/verify-zero-trust.mjs`：**43 项全绿**。
+
+冻结版门禁：`dotnet build` 0 警告 0 错误；`dotnet test` **800 通过 / 0 失败**（Kernel 327 · Rules 314 ·
+Integration 135 · NormativeGates 24）；`dotnet format` 就地通过；`npm run gate` 全绿
+（typecheck + lint + **125** 前端单测 + build）。
+
+诚实记录：
+
+- 装置首跑在真机上暴露**复盘呈现缺陷**：方古侵染时原方古自死（`CausedBy` = 自己）被画成
+  「3 号 → 3 号」的恶魔击杀红箭头（假阳性）。先红后绿：`DemonSelfDeath_HasNoKillArrow` 先失败 →
+  `StateReplayPresenter.IsDemonKill` 增加自指排除 → 转绿；装置该步复跑只剩死亡帷幕（`cc-21`）。
+- 装置脚本自检时发现截图拍错步：`cc-17` 原先把截图落在「换角」的下一步（自死步）——修正为标记步本身 +
+  自死步另存 `cc-21`；修正只动工具（并入提交 `e454032`），断言逻辑与产品行为未变。
+- 范围说明：产品改动只在 `StateReplayPresenter`（复盘读侧投影），主装置不经过 `GetReplay`，故未重跑（E27 先例）。
+
+批次 E29 判出：
+
+- **自动化复盘票：行 3 / 行 8 通过（累计 9 行全部通过）** → 移入 `done/`（逐行证据见票据「实施结论」；
+  残余事项 1 / 2 关闭，仅留「复盘文案仍是席位号」这一已知限制，指向 `todo/account-and-display-name.md`）。
+- 本批后 `in-progress/`、`review/` 清空；`todo/` 两张（账号与显示名 / 排版与上手引导）；
+  `done/` 新增 `replay-auto-review.md`；装置清单增到 13 个（`docs/acceptance/devices.md`）。
+
 ## 相关阅读
 
 - 验收规程：`docs/acceptance/AGENTS.md`

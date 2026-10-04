@@ -1,5 +1,5 @@
 /**
- * 复盘规模采样装置 —— 票据 docs/backlog/review/replay-auto-review.md 验收矩阵行 8 的真机取证。
+ * 复盘规模采样装置 —— 票据 docs/backlog/done/replay-auto-review.md 验收矩阵行 8 的真机取证。
  *
  * 它回答：**事件流 ≥ 2000 事件时，复盘的「服务端投影」与「前端翻页」各要多久，
  * 分页 / 懒加载是不是真的按页加载，而不是一次性渲染全部？**

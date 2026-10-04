@@ -1,6 +1,6 @@
 # 自动化复盘：在圆盘上逐步回放每一个原子步骤
 
-- Status: Review（代码完成，等待验收批次；行 3 / 行 8 见「残余事项」）
+- Status: Done（批次 E29 判出：矩阵 9 行全部通过；行 3 / 行 8 的本次运行证据见「验收矩阵逐行判定」与「批次 E29」）
 - Priority: High
 - Depends on: 事件流（已就位：D-0010 事件是唯一事实来源）；魔典圆环（`done/grimoire-view.md`）；
   结束态与终局面（`done/win-loss-and-game-end.md`）；投影白名单（D-0012）
@@ -51,36 +51,52 @@
   `web/src/features/grimoire/GrimoireSeatCard.vue` 供实时魔典与复盘共用（矩阵行 9）；
   位置写 URL `?replay=<事件序号>`，刷新 / 重连后按序号重建并自动重开（矩阵行 7）。
 - 播放节拍是**呈现态**，与 D-0013 的对局配额无关；复盘不建第二账本、不写新事件。
+- **E29 补正（2026-10-04）**：真机取证发现侵染时**原方古自死**（方古侵染的另一半事实，`CausedBy` = 自己）
+  会被画成「3 号 → 3 号」的恶魔击杀红箭头——判据虽然与 R-0038 同源，但"自己导致自己的死亡"不是"被击杀"。
+  先红后绿：`ReplayProjectionTests.DemonSelfDeath_HasNoKillArrow` 先失败 → `StateReplayPresenter.IsDemonKill`
+  增加自指排除 → 转绿；装置复跑该步只剩死亡帷幕（截图 `cc-21`）。
 
-### 验收矩阵逐行判定（证据 = 2026-10-04 本轮运行）
+### 验收矩阵逐行判定（证据 = 2026-10-04 批次 E28 运行；行 3 / 行 8 = 批次 E29 运行）
 
 | # | 判定 | 证据 |
 |---|---|---|
 | 1 | 通过 | 集成用例 `ReplayHostTests`（结束前玩家 `GetReplay` 被拒 + Application 审计）；`verify-zero-trust.mjs` 43 项全绿（禁词表加入 `replay` / `markers` / `steps`）；`verify-winloss.mjs` 段 3「结束批次之前：玩家端没有复盘入口」 |
 | 2 | 通过 | 取证档 `verify-winloss.mjs --quota 2 --screenshots-all` 段 6/7：结束后玩家端出现入口、面板打开并停在首步；数据由 `GetReplay` 从持久化事件流重建（截图 `winloss-04-player-replay.png`） |
-| 3 | **无法判定（部分）** | 圆盘 + 席位牌真机截图（`winloss-04/05`）；击杀箭头 / 帷幕 / 换角 / 中毒 / 醉酒标记由 `ReplayProjectionTests` 覆盖；**缺**含换角 / 换手 / 中毒 / 醉酒场景的逐张截图（见残余事项 1） |
+| 3 | 通过 | 取证档 `verify-character-change.mjs --quota 2 --screenshots-all`：说书人实时面复盘逐步回放到五类标记——`cc-15` 实时面（口径「说书人实时面：进行中的事实」）/ `cc-16` 醉酒（第 13 步）/ `cc-17` 换角（第 28 步，带「呆瓜 → 方古」归属）/ `cc-18` 恶魔击杀（第 41 步，5 号 → 4 号，SVG 红箭头存在）/ `cc-19` 换手（第 47 步，「原行动者 2 号 → 1 号」）/ `cc-20` 中毒（第 52 步）；`cc-21` 记侵染时原方古自死只画死亡帷幕、不画箭头；断言含圆盘图例文案与标记归属。`ReplayProjectionTests` 覆盖各标记逻辑 |
 | 4 | 通过 | 取证档截图可见步骤说明栏（步骤族 / 短文案 / 原因）；`ReplayStepCatalogTests` 覆盖全事件类型；`display/replay.spec.ts` 8 项 |
 | 5 | 通过 | 取证档段 6/7：第 2/26 步 ↔ 第 3/26 步、事件序号 2 ↔ 3，控制条（回到开头 / 上一步 / 播放 / 下一步）真机可用 |
 | 6 | 通过 | `ReplayProjectionTests`：顺序 = 事件序号；`ReplayHostTests`：步骤序号严格递增；目录覆盖率门禁保证 1 步 = 1 事件、不跳步不合并 |
 | 7 | 通过 | 取证档段 6/7：刷新后自动重开复盘并回到「第 2 / 26 步 · 事件序号 2」（截图 `winloss-05-player-replay-restored.png`） |
-| 8 | **无法判定** | 分页（200 / 页）+ 懒加载已实现（`ReplayPanel.loadMore`）；**缺**大事件流的耗时采样（见残余事项 2） |
+| 8 | 通过 | 新装置 `verify-replay-scale.mjs --quota 2 --screenshots-all`：2600 条真实命令写入 2605 步事件流（分页 6 页 / 492ms，序号严格递增）；服务端投影首页 / 中段 / 深页各 3 次采样 = 66–78ms / 66–72ms / 70–74ms；前端首屏 91ms、第 200→201 步翻页 55ms、深页定位（第 2000 步）542ms、第 2000→2001 步翻页 75ms；已加载窗口严格 200 → 400 → 2000 → 2200（懒加载证据）；截图 `replay-scale-01/02`。契约侧 `ReplayProjectionTests.LargeStream_PagesInDefaultWindows_WithoutSkippingOrDuplicating` |
 | 9 | 通过（结构审查） | 席位牌抽到 `web/src/features/grimoire/GrimoireSeatCard.vue` 共用；标记 slug 先登记术语表（§7）；中毒 / 醉酒标记复用 `buildSeatMarks`，枚举文案复用 `display/labels` |
 
-### 残余事项
+### 残余事项（批次 E29 后）
 
-1. **行 3 的真机取证**：在角色变更装置（或主装置）补一段「说书人实时复盘」截图，覆盖击杀箭头 /
-   换角 / 换手 / 中毒 / 醉酒；建议下一批次与其它等待验收的票据一并判——本票因此留在 `review/`。
-2. **行 8 的性能采样**：补一条大事件流（≥ 2000 事件）的服务端投影 + 前端翻页耗时采样。
-3. 复盘文案里的「谁」仍是席位号：显示名票 `todo/account-and-display-name.md`（Medium）未实施，
-   待姓名锚点落地后替换（两票可独立推进）。
+1. ~~行 3 的真机取证~~：已补——说书人实时面五类标记逐张截图与断言（`cc-15…cc-21`），见行 3。
+2. ~~行 8 的性能采样~~：已补——新装置 `tools/verify-replay-scale.mjs` 的 ≥ 2000 事件规模采样，见行 8。
+3. **已知限制（不阻塞本票）**：复盘文案里的「谁」仍是席位号；显示名票 `todo/account-and-display-name.md`
+   （Medium）未实施，待姓名锚点落地后替换（两票可独立推进）。
 
-### 本轮门禁与装置（冻结版本）
+### 批次 E28（冻结版本 `b52ecdb`，2026-10-04）
 
 - `dotnet build` / `dotnet test`：**798 通过**（Kernel 327 / Rules 314 / NormativeGates 24 / Integration 133）；
 - `dotnet format OpenClockTower.slnx` 就地通过；
 - `npm run gate`：typecheck + lint + **vitest 125 通过** + build；
 - `node tools/verify-winloss.mjs --quota 2 --screenshots-all`：**25 项全绿**，截图 `winloss-01..05`；
 - `node tools/verify-zero-trust.mjs`：**43 项全绿**（含复盘禁词扫描）。
+
+### 批次 E29（冻结版本 `e454032`，2026-10-04）
+
+本批含一处复盘呈现修正（自指击杀箭头，见「实施结论」），故按「本票装置 + 同族回归 + 规模采样」取证：
+
+- `node tools/verify-character-change.mjs --quota 2 --screenshots-all`：**84 项全绿**（截图 `cc-15…cc-21` 本次运行写入）；
+- `node tools/verify-replay-scale.mjs --quota 2 --screenshots-all`：**18 项全绿**（截图 `replay-scale-01/02`）；
+- `node tools/verify-winloss.mjs --quota 2 --screenshots-all`：**25 项全绿**（玩家复盘面同族回归）；
+- `node tools/verify-zero-trust.mjs`：**43 项全绿**；
+- 冻结版门禁：`dotnet build` 0 警告 / 0 错误；`dotnet test` **800 通过 / 0 失败**
+  （Kernel 327 · Rules 314 · Integration 135 · NormativeGates 24）；`dotnet format` 就地通过；
+  `npm run gate` 全绿（typecheck + lint + **125** 前端单测 + build）；
+- 范围说明：产品改动只在 `StateReplayPresenter`（复盘读侧投影），主装置不经过 `GetReplay`，故未重跑（E27 先例）。
 
 ## 决定与依据
 
@@ -95,3 +111,5 @@
   击杀箭头 `kill-arrow`、复盘 `replay` / `replay-step` / `replay-marker`）。
 - **性能口径**：回放数据随局时长增长，必须有分页 / 懒加载策略；播放节拍与既有恒定配额（D-0013）
   无关（回放不是对局节奏）。
+- **自指归因不算「被恶魔击杀」**（E29 补正）：方古侵染时原方古的死亡事件 `CausedBy` 是自己；
+  判据与 R-0038 同源，但"自己导致自己的死亡"不是"被击杀"——复盘只画死亡帷幕、不画红色箭头。
