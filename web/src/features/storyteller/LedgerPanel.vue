@@ -6,8 +6,9 @@
  * - 最近一次结算：生效 / 未生效 + 原因（这是"能力是否正常生效"的权威结论，不由前端推断）。
  */
 import type { StorytellerViewDto } from '@/contracts/game'
-import { seatLabelOf } from '@/display/format'
+import { seatDisplayOf } from '@/display/format'
 import { labelOf } from '@/display/labels'
+import HelpTip from '@/features/common/HelpTip.vue'
 
 defineProps<{ view: StorytellerViewDto }>()
 
@@ -23,7 +24,8 @@ function resolutionClass(effective: boolean): string {
 
 <template>
   <section class="panel">
-    <h2>账本与结算结论</h2>
+    <h2>账本与结算结论<HelpTip topic="audit" /></h2>
+    <p class="block-question">能力用过没有、生没生效、为什么没生效。</p>
 
     <div class="block">
       <h3>最近一次结算</h3>
@@ -32,7 +34,7 @@ function resolutionClass(effective: boolean): string {
         <span class="tag" :class="resolutionClass(view.lastResolution.effective)">
           {{ effectiveText(view.lastResolution.effective) }}
         </span>
-        <span>{{ seatLabelOf(view.lastResolution.seat) }} 的 {{ view.lastResolution.ability }}</span>
+        <span>{{ seatDisplayOf(view.lastResolution.seat, view.seatNames) }} 的 {{ view.lastResolution.ability }}</span>
         <span v-if="view.lastResolution.malfunctions.length > 0" class="warn-text">
           原因：{{ view.lastResolution.malfunctions.map(labelOf).join('、') }}
         </span>
@@ -54,7 +56,7 @@ function resolutionClass(effective: boolean): string {
         </thead>
         <tbody>
           <tr v-for="use in view.abilityUses" :key="`${use.seat}-${use.ability}`">
-            <td>{{ seatLabelOf(use.seat) }}</td>
+            <td>{{ seatDisplayOf(use.seat, view.seatNames) }}</td>
             <td>{{ use.ability }}</td>
             <td>
               <span class="tag" :class="resolutionClass(use.effective)">{{ effectiveText(use.effective) }}</span>
@@ -77,7 +79,7 @@ function resolutionClass(effective: boolean): string {
         </thead>
         <tbody>
           <tr v-for="(malfunction, index) in view.malfunctions" :key="`${index}-${malfunction.seat}-${malfunction.ability}-${malfunction.kind}`">
-            <td>{{ seatLabelOf(malfunction.seat) }}</td>
+            <td>{{ seatDisplayOf(malfunction.seat, view.seatNames) }}</td>
             <td>{{ malfunction.ability }}</td>
             <td>{{ labelOf(malfunction.kind) }}</td>
           </tr>

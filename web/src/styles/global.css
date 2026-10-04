@@ -108,6 +108,16 @@ th {
   font-size: 12px;
 }
 
+/*
+ * 版块副标题（票据 ui-layout-and-onboarding 矩阵行 1）：紧跟在版块 h2 下面的一句话，
+ * 回答"这块是干什么的 / 回答什么问题"。上边负留白把两行压成一组标题，避免增加视觉密度。
+ */
+.block-question {
+  margin: -4px 0 8px;
+  color: var(--ink-soft);
+  font-size: 12px;
+}
+
 .placeholder {
   color: var(--ink-soft);
   font-size: 12px;

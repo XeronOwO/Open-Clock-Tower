@@ -14,8 +14,9 @@ import type {
   PlayerViewDto,
   ReplayViewDto,
 } from '@/contracts/game'
-import { labelOf, voidReasonLabelOf } from '@/display/labels'
+import { characterLabelOf, labelOf, voidReasonLabelOf } from '@/display/labels'
 import { optionDisplayOf, seatDisplayOf } from '@/display/format'
+import HelpTip from '@/features/common/HelpTip.vue'
 import { AccountGateway, type AccountProfile } from '@/services/accountGateway'
 import { PlayerGateway, type PlayerCallbacks } from '@/services/playerGateway'
 import { TicketStore } from '@/services/ticketStore'
@@ -482,6 +483,7 @@ onBeforeUnmount(() => {
           <strong data-testid="player-phase">{{
             labelOf(view!.phase) === '—' ? '阶段未知' : labelOf(view!.phase)
           }}</strong>
+          <HelpTip topic="phase" />
         </div>
         <div class="row">
           <button type="button" @click="resync()">补齐</button>
@@ -490,32 +492,6 @@ onBeforeUnmount(() => {
         </div>
       </header>
 
-      <section class="panel" data-testid="player-account">
-        <h2>账号</h2>
-        <AccountPanel
-          compact
-          :profile="accountProfile"
-          :busy="accountBusy"
-          :notice="accountNotice"
-          :recovery-code="accountRecoveryCode"
-          @register="registerAccount"
-          @login="loginAccount"
-          @logout="logoutAccount"
-          @rename="renameAccount"
-          @reset="resetAccountPassword"
-        />
-      </section>
-
-      <section class="panel" data-testid="player-roster">
-        <h2>同桌</h2>
-        <p v-if="roster.length === 0" class="hint">还没有席位信息。</p>
-        <ul v-else class="roster">
-          <li v-for="seat in roster" :key="seat" :data-seat="seat">
-            {{ seatDisplayOf(seat, view!.seatNames) }}<span v-if="seat === view!.seat">（你）</span>
-          </li>
-        </ul>
-      </section>
-
       <section
         v-if="outcome"
         class="panel"
@@ -523,6 +499,7 @@ onBeforeUnmount(() => {
         :data-outcome-winner="outcome.winner"
       >
         <h2>本局结束</h2>
+        <p class="block-question">这一局的胜负结论与结束方式。</p>
         <p class="winner">{{ winnerLabelOf(outcome.winner) }}</p>
         <p class="hint" data-testid="player-outcome-detail">{{ outcome.detail }}</p>
       </section>
@@ -543,9 +520,10 @@ onBeforeUnmount(() => {
         :data-request-state="pending === null ? 'idle' : 'pending'"
         :data-request-id="pending?.requestId ?? ''"
       >
-        <h2>当前请求</h2>
+        <h2>当前请求<HelpTip topic="player-request" /></h2>
+        <p class="block-question">轮到你要做的选择；没有就是先等着。</p>
         <div v-if="pending === null" class="placeholder" data-testid="player-idle">
-          现在没有需要你做的事。夜晚是统一界面：不会有"轮到谁 / 还有几步"的提示。
+          现在没有需要你做的事；轮到你时请求会自动出现。
         </div>
         <template v-else>
           <p class="context" data-testid="player-request-context">{{ pending.context }}</p>
@@ -586,7 +564,7 @@ onBeforeUnmount(() => {
           class="settled-note"
           data-testid="player-settled-note"
         >
-          {{ settledNote }}
+          {{ settledNote }}<HelpTip topic="voided-request" />
         </p>
       </section>
 
@@ -608,7 +586,7 @@ onBeforeUnmount(() => {
         :data-question-state="pendingQuestion === null ? 'idle' : 'waiting'"
       >
         <h2>向说书人提问</h2>
-        <p class="hint">每局限一次；「要求重问」不消耗能力，回答只发给你自己。</p>
+        <p class="block-question">每局限一次；「要求重问」不消耗能力，回答只发给你自己。</p>
         <p
           v-if="pendingQuestion !== null"
           class="context"
@@ -638,13 +616,15 @@ onBeforeUnmount(() => {
 
       <section v-if="klutzChoices.length > 0" class="panel" data-testid="player-klutz-choices">
         <h2>呆瓜的公开选择</h2>
+        <p class="block-question">结束时的公开选择记录；这一步所有人都看得到。</p>
         <ul class="information">
           <li v-for="choice in klutzChoices" :key="choice.sequence">{{ choice.detail }}</li>
         </ul>
       </section>
 
       <section class="panel" data-testid="player-information" :data-information-count="informationResults.length">
-        <h2>我收到的信息</h2>
+        <h2>我收到的信息<HelpTip topic="information" /></h2>
+        <p class="block-question">只发给你的信息结果；说书人对醉酒 / 中毒者的信息有裁量权。</p>
         <div v-if="informationResults.length === 0" class="placeholder">还没有收到信息。</div>
         <ul v-else class="information">
           <li
@@ -652,11 +632,38 @@ onBeforeUnmount(() => {
             :key="`${index}-${information.ability}`"
             :data-information-index="index"
           >
-            <span class="mono">{{ information.ability }}</span>
-            <span>{{ information.content }}</span>
+            <strong>{{ characterLabelOf(information.ability) }}</strong>：{{ information.content }}
           </li>
         </ul>
-        <p class="hint">信息可能是错的——说书人对醉酒 / 中毒玩家的信息有裁量权（D-0002）。</p>
+      </section>
+
+      <section class="panel" data-testid="player-roster">
+        <h2>同桌<HelpTip topic="player-name" /></h2>
+        <p class="block-question">这一桌都有谁；席位号后面是玩家名。</p>
+        <p v-if="roster.length === 0" class="hint">还没有席位信息。</p>
+        <ul v-else class="roster">
+          <li v-for="seat in roster" :key="seat" :data-seat="seat">
+            {{ seatDisplayOf(seat, view!.seatNames) }}<span v-if="seat === view!.seat">（你）</span>
+          </li>
+        </ul>
+      </section>
+
+      <section class="panel" data-testid="player-account">
+        <h2>账号<HelpTip topic="player-name" /></h2>
+        <p class="block-question">你的公开玩家名来自这里；改名、登出、找回口令都在这。</p>
+        <AccountPanel
+          compact
+          foldable
+          :profile="accountProfile"
+          :busy="accountBusy"
+          :notice="accountNotice"
+          :recovery-code="accountRecoveryCode"
+          @register="registerAccount"
+          @login="loginAccount"
+          @logout="logoutAccount"
+          @rename="renameAccount"
+          @reset="resetAccountPassword"
+        />
       </section>
 
       <ul v-if="diagnostics.length > 0" class="diagnostics" data-testid="player-diagnostics">
@@ -727,6 +734,20 @@ h1 {
   display: flex;
   flex-direction: column;
   gap: 4px;
+}
+
+/* 同桌改紧凑一行制：席位多时不再占满整屏（信息密度，矩阵行 3）。 */
+.roster {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+}
+
+.roster li {
+  font-size: 13px;
 }
 
 .diagnostics {

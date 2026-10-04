@@ -5,8 +5,9 @@
  * 这里只呈现服务端已算好的摘要，前端不做任何推断（web/AGENTS §4）。
  */
 import type { StorytellerViewDto } from '@/contracts/game'
-import { causedByLabelOf, seatLabelOf } from '@/display/format'
+import { causedByLabelOf, seatTextOf } from '@/display/format'
 import { characterLabelOf, dimensionLabelOf, labelOf, voidReasonLabelOf } from '@/display/labels'
+import HelpTip from '@/features/common/HelpTip.vue'
 
 defineProps<{ view: StorytellerViewDto }>()
 
@@ -28,6 +29,7 @@ function effectivenessOf(effective: boolean | null): string {
 <template>
   <section class="panel">
     <h2>当前步骤</h2>
+    <p class="block-question">这一格是谁在行动、他身上的状态与能力判定。</p>
     <div v-if="view.planCompleted" class="placeholder">
       本计划已走完。{{ view.control === 'StorytellerTakeover' ? '当前处于说书人接管。' : '' }}
     </div>
@@ -37,14 +39,14 @@ function effectivenessOf(effective: boolean | null): string {
     <div v-else class="actor">
       <div class="actor-line">
         <span class="tag">行动者</span>
-        <strong>{{ seatLabelOf(view.currentSlotActor) }}</strong>
+        <strong>{{ seatTextOf(view.currentSlotActor, view.seatNames) }}</strong>
         <span v-if="view.stepDigest">{{ characterLabelOf(view.stepDigest.character) }}</span>
       </div>
       <p class="context">{{ view.currentSlotContext ?? '（服务端未提供上下文）' }}</p>
 
       <template v-if="view.stepDigest">
         <div class="digest-block">
-          <div class="digest-title">行动者状态（已观测维度及来源）</div>
+          <div class="digest-title">行动者状态（已观测维度及来源）<HelpTip topic="status-ledger" /></div>
           <table v-if="view.stepDigest.state && view.stepDigest.state.facts.length > 0">
             <thead>
               <tr>

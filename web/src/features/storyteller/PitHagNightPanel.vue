@@ -8,6 +8,8 @@
  * 关不关窗、谁死谁活都由服务端判（前端不判规则，web/AGENTS §4）。
  */
 import type { DeferredDeathDto, StorytellerViewDto } from '@/contracts/game'
+import { seatDisplayOf } from '@/display/format'
+import HelpTip from '@/features/common/HelpTip.vue'
 import { newIdempotencyKey } from '@/services/idempotency'
 import {
   pitHagCasualty,
@@ -75,9 +77,10 @@ function addCasualty(): Promise<void> {
     :data-closes-after-slot="night.closesAfterSlotIndex"
     :data-deferred-count="night.deferred.length"
   >
-    <h2>麻脸巫婆之夜：死亡裁量</h2>
+    <h2>麻脸巫婆之夜：死亡裁量<HelpTip topic="decision" /></h2>
+    <p class="block-question">这一夜恶魔造成的死亡先挂起，由你确认或阻止。</p>
     <p class="hint">
-      {{ night.source }} 号创造了恶魔：这一晚的死亡由你决定（rulings.md R-0030）。
+      {{ seatDisplayOf(night.source, view.seatNames) }} 创造了恶魔：这一晚的死亡由你决定（rulings.md R-0030）。
       窗口在最后一个能造成死亡的恶魔行动之后关闭——<strong
         >关闭时仍未裁定的待定死亡按恶魔攻击的自然结果生效</strong
       >。
@@ -93,9 +96,9 @@ function addCasualty(): Promise<void> {
         :key="deferred.target"
         :data-testid="`st-pit-hag-deferred-${deferred.target}`"
       >
-        <span>{{ deferred.target }} 号</span>
+        <span>{{ seatDisplayOf(deferred.target, view.seatNames) }}</span>
         <span class="note">
-          被 {{ deferred.source }} 号（{{ deferred.ability }}）攻击：{{ deferred.note }}
+          被 {{ seatDisplayOf(deferred.source, view.seatNames) }}（{{ deferred.ability }}）攻击：{{ deferred.note }}
           <template v-if="deferred.transformation">
             ——「确认」= 按<strong>侵染</strong>结算：外来者变成新的邪恶方古、原方古死亡，
             被攻击者本身<strong>不死亡</strong>（rulings.md R-0034）。

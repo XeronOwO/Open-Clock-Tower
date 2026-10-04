@@ -4,6 +4,7 @@ import type { StorytellerViewDto } from '@/contracts/game'
 import { seatDisplayOf, waitingSecondsTextOf } from '@/display/format'
 import { slotCounterTextOf } from '@/display/grimoire'
 import { labelOf } from '@/display/labels'
+import HelpTip from '@/features/common/HelpTip.vue'
 
 defineProps<{ view: StorytellerViewDto }>()
 </script>
@@ -15,24 +16,24 @@ defineProps<{ view: StorytellerViewDto }>()
       <strong>{{ labelOf(view.phase) }}</strong>
     </div>
     <div class="cell">
-      <span class="caption">控制</span>
+      <span class="caption">控制<HelpTip topic="control" /></span>
       <strong>{{ labelOf(view.control) }}</strong>
     </div>
     <div class="cell">
-      <span class="caption">槽位</span>
+      <span class="caption">槽位<HelpTip topic="slot" /></span>
       <strong>{{ slotCounterTextOf(view) }}</strong>
       <span class="mono">{{ view.currentSlotId ?? '' }}</span>
     </div>
     <div class="cell">
-      <span class="caption">事件序号</span>
+      <span class="caption">事件序号<HelpTip topic="event-sequence" /></span>
       <strong class="mono">{{ view.sequence }}</strong>
     </div>
     <div class="cell">
-      <span class="caption">计划</span>
+      <span class="caption">计划<HelpTip topic="plan" /></span>
       <strong>{{ view.planCompleted ? '已走完' : '进行中' }}</strong>
     </div>
     <div v-if="view.pending" class="cell alert">
-      <span class="caption">卡点</span>
+      <span class="caption">卡点<HelpTip topic="pending" /></span>
       <strong>{{ seatDisplayOf(view.pending.seat, view.seatNames) }} 尚未作答</strong>
       <span v-if="view.pending.triggerReason" class="mono">{{ view.pending.triggerReason }}</span>
       <span v-if="waitingSecondsTextOf(view.pending.waitingSeconds)" class="mono">
@@ -40,11 +41,11 @@ defineProps<{ view: StorytellerViewDto }>()
       </span>
     </div>
     <div v-if="view.awaitingDecisionId" class="cell alert">
-      <span class="caption">待裁定</span>
+      <span class="caption">待裁定<HelpTip topic="decision" /></span>
       <strong>{{ view.awaitingDecisionId }}</strong>
     </div>
     <div v-if="view.blockedReason" class="cell blocked">
-      <span class="caption">阻塞</span>
+      <span class="caption">阻塞<HelpTip topic="blocked" /></span>
       <strong>{{ view.blockedReason }}</strong>
     </div>
   </header>

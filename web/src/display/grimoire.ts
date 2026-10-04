@@ -307,3 +307,42 @@ export function seatTitleOf(model: SeatCardModel): string {
 
   return parts.join('，')
 }
+
+/**
+ * 操作台里的一句话现状（票据矩阵行 5）：把"席位 + 角色 + 生死 + 状态 / 归因"连成句子，
+ * 而不是逐字段罗列；精确明细仍在操作台的表格里（两者是同一份数据的两种读法）。
+ *
+ * `seatLabel` 由调用方用 `seatDisplayOf` 拼好（无玩家名回退「N 号」）；未观测的维度不进句子
+ * （"未观测 ≠ 默认值"）。
+ */
+export function seatSummaryOf(seatLabel: string, model: SeatCardModel): string {
+  const sentences: string[] = []
+
+  const stateParts: string[] = []
+  if (model.character !== null) {
+    stateParts.push(`角色${characterLabelOf(model.character)}`)
+  }
+
+  if (model.life === LIFE_DEAD) {
+    stateParts.push('已死亡')
+  } else if (model.life === LIFE_ALIVE) {
+    stateParts.push('存活')
+  }
+
+  if (stateParts.length > 0) {
+    sentences.push(`${seatLabel}：${stateParts.join('、')}。`)
+  }
+
+  if (model.marks.length > 0) {
+    const marks = model.marks
+      .map((mark) => (mark.detail === null ? mark.label : `${mark.label}（${mark.detail}）`))
+      .join('、')
+    sentences.push(`状态：${marks}。`)
+  }
+
+  if (model.annotations.length > 0) {
+    sentences.push(`注记：${model.annotations.map((annotation) => `「${annotation.text}」`).join('、')}。`)
+  }
+
+  return sentences.length > 0 ? sentences.join('') : `${seatLabel}：还没有可显示的记录。`
+}

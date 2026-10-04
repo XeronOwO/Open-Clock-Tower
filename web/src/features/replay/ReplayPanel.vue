@@ -19,6 +19,7 @@ import {
   stepKindLabelOf,
 } from '@/display/replay'
 import ReplayCircle from '@/features/replay/ReplayCircle.vue'
+import HelpTip from '@/features/common/HelpTip.vue'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 
 const props = defineProps<{
@@ -224,7 +225,8 @@ onBeforeUnmount(stopPlaying)
   <section class="replay panel" data-testid="replay-panel">
     <header class="head">
       <div>
-        <h2>复盘</h2>
+        <h2>复盘<HelpTip topic="replay" /></h2>
+        <p class="block-question">按原子步骤回放这一局发生了什么。</p>
         <p class="hint" data-testid="replay-progress">{{ progressText }}</p>
       </div>
       <div class="row">

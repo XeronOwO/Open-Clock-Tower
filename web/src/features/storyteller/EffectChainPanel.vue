@@ -4,15 +4,17 @@
  * 已终止的效果不隐藏——"因为什么解毒"必须能在这里查到（票据矩阵 5）。
  */
 import type { StorytellerViewDto } from '@/contracts/game'
-import { causedByLabelOf, seatLabelOf } from '@/display/format'
+import { causedByLabelOf, seatDisplayOf } from '@/display/format'
 import { characterLabelOf, labelOf } from '@/display/labels'
+import HelpTip from '@/features/common/HelpTip.vue'
 
 defineProps<{ view: StorytellerViewDto }>()
 </script>
 
 <template>
   <section class="panel">
-    <h2>效果归因链（含已终止）</h2>
+    <h2>效果归因链（含已终止）<HelpTip topic="effect-chain" /></h2>
+    <p class="block-question">每条效果挂在谁身上、由谁施加、现在还在不在。</p>
     <div v-if="view.effects.length === 0" class="placeholder">还没有施加过任何效果。</div>
     <table v-else>
       <thead>
@@ -38,8 +40,8 @@ defineProps<{ view: StorytellerViewDto }>()
               （获得能力：{{ characterLabelOf(effect.grantedCharacter) }}）
             </span>
           </td>
-          <td>{{ seatLabelOf(effect.source) }}</td>
-          <td>{{ seatLabelOf(effect.target) }}</td>
+          <td>{{ seatDisplayOf(effect.source, view.seatNames) }}</td>
+          <td>{{ seatDisplayOf(effect.target, view.seatNames) }}</td>
           <td>
             <span v-if="!effect.terminated" class="tag good">生效中</span>
             <span v-else class="tag evil">已终止</span>

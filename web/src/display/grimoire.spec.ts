@@ -21,6 +21,7 @@ import {
   ringPosition,
   seatNumbersOf,
   seatOfOptionValue,
+  seatSummaryOf,
   seatTitleOf,
   slotCounterTextOf,
   slotProgressTextOf,
@@ -401,5 +402,46 @@ describe('失去能力标记（R-0040）', () => {
       },
     ])
     expect(buildSeatCard(view, 1).marks).toEqual([])
+  })
+})
+
+describe('操作台一句话现状（矩阵行 5：拼接成人话）', () => {
+  it('把角色 / 生死 / 状态 / 归因连成句子，而不是字段罗列', () => {
+    const view = viewOf({
+      seatNames: [{ seat: 1, displayName: '爱丽丝' }],
+      seats: [
+        seatOf(1, [
+          fact(DIMENSION_CHARACTER, 'clockmaker', '开局分配', 1),
+          fact(DIMENSION_LIFE, LIFE_ALIVE, '开局分配', 1),
+          fact(DIMENSION_POISON, POISON_POISONED, '常驻效果', 3, 'standing:no-dashii.poison:3:1'),
+        ]),
+      ],
+      effects: [effectOf(1)],
+      annotations: [{ id: 1, seat: 1, text: '白天再看' }],
+    })
+
+    const summary = seatSummaryOf('1 号 · 爱丽丝', buildSeatCard(view, 1))
+
+    expect(summary).toContain('1 号 · 爱丽丝：角色钟表匠（clockmaker）、存活。')
+    expect(summary).toContain('状态：中毒（常驻效果）、诺-达鲺（生效中）。')
+    expect(summary).toContain('注记：「白天再看」。')
+    // 一句话读法：不再出现表格式的裸字段拼接。
+    expect(summary).not.toContain('维度')
+    expect(summary).not.toContain('当前值')
+  })
+
+  it('未观测席位只说"还没有可显示的记录"，不编造存活 / 健康', () => {
+    const summary = seatSummaryOf('4 号', buildSeatCard(viewOf(), 4))
+
+    expect(summary).toBe('4 号：还没有可显示的记录。')
+    expect(summary).not.toContain('存活')
+  })
+
+  it('只观测到部分维度时，句子只说已知的部分', () => {
+    const view = viewOf({ seats: [seatOf(2, [fact(DIMENSION_LIFE, LIFE_DEAD, '说书人上报')])] })
+    const summary = seatSummaryOf('2 号', buildSeatCard(view, 2))
+
+    expect(summary).toBe('2 号：已死亡。')
+    expect(summary).not.toContain('角色')
   })
 })

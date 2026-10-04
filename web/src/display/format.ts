@@ -96,11 +96,6 @@ export function asSeatNumber(value: unknown, max = 1_000): number | null {
   return number !== null && number >= 1 ? number : null
 }
 
-/** 席位号 → 「N 号」。非法值退化成占位符。 */
-export function seatLabelOf(seat: number | null | undefined): string {
-  return typeof seat === 'number' && Number.isFinite(seat) ? `${seat} 号` : '—'
-}
-
 /** 单条注记的文本上限（与服务端 `SeatAnnotationText.MaxLength` 同一口径，D-0019）。 */
 export const MAX_ANNOTATION_LENGTH = 120
 
@@ -514,6 +509,17 @@ export function displayNameOf(
 export function seatDisplayOf(seat: number, seatNames: readonly SeatDisplayNameDto[]): string {
   const name = displayNameOf(seat, seatNames)
   return name === null ? `${seat} 号` : `${seat} 号 · ${name}`
+}
+
+/**
+ * 可空席位的显示文本：缺值 / 坏值退「—」，否则与 `seatDisplayOf` 同一口径。
+ * 用于"可能还没有归属席"的字段（当前槽位行动者、裁定归属、注记目标席）。
+ */
+export function seatTextOf(
+  seat: number | null | undefined,
+  seatNames: readonly SeatDisplayNameDto[],
+): string {
+  return typeof seat === 'number' && Number.isFinite(seat) ? seatDisplayOf(seat, seatNames) : '—'
 }
 
 /**

@@ -13,7 +13,7 @@
 import type { SetupProposalDto, StorytellerViewDto } from '@/contracts/game'
 import { seatNumbersOf } from '@/display/grimoire'
 import { ROSTER, setupModifiersOf, typeLabelOf } from '@/display/labels'
-import { seatLabelOf } from '@/display/format'
+import { seatDisplayOf } from '@/display/format'
 import { newIdempotencyKey } from '@/services/idempotency'
 import {
   assignCharacters,
@@ -34,6 +34,11 @@ const emit = defineEmits<{ outcome: [CommandOutcome] }>()
 const note = ref('')
 const busy = ref(false)
 const proposing = ref(false)
+/** 开局后分配不可再用：整块默认收起，需要核对时才展开（默认态只留一行）。 */
+const open = ref(false)
+
+/** 是否仍处于"首个阶段开始前"（服务端事实：未开夜就是 NotStarted）。 */
+const usable = computed(() => props.view.phase === 'NotStarted')
 
 /** 席位号 → 已选角色 slug。 */
 const selection = ref<Record<number, string>>({})
@@ -111,66 +116,89 @@ async function submit(): Promise<void> {
 <template>
   <section class="panel">
     <h2>开局分配（仅在首个阶段开始前可用）</h2>
-    <div v-if="seatNumbers.length === 0" class="placeholder">
-      还没有任何席位可分配。席位名单由服务端的会话信息持有，前端不会凭空造席位。
-    </div>
-    <template v-else>
-      <table>
-        <thead>
-          <tr>
-            <th>席位</th>
-            <th>角色</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="seat in seatNumbers" :key="seat">
-            <td>{{ seatLabelOf(seat) }}</td>
-            <td>
-              <select v-model="selection[seat]" :data-seat="seat">
-                <option value="">（未选择）</option>
-                <option v-for="profile in ROSTER" :key="profile.slug" :value="profile.slug">
-                  {{ profile.name }}（{{ profile.slug }}，{{ profile.type }}）
-                </option>
-              </select>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-      <input v-model="note" placeholder="分配备注（可选）" />
-      <ul v-if="setupNotes.length > 0" class="setup-notes" data-testid="st-assignment-setup-notes">
-        <li v-for="profile in setupNotes" :key="profile.slug" :data-slug="profile.slug">
-          <strong>{{ profile.name }}：</strong>{{ profile.setupModifier }}
-        </li>
-      </ul>
-      <p v-if="proposalSummary.length > 0" class="proposal-summary" data-testid="st-assignment-distribution">
-        净分布：{{ proposalSummary }}
-        <span v-if="proposalSeed.length > 0" class="proposal-seed">（种子 {{ proposalSeed }}）</span>
-      </p>
-      <ul v-if="proposalNotes.length > 0" class="proposal-notes" data-testid="st-assignment-proposal-notes">
-        <li v-for="(item, index) in proposalNotes" :key="index">{{ item }}</li>
-      </ul>
-      <p v-if="proposalFailure.length > 0" class="proposal-failure" data-testid="st-assignment-failure">
-        {{ proposalFailure }}
-      </p>
-      <div class="actions">
-        <button
-          type="button"
-          :disabled="busy || proposing"
-          data-testid="st-assignment-randomize"
-          @click="randomize()"
-        >
-          {{ proposalSeed.length > 0 ? '重摇' : '一键配板（随机）' }}
-        </button>
-        <button type="button" class="primary" :disabled="busy || proposing" @click="submit()">提交分配</button>
-        <span class="hint">
-          提示：未实现夜间契约的角色一旦在场，开夜会被服务端显式拒绝——这是能力边界，不是故障。
-        </span>
+    <p class="block-question">开局前把角色分到每一席；也可以先一键配板，再手动改。</p>
+    <button
+      v-if="!usable"
+      type="button"
+      class="toggle"
+      data-testid="st-assignment-toggle"
+      :aria-expanded="open ? 'true' : 'false'"
+      @click="open = !open"
+    >
+      <span>已开局：分配已提交</span>
+      <span class="hint">{{ open ? '收起' : '展开查看' }}</span>
+    </button>
+    <div v-show="usable || open" class="body">
+      <div v-if="seatNumbers.length === 0" class="placeholder">
+        还没有任何席位可分配。席位名单由服务端的会话信息持有，前端不会凭空造席位。
       </div>
-    </template>
+      <template v-else>
+        <table>
+          <thead>
+            <tr>
+              <th>席位</th>
+              <th>角色</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="seat in seatNumbers" :key="seat">
+              <td>{{ seatDisplayOf(seat, view.seatNames) }}</td>
+              <td>
+                <select v-model="selection[seat]" :data-seat="seat">
+                  <option value="">（未选择）</option>
+                  <option v-for="profile in ROSTER" :key="profile.slug" :value="profile.slug">
+                    {{ profile.name }}（{{ profile.slug }}，{{ profile.type }}）
+                  </option>
+                </select>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <input v-model="note" placeholder="分配备注（可选）" />
+        <ul v-if="setupNotes.length > 0" class="setup-notes" data-testid="st-assignment-setup-notes">
+          <li v-for="profile in setupNotes" :key="profile.slug" :data-slug="profile.slug">
+            <strong>{{ profile.name }}：</strong>{{ profile.setupModifier }}
+          </li>
+        </ul>
+        <p v-if="proposalSummary.length > 0" class="proposal-summary" data-testid="st-assignment-distribution">
+          净分布：{{ proposalSummary }}
+          <span v-if="proposalSeed.length > 0" class="proposal-seed">（种子 {{ proposalSeed }}）</span>
+        </p>
+        <ul v-if="proposalNotes.length > 0" class="proposal-notes" data-testid="st-assignment-proposal-notes">
+          <li v-for="(item, index) in proposalNotes" :key="index">{{ item }}</li>
+        </ul>
+        <p v-if="proposalFailure.length > 0" class="proposal-failure" data-testid="st-assignment-failure">
+          {{ proposalFailure }}
+        </p>
+        <div class="actions">
+          <button
+            type="button"
+            :disabled="busy || proposing"
+            data-testid="st-assignment-randomize"
+            @click="randomize()"
+          >
+            {{ proposalSeed.length > 0 ? '重摇' : '一键配板（随机）' }}
+          </button>
+          <button type="button" class="primary" :disabled="busy || proposing" @click="submit()">提交分配</button>
+          <span class="hint">
+            提示：未实现夜间契约的角色一旦在场，开夜会被服务端显式拒绝——这是能力边界，不是故障。
+          </span>
+        </div>
+      </template>
+    </div>
   </section>
 </template>
 
 <style scoped>
+.toggle {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+}
+
 .actions {
   display: flex;
   gap: 10px;

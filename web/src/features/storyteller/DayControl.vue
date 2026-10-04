@@ -6,7 +6,8 @@
  * 与服务端四道闸同口径，真正的拒绝在服务端（这里只做"别让你点空"的呈现）。
  */
 import type { StorytellerViewDto } from '@/contracts/game'
-import { seatDisplayOf } from '@/display/format'
+import { seatTextOf } from '@/display/format'
+import HelpTip from '@/features/common/HelpTip.vue'
 import { newIdempotencyKey } from '@/services/idempotency'
 import {
   closeDay,
@@ -19,13 +20,6 @@ import { computed, ref } from 'vue'
 
 const props = defineProps<{ view: StorytellerViewDto; sender: CommandSender }>()
 const emit = defineEmits<{ outcome: [CommandOutcome] }>()
-
-/** 席位显示文本（D-0021 统一口径）；空值 / 坏值退化成占位符。 */
-function seatText(seat: number | null | undefined): string {
-  return typeof seat === 'number' && Number.isFinite(seat)
-    ? seatDisplayOf(seat, props.view.seatNames)
-    : '—'
-}
 
 const busy = ref(false)
 const day = computed(() => props.view.day)
@@ -61,11 +55,9 @@ async function run(action: () => Promise<CommandOutcome>): Promise<void> {
     :data-day-number="day?.dayNumber ?? 0"
     :data-day-status="day?.status ?? 'None'"
   >
-    <h2>白天</h2>
-    <p class="hint">
-      白天没有自动计时：提名后由你决定什么时候计票、什么时候结束并处决（R-0017）。
-      没超时是需求方的明确选择——说书人兜底入口永远开着（D-0011 / D-0014）。
-    </p>
+    <h2>白天<HelpTip topic="execution" /></h2>
+    <p class="block-question">提名、计票、结束并处决；今天公开的事实都在这一段。</p>
+    <p class="hint">提名后由你决定何时计票、何时结束并处决；平台没有超时（R-0017）。</p>
     <div class="row">
       <button
         type="button"
@@ -100,11 +92,12 @@ async function run(action: () => Promise<CommandOutcome>): Promise<void> {
         {{ day.status === 'Open' ? '进行中' : '已结束' }}
       </p>
       <p v-if="day.aboutToBeExecuted !== null" data-testid="st-about-to-be-executed" :data-seat="day.aboutToBeExecuted">
-        即将被处决：{{ seatText(day.aboutToBeExecuted) }}
+        即将被处决：{{ seatTextOf(day.aboutToBeExecuted, view.seatNames) }}
       </p>
       <p v-if="day.executed !== null" data-testid="st-executed" :data-seat="day.executed">
-        已处决：{{ seatText(day.executed) }}
+        已处决：{{ seatTextOf(day.executed, view.seatNames) }}
       </p>
+      <h3 v-if="day.nominations.length > 0" class="sub-title">提名记录<HelpTip topic="votes" /></h3>
       <ul
         class="nominations"
         data-testid="st-day-nominations"
@@ -118,8 +111,8 @@ async function run(action: () => Promise<CommandOutcome>): Promise<void> {
           :data-nomination-status="nomination.status"
           :data-nomination-votes="nomination.votes"
         >
-          {{ nomination.index }}. {{ seatText(nomination.nominator) }} 提名
-          {{ seatText(nomination.nominee) }} —— {{ nomination.votes }} 票（{{ nomination.status === 'Counted' ? '已计票' : '投票中' }}）
+          {{ nomination.index }}. {{ seatTextOf(nomination.nominator, view.seatNames) }} 提名
+          {{ seatTextOf(nomination.nominee, view.seatNames) }} —— {{ nomination.votes }} 票（{{ nomination.status === 'Counted' ? '已计票' : '投票中' }}）
         </li>
       </ul>
     </div>
@@ -138,6 +131,12 @@ async function run(action: () => Promise<CommandOutcome>): Promise<void> {
 
 .facts p {
   margin: 2px 0;
+}
+
+.sub-title {
+  margin: 6px 0 2px;
+  font-size: 12px;
+  color: var(--ink-soft);
 }
 
 .nominations {

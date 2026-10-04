@@ -12,7 +12,7 @@ import {
   MAX_ANNOTATION_LENGTH,
   MAX_ANNOTATIONS_PER_SEAT,
   replaceControlCharacters,
-  seatLabelOf,
+  seatTextOf,
 } from '@/display/format'
 import { newIdempotencyKey } from '@/services/idempotency'
 import {
@@ -155,7 +155,7 @@ async function remove(annotation: SeatAnnotationDto): Promise<void> {
   <div class="annotations" data-testid="annotation-control" @focusin="emit('engage')">
     <div class="line">
       <span class="tag">注记</span>
-      <strong>{{ seatLabelOf(seat) }}</strong>
+      <strong>{{ seatTextOf(seat, view.seatNames) }}</strong>
       <span class="hint">{{ notes.length }}/{{ MAX_ANNOTATIONS_PER_SEAT }}</span>
       <span class="hint">自由文本：不进状态账、玩家不可见（D-0019）</span>
     </div>

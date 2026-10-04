@@ -6,7 +6,8 @@
  * 能不能动由服务端的权限位决定，前端只做使能提示——服务端仍会独立校验（D-0012）。
  */
 import type { PlayerDayDto, SeatDisplayNameDto } from '@/contracts/game'
-import { seatDisplayOf } from '@/display/format'
+import { seatTextOf } from '@/display/format'
+import HelpTip from '@/features/common/HelpTip.vue'
 import { newIdempotencyKey } from '@/services/idempotency'
 import { computed, ref } from 'vue'
 
@@ -23,9 +24,9 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{ diagnostic: [string] }>()
 
-/** 席位显示文本（D-0021 统一口径）；空值 / 坏值退化成占位符。 */
+/** 本面板的席位文本：统一口径（`seatTextOf`）+ 本组件持有的名字映射。 */
 function seatText(seat: number | null | undefined): string {
-  return typeof seat === 'number' && Number.isFinite(seat) ? seatDisplayOf(seat, props.seatNames) : '—'
+  return seatTextOf(seat, props.seatNames)
 }
 
 /** 公开生死状态 → 人话；未知取值原样回显（不猜、不吞，web/AGENTS §4）。 */
@@ -110,8 +111,8 @@ async function castVote(voted: boolean): Promise<void> {
     :data-day-number="day.publicView.dayNumber"
     :data-day-status="day.publicView.status"
   >
-    <h2>白天 · 第 {{ day.publicView.dayNumber }} 天</h2>
-    <p class="hint">提名与投票都是公开信息；能不能行动由服务端判定，这里的按钮只是使能提示。</p>
+    <h2>白天 · 第 {{ day.publicView.dayNumber }} 天<HelpTip topic="execution" /></h2>
+    <p class="block-question">提名与投票都是公开信息；能不能行动由服务端判定。</p>
 
     <p v-if="selfDead" class="dead-note" data-testid="player-self-dead" :data-seat="seat">
       你已死亡：不能发起提名{{ day.canVote ? '；你仍有投票标记，本白天还能再投一次票' : '；投票标记已经用完' }}。
@@ -171,6 +172,7 @@ async function castVote(voted: boolean): Promise<void> {
       已处决：{{ seatText(day.publicView.executed) }}
     </p>
 
+    <h3 v-if="day.publicView.nominations.length > 0" class="sub-title">提名记录<HelpTip topic="votes" /></h3>
     <ul
       class="nominations"
       data-testid="player-day-nominations"
@@ -240,6 +242,12 @@ async function castVote(voted: boolean): Promise<void> {
   display: flex;
   flex-direction: column;
   gap: 2px;
+}
+
+.sub-title {
+  margin: 6px 0 2px;
+  font-size: 12px;
+  color: var(--ink-soft);
 }
 
 .dead-note {

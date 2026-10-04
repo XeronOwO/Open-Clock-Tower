@@ -4,8 +4,9 @@
  * 「变化」而不是「当前值」：这是归因链的入口，当前值在状态账里。
  */
 import type { StorytellerViewDto } from '@/contracts/game'
-import { clockTimeOf, causedByLabelOf, seatLabelOf } from '@/display/format'
+import { clockTimeOf, causedByLabelOf, seatDisplayOf } from '@/display/format'
 import { characterLabelOf, labelOf } from '@/display/labels'
+import HelpTip from '@/features/common/HelpTip.vue'
 
 defineProps<{ view: StorytellerViewDto }>()
 
@@ -23,7 +24,8 @@ function dimensionsOf(change: StorytellerViewDto['recentSeatChanges'][number]): 
 
 <template>
   <section class="panel">
-    <h2>最近状态变化（最新在后）</h2>
+    <h2>最近状态变化（最新在后）<HelpTip topic="status-ledger" /></h2>
+    <p class="block-question">谁、因为什么、变成了什么样；它是状态账的来路。</p>
     <div v-if="view.recentSeatChanges.length === 0" class="placeholder">还没有状态变化。</div>
     <table v-else>
       <thead>
@@ -38,7 +40,7 @@ function dimensionsOf(change: StorytellerViewDto['recentSeatChanges'][number]): 
       </thead>
       <tbody>
         <tr v-for="change in view.recentSeatChanges" :key="`${change.sequence}-${change.seat}`">
-          <td>{{ seatLabelOf(change.seat) }}</td>
+          <td>{{ seatDisplayOf(change.seat, view.seatNames) }}</td>
           <td>{{ dimensionsOf(change).join('，') || '（无维度）' }}</td>
           <td>{{ change.reason }}</td>
           <td>{{ causedByLabelOf(change.causedBy) ?? '—' }}</td>

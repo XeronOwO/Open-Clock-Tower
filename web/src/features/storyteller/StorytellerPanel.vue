@@ -288,9 +288,9 @@ onBeforeUnmount(() => {
               </span>
             </template>
           </div>
-          <OperationsControl v-if="sender" :view="view!" :sender="sender" @outcome="showOutcome" />
           <DayControl v-if="sender" :view="view!" :sender="sender" @outcome="showOutcome" />
           <PitHagNightPanel v-if="sender" :view="view!" :sender="sender" @outcome="showOutcome" />
+          <OperationsControl v-if="sender" :view="view!" :sender="sender" @outcome="showOutcome" />
           <AssignmentControl
             v-if="sender"
             :view="view!"

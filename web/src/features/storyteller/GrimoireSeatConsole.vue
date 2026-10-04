@@ -6,16 +6,18 @@
  * 命令口径不变（D-0012）：只拿得到 `sender`（连接 + 连接级凭据），拿不到裸连接；
  * 卡点 / 裁定 / 上报与旧面板是同一批命令，只是入口按席位就近呈现，不再有第二份实现。
  */
-import type { StorytellerViewDto } from '@/contracts/game'
+import type { EffectDto, StorytellerViewDto } from '@/contracts/game'
 import GrimoireAnnotationControl from '@/features/storyteller/GrimoireAnnotationControl.vue'
+import HelpTip from '@/features/common/HelpTip.vue'
 import { ROSTER, characterLabelOf, dimensionLabelOf, labelOf } from '@/display/labels'
 import { causedByLabelOf, seatDisplayOf, waitingSecondsTextOf } from '@/display/format'
 import {
   buildSeatCard,
   decisionSeatOf,
+  effectMarkLabel,
   optionSeatIsDead,
   seatNumbersOf,
-  seatTitleOf,
+  seatSummaryOf,
 } from '@/display/grimoire'
 import { newIdempotencyKey } from '@/services/idempotency'
 import {
@@ -121,6 +123,28 @@ const observedCount = computed(
 /** 维度值 → 呈现文案：角色维度显示中文名，其它维度翻枚举。 */
 function valueTextOf(dimension: string, value: string): string {
   return dimension === 'Character' ? characterLabelOf(value) : labelOf(value)
+}
+
+/**
+ * 一条效果的一句话归因（矩阵行 5）：名称 + 来源 + 现状；终止原因写在同一个句子里，
+ * 不再把 id / 能力 / 类型 / 状态逐字段罗列（id 仍以 mono 原样留在行尾，供核对）。
+ */
+function effectSentenceOf(effect: EffectDto): string {
+  const name = effectMarkLabel(effect)
+  const source =
+    effect.source === props.seat ? '自己' : seatDisplayOf(effect.source, props.view.seatNames)
+  const base = `${name}：来自 ${source}`
+
+  if (!effect.terminated) {
+    return `${base}，正在生效。`
+  }
+
+  const reason = effect.terminationReason === null ? '' : `（${effect.terminationReason}）`
+  const causedBy =
+    effect.terminationCausedBy === null
+      ? ''
+      : `；由 ${seatDisplayOf(effect.terminationCausedBy, props.view.seatNames)} 导致`
+  return `${base}，已终止：${labelOf(effect.terminationKind)}${reason}${causedBy}。`
 }
 
 async function run(action: () => Promise<CommandOutcome>): Promise<CommandOutcome> {
@@ -288,7 +312,8 @@ async function submitReport(): Promise<void> {
 
 <template>
   <section class="panel console" data-testid="seat-console" :data-console-seat="seat ?? ''">
-    <h2>席位操作台</h2>
+    <h2>席位操作台<HelpTip topic="seat" /></h2>
+    <p class="block-question">卡点 / 待裁定就近处理；选中席位的记录与上报都在这里。</p>
 
     <div v-if="view.pending" class="block pending" data-testid="console-pending">
       <div class="line">
@@ -378,8 +403,10 @@ async function submitReport(): Promise<void> {
 
     <template v-if="model">
       <div class="detail">
-        <h3>{{ seatDisplayOf(model.seat, view.seatNames) }} · {{ characterLabelOf(model.character) }}</h3>
-        <p class="hint">{{ seatTitleOf(model) }}</p>
+        <h3>{{ seatDisplayOf(model.seat, view.seatNames) }}</h3>
+        <p class="summary" data-testid="console-seat-summary">
+          {{ seatSummaryOf(seatDisplayOf(model.seat, view.seatNames), model) }}<HelpTip topic="status-ledger" />
+        </p>
 
         <table v-if="model.facts.length > 0">
           <thead>
@@ -404,27 +431,23 @@ async function submitReport(): Promise<void> {
         <p v-else class="hint">该席位还没有可显示的维度事实（未观测 ≠ 默认值）。</p>
 
         <div v-if="model.effects.length > 0" class="effects">
-          <div v-for="effect in model.effects" :key="effect.effectId" class="effect">
-            <span class="mono">{{ effect.effectId }}</span>
-            <span>{{ characterLabelOf(effect.ability) }}</span>
-            <span>{{ labelOf(effect.kind) }}</span>
+          <div
+            v-for="effect in model.effects"
+            :key="effect.effectId"
+            class="effect"
+            :data-effect-id="effect.effectId"
+          >
             <span v-if="!effect.terminated" class="tag good">生效中</span>
-            <template v-else>
-              <span class="tag evil">已终止</span>
-              <span class="hint">
-                {{ labelOf(effect.terminationKind) }}
-                <template v-if="effect.terminationReason">：{{ effect.terminationReason }}</template>
-                <template v-if="causedByLabelOf(effect.terminationCausedBy)">
-                  （由 {{ causedByLabelOf(effect.terminationCausedBy) }} 导致）
-                </template>
-              </span>
-            </template>
+            <span v-else class="tag evil">已终止</span>
+            <span>{{ effectSentenceOf(effect) }}</span>
+            <span class="mono">{{ effect.effectId }}</span>
           </div>
         </div>
 
         <div v-if="model.madnesses.length > 0" class="line" data-testid="console-madnesses">
           <span class="tag warn">疯狂要求</span>
           <span v-for="requirement in model.madnesses" :key="requirement">{{ requirement }}</span>
+          <HelpTip topic="madness" />
         </div>
 
         <GrimoireAnnotationControl
@@ -587,6 +610,11 @@ async function submitReport(): Promise<void> {
 .detail h3 {
   margin: 0;
   font-size: 14px;
+}
+
+.summary {
+  margin: 0;
+  font-size: 13px;
 }
 
 .effects {

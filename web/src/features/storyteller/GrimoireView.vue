@@ -22,6 +22,7 @@ import type { CommandOutcome, CommandSender } from '@/services/storytellerComman
 import { computed, ref } from 'vue'
 import GrimoireSeatCard from '@/features/grimoire/GrimoireSeatCard.vue'
 import GrimoireSeatConsole from '@/features/storyteller/GrimoireSeatConsole.vue'
+import HelpTip from '@/features/common/HelpTip.vue'
 
 const props = defineProps<{
   view: StorytellerViewDto
@@ -73,9 +74,10 @@ function pick(seat: number): void {
   <div class="grimoire" data-testid="grimoire">
     <div class="ring-area">
       <div class="ring-head">
-        <p class="hint">
-          席位顺序按服务端席位号（1 号在正上方、顺时针）。圆环只是呈现——角色、生死、状态都来自同一次视图推送。
-        </p>
+        <div class="ring-title">
+          <h2>魔典<HelpTip topic="grimoire" /></h2>
+          <p class="block-question">1 号在正上方、顺时针排；点一个席位看它的操作台。</p>
+        </div>
 
         <!-- 本步上下文常驻：优先挂起裁定的上下文（触发格没有槽位提示），再退当前槽位上下文；
              入槽实时重建的推演值由 SlotPrompt 回写，不再只藏在数据抽屉或挂起裁定块里。 -->
@@ -111,6 +113,7 @@ function pick(seat: number): void {
           >
             限一次
           </span>
+          <HelpTip v-if="view.fangGuInfection" topic="once-marker" />
           <span
             v-if="view.barberNight"
             class="hub-token"
@@ -119,6 +122,7 @@ function pick(seat: number): void {
           >
             今晚理发
           </span>
+          <HelpTip v-if="view.barberNight" topic="barber-night" />
         </div>
 
         <GrimoireSeatCard
@@ -177,6 +181,19 @@ function pick(seat: number): void {
 
 .ring-head p {
   margin: 0;
+}
+
+.ring-title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ring-title h2 {
+  margin: 0;
+  font-size: 14px;
+  letter-spacing: 0.04em;
+  color: var(--ink-soft);
 }
 
 .ring {

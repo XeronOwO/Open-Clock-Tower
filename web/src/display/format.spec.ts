@@ -17,7 +17,7 @@ import {
   optionDisplayOf,
   replaceControlCharacters,
   seatDisplayOf,
-  seatLabelOf,
+  seatTextOf,
   waitingSecondsTextOf,
 } from '@/display/format'
 import type { SeatDisplayNameDto } from '@/contracts/game'
@@ -38,10 +38,14 @@ describe('不可信输入规范化（架构 §4.4）', () => {
     expect(asSeatNumber('3')).toBeNull()
   })
 
-  it('席位号非法时降级为占位符', () => {
-    expect(seatLabelOf(3)).toBe('3 号')
-    expect(seatLabelOf(null)).toBe('—')
-    expect(seatLabelOf(Number.NaN)).toBe('—')
+  it('可空席位：缺值与坏值退化成占位符，合法值走统一口径（含玩家名）', () => {
+    const names: SeatDisplayNameDto[] = [{ seat: 2, displayName: '小明' }]
+
+    expect(seatTextOf(3, names)).toBe('3 号')
+    expect(seatTextOf(2, names)).toBe('2 号 · 小明')
+    expect(seatTextOf(null, names)).toBe('—')
+    expect(seatTextOf(undefined, names)).toBe('—')
+    expect(seatTextOf(Number.NaN, names)).toBe('—')
   })
 
   it('席位显示文本带玩家名（D-0021）：有名字「N 号 · 玩家名」，没名字回退「N 号」', () => {

@@ -42,6 +42,7 @@ function reasonOrFallback(): string {
 <template>
   <section class="panel">
     <h2>兜底与推进</h2>
+    <p class="block-question">开夜、强推、接管与重建——卡住时的兜底入口。</p>
     <div class="row">
       <label>
         第几夜
@@ -96,8 +97,7 @@ function reasonOrFallback(): string {
       </button>
     </div>
     <p class="hint">
-      当前控制：{{ view.control === 'StorytellerTakeover' ? '说书人接管中（自动步进已停）' : '自动步进' }}。
-      重建会按事件日志重放并与内存状态 / 快照对比，结果在下方回执里。
+      重建会按事件日志重放，并与内存状态 / 快照对比；结果在下方回执里。
     </p>
   </section>
 </template>

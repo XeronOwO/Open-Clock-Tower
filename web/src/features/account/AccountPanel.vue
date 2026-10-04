@@ -19,6 +19,11 @@ const props = defineProps<{
   recoveryCode: string
   /** 紧凑模式：已连接后的账号设置区。 */
   compact?: boolean
+  /**
+   * 可折叠：已连接后的账号区默认收成一行摘要，点开才见表单
+   * （票据 `ui-layout-and-onboarding` 的信息降密度；一次性恢复码不受折叠影响，始终可见）。
+   */
+  foldable?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -37,6 +42,8 @@ const resetVisible = ref(false)
 const resetUsername = ref('')
 const resetCode = ref('')
 const resetPassword = ref('')
+/** 折叠态（只对 `foldable` 生效）；未登录也要给一个入口，所以摘要行本身就是按钮。 */
+const folded = ref(true)
 
 function submitRegister(): void {
   emit('register', username.value.trim(), displayName.value.trim(), password.value)
@@ -57,7 +64,26 @@ function submitRename(): void {
 
 <template>
   <section class="account" data-testid="account-panel">
-    <template v-if="props.profile === null">
+    <!-- 折叠态：一行摘要 + 展开入口（未登录也要留入口，所以摘要行本身就是那个入口）。 -->
+    <p v-if="props.foldable && folded" class="hint">
+      <template v-if="props.profile === null">
+        未登录（游客）：同桌只看到你的席位号。
+      </template>
+      <template v-else>
+        已登录：
+        <strong data-testid="account-profile">{{ props.profile.username }}（{{ props.profile.displayName }}）</strong>
+      </template>
+      <button
+        type="button"
+        class="fold-toggle"
+        data-testid="account-fold-toggle"
+        @click="folded = false"
+      >
+        {{ props.profile === null ? '登录 / 注册' : '管理账号' }}
+      </button>
+    </p>
+
+    <template v-else-if="props.profile === null">
       <h2 v-if="!props.compact">账号（可选）</h2>
       <p v-if="!props.compact" class="hint">
         登录后凭席位票据认领，同桌就能看到你的玩家名；不登录也能以游客身份加入（只显示席位号）。
@@ -94,6 +120,14 @@ function submitRename(): void {
         <button type="button" data-testid="account-reset-toggle" @click="resetVisible = !resetVisible">
           用恢复码重置口令
         </button>
+        <button
+          v-if="props.foldable"
+          type="button"
+          data-testid="account-fold-toggle"
+          @click="folded = true"
+        >
+          收起
+        </button>
       </div>
       <div v-if="resetVisible" class="reset" data-testid="account-reset">
         <input v-model="resetUsername" data-testid="account-reset-username" placeholder="登录名" spellcheck="false" />
@@ -122,6 +156,14 @@ function submitRename(): void {
         </button>
         <button type="button" data-testid="account-logout" :disabled="props.busy" @click="emit('logout')">
           登出
+        </button>
+        <button
+          v-if="props.foldable"
+          type="button"
+          data-testid="account-fold-toggle"
+          @click="folded = true"
+        >
+          收起
         </button>
       </div>
     </template>
@@ -152,6 +194,11 @@ function submitRename(): void {
   flex-wrap: wrap;
   gap: 6px;
   align-items: center;
+}
+
+.fold-toggle {
+  margin-left: 6px;
+  padding: 0 8px;
 }
 
 .hint {
