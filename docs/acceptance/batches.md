@@ -835,6 +835,39 @@ Integration 188 · NormativeGates 24）；`dotnet format` 就地通过；`npm ru
 `PunishExecution` 命令面触达，唯一真机覆盖就是 `verify-madness`），且生产行为零改变（怪咖对处决死因
 返回 null → 默认「不受保护」，与接线前一致）。
 
+## 批次 E38（2026-10-04，屠夫额外提名落靶 / 二次处决真机夹具）
+
+冻结版本：`main` @ `8e89928`（新装置 + 装置清单登记 + 主装置断言收紧同批提交；跑批期间工作树干净）。
+
+本批按「新装置（落靶路径）+ 主装置（行 3 回归）」取证：
+
+- 新装置 `tools/verify-butcher.mjs`（取证档 `--quota 2 --screenshots-all`）：**40 项全部通过 / 0 失败、
+  退出码 0**、43.8s；4 张截图均为本次运行写入。
+- 主装置 `tools/verify-storyteller-panel.mjs`（取证档 `--quota 2 --screenshots-all --build`）：
+  **286 项全部通过 / 0 跳过、退出码 0**、171.2s（含强制构建 5.2s）；54 张截图均为本次运行写入。
+- 截图复核 5 张（其余为同一次运行写入，未逐张复核，如实记录）：`butcher-01-window-open`
+  （首次处决后：窗口 6 号 / Open、白天进行中、2 号牌面死亡）、`butcher-02-extra-landed`
+  （额外提名计票 → 1 号进入「即将被处决」）、`butcher-03-day-closed`（二次处决后：白天已结束、
+  窗口 6 号（已用掉）、1 号死亡归因 day.execution）、`butcher-04-second-target-self-dead`
+  （被二次处决者本人界面的死亡横幅 + 当日公告）、`31c-day-butcher-window-used`
+  （主装置：不落靶后窗口 = Used、白天仍进行中）——与断言一致。
+
+批次 E38 判出：
+
+- **屠夫落靶 / 二次处决夹具票验收矩阵 3 行全部通过**：行 1 / 行 2 由新装置本次运行判出
+  （含入口阴性对照与非授予席位直调 Hub 拒绝 `day.extra_nomination_not_granted`）；
+  行 3 由主装置本次运行判出——**本批把「窗口用掉后」的断言从「元素仍在」收紧为
+  `data-status=Used`**（独立对抗性复核发现原来从未断言过窗口状态，行 3 的「Used」此前没有
+  可失败证据）。→ 票据移入 `done/`。
+- 残余（随票据留档）：行 2 的「不占当日提名次数」豁免本身未走（夹具里屠夫没先发起常规提名），
+  由内核 `ButcherWindowTests` 既有用例覆盖，装置只判额外提名进账。
+- 顺带观察（非本票范围，登记备查）：旅行者白天加入会在当日生死公告里显示「N 号 复活」
+  （截图 `butcher-04`）——本批零产品代码改动，属既有行为。
+- 诚实记录（范围）：其余十三个装置未重跑——本批零产品代码改动（只新增装置、收紧主装置一处断言、
+  改装置计数）；行 3 的本次运行证据即主装置全量取证档。
+- 本批后 `review/`、`in-progress/` 清空；`todo/` 一张（印刷规则书回核，等实物）；`done/` 新增
+  `butcher-second-execution-fixture.md`。
+
 ## 相关阅读
 
 - 验收规程：`docs/acceptance/AGENTS.md`
