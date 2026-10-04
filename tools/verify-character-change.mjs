@@ -20,6 +20,9 @@
  *   8) 换手后**尚未进入**的筑梦师格重绑给新持有者（1 号又拿到筑梦师提示）→ 强制作废；
  *   9) 1 号失去角色能力 → 「获得能力」事实与醉酒一并终止（来源失去能力）；
  *  10) 视角隔离：1 号自己的页面上没有说书人词汇；2 / 4 / 6 号的全部推送无越权字段。
+ *  11) 说书人实时复盘（复盘票据矩阵行 3，E29 补）：说书人上报 6 号中毒 → 开「复盘」→ 逐步回放到
+ *      醉酒 / 换角 / 恶魔击杀箭头 / 换手 / 中毒 五步，逐张截图并断言标记文案与红色箭头连线
+ *      （截图 cc-15…cc-20；中毒维度的输入事件与诺-达鲺常驻中毒同类型：SeatStateChangedEvent）。
  *
  * **第二局**（E17 残余②，R-0036 第 4 条的「被选角色不在场」路径）：6 席花名册不变，但 1 号哲学家改选
  * **不在场**的钟表匠——顺序表上钟表匠的格在哲学家之后、且这一格没有行动者，因此**当夜**就地激活由他代行；
@@ -521,7 +524,71 @@ async function runPresentGrantScene() {
       `已扫描 ${unrelatedSeats.reduce((total, client) => total + client.messages.length, 0)} 条推送`,
   )
 
-  console.log('=== 10/14 收口 ===')
+  console.log('=== 10/14 收口：说书人实时复盘（五类标记）→ 浏览器零错误 ===')
+  // —— 说书人实时复盘（复盘票据矩阵行 3 的真机取证）：游戏仍在进行，说书人面按 D-0020 是实时面 ——
+  // 中毒维度的输入事件由说书人上报产出 `SeatStateChangedEvent`（Poison 维度）；诺-达鲺的常驻中毒
+  // 经 `DimensionEffectReconciler` 产出的也是同一事件类型、同一个 presenter 与同一套标记文案。
+  const poisonReport = await reportSeatState(storytellerPage, {
+    seat: MUTANT_SEAT,
+    dimensionLabel: '中毒',
+    value: 'Poisoned',
+    reason: '批次取证：说书人裁定 6 号中毒（复盘中毒标记的输入事件）',
+  })
+  check('说书人上报 6 号中毒被受理（中毒标记的事件输入）', poisonReport.kind === 'Accepted', poisonReport.raw)
+
+  await storytellerPage.getByTestId('storyteller-replay-open').click()
+  await storytellerPage.getByTestId('replay-panel').waitFor({ timeout: 30_000 })
+  const replayFirstProgress = await waitForText(storytellerPage.getByTestId('replay-progress'), '第 1 /', 30_000)
+  const replayScope = compact(await storytellerPage.getByTestId('replay-scope').innerText())
+  check('说书人可开实时面复盘（游戏未结束：口径 = 说书人实时面）', replayScope.includes('说书人实时面'), replayScope)
+  check('复盘面板停在首步（窗口按页给、不一次全渲染）', replayFirstProgress.startsWith('第 1 /'), compact(replayFirstProgress))
+  await screenshot(storytellerPage, 'cc-15-replay-storyteller-live')
+
+  // 五类标记按事件流自然顺序逐一回放取证。只匹配当前步骤的标记列表（不看牌面与摘要），
+  // 避免把牌面上的同名词误判成本步的复盘标记。
+  const replayTargets = [
+    { label: '醉酒', name: 'cc-16-replay-drunk' },
+    { label: '换角', name: 'cc-17-replay-character-change' },
+    // 恶魔击杀取「第三夜新方古（5 号）击杀理发师（4 号）」这一步；侵染时原方古自死不画箭头。
+    { label: '恶魔击杀', name: 'cc-18-replay-kill-arrow', require: `${KLUTZ_SEAT} 号 → ${BARBER_SEAT} 号` },
+    { label: '换手', name: 'cc-19-replay-role-rebind' },
+    { label: '中毒', name: 'cc-20-replay-poison' },
+  ]
+  for (const target of replayTargets) {
+    const found = await scanReplayForMarker(storytellerPage, target.label, { require: target.require })
+    check(`复盘逐步回放到「${target.label}」标记步骤`, found.found, found.progress)
+    if (!found.found) {
+      continue
+    }
+
+    const legend = compact(await storytellerPage.getByTestId('replay-markers').innerText())
+    check(`「${target.label}」进入圆盘图例（与实时魔典同口径）`, legend.includes(target.label), legend)
+    if (target.label === '换角' || target.label === '换手') {
+      check(`「${target.label}」标记带归属文案（谁 → 谁）`, found.markers.includes('→'), found.markers)
+    }
+
+    if (target.label === '恶魔击杀') {
+      const arrowLines = await storytellerPage.locator('[data-testid="replay-ring"] svg line').count()
+      check('恶魔击杀 = 圆盘上的红色箭头（SVG 连线存在）', arrowLines >= 1, `line=${arrowLines}`)
+    }
+
+    await screenshot(storytellerPage, target.name)
+
+    if (target.label === '换角') {
+      // 紧接的下一步是侵染的另一半事实——原方古（3 号）自死：只画死亡帷幕，不画击杀箭头
+      // （CausedBy = 自己；自指归因不是「被恶魔击杀」，判据修正的实机回归）。这一步另存一张截图。
+      await storytellerPage.getByTestId('replay-next').click()
+      await sleep(150)
+      const selfDeathMarkers = await replayMarkerText(storytellerPage)
+      check(
+        '侵染的下一步（原方古自死）只有死亡帷幕、没有击杀箭头',
+        selfDeathMarkers.includes('死亡') && !selfDeathMarkers.includes('恶魔击杀'),
+        selfDeathMarkers,
+      )
+      await screenshot(storytellerPage, 'cc-21-replay-self-death-no-arrow')
+    }
+  }
+
   check('浏览器控制台没有报错', consoleErrors.length === 0, consoleErrors.slice(0, 3).join(' | '))
   await browser.close()
 }
@@ -693,6 +760,75 @@ async function forceVoidPending(page, reason, note) {
   }
 
   return runCommand(page, '强制作废', () => pending.getByRole('button', { name: '强制作废', exact: true }).click())
+}
+
+/** 说书人上报座位状态：先点选该席的牌（操作台按席位就近），再只报本次观测到的维度。 */
+async function reportSeatState(page, report) {
+  await page.locator(`[data-testid="grimoire-seat"][data-seat="${report.seat}"]`).click()
+  const panel = page.locator('[data-testid="seat-console"]')
+  await panel.waitFor({ state: 'visible', timeout: 10_000 })
+
+  const checkboxes = panel.locator('.dimensions input[type=checkbox]')
+  for (let index = 0; index < (await checkboxes.count()); index += 1) {
+    await checkboxes.nth(index).uncheck().catch(() => {})
+  }
+
+  const dimension = panel.locator('.dimensions label', { hasText: report.dimensionLabel })
+  await dimension.locator('input[type=checkbox]').check()
+  await dimension.locator('select').selectOption(report.value)
+
+  await panel.getByPlaceholder('变化原因（必填，会随事件流记录）').fill(report.reason)
+  return runCommand(page, `上报-${report.dimensionLabel}`, () =>
+    page.getByRole('button', { name: '上报', exact: true }).click(),
+  )
+}
+
+/** 当前步骤的标记列表文本（无标记时为空串）。 */
+async function replayMarkerText(page) {
+  const list = page.getByTestId('replay-marker-list')
+  if ((await list.count()) === 0) {
+    return ''
+  }
+
+  return compact(await list.innerText())
+}
+
+/**
+ * 在复盘面板上逐步向前扫描，直到当前步骤的标记列表里出现目标文案（`require` 再要求一段标记文本）。
+ * 只读 `replay-marker-list`（当前步的标记），不读牌面 / 摘要，避免同名词误判；
+ * 每步点一次「下一步」并让出一轮事件循环等 Vue 渲染，超时由 maxSteps 兜底。
+ */
+async function scanReplayForMarker(page, label, { require: requireText, maxSteps = 2000 } = {}) {
+  return page.evaluate(
+    async ({ wanted, required, limit }) => {
+      const next = document.querySelector('[data-testid="replay-next"]')
+      const progress = document.querySelector('[data-testid="replay-progress"]')
+      if (next === null || progress === null) {
+        return { found: false, progress: '（复盘面板未渲染）', markers: '' }
+      }
+
+      const readMarkers = () => {
+        const list = document.querySelector('[data-testid="replay-marker-list"]')
+        return (list?.textContent ?? '').replace(/\s+/g, ' ').trim()
+      }
+      const readProgress = () => (progress.textContent ?? '').replace(/\s+/g, ' ').trim()
+      const matches = (markers) =>
+        markers.includes(wanted) && (required === null || markers.includes(required))
+
+      for (let index = 0; index < limit; index += 1) {
+        const markers = readMarkers()
+        if (matches(markers)) {
+          return { found: true, progress: readProgress(), markers }
+        }
+
+        next.click()
+        await new Promise((resolve) => setTimeout(resolve, 0))
+      }
+
+      return { found: false, progress: readProgress(), markers: readMarkers() }
+    },
+    { wanted: label, required: requireText ?? null, limit: maxSteps },
+  )
 }
 
 async function readDecisionText(page) {
