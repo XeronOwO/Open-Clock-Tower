@@ -893,6 +893,7 @@ async function main() {
     (await exileRow.count()) >= 1 && exileHint.includes('没有可提议流放'),
     `row=${await exileRow.count()}；hint=${exileHint}`,
   )
+  await screenshot(players.get(dreamerSeat).page, '30b-player-day-open')
 
   // 2 号提名 1 号（1 号被处决，不影响后续夜晚剧情需要存活的 2 / 3 号）。
   const nominatorPage = players.get(dreamerSeat).page
