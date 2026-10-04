@@ -212,6 +212,10 @@ public static class GameStateMachine
             return state;
         }
 
+        var regained = state.PersistentEffects
+            .Where(effect => LosesAbility(effect, changed) && effect.Window == EffectWindowKind.RegainedAbility)
+            .ToArray();
+
         var effects = state.PersistentEffects
             .Select(effect => LosesAbility(effect, changed) ? effect.Terminate(termination) : effect)
             .ToArray();
@@ -231,7 +235,15 @@ public static class GameStateMachine
                 : entry)
             .ToArray();
 
-        return state with { PersistentEffects = effects, Seats = seats };
+        var next = state with { PersistentEffects = effects, Seats = seats };
+
+        // 来源死亡 / 换角把某条重获窗口收掉时，被重获的能力同步失去（R-0054）。
+        foreach (var regain in regained)
+        {
+            next = RegainDependentTermination.Terminate(next, regain, termination);
+        }
+
+        return next;
     }
 
     /// <summary>
@@ -257,6 +269,12 @@ public static class GameStateMachine
                 + "（百科《旅行者》· 2026-10-04 抓取 · 旅行者运作方式；rulings.md R-0044 第 6 条）",
             CausedBy = departed.Seat,
         };
+
+        var regained = state.PersistentEffects
+            .Where(effect => !effect.IsTerminated
+                && (effect.Source == departed.Seat || effect.Target == departed.Seat)
+                && effect.Window == EffectWindowKind.RegainedAbility)
+            .ToArray();
 
         var effects = state.PersistentEffects
             .Select(effect => !effect.IsTerminated && (effect.Source == departed.Seat || effect.Target == departed.Seat)
@@ -288,12 +306,20 @@ public static class GameStateMachine
                 : entry)
             .ToArray();
 
-        return state with
+        var next = state with
         {
             Seats = seats,
             DepartedSeats = [.. state.DepartedSeats, departed.Seat],
             PersistentEffects = effects,
         };
+
+        // 离场把某条重获窗口收掉时（来源 = 集骨者离场，或目标离场），被重获的能力同步失去（R-0054）。
+        foreach (var regain in regained)
+        {
+            next = RegainDependentTermination.Terminate(next, regain, effectTermination);
+        }
+
+        return next;
     }
 
     /// <summary>来源死亡一律终止；来源角色与效果记录的施加时角色不同也终止。已终止的不重复处理。</summary>
@@ -391,8 +417,13 @@ public static class GameStateMachine
         }
 
         var effects = state.PersistentEffects.ToArray();
-        effects[index] = effects[index].Terminate(terminated.Termination);
-        return state with { PersistentEffects = effects };
+        var terminatedEffect = effects[index].Terminate(terminated.Termination);
+        effects[index] = terminatedEffect;
+
+        var next = state with { PersistentEffects = effects };
+        return terminatedEffect.Window == EffectWindowKind.RegainedAbility
+            ? RegainDependentTermination.Terminate(next, terminatedEffect, terminated.Termination)
+            : next;
     }
 
     private static GameState ApplyMadnessRequirementIssued(GameState state, MadnessRequirementIssuedEvent issued)

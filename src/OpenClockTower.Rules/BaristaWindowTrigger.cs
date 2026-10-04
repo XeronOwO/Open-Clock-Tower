@@ -17,6 +17,10 @@ namespace OpenClockTower.Rules;
 /// 不依赖当晚是否真的还能触发新效果；咖啡师死亡 / 离场时窗口已由来源失效路径提前终止）。
 /// 幂等：已经终止的效果不在"仍存续"集合里，级联重复求值不会产出第二条。
 /// </para>
+/// <para>
+/// 收口实现与集骨者窗口、开夜命令共用 <see cref="DuskExpiry"/>：开夜**建表之前**会先收口一次
+/// （否则建表期读到的仍是上一夜的窗口），这里在结算管线里对同一批事件再求值也是幂等的。
+/// </para>
 /// </remarks>
 internal sealed class BaristaWindowTrigger : IEventTrigger
 {
@@ -28,27 +32,8 @@ internal sealed class BaristaWindowTrigger : IEventTrigger
     {
         ArgumentNullException.ThrowIfNull(context);
 
-        var nightStarted = context.Events.Any(gameEvent =>
-            gameEvent is PhaseStartedEvent { Plan.Phase: GamePhase.FirstNight or GamePhase.OtherNight });
-        if (!nightStarted)
-        {
-            return [];
-        }
-
-        return
-        [
-            .. context.State.PersistentEffects
-                .Where(effect => !effect.IsTerminated && BaristaAbility.IsWindowEffect(effect))
-                .Select(effect => (GameEvent)new PersistentEffectTerminatedEvent
-                {
-                    EffectId = effect.Id,
-                    Termination = new EffectTermination
-                    {
-                        Kind = EffectTerminationKind.NoLongerApplies,
-                        Reason = "下个黄昏：在触发咖啡师下一晚的效果之前移除上一夜的标记"
-                            + "（百科《咖啡师》· 2026-10-04 抓取 · 提示标记；R-0052 第 4 条）",
-                    },
-                }),
-        ];
+        return DuskExpiry.NightStarted(context.Events)
+            ? DuskExpiry.Expire(context.State, BaristaAbility.IsWindowEffect)
+            : [];
     }
 }

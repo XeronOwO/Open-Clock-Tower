@@ -36,8 +36,9 @@ public sealed class NightOrderOriginalTests
     }
 
     /// <summary>
-    /// 其他夜晚：24 条；麻脸巫婆在洗脑师之后、恶魔顺序为方古→亡骨魔→诺-达鲺→涡流；
-    /// 旅行者黄昏行动（咖啡师 → 流莺）紧跟 Dusk，与推荐口径同改（票据 D5 / R-0051 / R-0052）。
+    /// 其他夜晚：25 条；麻脸巫婆在洗脑师之后、恶魔顺序为方古→亡骨魔→诺-达鲺→涡流；
+    /// 旅行者黄昏行动（咖啡师 → 流莺 → 集骨者）紧跟 Dusk，与推荐口径同改
+    /// （票据 D5 / R-0051 / R-0052 / R-0054）。
     /// </summary>
     [Fact]
     public void OtherNight_MatchesSource()
@@ -47,6 +48,7 @@ public sealed class NightOrderOriginalTests
             "Dusk",
             "CharacterAction:barista",
             "CharacterAction:harlot",
+            "CharacterAction:bone-collector",
             "CharacterAction:philosopher",
             "CharacterAction:snake-charmer",
             "CharacterAction:witch",

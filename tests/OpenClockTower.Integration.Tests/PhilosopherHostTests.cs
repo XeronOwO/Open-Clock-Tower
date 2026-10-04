@@ -153,7 +153,7 @@ public sealed class PhilosopherHostTests
     /// <summary>说书人强推越过剩余槽位（D-0014 兜底）：本组用例只真正结算与哲学家有关的几步。</summary>
     private static async Task CompleteNightAsync(GameClient storyteller, string tag)
     {
-        for (var attempt = 0; attempt < 24; attempt++)
+        for (var attempt = 0; attempt < 64; attempt++)
         {
             var view = await storyteller.InvokeAsync<StorytellerViewDto>("GetStorytellerView");
             if (view.PlanCompleted)
@@ -173,7 +173,7 @@ public sealed class PhilosopherHostTests
             Assert.Equal("Accepted", forced.Kind);
         }
 
-        Assert.Fail("夜晚在 24 次强推内没有走完");
+        Assert.Fail("夜晚在 64 次强推内没有走完");
     }
 
     /// <summary>等一个裁定点出现并就地裁定（信息内容由说书人裁定，D-0002）。</summary>

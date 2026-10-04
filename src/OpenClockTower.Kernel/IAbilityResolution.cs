@@ -59,9 +59,10 @@ public interface IAbilityResolution
     /// 本契约是否支持在咖啡师「行动两次」窗口内再结算一次（默认 true）。
     /// </summary>
     /// <remarks>
-    /// false = 该能力的二次结算语义**未定稿**：当前只有哲学家的「获得能力」（第二次获得是替换
-    /// 还是并存未定，登记为 <c>docs/standard/rulings.md</c> R-0053 Open）。步骤机据此不重开本格，
-    /// 绝不静默产生第二条授予；能力自己的提示里要说清这件事。
+    /// false = 这个能力不存在「第二次生效」：当前只有集骨者的「重获能力」——用后即失去自身能力，
+    /// 第二次重获不可能成立（<c>docs/standard/rulings.md</c> R-0054 第 5 条）。步骤机据此不重开本格，
+    /// 绝不静默产生第二条授予 / 第二次重获。哲学家的「获得能力」支持二次结算，按替换语义收口
+    /// （R-0053 Decided）。
     /// </remarks>
     bool SupportsSecondAction => true;
 

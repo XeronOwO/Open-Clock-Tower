@@ -96,7 +96,12 @@ Seat (玩家席位)
 「创造恶魔 → 当晚死亡由说书人决定」的跨恶魔段裁量窗口（`PitHagNight` / `DeferredDeath`：
 说书人可阻止恶魔击杀、可追加死亡且归因麻脸巫婆，窗口在最后一个能造成死亡的恶魔行动后收口）；
 `GainAbility` 的第一条（哲学家：获得能力落成账上带 `GrantedCharacter` 的常驻事实、被选角色持有者的
-**动态醉酒**走常驻来源对账、能力由获得者在他与"被获得角色的格"之间代行——口径见 `rulings.md` R-0036）；
+**动态醉酒**走常驻来源对账、能力由获得者在他与"被获得角色的格"之间代行——口径见 `rulings.md` R-0036；
+二次获得按**替换**收口，R-0053）；
+`GainAbility` 的第二条（集骨者，R-0054）：`EffectWindowKind.RegainedAbility` 窗口让**死者**重新握有
+角色能力直到下个黄昏——`GameState.AbilityPresentOn`（存活，或死亡但有生效中的重获窗口）统一供给
+生效判定 / 能力存续族（女巫 / 诺-达鲺 / 涡流）/ 入槽放行；窗口终止（下个黄昏 / 来源死亡或离场）时
+它名下窗口期的持续效果与疯狂要求一并终止（`RegainDependentTermination`），既成事实类（SSI）不回溯；
 `NightAction` 的数学家（批次 E21，2026-10-03）：失效账本带**黎明水位**（`MalfunctionLedger.SinceDawnStart`，
 `DayStartedEvent` 折叠时推进，**不删记录**——R-0004 第 4 条），窗口数字按玩家去重、不含数学家本人；
 数字由说书人给出、平台只推演（D-0002），涡流在场必须为假（R-0028）；
@@ -276,7 +281,7 @@ StepMachine（步骤机）
 |---|---|
 | 每个席位的已知态（角色 / 阵营 / 生死 / 醉酒 / 中毒） | `SeatStateEntry`，五个维度各带一条 `StateFact`（值 + 原因 + 导致方） |
 | 疯狂要求（只由裁定写入，引擎不判定） | `SeatStateEntry.Madnesses`；依据 `rulings.md` R-0003 |
-| 持续型效果 | `PersistentEffect`：施加者 / 能力 / 作用对象 / 终止事实 |
+| 持续型效果 | `PersistentEffect`：施加者 / 能力 / 作用对象 / `GrantedCharacter`（获得·重获能力）/ `Window`（「直到下个黄昏」的窗口：咖啡师 / 集骨者）/ 终止事实 |
 | 即时型效果 | `InstantaneousEffect`：已生效即不回滚 |
 
 **折叠规则**（`GameStateMachine`，纯计算）：
@@ -288,7 +293,7 @@ StepMachine（步骤机）
 | 同上，且观测到的角色 ≠ 该效果记录的 `SourceCharacter`（施加时的来源角色） | 立即终止（原因 `SourceLostAbility`，依据《重要细节》二-7）。判据是效果自己的"出生条件"，**不依赖"上一次观测到的角色"**——后者在来源角色从未被观测过时会漏判，让早就该终止的效果继续被算成生效 |
 | 同上，来源醉酒 / 中毒 | **不终止**，只是 `IsOperative` 变 false；来源恢复即继续生效（同一效果，不是重新施加） |
 | `PersistentEffectAppliedEvent` / `InstantaneousEffectAppliedEvent` | 记入效果账（含施加者与作用对象） |
-| `PersistentEffectTerminatedEvent` | 只用于折叠推导不出来的终止（如说书人强制作废） |
+| `PersistentEffectTerminatedEvent` | 只用于折叠推导不出来的终止（如说书人强制作废）；若是**重获能力窗口**，连带终止目标名下窗口期的持续效果与疯狂要求（`RegainDependentTermination`，R-0054） |
 
 **边界与失败姿态**：
 

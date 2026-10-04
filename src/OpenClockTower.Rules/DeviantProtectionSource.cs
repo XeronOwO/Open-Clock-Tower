@@ -56,7 +56,7 @@ internal sealed class DeviantProtectionSource : IDeathProtectionSource
             return null;
         }
 
-        var effectiveness = AbilityEffectivenessEvaluator.Evaluate(entry);
+        var effectiveness = AbilityEffectivenessEvaluator.Evaluate(context.State, entry);
         if (effectiveness is null)
         {
             return new DeathProtectionAssessment

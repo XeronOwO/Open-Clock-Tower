@@ -14,7 +14,11 @@ namespace OpenClockTower.Kernel;
 /// 效果 2「行动两次」= 目标的能力在窗口内可以生效两次（<see cref="SecondAction"/>）。
 /// 平台口径见 <c>docs/standard/rulings.md</c> R-0047（免疫窗口的账本语义）与
 /// R-0052（两效果的平台收口）；<see cref="SecondAction"/> 与「获得能力」族的二次获得语义
-/// 另见 R-0053（Open）。
+/// 见 R-0053（Decided：二次获得 = 替换）。
+/// </para>
+/// <para>
+/// 第二位消费者是旅行者集骨者的「重获能力」（<see cref="RegainedAbility"/>，R-0054）：
+/// 目标保持死亡但重新获得其角色能力，直到下个黄昏——窗口存续期间该席位按「握有角色能力」处理。
 /// </para>
 /// </remarks>
 public enum EffectWindowKind
@@ -30,4 +34,11 @@ public enum EffectWindowKind
     /// 口径见 R-0052。
     /// </summary>
     SecondAction,
+
+    /// <summary>
+    /// 重获能力：目标**保持死亡**但重新获得其角色能力，直到下个黄昏。窗口存续期间该席位被当作
+    /// 「仍然握有角色能力」——生效判定、夜槽激活与能力存续族按它放行；窗口终止时，被重获能力
+    /// 名下的持续型效果一并终止。首位消费者是旅行者集骨者，口径见 R-0054。
+    /// </summary>
+    RegainedAbility,
 }

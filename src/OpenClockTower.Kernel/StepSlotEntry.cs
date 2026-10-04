@@ -405,25 +405,48 @@ internal static class StepSlotEntry
     /// 行动者此刻是否还站得住；返回 null = 可以唤醒。
     /// </summary>
     /// <remarks>
+    /// <para>
     /// 账里查不到这一席（内核夹具 / 半初始化场景）时返回 null——**判定不了就不改变行为**，
     /// 与「一次只报本次观测到的维度」是同一副保守姿态。
+    /// </para>
+    /// <para>
+    /// 两条扩展：① 代行格要求行动者身上那份**授予**还在（哲学家二次获得替换旧授予后，
+    /// 旧代行格不得再开请求，R-0036 / R-0053）；② 死者只在「重获能力」窗口生效、且这一格
+    /// 就是他本人的能力格时放行（集骨者，R-0054）。
+    /// </para>
     /// </remarks>
     internal static string? UnavailableReason(GameState ledger, StepSlot slot)
     {
-        var entry = ledger.Seat(slot.Actor!.Value);
+        var actor = slot.Actor!.Value;
+        var entry = ledger.Seat(actor);
         if (entry is null)
         {
             return null;
         }
 
+        if (slot.Owner is { } owner
+            && slot.Character is { } actorCharacter
+            && owner != actorCharacter
+            && !ledger.HasLiveGrantOf(actor, owner))
+        {
+            return $"这一格代行的是 {owner.Value} 的能力，但行动者（{actor.Value} 号）身上已经没有这份授予："
+                + "本步跳过（授予已被替换 / 终止；R-0036 / R-0053）";
+        }
+
         if (entry.LifeValue == LifeState.Dead)
         {
-            return $"行动者（{slot.Actor.Value} 号）已经死亡：本步不唤醒（配额照走；rulings.md R-0030）";
+            var regained = slot.Owner is { } slotOwner
+                && slotOwner == entry.CharacterValue
+                && ledger.AbilityPresentOn(actor) == true;
+            if (!regained)
+            {
+                return $"行动者（{actor.Value} 号）已经死亡：本步不唤醒（配额照走；rulings.md R-0030）";
+            }
         }
 
         if (entry.CharacterValue is { } current && slot.Character is { } expected && current != expected)
         {
-            return $"行动者（{slot.Actor.Value} 号）现在的角色是 {current.Value}，不是 {expected.Value}："
+            return $"行动者（{actor.Value} 号）现在的角色是 {current.Value}，不是 {expected.Value}："
                 + "本步跳过（配额照走；过时不候）";
         }
 

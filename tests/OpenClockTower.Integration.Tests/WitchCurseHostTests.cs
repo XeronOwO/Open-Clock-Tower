@@ -333,7 +333,7 @@ public sealed class WitchCurseHostTests
     /// <summary>说书人强推越过剩余槽位（D-0014 兜底）：本用例只需要女巫那一步被真正结算。</summary>
     private static async Task CompleteNightAsync(GameClient storyteller)
     {
-        for (var attempt = 0; attempt < 24; attempt++)
+        for (var attempt = 0; attempt < 64; attempt++)
         {
             var view = await storyteller.InvokeAsync<StorytellerViewDto>("GetStorytellerView");
             if (view.PlanCompleted)
@@ -355,6 +355,6 @@ public sealed class WitchCurseHostTests
             Assert.Equal("Accepted", forced.Kind);
         }
 
-        Assert.Fail("首夜在 24 次强推内没有走完");
+        Assert.Fail("首夜在 64 次强推内没有走完");
     }
 }

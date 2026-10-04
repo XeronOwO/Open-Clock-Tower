@@ -207,6 +207,102 @@ public static class NightSlotActivation
     }
 
     /// <summary>
+    /// 集骨者「重获能力」的当夜落格：被选中的**死亡**玩家在自己角色的格还没进入、且那一格没有
+    /// 存活持有者时，把这一格绑成他的真实行动格——说书人据此唤醒他使用刚恢复的角色能力（R-0054）。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 与 <see cref="Plan"/> 的差别：行动者**保持死亡**，因此依赖不写 <c>RequiredLife</c>；
+    /// 入槽放行由 <see cref="StepSlotEntry.UnavailableReason"/> 按「重获窗口仍在」判定。
+    /// 窗口在这之后终止（集骨者死亡 / 下个黄昏）时，这一格进入即被显式跳过。
+    /// </para>
+    /// <para>
+    /// 返回 null 的四种情形都不是静默：这一格已经进入过（过时不候）、角色本阶段不在行动表上
+    /// （首夜能力在其他夜晚 / 触发格——平台不凭空造槽位，登记在 R-0054）、那一格已有存活持有者
+    /// （角色能力归活着的那位）、契约未实现（入格时按空槽处理）。
+    /// </para>
+    /// <para>
+    /// <paramref name="noActionResult"/> 非空时把这一格绑成「本夜无行动」（空选项 + Skip）：
+    /// 重获生效但「每局限一次」的总次数已经用满（≥2）——照样入格，由入格路径记一条可归因的
+    /// 跳过，而不是不声不响地不唤醒（R-0054 第 4 条）。
+    /// </para>
+    /// </remarks>
+    public static SlotActivatedEvent? PlanRegained(
+        StepPlan? plan,
+        int slotIndex,
+        SeatId actor,
+        CharacterId character,
+        GameState state,
+        DayRecord? lastDay,
+        IReadOnlyList<SeatId> seats,
+        INightActionCatalog catalog,
+        string? noActionResult = null)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        ArgumentNullException.ThrowIfNull(seats);
+        ArgumentNullException.ThrowIfNull(catalog);
+
+        if (plan is null)
+        {
+            return null;
+        }
+
+        for (var index = slotIndex + 1; index < plan.Slots.Count; index++)
+        {
+            var slot = plan.Slots[index];
+            if (slot.Character != character)
+            {
+                continue;
+            }
+
+            if (slot.Kind != StepSlotKind.Empty)
+            {
+                // 那一格已经有行动者（角色仍有存活持有者，或已被别的能力激活）：归它自己，不动。
+                return null;
+            }
+
+            if (catalog.Find(character) is not { } action)
+            {
+                // 契约未实现：不在这里造提示，这一格照旧空转（进入时按空槽位处理）。
+                return null;
+            }
+
+            return new SlotActivatedEvent
+            {
+                SlotIndex = index,
+                SlotId = slot.Id,
+                Actor = actor,
+                Prompt = noActionResult is null
+                    ? action.BuildPrompt(new NightActionContext
+                    {
+                        Actor = actor,
+                        Seats = seats,
+                        State = state,
+                        LastDay = lastDay,
+                    })
+                    : new ChoicePrompt
+                    {
+                        Context = noActionResult,
+                        Options = [],
+                        OnNoOption = NoOptionBehavior.Skip,
+                    },
+                Dependencies =
+                [
+                    new SeatDependency
+                    {
+                        // 行动者保持死亡：生死一维不约束；角色换了这一格就失去意义。
+                        Seat = actor,
+                        RequiredLife = null,
+                        RequiredCharacter = character,
+                    },
+                ],
+            };
+        }
+
+        return null;
+    }
+
+    /// <summary>
     /// 「本夜无行动」格的**重开**：计划期把已经用满「每局限一次」的角色判成无行动
     /// （行动槽位但提示没有合法选项），更早的结算（咖啡师「行动两次」）让它重新可用时，
     /// 把这一格换成真实提示。

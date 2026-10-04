@@ -117,26 +117,27 @@ public sealed class BaristaNightActionTests
         Assert.Contains("行动两次", information.Content, StringComparison.Ordinal);
     }
 
-    /// <summary>「获得能力」的二次获得未定稿（R-0053 Open）：不重开，且跳过说明点名这件事。</summary>
+    /// <summary>
+    /// 「每局限一次」的上限是 2（R-0052 第 3 条 / R-0053）：哲学家已经用过两次时，新一枚咖啡师窗口
+    /// 也不再把他的格重开成「选择」格——建表判成本夜无行动，结算侧的重开闸同样拦住。
+    /// </summary>
     [Fact]
-    public void Resolve_Twice_DoesNotReopenPhilosopherGrantSlot()
+    public void Resolve_Twice_DoesNotReopenPhilosopherGrantSlotBeyondTheCap()
     {
         var state = WithSecondActionWindow(
             Ledger((1, "philosopher", LifeState.Alive), (2, "barista", LifeState.Alive)),
             klutz: 1,
             barista: 2) with
         {
-            AbilityUses = new AbilityUseLedger().RecordUse(
-                new SeatId(1),
-                new AbilityId("philosopher.grant"),
-                effective: false),
+            AbilityUses = new AbilityUseLedger()
+                .RecordUse(new SeatId(1), new AbilityId("philosopher.grant"), effective: false)
+                .RecordUse(new SeatId(1), new AbilityId("philosopher.grant"), effective: true),
         };
         var plan = BuildPlan(state, nightNumber: 2);
 
         var slot = plan.Slots.Single(candidate => candidate.Id.Value == "philosopher");
         Assert.NotNull(slot.Prompt);
         Assert.False(slot.Prompt!.HasOptions);
-        Assert.Contains("R-0053", slot.Prompt.Context, StringComparison.Ordinal);
 
         var events = Contract.Resolve(Context(state, "twice:seat:1", plan, slotIndex: 1));
 

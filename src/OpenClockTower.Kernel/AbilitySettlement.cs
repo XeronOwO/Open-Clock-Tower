@@ -45,7 +45,7 @@ internal static class AbilitySettlement
         }
 
         var entry = context.State.Seat(actor);
-        var outcome = entry is null ? null : AbilityEffectivenessEvaluator.Evaluate(entry);
+        var outcome = entry is null ? null : AbilityEffectivenessEvaluator.Evaluate(context.State, entry);
         if (outcome is null)
         {
             return AbilitySettlementPlan.Indeterminate(

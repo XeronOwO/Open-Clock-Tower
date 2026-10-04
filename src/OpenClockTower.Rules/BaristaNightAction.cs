@@ -158,8 +158,9 @@ internal sealed class BaristaNightAction : INightAction, IAbilityResolution
     /// </summary>
     /// <remarks>
     /// 只对**存活**目标重开（死亡席位本夜不行动；呆瓜那类死亡触发的能力不走槽位、由触发层负责）；
-    /// 目标的角色未观测、契约未实现、或契约声明不支持二次结算（哲学家的「获得能力」，R-0053 Open）
-    /// 时不重开——理由都在那一格自己的跳过记录里显式可见，不静默改行为。
+    /// 目标的角色未观测、契约未实现、契约声明不支持二次结算（集骨者「用后即失去自身能力」，
+    /// R-0054 第 5 条）、或「每局限一次」的总次数已经到 2 时不重开——理由都在那一格自己的
+    /// 跳过记录里显式可见，不静默改行为。
     /// </remarks>
     private static SlotActivatedEvent? UpgradeOf(AbilityResolutionContext context, SeatId target)
     {
@@ -169,7 +170,16 @@ internal sealed class BaristaNightAction : INightAction, IAbilityResolution
             return null;
         }
 
-        if (NightActions.Resolutions.Find(targetCharacter)?.SupportsSecondAction != true)
+        var resolution = NightActions.Resolutions.Find(targetCharacter);
+        if (resolution?.SupportsSecondAction != true)
+        {
+            return null;
+        }
+
+        // 「每局限一次」的能力：总次数已经到 2 的不再重开——窗口把上限放宽到 2，不是无限次
+        //（R-0052 第 3 条）。
+        if (resolution.IsLimitedPerGame
+            && context.State.AbilityUses.UseCount(target, resolution.Ability) >= 2)
         {
             return null;
         }

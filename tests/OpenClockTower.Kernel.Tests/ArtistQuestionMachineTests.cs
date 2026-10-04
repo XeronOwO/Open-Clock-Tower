@@ -109,6 +109,21 @@ public sealed class ArtistQuestionMachineTests
         Assert.Equal("artist.already_used", third.RejectionCode);
     }
 
+    /// <summary>
+    /// 集骨者「重获能力」（R-0054 第 4 条）：死亡的艺术家在重获窗口内、即使已经用过一次也能再提问
+    /// （总次数 &lt; 2）；没有窗口时按既有口径拒绝。
+    /// </summary>
+    [Fact]
+    public void Ask_AllowsDeadButRegainedArtist_WhenUsedOnce()
+    {
+        Assert.Equal("artist.already_used", Ask(Day(), Context(used: true)).RejectionCode);
+
+        var outcome = Ask(Day(), Context(used: true, regained: true));
+
+        Assert.Equal(StepMachineOutcomeKind.Applied, outcome.Kind);
+        Assert.Single(outcome.Events.OfType<ArtistQuestionAskedEvent>());
+    }
+
     /// <summary>空问题 / 超长问题 / 控制字符显式拒绝；问题文本先 trim。</summary>
     [Fact]
     public void Ask_RejectsEmptyAndTooLong()
@@ -323,16 +338,21 @@ public sealed class ArtistQuestionMachineTests
 
     /// <summary>
     /// 结算上下文：1 号是指定角色；<paramref name="used"/> 预置一条使用记录；
-    /// <paramref name="boosted"/> 预置咖啡师「行动两次」窗口（来源 2 号，R-0052 第 3 条）。
+    /// <paramref name="boosted"/> 预置咖啡师「行动两次」窗口（来源 2 号，R-0052 第 3 条）；
+    /// <paramref name="regained"/> 预置集骨者「重获能力」窗口（1 号保持死亡，R-0054）。
     /// </summary>
-    private static SettlementContext Context(string character = "artist", bool used = false, bool boosted = false)
+    private static SettlementContext Context(
+        string character = "artist",
+        bool used = false,
+        bool boosted = false,
+        bool regained = false)
     {
         var events = new List<GameEvent>
         {
             new SeatStateChangedEvent
             {
                 Seat = Artist,
-                Life = LifeState.Alive,
+                Life = regained ? LifeState.Dead : LifeState.Alive,
                 Character = new CharacterId(character),
                 Reason = "test.setup",
             },
@@ -369,6 +389,33 @@ public sealed class ArtistQuestionMachineTests
                     Target = Artist,
                     SourceCharacter = new CharacterId("barista"),
                     Window = EffectWindowKind.SecondAction,
+                },
+            });
+        }
+
+        if (regained)
+        {
+            events.Add(new SeatStateChangedEvent
+            {
+                Seat = new SeatId(2),
+                Life = LifeState.Alive,
+                Drunk = DrunkState.Sober,
+                Poison = PoisonState.Healthy,
+                Character = new CharacterId("bone-collector"),
+                Reason = "test.setup",
+            });
+            events.Add(new PersistentEffectAppliedEvent
+            {
+                Effect = new PersistentEffect
+                {
+                    Id = new EffectId("test:regain"),
+                    Source = new SeatId(2),
+                    Ability = new AbilityId("bone-collector.regain"),
+                    Target = Artist,
+                    SourceCharacter = new CharacterId("bone-collector"),
+                    GrantedCharacter = new CharacterId(character),
+                    Window = EffectWindowKind.RegainedAbility,
+                    SourceStateIndependent = true,
                 },
             });
         }

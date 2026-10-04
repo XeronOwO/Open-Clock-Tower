@@ -16,13 +16,19 @@ internal static class VortoxInterference
 {
     private static readonly CharacterId Vortox = new("vortox");
 
-    /// <summary>涡流是否在场且存活（运作方式原文口径：只要涡流存活）。</summary>
+    /// <summary>
+    /// 涡流是否在场且**能力仍在**（运作方式原文口径：只要涡流存活）——死亡但身处集骨者
+    /// 「重获能力」窗口内的涡流按「仍握有能力」处理（R-0054）。
+    /// </summary>
     internal static bool IsActive(GameState state)
     {
         ArgumentNullException.ThrowIfNull(state);
 
         return state.Seats.Any(entry =>
-            entry.CharacterValue == Vortox && entry.LifeValue == LifeState.Alive);
+            entry.CharacterValue == Vortox
+            && entry.LifeValue is { } life
+            && (life == LifeState.Alive
+                || (life == LifeState.Dead && state.RegainedAbilityOn(entry.Seat) == true)));
     }
 
     /// <summary>

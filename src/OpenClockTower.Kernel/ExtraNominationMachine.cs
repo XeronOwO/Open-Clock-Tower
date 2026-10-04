@@ -99,9 +99,14 @@ internal static class ExtraNominationMachine
 
         if (nominatorLife != LifeState.Alive)
         {
-            return DayOutcome.Reject(
-                "day.nominator_dead",
-                $"席位 {input.Nominator.Value} 已经死亡：只有存活玩家可以发起提名（《屠夫》窗口同理）");
+            // 集骨者的「重获能力」让死者带着角色能力行动（R-0054）：屠夫在重获窗口内照样能发起
+            // 额外提名（百科《集骨者》范例：重获后的屠夫在次日处决后获得额外提名）。
+            if (context.State.AbilityPresentOn(input.Nominator) != true)
+            {
+                return DayOutcome.Reject(
+                    "day.nominator_dead",
+                    $"席位 {input.Nominator.Value} 已经死亡：只有存活玩家可以发起提名（《屠夫》窗口同理）");
+            }
         }
 
         // 提名者此刻的角色快照随事件落账（与常规提名同一口径；城镇公告员按 R-0037 读它）。

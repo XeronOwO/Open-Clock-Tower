@@ -36,13 +36,14 @@ public static class StepDigestProjection
             Seat = actor,
             Character = slot.Owner,
             State = actorState,
-            Ability = BuildAbility(actorState, slotAbility, slotResolution),
+            Ability = BuildAbility(state, actorState, slotAbility, slotResolution),
             OptionCount = slot.Prompt?.Options.Count,
             OnNoOption = slot.Prompt?.OnNoOption,
         };
     }
 
     private static SlotAbilitySnapshot BuildAbility(
+        GameState state,
         SeatStateEntry? actorState,
         AbilityId? slotAbility,
         AbilityResolutionSnapshot? slotResolution)
@@ -62,7 +63,7 @@ public static class StepDigestProjection
         }
 
         // 未结算：按当前账给预览；账不全一律 Unknown，不映射成默认值（D-0015）。
-        if (actorState is null || AbilityEffectivenessEvaluator.Evaluate(actorState) is not { } outcome)
+        if (actorState is null || AbilityEffectivenessEvaluator.Evaluate(state, actorState) is not { } outcome)
         {
             return new SlotAbilitySnapshot
             {

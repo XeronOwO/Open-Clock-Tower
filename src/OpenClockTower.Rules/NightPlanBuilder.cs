@@ -198,25 +198,11 @@ public static class NightPlanBuilder
 
         var actor = aliveOwners[0];
 
-        // 女裁缝的「每局限一次」已经用掉（含醉酒 / 中毒时使用）：不再唤醒她——
-        // 「为她放置"失去能力"提示标记，并从夜晚顺序表上移除她的夜晚标记」（百科《女裁缝》· 运作方式 6；
-        // 平台口径 R-0040；与哲学家的「机会已浪费」同族，R-0036 第 2 条）。
-        // 例外（咖啡师「行动两次」，R-0052 第 3 条）：窗口**确认生效**且总使用次数还没到 2 时仍唤醒她。
-        if (character == SeamstressNightAction.Seamstress
-            && !CanUseLimitedAbility(request.State, actor.Seat, SeamstressNightAction.InfoAbility))
-        {
-            return (NoActionSlot(
-                tag,
-                actor.Seat,
-                character,
-                "女裁缝的「每局限一次」已经用满（两次）：本局不再被唤醒（百科《女裁缝》· 运作方式 6；"
-                    + "R-0040；咖啡师窗口把上限放宽到 2，R-0052 第 3 条）"), null);
-        }
-
+        // 哲学家的「获得能力」有专门口径（R-0036 / R-0053）：二次获得按替换语义重开「选择」格；
+        // 还没获得过时返回 null，落到后面的常规「选择」格。
         if (character == PhilosopherAbility.Character
             && BuildPhilosopherSlot(request, binding, actor.Seat, tag, phase) is { } philosopherSlot)
         {
-            // 已经获得能力（或那次获得被浪费掉）：他自己的格不再开出"选择"。
             return (philosopherSlot, null);
         }
 
@@ -225,6 +211,21 @@ public static class NightPlanBuilder
             return (null, NightPlanOutcome.Failure(
                 "plan.contract_missing",
                 $"角色 {character.Value} 的夜间行动契约还没有实现，拒绝把它当成空槽位静默跳过"));
+        }
+
+        // 「每局限一次」通用闸（女裁缝 R-0040 / 集骨者 R-0054）：已经用满（含窗口放宽后的上限）时
+        // 不再唤醒——女裁缝「从夜晚顺序表上移除她的夜晚标记」，集骨者用后即失去自身能力。
+        // 例外：咖啡师「行动两次」窗口确认生效、契约支持二次结算、且总次数还没到 2（R-0052 第 3 条）。
+        if (NightActions.Resolutions.Find(character) is { IsLimitedPerGame: true } limited
+            && !CanUseLimitedAbility(request.State, actor.Seat, limited.Ability, limited))
+        {
+            return (NoActionSlot(
+                tag,
+                actor.Seat,
+                character,
+                $"「{limited.Ability.Value}」是「每局限一次」且已经用满：本局不再被唤醒"
+                    + "（女裁缝 R-0040 / 集骨者 R-0054；"
+                    + "咖啡师窗口在总次数未到 2 时把上限放宽，R-0052 第 3 条）"), null);
         }
 
         var prompt = action.BuildPrompt(new NightActionContext
@@ -251,9 +252,10 @@ public static class NightPlanBuilder
     }
 
     /// <summary>
-    /// 哲学家自己的格（R-0036 第 2、3 条）：已经获得能力时，这一格要么**代行**获得的能力
+    /// 哲学家自己的格（R-0036 / R-0053）：已经获得能力时，这一格要么**代行**获得的能力
     /// （被获得角色的格归它的持有者），要么本夜无行动；还没获得过（也没被浪费掉）时返回 null——
-    /// 走常规的「选择要获得谁的能力」路径。
+    /// 走常规的「选择要获得谁的能力」路径。咖啡师「行动两次」窗口确认生效、总次数未满 2 时，
+    /// 这一格重回「选择」格：二次获得 = 替换旧授予（R-0053 Decided）。
     /// </summary>
     private static StepSlot? BuildPhilosopherSlot(
         NightPlanRequest request,
@@ -262,25 +264,30 @@ public static class NightPlanBuilder
         string tag,
         GamePhase phase)
     {
+        var secondChance = request.State.WindowOn(actor, EffectWindowKind.SecondAction) == true
+            && request.State.AbilityUses.UseCount(actor, PhilosopherAbility.GrantAbility) < 2;
+
         if (binding is not { } grant)
         {
-            if (request.State.AbilityUses.WasUsed(actor, PhilosopherAbility.GrantAbility))
+            if (!request.State.AbilityUses.WasUsed(actor, PhilosopherAbility.GrantAbility))
             {
-                // 「限次能力在醉酒 / 中毒期间被使用 = 已浪费」：不能再获得能力（百科《重要细节》三-3）。
-                // 咖啡师「行动两次」窗口内的「二次获得」语义未定稿（R-0053 Open）：显式说明、
-                // 不重开本格——绝不静默给出第二条授予。
-                var boostNote = request.State.WindowOn(actor, EffectWindowKind.SecondAction) == true
-                    ? "；他此刻处于咖啡师「行动两次」窗口内，但「获得能力」的二次获得语义未定稿"
-                        + "（rulings.md R-0053 Open）：本次不重开"
-                    : string.Empty;
-                return NoActionSlot(
+                return null;
+            }
+
+            // 已经用过、账上却没有活着的授予（那次获得被浪费，或授予已终止）：只有第二次机会才重开。
+            return secondChance
+                ? null
+                : NoActionSlot(
                     tag,
                     actor,
                     PhilosopherAbility.Character,
                     "哲学家的「每局限一次」已经用掉（当时能力未生效，机会被浪费）：本局不能再获得能力"
-                        + boostNote);
-            }
+                        + "（R-0036 / R-0053）");
+        }
 
+        if (secondChance)
+        {
+            // 二次获得 = 替换（R-0053）：他可以再选一个能力，新授予替换旧授予——这一格重回「选择」格。
             return null;
         }
 
@@ -401,13 +408,20 @@ public static class NightPlanBuilder
 
     /// <summary>
     /// 「每局限一次」的能力此刻还能不能用：没用过 → 能；已经用过 → 只有咖啡师「行动两次」窗口
-    /// **确认生效**且总次数还没到 2 时才能再用（R-0052 第 3 条）。
+    /// **确认生效**、契约**支持二次结算**、且总次数还没到 2 时才能再用（R-0052 第 3 条）。
     /// </summary>
     /// <remarks>
     /// 窗口生效与否判定不了时按"不能"处理：不猜、也不多给一次机会（与 D-0015 的保守姿态一致）。
+    /// 「用后即失去自身能力」的能力（集骨者）声明 <see cref="IAbilityResolution.SupportsSecondAction"/>
+    /// 为 false，窗口不放宽它（R-0054 第 5 条）。
     /// </remarks>
-    private static bool CanUseLimitedAbility(GameState state, SeatId actor, AbilityId ability) =>
+    private static bool CanUseLimitedAbility(
+        GameState state,
+        SeatId actor,
+        AbilityId ability,
+        IAbilityResolution resolution) =>
         !state.AbilityUses.WasUsed(actor, ability)
         || (state.WindowOn(actor, EffectWindowKind.SecondAction) == true
+            && resolution.SupportsSecondAction
             && state.AbilityUses.UseCount(actor, ability) < 2);
 }

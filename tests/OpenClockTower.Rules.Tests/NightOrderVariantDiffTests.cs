@@ -36,12 +36,12 @@ public sealed class NightOrderVariantDiffTests
         var original = NightOrderTable.For(GamePhase.OtherNight, NightOrderVariant.Original);
         var recommended = NightOrderTable.For(GamePhase.OtherNight, NightOrderVariant.Recommended);
 
-        Assert.Equal(23, original.Count);
-        Assert.Equal(24, recommended.Count);
-        Assert.Equal(7, IndexOf(original, "pit-hag"));
-        Assert.Equal(4, IndexOf(recommended, "pit-hag"));
-        Assert.Equal(9, IndexOf(original, "vigormortis"));
-        Assert.Equal(11, IndexOf(recommended, "vigormortis"));
+        Assert.Equal(24, original.Count);
+        Assert.Equal(25, recommended.Count);
+        Assert.Equal(8, IndexOf(original, "pit-hag"));
+        Assert.Equal(5, IndexOf(recommended, "pit-hag"));
+        Assert.Equal(10, IndexOf(original, "vigormortis"));
+        Assert.Equal(12, IndexOf(recommended, "vigormortis"));
 
         Assert.Equal(
             NightOrderText.DescribeAll(
@@ -62,9 +62,9 @@ public sealed class NightOrderVariantDiffTests
             .Select((entry, index) => (entry, index))
             .Single(item => item.entry.Kind == NightOrderEntryKind.InformationActionsBegin);
 
-        Assert.Equal(15, marker.index);
-        Assert.Equal(14, IndexOf(recommended, "sage"));
-        Assert.Equal(16, IndexOf(recommended, "dreamer"));
+        Assert.Equal(16, marker.index);
+        Assert.Equal(15, IndexOf(recommended, "sage"));
+        Assert.Equal(17, IndexOf(recommended, "dreamer"));
     }
 
     private static int IndexOf(IReadOnlyList<NightOrderEntry> entries, string character)

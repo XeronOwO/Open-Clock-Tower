@@ -107,16 +107,26 @@ public sealed class PhilosopherNightActionTests
         Assert.Empty(events);
     }
 
-    /// <summary>已经获得过能力，却又开出第二次选择 → 事件流损坏，显式抛错。</summary>
+    /// <summary>
+    /// 二次获得 = 替换（R-0053）：咖啡师「行动两次」或集骨者「重获能力」让哲学家再选一次时，
+    /// 旧授予先终止、新授予按代际标识落账——不是并存，也不抛错。
+    /// </summary>
     [Fact]
-    public void SecondGrant_Throws()
+    public void SecondGrant_ReplacesPreviousGrantWithNewGeneration()
     {
         var state = NightLedger((1, "philosopher"), (2, "clockmaker")) with
         {
             PersistentEffects = [GrantEffect(seat: 1, granted: new CharacterId("dreamer"))],
         };
 
-        Assert.Throws<InvalidOperationException>(() => Contract().Resolve(Context(state, "klutz")));
+        var events = Contract().Resolve(Context(state, "klutz"));
+
+        var terminated = Assert.Single(events.OfType<PersistentEffectTerminatedEvent>());
+        Assert.Equal(new EffectId("philosopher.grant:1"), terminated.EffectId);
+
+        var applied = Assert.Single(events.OfType<PersistentEffectAppliedEvent>());
+        Assert.Equal(new EffectId("philosopher.grant:1#2"), applied.Effect.Id);
+        Assert.Equal(new CharacterId("klutz"), applied.Effect.GrantedCharacter);
     }
 
     /// <summary>选择不在「镇民 / 外来者」可选集里 → 显式抛错，不静默当成摇头。</summary>

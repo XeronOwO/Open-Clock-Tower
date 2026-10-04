@@ -36,6 +36,21 @@ internal static class PhilosopherAbility
     internal static string DisplayNameOf(CharacterId character) =>
         SectsAndVioletsRoster.DisplayNameOf(character) ?? character.Value;
 
+    /// <summary>
+    /// 「获得能力」事实的效果标识：第一次是 <c>philosopher.grant:{seat}</c>；二次获得（咖啡师
+    /// 「行动两次」或集骨者「重获能力」）按代际追加 <c>#2</c>、<c>#3</c>……——终止不可逆（R-0012），
+    /// 重新获得是**另一条事实**（R-0053 替换语义）。
+    /// </summary>
+    internal static EffectId GrantEffectId(GameState state, SeatId seat)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+
+        var baseId = $"{GrantAbility.Value}:{seat.Value}";
+        var generation = state.PersistentEffects.Count(effect =>
+            effect.Ability == GrantAbility && effect.Source == seat) + 1;
+        return generation <= 1 ? new EffectId(baseId) : new EffectId($"{baseId}#{generation}");
+    }
+
     /// <summary>账上那条「获得能力」事实（未终止的常驻效果）；null = 还没获得过，或它已经终止。</summary>
     internal static PersistentEffect? FindGrant(GameState state)
     {

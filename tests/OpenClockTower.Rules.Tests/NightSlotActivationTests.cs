@@ -203,6 +203,99 @@ public sealed class NightSlotActivationTests
         Assert.Contains("推演：是", activation!.Prompt.Context, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// 集骨者「重获能力」的当夜落格（R-0054）：那一格空着（持有者已死亡）→ 绑给死者，
+    /// 依赖**不写** RequiredLife（他保持死亡），只锁角色。
+    /// </summary>
+    [Fact]
+    public void PlanRegained_EmptySlot_IsActivatedForTheDeadActorWithoutLifeRequirement()
+    {
+        var plan = Plan(
+            "sv:night-2",
+            StepSlot.Beat(new StepSlotId("dusk")),
+            StepSlot.Empty(new StepSlotId("dreamer"), new CharacterId("dreamer")));
+
+        var activation = NightSlotActivation.PlanRegained(
+            plan,
+            slotIndex: 0,
+            actor: new SeatId(2),
+            character: new CharacterId("dreamer"),
+            state: GameState.Empty,
+            lastDay: null,
+            seats: [new SeatId(1), new SeatId(2)],
+            catalog: NightActions.Default);
+
+        Assert.NotNull(activation);
+        Assert.Equal(1, activation!.SlotIndex);
+        Assert.Equal(new SeatId(2), activation.Actor);
+        Assert.NotEmpty(activation.Prompt.Options);
+        Assert.Contains(
+            activation.Dependencies,
+            dependency => dependency.Seat == new SeatId(2)
+                && dependency.RequiredLife is null
+                && dependency.RequiredCharacter == new CharacterId("dreamer"));
+    }
+
+    /// <summary>那一格已经有存活持有者（角色能力归活着的那位）、或已经走过（过时不候）→ 不激活。</summary>
+    [Fact]
+    public void PlanRegained_SlotWithLivingHolderOrPassed_IsNotActivated()
+    {
+        var withHolder = Plan(
+            "sv:night-2",
+            StepSlot.Beat(new StepSlotId("dusk")),
+            StepSlot.Action(new StepSlotId("dreamer"), new SeatId(1), Prompt(), owner: new CharacterId("dreamer")));
+
+        Assert.Null(NightSlotActivation.PlanRegained(
+            withHolder,
+            slotIndex: 0,
+            actor: new SeatId(2),
+            character: new CharacterId("dreamer"),
+            state: GameState.Empty,
+            lastDay: null,
+            seats: [new SeatId(1), new SeatId(2)],
+            catalog: NightActions.Default));
+
+        var passed = Plan(
+            "sv:night-2",
+            StepSlot.Empty(new StepSlotId("dreamer"), new CharacterId("dreamer")));
+
+        Assert.Null(NightSlotActivation.PlanRegained(
+            passed,
+            slotIndex: 0,
+            actor: new SeatId(2),
+            character: new CharacterId("dreamer"),
+            state: GameState.Empty,
+            lastDay: null,
+            seats: [new SeatId(1), new SeatId(2)],
+            catalog: NightActions.Default));
+    }
+
+    /// <summary>「每局限一次」已经用满：照样入格，但绑成无选项的显式跳过（R-0054 第 4 条）。</summary>
+    [Fact]
+    public void PlanRegained_OverLimit_ProducesExplicitNoActionSlot()
+    {
+        var plan = Plan(
+            "sv:night-2",
+            StepSlot.Beat(new StepSlotId("dusk")),
+            StepSlot.Empty(new StepSlotId("seamstress"), new CharacterId("seamstress")));
+
+        var activation = NightSlotActivation.PlanRegained(
+            plan,
+            slotIndex: 0,
+            actor: new SeatId(2),
+            character: new CharacterId("seamstress"),
+            state: GameState.Empty,
+            lastDay: null,
+            seats: [new SeatId(1), new SeatId(2)],
+            catalog: NightActions.Default,
+            noActionResult: "「seamstress」已经用过 2 次：重获生效也超过上限（R-0054 第 4 条）");
+
+        Assert.NotNull(activation);
+        Assert.False(activation!.Prompt.HasOptions);
+        Assert.Equal(NoOptionBehavior.Skip, activation.Prompt.OnNoOption);
+        Assert.Contains("R-0054", activation.Prompt.Context, StringComparison.Ordinal);
+    }
+
     private static ChoicePrompt Prompt() => new()
     {
         Context = "测试用选择",

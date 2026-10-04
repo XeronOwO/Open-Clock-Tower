@@ -81,7 +81,7 @@ internal sealed class ArtistQuestionSource : IArtistQuestionSource
         }
 
         var entry = context.State.Seat(context.Question.Seat);
-        var outcome = entry is null ? null : AbilityEffectivenessEvaluator.Evaluate(entry);
+        var outcome = entry is null ? null : AbilityEffectivenessEvaluator.Evaluate(context.State, entry);
         if (outcome is null)
         {
             // 维度没有观测齐：判不了就不猜——由内核显式拒绝（D-0015）。

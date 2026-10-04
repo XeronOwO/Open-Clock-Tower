@@ -343,10 +343,13 @@ public sealed class MadnessPunishmentHostTests
     ];
 
     /// <summary>说书人强推越过剩余槽位（D-0014 兜底）：本用例只真正结算与角色有关的那一步。</summary>
-    /// <remarks>幂等键必须按"第几夜"区分：同一局内复用同一个键会命中回执重放（Duplicate），不是推进。</remarks>
+    /// <remarks>
+    /// 幂等键必须按"第几夜"区分：同一局内复用同一个键会命中回执重放（Duplicate），不是推进。
+    /// 上限留足余量：其他夜晚的计划随旅行者落地会增长（集骨者已到 24 格），固定卡在旧格数会假红。
+    /// </remarks>
     private static async Task CompleteNightAsync(GameClient storyteller, string tag)
     {
-        for (var attempt = 0; attempt < 24; attempt++)
+        for (var attempt = 0; attempt < 64; attempt++)
         {
             var view = await storyteller.InvokeAsync<StorytellerViewDto>("GetStorytellerView");
             if (view.PlanCompleted)
@@ -368,6 +371,6 @@ public sealed class MadnessPunishmentHostTests
             Assert.Equal("Accepted", forced.Kind);
         }
 
-        Assert.Fail("夜晚在 24 次强推内没有走完");
+        Assert.Fail("夜晚在 64 次强推内没有走完");
     }
 }

@@ -67,7 +67,7 @@ internal sealed class ButcherExtraNominationSource : IExtraNominationSource
         }
 
         var butcher = butchers[0];
-        var effectiveness = AbilityEffectivenessEvaluator.Evaluate(butcher);
+        var effectiveness = AbilityEffectivenessEvaluator.Evaluate(context.State, butcher);
         if (effectiveness is null)
         {
             return new ExtraNominationAssessment

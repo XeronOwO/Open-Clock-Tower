@@ -489,13 +489,23 @@ internal static class GameCommandDispatcher
             return MissingSetup();
         }
 
-        var seats = InGameSeats.Derive(setup, state);
+        // 夜尽收口先于建表：上一夜「直至下个黄昏」的窗口（咖啡师 / 集骨者）必须在建表**之前**从账上
+        // 收掉——否则建表期读到的还是上一夜的窗口（女裁缝会多开一格、被重获的死者会被误判仍有能力）。
+        // 与结算管线里的触发器共用 DuskExpiry；同一批里触发器再对同一事件求值一次是幂等的。
+        var expiry = DuskExpiry.ExpireAll(state);
+        var ledger = state;
+        foreach (var gameEvent in expiry)
+        {
+            ledger = GameStateMachine.Apply(ledger, gameEvent);
+        }
+
+        var seats = InGameSeats.Derive(setup, ledger);
         var outcome = NightPlanBuilder.Build(new NightPlanRequest
         {
             NightNumber = command.NightNumber,
             Variant = command.Variant,
             Seats = seats,
-            State = state,
+            State = ledger,
             LastDay = machine?.Day?.Days.LastOrDefault(),
             Actions = NightActions.Default,
         });
@@ -510,16 +520,17 @@ internal static class GameCommandDispatcher
             });
         }
 
-        var started = StepMachine.StartPhase(outcome.Plan, machine, state);
+        var started = StepMachine.StartPhase(outcome.Plan, machine, ledger);
         logger.LogInformation(
-            "已按规则表建表：game={GameId} night={NightNumber} variant={Variant} 槽位数={SlotCount} 计划={Label}",
+            "已按规则表建表：game={GameId} night={NightNumber} variant={Variant} 槽位数={SlotCount} 计划={Label} 夜尽收口={ExpiredCount}",
             gameId,
             command.NightNumber,
             command.Variant,
             outcome.Plan.Slots.Count,
-            outcome.Plan.Label);
+            outcome.Plan.Label,
+            expiry.Count);
 
-        return new CommandDispatchResult(started.State, started.Events, null);
+        return new CommandDispatchResult(started.State, [.. expiry, .. started.Events], null);
     }
 
     private static CommandDispatchResult MissingSetup() =>

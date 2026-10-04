@@ -17,7 +17,8 @@ namespace OpenClockTower.Rules;
 /// ① 「获得能力」落成账上一条常驻标记效果（带被获得的角色），**不写角色维度**（不变身）；
 /// ② 常驻醉酒由 <see cref="PhilosopherDrunkSource"/> 动态对账（被选角色进场 / 换持有者时移动）；
 /// ③ 获得的能力在**被获得角色的格**上执行（那一格没有行动者时，当夜就地激活）；那一格有持有者时，
-/// 改在**他自己的格**上代行——他的格在那种情况下不再是"选择"格。
+/// 改在**他自己的格**上代行——他的格在那种情况下不再是"选择"格；
+/// ④ 二次获得（咖啡师「行动两次」/ 集骨者「重获能力」）= **替换**旧授予，见 R-0053（Decided）。
 /// </para>
 /// </remarks>
 internal sealed class PhilosopherNightAction : INightAction, IAbilityResolution
@@ -65,11 +66,13 @@ internal sealed class PhilosopherNightAction : INightAction, IAbilityResolution
         !string.Equals(context.Choice, PhilosopherAbility.Decline, StringComparison.Ordinal);
 
     /// <summary>
-    /// 「获得能力」不支持咖啡师「行动两次」的二次结算：第二次获得是**替换还是并存**未定稿
-    /// （<c>docs/standard/rulings.md</c> R-0053 Open）。步骤机据此不重开本格；
-    /// 建表期对"已经用掉 + 窗口在身"的席位也在跳过说明里显式点名，绝不静默给出第二条授予。
+    /// 「获得能力」支持咖啡师「行动两次」的二次结算：第二次获得按**替换**语义收口——先终止旧授予，
+    /// 再落新授予；「每局限一次」的总次数上限为 2（<c>docs/standard/rulings.md</c> R-0053 Decided）。
     /// </summary>
-    public bool SupportsSecondAction => false;
+    public bool SupportsSecondAction => true;
+
+    /// <summary>「每局游戏限一次」：总使用次数上限 2（咖啡师窗口内可再选一次，R-0052 第 3 条）。</summary>
+    public bool IsLimitedPerGame => true;
 
     /// <inheritdoc />
     public IReadOnlyList<GameEvent> Resolve(AbilityResolutionContext context)
@@ -96,37 +99,47 @@ internal sealed class PhilosopherNightAction : INightAction, IAbilityResolution
                 $"哲学家选择的角色不在「镇民 / 外来者」可选集里：{context.Choice}");
         }
 
-        if (PhilosopherAbility.FindGrant(context.State) is not null)
+        var events = new List<GameEvent>();
+
+        // 二次获得 = 替换（R-0053）：先终止旧授予——旧醉酒目标随之清醒（常驻醉酒来源按新授予重算）；
+        // 旧代行槽也会因「这份授予已不在」在入格时被显式跳过（StepSlotEntry.UnavailableReason）。
+        if (PhilosopherAbility.FindGrant(context.State) is { } previous)
         {
-            throw new InvalidOperationException(
-                "哲学家已经获得过能力，却又开出了第二次选择：与「每局限一次」冲突（事件流损坏）");
+            events.Add(new PersistentEffectTerminatedEvent
+            {
+                EffectId = previous.Id,
+                Termination = new EffectTermination
+                {
+                    Kind = EffectTerminationKind.NoLongerApplies,
+                    Reason = "哲学家的「获得能力」第二次生效：按替换语义终止旧授予（R-0053）",
+                },
+            });
         }
 
-        var events = new List<GameEvent>
+        var grantEffect = new PersistentEffect
         {
-            new PersistentEffectAppliedEvent
-            {
-                Effect = new PersistentEffect
-                {
-                    // 每局限一次：标识稳定（同一席位的获得能力事实只有一条），重放时按它认人。
-                    Id = new EffectId($"{PhilosopherAbility.GrantAbility.Value}:{context.Actor.Value}"),
-                    Source = context.Actor,
-                    Ability = PhilosopherAbility.GrantAbility,
-                    Target = context.Actor,
-                    SourceCharacter = PhilosopherAbility.Character,
-                    GrantedCharacter = granted,
-                },
-            },
+            // 每局限一次：标识按代际（#2、#3…），重放稳定；旧授予已终止、不复用它的标识。
+            Id = PhilosopherAbility.GrantEffectId(context.State, context.Actor),
+            Source = context.Actor,
+            Ability = PhilosopherAbility.GrantAbility,
+            Target = context.Actor,
+            SourceCharacter = PhilosopherAbility.Character,
+            GrantedCharacter = granted,
         };
+        events.Add(new PersistentEffectAppliedEvent { Effect = grantEffect });
 
         // 被获得角色的格今夜还没进入、且那一格没有行动者（角色不在场 / 持有者已死亡）时，
         // 他当夜就在那一格使用刚获得的能力（首夜能力因此在首夜就能用上；R-0036 第 1 条）。
+        // 提示按「授予已在」的账构建：有些能力的提示自己会查「能力在不在」（女巫的存活人数条件）。
+        var grantedState = GameStateMachine.Apply(
+            context.State,
+            new PersistentEffectAppliedEvent { Effect = grantEffect });
         if (NightSlotActivation.PlanGranted(
                 context.Plan,
                 context.SlotIndex,
                 context.Actor,
                 granted,
-                context.State,
+                grantedState,
                 context.LastDay,
                 context.Seats,
                 NightActions.Default) is { } activation)

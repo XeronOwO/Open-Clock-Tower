@@ -69,11 +69,12 @@ public static class NightOrderTable
             [
                 Step(NightOrderEntryKind.Dusk),
 
-                // 旅行者黄昏行动（D5 / R-0051 / R-0052）：其他夜晚的顺序是
+                // 旅行者黄昏行动（D5 / R-0051 / R-0052 / R-0054）：其他夜晚的顺序是
                 // 咖啡师 → 流莺 → 集骨者（《夜晚行动顺序一览》· 2026-10-04 抓取 · 其他夜晚黄昏行括号：
-                // 官员、窃贼、学徒、咖啡师、流莺、集骨者、公爵夫人；集骨者属 D5 后续批次）。
+                // 官员、窃贼、学徒、咖啡师、流莺、集骨者、公爵夫人）。
                 Action("barista"),
                 Action("harlot"),
+                Action("bone-collector"),
                 Action("philosopher"),
                 Action("snake-charmer"),
                 Action("witch"),
@@ -122,9 +123,10 @@ public static class NightOrderTable
             [
                 Step(NightOrderEntryKind.Dusk),
 
-                // 旅行者黄昏行动（D5 / R-0051 / R-0052）：与 Original 口径同改（两口径同改见票据 D5）。
+                // 旅行者黄昏行动（D5 / R-0051 / R-0052 / R-0054）：与 Original 口径同改（两口径同改见票据 D5）。
                 Action("barista"),
                 Action("harlot"),
+                Action("bone-collector"),
                 Action("philosopher"),
                 Action("pit-hag"),
                 Action("snake-charmer"),

@@ -110,8 +110,46 @@ public sealed record GameState
     }
 
     /// <summary>
+    /// 某席位此刻是否因「重获能力」窗口而重新握有其角色能力（集骨者，R-0054）。
+    /// true = 至少一条生效中的重获窗口；false = 没有窗口，或窗口全部确定不生效；
+    /// null = 有窗口但生效与否判定不了（不猜）。
+    /// </summary>
+    /// <remarks>
+    /// 重获窗口按 <see cref="PersistentEffect.SourceStateIndependent"/> 记账：标记一经放置，
+    /// 只在下个黄昏 / 来源死亡或离场时移除（百科《集骨者》· 2026-10-04 抓取 · 提示标记）。
+    /// </remarks>
+    public bool? RegainedAbilityOn(SeatId seat) => WindowOn(seat, EffectWindowKind.RegainedAbility);
+
+    /// <summary>
+    /// 该席位此刻是否**握有角色能力**：存活 → true；死亡 → 看有没有生效中的重获窗口；
+    /// 生死未观测 → null（不猜）。生效判定与能力存续族共用这一份口径（R-0054）。
+    /// </summary>
+    public bool? AbilityPresentOn(SeatId seat)
+    {
+        if (Seat(seat)?.LifeValue is not { } life)
+        {
+            return null;
+        }
+
+        return life == LifeState.Alive ? true : RegainedAbilityOn(seat);
+    }
+
+    /// <summary>
+    /// 行动者身上是否有一份**尚未终止**的「授予能力」效果，且授予的正是
+    /// <paramref name="character"/>（哲学家的获得能力 R-0036 / 集骨者的重获能力 R-0054）。
+    /// </summary>
+    /// <remarks>
+    /// 代行槽位（行动者本人角色 ≠ 槽位角色）进入时按它确认「这份授予还在不在」：
+    /// 二次获得把旧授予替换掉之后，旧代行格不得再唤醒人（R-0053）。
+    /// </remarks>
+    public bool HasLiveGrantOf(SeatId seat, CharacterId character) =>
+        PersistentEffects.Any(effect =>
+            !effect.IsTerminated && effect.Target == seat && effect.GrantedCharacter == character);
+
+    /// <summary>
     /// 一条持续型效果当前是否生效。
     /// 返回 null = 来源的生死 / 醉酒 / 中毒还没观测齐，**无法判定**——不做任何默认假设。
+    /// 来源死亡但身上有生效中的「重获能力」窗口时按「仍握有能力」处理（R-0054）。
     /// </summary>
     /// <param name="effect">待判定的效果。</param>
     public bool? IsOperative(PersistentEffect effect)
@@ -153,7 +191,25 @@ public sealed record GameState
             return null;
         }
 
-        return effect.IsOperative(life, drunk, poison);
+        // 死者：正常情况下角色能力已失去（R-0012 的来源挂起口径对死亡是终止）；但身上有生效中的
+        // 「重获能力」窗口时按「仍握有能力」处理（集骨者，R-0054）。窗口判定不了时不猜——与来源
+        // 维度未观测齐同款，不用默认值。
+        var effectiveLife = life;
+        if (life == LifeState.Dead)
+        {
+            switch (RegainedAbilityOn(effect.Source))
+            {
+                case true:
+                    effectiveLife = LifeState.Alive;
+                    break;
+                case null:
+                    return null;
+                default:
+                    break;
+            }
+        }
+
+        return effect.IsOperative(effectiveLife, drunk, poison);
     }
 
     /// <summary>作用在某席位上的疯狂要求（含已撤下的），按写入顺序。</summary>
@@ -171,6 +227,7 @@ public sealed record GameState
     /// <summary>
     /// 一条疯狂要求当前是否生效：来源存活、未醉酒、未中毒（R-0012 的挂起口径）。
     /// 返回 null = 来源的生死 / 醉酒 / 中毒还没观测齐，**无法判定**——不做任何默认假设。
+    /// 来源死亡但身上有生效中的「重获能力」窗口时按「仍握有能力」处理（R-0054）。
     /// </summary>
     /// <param name="requirement">待判定的要求。</param>
     public bool? IsOperative(MadnessRequirement requirement)
@@ -190,8 +247,23 @@ public sealed record GameState
             return null;
         }
 
+        var effectiveLife = life;
+        if (life == LifeState.Dead)
+        {
+            switch (RegainedAbilityOn(requirement.Source))
+            {
+                case true:
+                    effectiveLife = LifeState.Alive;
+                    break;
+                case null:
+                    return null;
+                default:
+                    break;
+            }
+        }
+
         return !requirement.IsTerminated
-            && life == LifeState.Alive
+            && effectiveLife == LifeState.Alive
             && drunk == DrunkState.Sober
             && poison == PoisonState.Healthy;
     }

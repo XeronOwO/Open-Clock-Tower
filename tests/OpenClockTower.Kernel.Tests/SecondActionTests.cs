@@ -80,7 +80,7 @@ public sealed class SecondActionTests
         Assert.Equal(1, answered.State.SlotIndex);
     }
 
-    /// <summary>契约声明不支持二次结算（哲学家的「获得能力」，R-0053 Open）：不重进、不静默加戏。</summary>
+    /// <summary>契约声明不支持二次结算（集骨者「用后即失去自身能力」，R-0054 第 5 条）：不重进、不静默加戏。</summary>
     [Fact]
     public void ContractRefusingSecondAction_DoesNotReenter()
     {

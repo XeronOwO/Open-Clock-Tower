@@ -287,6 +287,60 @@ public sealed class ButcherWindowTests
             new ExtraNominationWindowOpenedEvent { DayNumber = 1, Seat = new SeatId(3) }));
     }
 
+    /// <summary>
+    /// 集骨者「重获能力」（R-0054）：已死亡的屠夫在重获窗口内仍可发起额外提名——百科《集骨者》范例：
+    /// 「在晚上，集骨者选择了已死亡的屠夫。在接下来的白天，当一名玩家被处决后，说书人告诉屠夫
+    /// 可以再进行一次处决提名」；没有窗口时按既有口径拒绝（只有存活玩家可以发起提名）。
+    /// </summary>
+    [Fact]
+    public void ExtraNomination_AllowsADeadButRegainedButcher()
+    {
+        var context = WithSource(ExtraNominationOutcome.Available, seat: 4, seatCount: 4);
+        var opened = OpenWindow(context);
+
+        var dead = context with
+        {
+            State = GameStateMachine.Apply(context.State, new SeatStateChangedEvent
+            {
+                Seat = new SeatId(4),
+                Life = LifeState.Dead,
+                Reason = "测试：屠夫死亡",
+            }),
+        };
+
+        var without = DayPhaseFixture.Apply(
+            opened.State,
+            dead,
+            new NominateExtraInput { Nominator = new SeatId(4), Nominee = new SeatId(3) });
+        Assert.Equal("day.nominator_dead", without.RejectionCode);
+
+        var regained = dead with
+        {
+            State = GameStateMachine.Apply(dead.State, new PersistentEffectAppliedEvent
+            {
+                Effect = new PersistentEffect
+                {
+                    Id = new EffectId("test:regain:4"),
+                    Source = new SeatId(1),
+                    Ability = new AbilityId("bone-collector.regain"),
+                    Target = new SeatId(4),
+                    SourceCharacter = new CharacterId("bone-collector"),
+                    GrantedCharacter = new CharacterId("clockmaker"),
+                    Window = EffectWindowKind.RegainedAbility,
+                    SourceStateIndependent = true,
+                },
+            }),
+        };
+
+        var with = DayPhaseFixture.Apply(
+            opened.State,
+            regained,
+            new NominateExtraInput { Nominator = new SeatId(4), Nominee = new SeatId(3) });
+
+        Assert.Equal(StepMachineOutcomeKind.Applied, with.Kind);
+        Assert.Single(with.Events.OfType<ExtraNominationMadeEvent>());
+    }
+
     /// <summary>开一个已打开窗口的状态：4 席、1 号提 2 号并计 2 票、4 号是窗口授予席位。</summary>
     private static StepMachineOutcome OpenWindow(SettlementContext context)
     {

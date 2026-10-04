@@ -270,7 +270,7 @@ public sealed class PitHagNightHostTests
     /// <summary>说书人强推越过剩余槽位（D-0014 兜底）：本用例只真正结算与本票有关的那几步。</summary>
     private static async Task CompleteNightAsync(GameClient storyteller, string tag)
     {
-        for (var attempt = 0; attempt < 24; attempt++)
+        for (var attempt = 0; attempt < 64; attempt++)
         {
             var view = await storyteller.InvokeAsync<StorytellerViewDto>("GetStorytellerView");
             if (view.PlanCompleted)
@@ -292,7 +292,7 @@ public sealed class PitHagNightHostTests
             Assert.Equal("Accepted", forced.Kind);
         }
 
-        Assert.Fail("夜晚在 24 次强推内没有走完");
+        Assert.Fail("夜晚在 64 次强推内没有走完");
     }
 
     private static string? CharacterOf(TestServerHost host, int seat) =>
