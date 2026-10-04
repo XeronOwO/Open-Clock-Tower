@@ -60,11 +60,11 @@ todo/  →  in-progress/  →  review/  →  done/
 
 ### Todo
 
-- [账号与显示名：让局内每个人知道对面是谁](todo/account-and-display-name.md) — **Medium** — 席位级公开显示名「1 号是 aaa」（设置入口与权限开工定稿，服务端有界化）+ 跨局账号边界待定稿；姓名只作公开呈现，不参与授权
-
 - [排版与上手引导优化：让版块自解释、信息降密度](todo/ui-layout-and-onboarding.md) — **Medium** — 版块标题自解释 + 「?」悬停说明 + 文案通俗化与数据拼接连贯化；只动呈现层，信息隔离红线不变
 
 ### In progress
+
+- [账号与显示名：让局内每个人知道对面是谁](in-progress/account-and-display-name.md) — **Medium** — 账号（注册 / 登录 / 跨局身份 / 恢复码找回）与席位级公开玩家名「1 号 · aaa」；玩家名以账号为准、只作公开呈现，不参与授权（D-0021）
 
 ### Review
 
