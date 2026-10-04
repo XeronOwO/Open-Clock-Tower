@@ -61,6 +61,7 @@ todo/  →  in-progress/  →  review/  →  done/
 ### Todo
 
 - [旅行者与流放流程（首版纳入）](todo/traveller-and-exile.md) — **High** — 《梦殒春宵》5 名旅行者（怪咖 / 集骨者 / 咖啡师 / 流莺 / 屠夫）+ 流放流程 + 加入 / 离开；范围决策 D-0022（需求方 2026-10-04 确认纳入 MVP），开工第一步是补来源与细则清点
+- [夜晚顺序口径默认值统一](todo/night-order-variant-default.md) — **Medium** — 引擎默认 Original、面板默认 Recommended 的口径不一致（R-0014 的 2026-10-04 核对发现）；两条收口路线二选一
 
 ### In progress
 
@@ -132,6 +133,8 @@ todo/  →  in-progress/  →  review/  →  done/
 - [跨剧本扩展：主谋 / 圣徒 / 僵怖 / 小怪宝与多恶魔、善良恶魔剧本](future/cross-script-extension.md) — **Low** — 首版剧本之外的扩展：范围、依赖与开工前必须回答的问题先登记为真
 
 ### Resolved
+
+- [自我提名口径取证](resolved/self-nomination-source.md) — 已收口（2026-10-04）— R-0018 依印刷规则书 FAQ 转 `Decided`（允许自我提名）；现有实现与回归用例保留，无需改代码
 
 ### Watchlist
 
