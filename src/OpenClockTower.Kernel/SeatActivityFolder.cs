@@ -34,11 +34,29 @@ internal static class SeatActivityFolder
             ledger = ledger.Record(SeatActivityKind.Death, changed.Seat, changed.Reason);
         }
 
-        if (changed.Character is { } character
-            && previous?.CharacterValue is { } previousCharacter
-            && previousCharacter != character)
+        if (changed.Character is { } character)
         {
-            ledger = ledger.Record(SeatActivityKind.CharacterChange, changed.Seat, changed.Reason);
+            if (previous?.CharacterValue is { } previousCharacter)
+            {
+                if (previousCharacter != character)
+                {
+                    ledger = ledger.Record(
+                        SeatActivityKind.CharacterChange,
+                        changed.Seat,
+                        changed.Reason,
+                        character);
+                }
+            }
+            else if (ledger.DaysStarted >= 1 || ledger.CurrentNightStart is not null)
+            {
+                // 开局之后才第一次观测到这个席位的角色：这不是"变化"，但"他什么时候开始持有这个角色"
+                // 只能从这一刻算起（R-0057-B 第 3 条的起算口径）。
+                ledger = ledger.Record(
+                    SeatActivityKind.CharacterObserved,
+                    changed.Seat,
+                    changed.Reason,
+                    character);
+            }
         }
 
         if (changed.Alignment is { } alignment
@@ -92,10 +110,10 @@ internal static class SeatActivityFolder
             : ledger;
     }
 
-    /// <summary>黎明：把刚结束的夜晚收成"最近一个已结束的夜晚"，并把白天窗口起点推到现在。</summary>
-    internal static SeatActivityLedger Dawn(SeatActivityLedger ledger)
+    /// <summary>黎明：把刚结束的夜晚收成"最近一个已结束的夜晚"，把白天窗口起点推到现在，并推进白天计数。</summary>
+    internal static SeatActivityLedger Dawn(SeatActivityLedger ledger, int dayNumber)
     {
         ArgumentNullException.ThrowIfNull(ledger);
-        return ledger.StartDay();
+        return ledger.StartDay(dayNumber);
     }
 }

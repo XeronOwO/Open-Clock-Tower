@@ -47,6 +47,11 @@ public sealed record SettlementContext
     public IReadOnlyList<ISavantQuestionSource> SavantQuestions { get; init; } = [];
 
     /// <summary>
+    /// 杂耍艺人猜测依据契约（规则层实现，R-0057-B）；没有时任何公开猜测都会被显式拒绝。
+    /// </summary>
+    public IReadOnlyList<IJugglerGuessSource> JugglerGuesses { get; init; } = [];
+
+    /// <summary>
     /// 死亡保护来源（规则层实现，R-0048）；没有时任何死亡都不受保护——行为与保护机制引入前一致。
     /// </summary>
     public IReadOnlyList<IDeathProtectionSource> DeathProtections { get; init; } = [];

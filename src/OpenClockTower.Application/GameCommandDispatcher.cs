@@ -149,6 +149,27 @@ internal static class GameCommandDispatcher
             }));
         }
 
+        // 杂耍艺人的公开猜测（R-0057-B）：席位由凭据推导；猜测内容随命令带上，
+        // 「首个白天 / 没猜过 / 形状」都在内核的 JugglerGuessMachine 里判。
+        if (envelope.Command is MakeJugglerGuessesCommand jugglerGuesses)
+        {
+            if (envelope.Actor.Seat is not { } juggler)
+            {
+                return CommandDispatchResult.Rejected(new CommandRejection
+                {
+                    Code = "identity.player_only",
+                    Message = "杂耍艺人的公开猜测必须由持席位的玩家发出",
+                    Gate = "identity",
+                });
+            }
+
+            return Translate(StepMachine.Handle(machine, settlement, new MakeJugglerGuessesInput
+            {
+                Seat = juggler,
+                Guesses = jugglerGuesses.Guesses,
+            }));
+        }
+
         if (envelope.Command is StartVoteSweepCommand or ResumeVoteSweepCommand or CountVotesCommand
             or StartExileSweepCommand or ResumeExileSweepCommand or CountExileVotesCommand
             or ResolveDayProtectionCommand

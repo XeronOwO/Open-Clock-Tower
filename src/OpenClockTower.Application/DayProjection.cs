@@ -1,4 +1,5 @@
 using OpenClockTower.Kernel;
+using OpenClockTower.Rules;
 
 namespace OpenClockTower.Application;
 
@@ -117,6 +118,11 @@ public static class DayProjection
             ? seats.OrderBy(candidate => candidate.Value).ToArray()
             : Array.Empty<SeatId>();
 
+        // 杂耍艺人的公开猜测（R-0057-B）：只在这次持有的首个白天、且还没猜过时给入口。
+        var canMakeJugglerGuesses = facts.Status == DayStatus.Open
+            && inGame
+            && CanMakeJugglerGuesses(day, facts, state, seat);
+
         return new PlayerDay
         {
             PublicView = facts,
@@ -136,6 +142,29 @@ public static class DayProjection
             ExileSeatCollected = exileCollected is not null,
             CanNominateExtra = canNominateExtra,
             ExtraNominationCandidates = extraNominationCandidates,
+            CanMakeJugglerGuesses = canMakeJugglerGuesses,
         };
+    }
+
+    /// <summary>
+    /// 杂耍艺人此刻能不能公开猜测（R-0057-B）：本席持有杂耍艺人、当天就是**这次持有的首个白天**、
+    /// 且这次持有还没猜过。判断口径与内核的 <c>JugglerGuessMachine</c> 同源（「首个白天」由规则层给）；
+    /// 角色没观测到 / 判不了一律给 false（保守：宁可少给入口，不让前端自己推算）。
+    /// </summary>
+    private static bool CanMakeJugglerGuesses(DayState days, DayRecord openDay, GameState state, SeatId seat)
+    {
+        if (state.Seat(seat)?.CharacterValue is not { } character)
+        {
+            return false;
+        }
+
+        var source = RoleContracts.JugglerGuesses.FirstOrDefault(candidate => candidate.Character == character);
+        if (source?.FirstHeldDay(state, seat) is not { } firstDay || firstDay != openDay.DayNumber)
+        {
+            return false;
+        }
+
+        return !days.Days.Any(record => record.JugglerGuesses.Any(guess =>
+            guess.Seat == seat && guess.DayNumber >= firstDay));
     }
 }

@@ -26,6 +26,7 @@ internal sealed class DayReplayPresenter : IReplayStepPresenter
         typeof(DayProtectionDecidedEvent),
         typeof(ExtraNominationWindowOpenedEvent),
         typeof(ExtraNominationMadeEvent),
+        typeof(JugglerGuessesMadeEvent),
     ];
 
     /// <inheritdoc />
@@ -224,6 +225,20 @@ internal sealed class DayReplayPresenter : IReplayStepPresenter
             Detail = extraMade.NominatorCharacter is { } character
                 ? $"提名时提名者角色：{ReplayText.CharacterValue(character)}"
                 : null,
+        },
+        JugglerGuessesMadeEvent juggler => new ReplayStep
+        {
+            Sequence = context.Stored.Sequence,
+            Kind = ReplayStepKind.Day,
+            Phase = GamePhase.Day,
+            Summary = $"{context.SeatText.Seat(juggler.Seat)} 公开猜测"
+                + $"（第 {juggler.DayNumber} 天，{juggler.Guesses.Count} 条）",
+            Detail = juggler.Guesses.Count == 0
+                ? "公开声明但不做猜测（R-0057-B）"
+                : string.Join(
+                    "；",
+                    juggler.Guesses.Select(guess =>
+                        $"猜 {context.SeatText.Seat(guess.Seat)} 是 {ReplayText.CharacterValue(guess.Character)}")),
         },
         _ => throw new InvalidOperationException(
             $"DayReplayPresenter 不认领事件 {context.Stored.Event.GetType().Name}"),

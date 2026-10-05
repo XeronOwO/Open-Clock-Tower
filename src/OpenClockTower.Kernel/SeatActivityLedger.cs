@@ -37,22 +37,44 @@ public sealed record SeatActivityLedger
     /// <summary>正在进行的夜晚的起点（开夜时记）；null = 现在不是夜晚。</summary>
     public int? CurrentNightStart { get; init; }
 
-    /// <summary>记录一条活动。</summary>
-    public SeatActivityLedger Record(SeatActivityKind kind, SeatId seat, string? reason) =>
+    /// <summary>已经开始的白天数（由黎明事件推进；0 = 还没有白天）。</summary>
+    public int DaysStarted { get; init; }
+
+    /// <summary>
+    /// 记录一条活动：发生时点（第几个白天 / 是否夜里）由账本自己盖章，调用方不必各自判断。
+    /// </summary>
+    /// <param name="character">角色变化 / 首次观测**变成**的角色；其它分类传 null。</param>
+    public SeatActivityLedger Record(
+        SeatActivityKind kind,
+        SeatId seat,
+        string? reason,
+        CharacterId? character = null) =>
         this with
         {
-            Entries = [.. Entries, new SeatActivity { Kind = kind, Seat = seat, Reason = reason }],
+            Entries =
+            [
+                .. Entries,
+                new SeatActivity
+                {
+                    Kind = kind,
+                    Seat = seat,
+                    Reason = reason,
+                    Character = character,
+                    DayNumber = DaysStarted,
+                    DuringNight = CurrentNightStart is not null,
+                },
+            ],
         };
 
     /// <summary>开夜：把「正在进行的夜晚」起点推到当前末尾（夜晚还没结束，不影响已结束窗口）。</summary>
     public SeatActivityLedger StartNight() => this with { CurrentNightStart = Entries.Count };
 
     /// <summary>
-    /// 黎明：把这个夜晚收成一个**已结束的夜晚**，并把白天窗口起点推到当前末尾。
+    /// 黎明：把这个夜晚收成一个**已结束的夜晚**，并把白天窗口起点推到当前末尾；同时推进白天计数。
     /// 没有正在进行的夜晚（事件流里缺开夜事实）时不改夜晚窗口——"最近一个已结束的夜晚"
     /// 仍是更早那一个，而不是把白天也算进夜晚。
     /// </summary>
-    public SeatActivityLedger StartDay() =>
+    public SeatActivityLedger StartDay(int dayNumber) =>
         CurrentNightStart is { } nightStart
             ? this with
             {
@@ -60,8 +82,9 @@ public sealed record SeatActivityLedger
                 LastNightEnd = Entries.Count,
                 SinceDawnStart = Entries.Count,
                 CurrentNightStart = null,
+                DaysStarted = dayNumber,
             }
-            : this with { SinceDawnStart = Entries.Count };
+            : this with { SinceDawnStart = Entries.Count, DaysStarted = dayNumber };
 
     /// <summary>最近一个已结束夜晚窗口内的活动（没有已结束的夜晚 → 空）。</summary>
     public IReadOnlyList<SeatActivity> LastNight => Window(LastNightStart, LastNightEnd);

@@ -96,6 +96,10 @@ public static class DayActions
         // 与艺术家同族（玩家主动命令 → 归属裁定点 → 信息只到本人），同样登记覆盖后带他的局可以开白天。
         new("savant"),
 
+        // 杂耍艺人：首个白天公开猜测（0–5 条，公开事实进白天账）、当晚由说书人给出猜对数——R-0057-B；
+        // 白天的猜测不需要裁定（玩家自己说出来的话），夜晚的信息走 NightActions 的 juggler 契约。
+        new("juggler"),
+
         // 怪咖：流放达线时的死亡保护（说书人裁定「今天是否有趣」，R-0048）——收口在
         // ExileMachine / DayProtectionMachine；登记覆盖后带怪咖的局可以开白天。
         new("deviant"),

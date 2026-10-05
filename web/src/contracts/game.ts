@@ -320,6 +320,22 @@ export interface DayExtraNominationDto {
   status: string
 }
 
+/** 一条公开猜测（R-0057-B）：猜哪个席位是哪个角色。 */
+export interface JugglerGuessDto {
+  /** 被猜的席位。 */
+  seat: number
+  /** 猜的角色 slug（可以是场上没有的角色）。 */
+  character: string
+}
+
+/** 一次公开猜测（R-0057-B）：谁猜的、猜了哪几条——公开事实，所有玩家都看得到。 */
+export interface DayJugglerGuessDto {
+  /** 猜测者席位。 */
+  seat: number
+  /** 猜测内容（0–5 条，按提交顺序）。 */
+  guesses: JugglerGuessDto[]
+}
+
 /** 白天公开事实（最新一天：进行中或最近结束）。 */
 export interface DayViewDto {
   dayNumber: number
@@ -332,6 +348,8 @@ export interface DayViewDto {
   openExileIndex: number | null
   /** 当天已裁定的死亡保护，按裁定顺序（每席位至多一条）。 */
   protections: DayProtectionDto[]
+  /** 当天杂耍艺人的公开猜测，按发生顺序（公开事实，R-0057-B）。 */
+  jugglerGuesses: DayJugglerGuessDto[]
   /** 当天打开的额外提名窗口；null = 没有窗口。 */
   extraNomination: DayExtraNominationDto | null
   aboutToBeExecuted: number | null
@@ -377,6 +395,8 @@ export interface PlayerDayDto {
   canNominateExtra: boolean
   /** 额外提名的可提名席位（窗口授予本席时 = 在局座次全部）；窗口不开时为空。 */
   extraNominationCandidates: number[]
+  /** 现在能不能公开猜测（本席持有杂耍艺人、今天是这次持有的首个白天、且还没猜过；R-0057-B）。 */
+  canMakeJugglerGuesses: boolean
 }
 
 /** 一条说书人注记（D-0019）：魔典上挂在席位旁的自由文本提示标记。只说书人视图下发。 */

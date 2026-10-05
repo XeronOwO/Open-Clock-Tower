@@ -29,6 +29,10 @@ public sealed partial class PlayerProjectionLeakGateTests
         Path.Combine("src", "OpenClockTower.Contracts", "DayExileDto.cs"),
         Path.Combine("src", "OpenClockTower.Contracts", "DayProtectionDto.cs"),
         Path.Combine("src", "OpenClockTower.Contracts", "DayExtraNominationDto.cs"),
+        // 杂耍艺人的公开猜测（R-0057-B 第 2 条）：猜测是公开事实，所有玩家都听到了；
+        // 猜对数不走这两份契约（它当晚只说给本人）。
+        Path.Combine("src", "OpenClockTower.Contracts", "DayJugglerGuessDto.cs"),
+        Path.Combine("src", "OpenClockTower.Contracts", "JugglerGuessDto.cs"),
         Path.Combine("src", "OpenClockTower.Contracts", "InformationResultDto.cs"),
         Path.Combine("src", "OpenClockTower.Contracts", "OperationRequestVoidedDto.cs"),
         Path.Combine("src", "OpenClockTower.Contracts", "ReconnectBundleDto.cs"),

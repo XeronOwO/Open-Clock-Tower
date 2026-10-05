@@ -1746,23 +1746,52 @@
   集成 `SavantHostTests`（真宿主：开白天 → 要两条 → 说书人裁定 → 两条只到本人 → 同日第二次被拒 →
   关账；界面级证据待装置）；规范门禁 `DayActionsTests`（覆盖名单）、`ReplayStepCatalogTests`（新事件认领）。
 
-### R-0057-B · 杂耍艺人「首个白天公开猜测 → 当晚报数」的平台口径（Open）
+### R-0057-B · 杂耍艺人「首个白天公开猜测 → 当晚报数」的平台口径（Decided）
 
-- **状态**：**Open**（机制已清点，实现未落地；本条的默认行为在代码里**还不存在**，落地时按下述口径收口）
+- **状态**：Decided（2026-10-05，票据「白天信息族剩余两名」的杂耍艺人半张落地；三处待定项按下述口径定稿）
 - **依据**（钟楼百科 · 2026-10-01 抓取）：《杂耍艺人》· 角色能力——「在你的**首个白天**，你可以**公开**猜测
   任意玩家的角色**最多五次**。在**当晚**，你会得知猜测正确的角色数量。」；· 角色简介 2——必须公开
   （所有玩家听到）、可猜 0–5 个、玩家与角色可重复；· 角色简介 3——「如果在醉酒或中毒时做出了猜测，
   但当晚触发时却清醒且健康，说书人仍然会给他真实的信息」（生效判定在**触发时刻**）；
   · 范例 2——「第四个夜晚，博学者变成了杂耍艺人。**下个白天**，新的杂耍艺人猜测……当晚得知『1』」
   （「首个白天」是**该角色**的第一个白天，不是整局的第一天；与《哲学家》提示 11 同义）。
-- **待定项（落地前必须回答）**：
-  1. 猜对数的**快照时刻**：取当晚结算时刻的角色快照（与「生效判定在触发时刻」同源），
-     还是猜测时刻的快照？平台拟取**结算时刻**（判定与生效同一时刻，可重放、可解释）；
-     落地时若与百科范例冲突再改。
-  2. 猜测的**公开面**：猜测是公开事实（所有玩家听到）→ 进公开投影；猜对数只到本人。
-  3. 「首个白天」的**起算**：按该角色被持有后的第一个白天（角色变更 / 重获能力后重新起算）。
-- **影响面（预计）**：新的白天玩家命令（0–5 条 `{席位, 角色}`）、公开事实的投影面、
-  `juggler` 的夜间契约（`NightOrderTable` 其他夜晚已有格）、`DayActions` 覆盖登记。
+- **处理（Decided；代码注释按下列序号引用）**：
+  1. **入口**：白天玩家命令（`MakeJugglerGuessesCommand`，0–5 条 `{席位, 角色}`；席位由凭据推导，D-0012）。
+     一次提交就是**一次公开猜测**：同一天不能再来第二次（`juggler.already_guessed`）。
+     猜测**不需要说书人裁定**——它是玩家自己说出来的话，平台只做记录与公开；
+     当晚的信息才是说书人给的（第 5 条）。
+  2. **猜对数的快照时刻**：取**当晚结算时刻**的角色快照（与「生效判定在触发时刻」同源；判定与生效
+     同一时刻，可重放、可解释）。逐条计数（同一条猜测重复提交就重复计），提示里给出平台推演值；
+     数字仍由说书人给出（D-0002）。
+  3. **公开面**：猜测进**当天公开账**（`DayRecord.JugglerGuesses`）随白天公开面下发——所有玩家可见；
+     **猜对数只到本人**（当晚的 `InformationResultIssuedEvent`，收件人只有他）。
+  4. **「首个白天」的起算**：账上**最近一次**「变成杂耍艺人」的那个白天——角色变化发生在夜里 → 次日起算，
+     发生在白天 → 当天起算；开局分配的角色 → 第 1 天；开局之后才第一次观测到该角色 → 从"知道的那一天"
+     起算（平台只能从这一刻算）。账上说不清时**显式拒绝**（`juggler.tenure_unknown`，不猜，D-0015）。
+     不是首个白天 → 拒绝（`juggler.not_first_day`）。
+  5. **当晚的信息**：昨天白天**没有做出公开猜测** → 本夜不唤醒（空选项 + `Skip`，槽位照走配额）。
+     做出过猜测 → 说书人裁定点（提示带推演值）；能力未生效（醉酒 / 中毒 / 死亡）与涡流在场（R-0028）
+     照 R-0004 / R-0028 的口径记账、标「可能为假」并加注。规则细节 2 的「对新人宽容处理」
+     （没猜也唤醒并给 0）是**说书人自己的裁量**，不在平台路径上。
+- **影响面**：内核 `JugglerGuess` / `JugglerGuessRecord` / `JugglerGuessesMadeEvent` /
+  `MakeJugglerGuessesInput` / `IJugglerGuessSource` / `JugglerGuessMachine`、`DayRecord.JugglerGuesses`、
+  `DayLedgerFolder` / `StepMachineFolder`（新事件认领）、`DayStepMachine.IsDayInput`、
+  `SettlementContext.JugglerGuesses`、`SeatActivity`（角色变化 / 首次观测的当天与夜里标记）、
+  `SeatActivityLedger.DaysStarted`、`SeatActivityFolder`；规则层 `JugglerGuessWindow` / `JugglerGuessSource` /
+  `JugglerNightAction`（`NightActions` 登记）、`RoleContracts.JugglerGuesses`、`DayActions`（覆盖登记）；
+  应用层 `MakeJugglerGuessesCommand` / `JugglerGuessGate` / `CommandGatePipeline` / `GameCommandDispatcher` /
+  `DayProjection`（`CanMakeJugglerGuesses`）/ `DayReplayPresenter` / `GameNotificationBuilder`；
+  服务端 `GameHub.MakeJugglerGuesses` / `GameCommandFactory` / `ProjectionMapper` / `HubJoinFlow`（从 GameHub 拆出）；
+  契约 `JugglerGuessDto` / `DayJugglerGuessDto` / `DayViewDto` / `PlayerDayDto`；
+  前端 `contracts/game.ts` / `display/format.ts` / `playerGateway` / `PlayerDayPanel.vue`。
+- **回归**：内核 `JugglerGuessMachineTests`（受理与公开账 / 0 条 / 超五条 / 同日第二次 / 非首个白天 /
+  非杂耍艺人 / 角色未观测 / 起算判不了 / 不在局席位 / 册外角色）、`SeatActivityLedgerTests`（角色变化的当天与
+  夜里标记）；规则 `JugglerGuessWindowTests`（开局 / 夜里 / 白天 / 首次观测 / 换回 / 判不了）、
+  `JugglerNightActionTests`（没猜过 Skip / 推演计数 / 涡流注 / 只到本人 / 未生效标注 / 算不出 / 0 条）；
+  集成 `JugglerHostTests`（真宿主：开白天 → 公开猜测进旁观席位视图 → 同日第二次被拒 → 当晚报数只到本人）；
+  规范门禁 `DayActionsTests`（覆盖名单）、`PlayerProjectionLeakGateTests`（新契约登记进扫描面）、
+  `ContractMirrorGateTests`（新字段镜像对账）。**界面级（装置）证据留在验收批次 E40。**
+
 
 ### R-0057-C · 博学者候选事实库：真值求值、组合校验与「昨晚 / 今天」窗口（Decided）
 

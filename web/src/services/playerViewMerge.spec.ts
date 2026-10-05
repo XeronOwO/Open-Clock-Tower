@@ -34,6 +34,7 @@ const day = (dayNumber: number, sequence: number): PlayerDayDto => ({
     exiles: [],
     openExileIndex: null,
     protections: [],
+    jugglerGuesses: [],
     extraNomination: null,
     aboutToBeExecuted: null,
     executed: null,
@@ -53,6 +54,7 @@ const day = (dayNumber: number, sequence: number): PlayerDayDto => ({
   exileSeatCollected: false,
   canNominateExtra: false,
   extraNominationCandidates: [],
+  canMakeJugglerGuesses: false,
 })
 
 function snapshotView(overrides: Partial<PlayerViewDto> = {}): PlayerViewDto {

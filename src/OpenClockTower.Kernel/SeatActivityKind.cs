@@ -15,6 +15,12 @@ public enum SeatActivityKind
     /// <summary>席位角色发生变化（变化前后的角色都已知才算变化，开局分配不算）。</summary>
     CharacterChange,
 
+    /// <summary>
+    /// 开局之后**第一次观测到**该席位的角色（不是"变化"）：平台只能从这一刻起算他持有这个角色
+    /// （R-0057-B 第 3 条「首个白天」的起算口径靠它）。
+    /// </summary>
+    CharacterObserved,
+
     /// <summary>席位阵营发生变化（变化前后的阵营都已知才算变化）。</summary>
     AlignmentChange,
 

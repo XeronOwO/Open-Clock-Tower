@@ -58,6 +58,30 @@ internal sealed class GameCommandFactory
     /// <summary>玩家（博学者）在白天向说书人要两条信息（R-0057；席位由凭据推导，命令面带不出内容）。</summary>
     internal GameCommand AskSavantQuestion() => new AskSavantQuestionCommand();
 
+    /// <summary>
+    /// 玩家（杂耍艺人）在自己的首个白天公开猜测（R-0057-B）：席位由凭据推导，猜测内容随命令带上。
+    /// 形状只做最低限度的守卫（角色名必须非空）；数量上限、首个白天与席位合法性都在内核里判。
+    /// </summary>
+    internal GameCommand MakeJugglerGuesses(JugglerGuessDto[]? guesses)
+    {
+        var mapped = new List<JugglerGuess>();
+        foreach (var guess in guesses ?? [])
+        {
+            if (string.IsNullOrWhiteSpace(guess.Character))
+            {
+                throw Reject("猜测必须给出角色名");
+            }
+
+            mapped.Add(new JugglerGuess
+            {
+                Seat = new SeatId(guess.Seat),
+                Character = new CharacterId(guess.Character),
+            });
+        }
+
+        return new MakeJugglerGuessesCommand { Guesses = mapped };
+    }
+
     /// <summary>说书人强制作废（原因按合法性闸的口径解析：非法值给未定义枚举，由闸拒绝）。</summary>
     internal GameCommand VoidRequest(string requestId, string reason, string? note) =>
         new VoidRequestCommand

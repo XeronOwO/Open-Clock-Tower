@@ -5,8 +5,9 @@
  * 白天是公开信息（百科《规则概要》三）：提名、票面、处决都公示；
  * 能不能动由服务端的权限位决定，前端只做使能提示——服务端仍会独立校验（D-0012）。
  */
-import type { PlayerDayDto, SeatDisplayNameDto } from '@/contracts/game'
+import type { JugglerGuessDto, PlayerDayDto, SeatDisplayNameDto } from '@/contracts/game'
 import { exileStatusTextOf, seatTextOf } from '@/display/format'
+import { ROSTER, characterLabelOf } from '@/display/labels'
 import HelpTip from '@/features/common/HelpTip.vue'
 import VoteDial from '@/features/common/VoteDial.vue'
 import { newIdempotencyKey } from '@/services/idempotency'
@@ -28,6 +29,8 @@ const props = defineProps<{
   castExileVote: (exileIndex: number, voted: boolean, idempotencyKey: string) => Promise<unknown>
   /** 屠夫窗口里的额外提名（仅窗口授予席位本人；R-0050）。 */
   nominateExtra: (seat: number, idempotencyKey: string) => Promise<unknown>
+  /** 杂耍艺人的公开猜测（自己持有该角色、且今天是首个白天时才有入口；R-0057-B）。 */
+  makeJugglerGuesses: (guesses: JugglerGuessDto[], idempotencyKey: string) => Promise<unknown>
 }>()
 const emit = defineEmits<{ diagnostic: [string] }>()
 
@@ -55,6 +58,14 @@ const busy = ref(false)
 const nominee = ref<number | null>(null)
 const exileTarget = ref<number | null>(null)
 const extraNominee = ref<number | null>(null)
+
+/** 杂耍艺人的五条猜测槽（R-0057-B）：最多五次，留空 = 少猜；全空 = 公开声明但不猜。 */
+const jugglerRows = ref(
+  Array.from({ length: 5 }, () => ({ seat: null as number | null, character: '' })),
+)
+
+/** 可猜的席位：公开生死面里的在局席位（服务端已经给全，前端不猜座次）。 */
+const jugglerSeats = computed(() => props.day.lives.map((entry) => entry.seat))
 
 /** 当前开放的那一项提名（含钟盘收票呈现）。 */
 const openNomination = computed(
@@ -242,6 +253,32 @@ async function submitExtraNomination(): Promise<void> {
     busy.value = false
   }
 }
+
+/**
+ * 提交杂耍艺人的公开猜测（R-0057-B）：填了几条就报几条（0 条 = 公开声明但不猜）。
+ * 数量上限、首个白天、有没有猜过都由服务端判——这里只拼参数。
+ */
+async function submitJugglerGuesses(): Promise<void> {
+  const guesses: JugglerGuessDto[] = jugglerRows.value
+    .filter((row) => row.seat !== null && row.character.length > 0)
+    .map((row) => ({ seat: row.seat as number, character: row.character }))
+
+  busy.value = true
+  try {
+    const problem = outcomeProblem(
+      await props.makeJugglerGuesses(guesses, newIdempotencyKey('juggler')),
+    )
+    if (problem !== null) {
+      emit('diagnostic', problem)
+    } else {
+      jugglerRows.value = Array.from({ length: 5 }, () => ({ seat: null, character: '' }))
+    }
+  } catch (error) {
+    emit('diagnostic', `公开猜测失败：${error instanceof Error ? error.message : String(error)}`)
+  } finally {
+    busy.value = false
+  }
+}
 </script>
 
 <template>
@@ -388,7 +425,57 @@ async function submitExtraNomination(): Promise<void> {
       </button>
     </div>
 
+    <div v-if="day.canMakeJugglerGuesses" class="row juggler" data-testid="player-juggler">
+      <span class="hint">
+        杂耍艺人：这是你的首个白天——公开猜测最多五名玩家的角色，所有人都听得到；
+        猜对的数量**当晚**只告诉你本人（R-0057-B）。留空 = 公开声明但不猜。
+      </span>
+      <div v-for="(row, index) in jugglerRows" :key="index" class="juggler-row">
+        <select v-model.number="row.seat" :data-testid="`player-juggler-seat-${index}`">
+          <option :value="null">（不猜）</option>
+          <option v-for="candidate in jugglerSeats" :key="candidate" :value="candidate">
+            {{ seatText(candidate) }}
+          </option>
+        </select>
+        <select v-model="row.character" :data-testid="`player-juggler-character-${index}`">
+          <option value="">（不猜）</option>
+          <option v-for="profile in ROSTER" :key="profile.slug" :value="profile.slug">
+            {{ profile.name }}
+          </option>
+        </select>
+      </div>
+      <button
+        type="button"
+        class="primary"
+        data-testid="player-juggler-submit"
+        :disabled="busy"
+        @click="submitJugglerGuesses()"
+      >
+        公开这些猜测
+      </button>
+    </div>
+
     <p v-if="day.publicView.status !== 'Open'" class="hint" data-testid="player-day-closed">白天已结束。</p>
+
+    <h3 v-if="day.publicView.jugglerGuesses.length > 0" class="sub-title">公开猜测</h3>
+    <ul
+      v-if="day.publicView.jugglerGuesses.length > 0"
+      class="juggler-guesses"
+      data-testid="player-juggler-guesses"
+      :data-juggler-guess-count="day.publicView.jugglerGuesses.length"
+    >
+      <li
+        v-for="record in day.publicView.jugglerGuesses"
+        :key="record.seat"
+        :data-guesser="record.seat"
+      >
+        <strong>{{ seatText(record.seat) }}</strong>
+        <span v-if="record.guesses.length === 0">公开声明但不做猜测</span>
+        <span v-else>
+          {{ record.guesses.map((guess) => `${seatText(guess.seat)} 是 ${characterLabelOf(guess.character)}`).join('；') }}
+        </span>
+      </li>
+    </ul>
 
     <p
       v-if="day.publicView.aboutToBeExecuted !== null"

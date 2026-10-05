@@ -169,6 +169,7 @@ public static class ProjectionMapper
         ExileSeatCollected = day.ExileSeatCollected,
         CanNominateExtra = day.CanNominateExtra,
         ExtraNominationCandidates = [.. day.ExtraNominationCandidates.Select(seat => seat.Value)],
+        CanMakeJugglerGuesses = day.CanMakeJugglerGuesses,
     };
 
     /// <summary>公开生死面条目 → DTO（席位 + 对外可见生死；不含死因）。</summary>
@@ -189,6 +190,21 @@ public static class ProjectionMapper
             ToDto(exile, exile.Index == day.OpenExile?.Index ? exileSweep : null))],
         OpenExileIndex = day.OpenExile?.Index,
         Protections = [.. day.ProtectionDecisions.Select(ToDto)],
+        JugglerGuesses =
+        [
+            .. day.JugglerGuesses.Select(record => new DayJugglerGuessDto
+            {
+                Seat = record.Seat.Value,
+                Guesses =
+                [
+                    .. record.Guesses.Select(guess => new JugglerGuessDto
+                    {
+                        Seat = guess.Seat.Value,
+                        Character = guess.Character.Value,
+                    }),
+                ],
+            }),
+        ],
         ExtraNomination = day.ExtraNomination is { } window
             ? new DayExtraNominationDto
             {

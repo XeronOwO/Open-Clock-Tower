@@ -376,34 +376,11 @@ public sealed class DayPhaseHostTests
         Assert.Equal("phase.day_requires_night", result.RejectionCode);
     }
 
-    /// <summary>与白天相关、但契约未实现的角色在场 → 开白天显式拒绝，不静默跳过。</summary>
-    /// <remarks>
-    /// 用还没实现的**杂耍艺人**（博学者已随 R-0057 落地；两者都在白天的"未覆盖"名单里进出，
-    /// 这条测试跟着名单走）。
-    /// </remarks>
-    [Fact]
-    public async Task StartDay_WithUnimplementedDayRelevantCharacter_IsRejected()
-    {
-        await using var host = new TestServerHost(slotQuotaSeconds: 3600, seatCount: 3, autoStartTestNight: false);
-        await using var storyteller = await host.ConnectStorytellerAsync();
-
-        var assigned = await storyteller.InvokeAsync<CommandResultDto>(
-            "AssignCharacters",
-            new SeatCharacterAssignmentDto[]
-            {
-                new() { Seat = 1, Character = "dreamer" },
-                new() { Seat = 2, Character = "clockmaker" },
-                new() { Seat = 3, Character = "juggler" },
-            },
-            "test-day-assign-juggler");
-        Assert.Equal("Accepted", assigned.Kind);
-
-        await CompleteFixtureNightAsync(host, storyteller);
-
-        var result = await storyteller.InvokeAsync<CommandResultDto>("StartDay", "test-day-juggler");
-        Assert.Equal("Rejected", result.Kind);
-        Assert.Equal("legality.day_contract_missing", result.RejectionCode);
-    }
+    // 说明（2026-10-05）：原「带未实现白天契约的角色 → 开白天被拒」的真宿主用例已删除——
+    // 杂耍艺人落地后，DayActions 名单里的白天相关角色**全部已实现**，`legality.day_contract_missing`
+    // 在首版花名册里已经没有可触发的角色。守卫本身仍在（跨剧本扩展时新角色走它，见
+    // `docs/backlog/future/cross-script-extension.md`）；"带白天相关角色能开白天"的正面路径由
+    // `JugglerHostTests` / `SavantHostTests` 覆盖。
 
     /// <summary>
     /// 零信任矩阵行 5 的原场景：**白天**提交夜间行动 → 阶段闸拒绝（不泄露、不带序号、状态不变、有审计）。

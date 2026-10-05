@@ -25,19 +25,20 @@ public sealed class NightPlanBuilderTests
             }).ToArray(),
         };
 
-    /// <summary>构造建表请求（席位默认 1..seatCount）。</summary>
+    /// <summary>构造建表请求（席位默认 1..seatCount；契约目录默认用首版目录）。</summary>
     private static NightPlanRequest Request(
         GameState state,
         int nightNumber = 1,
         NightOrderVariant variant = NightOrderVariant.Original,
-        int seatCount = 2) =>
+        int seatCount = 2,
+        INightActionCatalog? actions = null) =>
         new()
         {
             NightNumber = nightNumber,
             Variant = variant,
             Seats = Enumerable.Range(1, seatCount).Select(number => new SeatId(number)).ToArray(),
             State = state,
-            Actions = NightActions.Default,
+            Actions = actions ?? NightActions.Default,
         };
 
     /// <summary>建表：断言成功并取回计划。</summary>
@@ -237,16 +238,30 @@ public sealed class NightPlanBuilderTests
         Assert.Equal("plan.seat_unassigned", BuildFailure(Request(state, seatCount: 2)));
     }
 
-    /// <summary>在场且有夜晚行动的角色没有契约：拒绝，禁止静默当成空槽位。</summary>
+    /// <summary>
+    /// 在场且有夜晚行动的角色没有契约：拒绝，禁止静默当成空槽位。
+    /// </summary>
+    /// <remarks>
+    /// 首版 30 个角色如今都已落地（杂耍艺人是最后一个），名单里已经没有"无契约"的真角色了，
+    /// 因此这里用一个**空契约目录**触发同一条守卫（跨剧本扩展时新角色会走它）。
+    /// </remarks>
     [Fact]
     public void InPlayNightCharacterWithoutContract_IsRejected()
     {
-        // 用还没实现的杂耍艺人（其他夜晚顺序表上在场、无契约）；女裁缝已随 R-0040 落地。
         var state = State((1, "juggler", LifeState.Alive));
 
-        Assert.Equal("plan.contract_missing", BuildFailure(Request(state, nightNumber: 2, seatCount: 1)));
+        Assert.Equal(
+            "plan.contract_missing",
+            BuildFailure(Request(state, nightNumber: 2, seatCount: 1, actions: NoContracts.Instance)));
     }
 
+    /// <summary>空契约目录（只用于触发"契约缺失"守卫）。</summary>
+    private sealed class NoContracts : INightActionCatalog
+    {
+        internal static readonly NoContracts Instance = new();
+
+        public INightAction? Find(CharacterId character) => null;
+    }
     /// <summary>
     /// 哲学家获得能力后（R-0036）：被获得角色的格**没有行动者**时由获得者代行——那一格是行动槽位、
     /// 行动者是哲学家、能力契约取被获得角色；他自己的格变成「本夜无行动」（Skip，配额照走）。

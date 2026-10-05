@@ -19,6 +19,7 @@ import {
 import type {
   DecisionOptionDto,
   InformationResultDto,
+  JugglerGuessDto,
   KlutzChoiceDto,
   OperationRequestAnsweredDto,
   OperationRequestDto,
@@ -317,6 +318,24 @@ export class PlayerGateway {
   }
 
   /**
+   * 杂耍艺人在自己的首个白天公开猜测 0–5 名玩家的角色（R-0057-B）。
+   *
+   * 猜测是**公开事实**：提交成功后所有玩家的白天视图都会带上它；猜对数当晚才给、只到本人。
+   * 席位由凭据推导——这里不传自己的席位，前端不猜身份（D-0012）。
+   */
+  async makeJugglerGuesses(
+    guesses: readonly JugglerGuessDto[],
+    idempotencyKey: string,
+  ): Promise<unknown> {
+    return this.connection.invoke<unknown>(
+      'MakeJugglerGuesses',
+      this.requireCredential(),
+      guesses,
+      idempotencyKey,
+    )
+  }
+
+  /**
    * 拉取一页复盘（R-0043 / D-0020）。
    *
    * 可见性闸在服务端：结束批次之前玩家调用会被显式拒绝；进行中玩家的任何收包都**不含**复盘字段，
@@ -548,6 +567,8 @@ export function normalizePlayerDay(raw: unknown): PlayerDayDto | null {
     extraNominationCandidates: asArray<unknown>(day['extraNominationCandidates'])
       .map((candidate) => asCount(candidate))
       .filter((candidate): candidate is number => candidate !== null),
+    // 杂耍艺人的公开猜测入口（R-0057-B）：权限位由服务端算好，坏字段退化成 false。
+    canMakeJugglerGuesses: asBoolean(day['canMakeJugglerGuesses']) ?? false,
   }
 }
 

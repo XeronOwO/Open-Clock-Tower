@@ -8,6 +8,7 @@
 import type {
   GameOutcomeDto,
   InformationResultDto,
+  JugglerGuessDto,
   KlutzChoiceDto,
   OperationRequestDto,
   PlayerDayDto,
@@ -337,6 +338,14 @@ function nominateExtraSeat(seat: number, idempotencyKey: string): Promise<unknow
   return ensureGateway().nominateExtra(seat, idempotencyKey)
 }
 
+/** 杂耍艺人的公开猜测（R-0057-B）：猜测进公开面，猜对数当晚只到本人。 */
+function makeJugglerGuesses(
+  guesses: JugglerGuessDto[],
+  idempotencyKey: string,
+): Promise<unknown> {
+  return ensureGateway().makeJugglerGuesses(guesses, idempotencyKey)
+}
+
 /** 艺术家提问（R-0040）：问题由玩家决定；「要求重问」不消耗能力，回答只到本人。 */
 async function askArtistQuestion(): Promise<void> {
   const question = artistQuestion.value.trim()
@@ -624,6 +633,7 @@ onBeforeUnmount(() => {
         :propose-exile="proposeExileSeat"
         :cast-exile-vote="voteOnExile"
         :nominate-extra="nominateExtraSeat"
+        :make-juggler-guesses="makeJugglerGuesses"
         @diagnostic="pushDiagnostic"
       />
 

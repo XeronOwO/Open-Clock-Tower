@@ -46,6 +46,9 @@ internal static class DayLedgerFolder
             ExtraNominationWindowOpenedEvent windowOpened => ApplyExtraNominationWindowOpened(current, windowOpened),
             ExtraNominationMadeEvent extraMade => ApplyExtraNominationMade(current, extraMade),
 
+            // 杂耍艺人的公开猜测（R-0057-B）：当天公开事实，随白天公开面下发。
+            JugglerGuessesMadeEvent jugglerGuesses => ApplyJugglerGuesses(current, jugglerGuesses),
+
             _ => throw new InvalidOperationException($"不是白天事件：{gameEvent.GetType().Name}"),
         };
     }
@@ -539,4 +542,37 @@ internal static class DayLedgerFolder
         });
     }
 
+    /// <summary>
+    /// 杂耍艺人的公开猜测（R-0057-B）：折进当天账，顺序追加。
+    /// </summary>
+    /// <remarks>
+    /// 不在这里校验"是不是首个白天 / 有没有用过"——那是 <see cref="JugglerGuessMachine"/> 的职责
+    /// （折叠层只面对事件流，重放时不该重跑规则判定）。这里只做**流完整性**校验：同一席位同一天
+    /// 只能有一次公开猜测。
+    /// </remarks>
+    private static DayState ApplyJugglerGuesses(DayState state, JugglerGuessesMadeEvent made)
+    {
+        return DayLedgerEdit.UpdateOpenDay(state, made.DayNumber, day =>
+        {
+            if (day.JugglerGuesses.Any(record => record.Seat == made.Seat))
+            {
+                throw new InvalidOperationException(
+                    $"事件流顺序损坏：席位 {made.Seat.Value} 在白天 {day.DayNumber} 已经公开猜过一次");
+            }
+
+            return day with
+            {
+                JugglerGuesses =
+                [
+                    .. day.JugglerGuesses,
+                    new JugglerGuessRecord
+                    {
+                        Seat = made.Seat,
+                        DayNumber = made.DayNumber,
+                        Guesses = made.Guesses,
+                    },
+                ],
+            };
+        });
+    }
 }

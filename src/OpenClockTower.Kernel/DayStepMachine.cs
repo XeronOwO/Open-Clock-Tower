@@ -16,7 +16,10 @@ namespace OpenClockTower.Kernel;
 /// </remarks>
 internal static class DayStepMachine
 {
-    /// <summary>这条输入是不是白天输入（提名 / 额外提名 / 钟盘收票 / 计票 / 流放 / 结束白天）。</summary>
+    /// <summary>
+    /// 这条输入是不是白天输入（提名 / 额外提名 / 钟盘收票 / 计票 / 流放 / 死亡保护 /
+    /// 杂耍艺人的公开猜测 / 结束白天）。
+    /// </summary>
     internal static bool IsDayInput(StepMachineInput input) =>
         input is NominateInput
             or NominateExtraInput
@@ -32,6 +35,7 @@ internal static class DayStepMachine
             or ResumeExileSweepInput
             or CountExileVotesInput
             or ResolveDayProtectionInput
+            or MakeJugglerGuessesInput
             or CloseDayInput;
 
     /// <summary>开启白天：校验计划形状与天数，产出阶段 / 白天账 / 槽位事件。</summary>
@@ -119,6 +123,7 @@ internal static class DayStepMachine
             CastExileVoteInput castExileVote => ExileMachine.CastVote(day, context, castExileVote),
             CountExileVotesInput countExileVotes => ExileMachine.CountVotes(day, context, countExileVotes),
             ResolveDayProtectionInput resolveProtection => DayProtectionMachine.Resolve(day, context, resolveProtection),
+            MakeJugglerGuessesInput jugglerGuesses => JugglerGuessMachine.Make(day, context, jugglerGuesses),
             CloseDayInput => DayMachine.CloseDay(day, context),
             _ => throw new InvalidOperationException($"不是白天输入：{input.GetType().Name}"),
         };

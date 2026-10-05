@@ -10,6 +10,7 @@ import type {
   BarberNightDto,
   DayExileDto,
   DayExtraNominationDto,
+  DayJugglerGuessDto,
   DayNominationDto,
   DayProtectionDto,
   DayProtectionPromptDto,
@@ -20,6 +21,7 @@ import type {
   EffectDto,
   FangGuInfectionDto,
   GameOutcomeDto,
+  JugglerGuessDto,
   KlutzChoiceDto,
   LostAbilityMarkerDto,
   OperationRequestVoidedDto,
@@ -540,6 +542,38 @@ export function normalizeDayExtraNomination(raw: unknown): DayExtraNominationDto
   return seat === null || status === null ? null : { seat, status }
 }
 
+/** 归一化一条公开猜测（R-0057-B）：缺席位或角色名时丢弃该条（宁可少一条，不编一个人）。 */
+export function normalizeJugglerGuess(raw: unknown): JugglerGuessDto | null {
+  if (raw === null || typeof raw !== 'object') {
+    return null
+  }
+
+  const guess = raw as Record<string, unknown>
+  const seat = asSeatNumber(guess['seat'])
+  const character = asSizedText(guess['character'], 64)
+  return seat === null || character === null ? null : { seat, character }
+}
+
+/** 归一化一次公开猜测：猜测者席位缺了整条丢弃，单条猜测坏了只丢那一条。 */
+export function normalizeDayJugglerGuess(raw: unknown): DayJugglerGuessDto | null {
+  if (raw === null || typeof raw !== 'object') {
+    return null
+  }
+
+  const record = raw as Record<string, unknown>
+  const seat = asSeatNumber(record['seat'])
+  if (seat === null) {
+    return null
+  }
+
+  return {
+    seat,
+    guesses: asArray<unknown>(record['guesses'])
+      .map(normalizeJugglerGuess)
+      .filter((guess): guess is JugglerGuessDto => guess !== null),
+  }
+}
+
 /** 归一化白天公开事实；缺天数 / 状态时返回 null（不编造"某一天"）。 */
 export function normalizeDayView(raw: unknown): DayViewDto | null {
   if (raw === null || typeof raw !== 'object') {
@@ -566,6 +600,9 @@ export function normalizeDayView(raw: unknown): DayViewDto | null {
     protections: asArray<unknown>(day['protections'])
       .map(normalizeDayProtection)
       .filter((protection): protection is DayProtectionDto => protection !== null),
+    jugglerGuesses: asArray<unknown>(day['jugglerGuesses'])
+      .map(normalizeDayJugglerGuess)
+      .filter((guess): guess is DayJugglerGuessDto => guess !== null),
     extraNomination: normalizeDayExtraNomination(day['extraNomination']),
     aboutToBeExecuted: asCount(day['aboutToBeExecuted']),
     executed: asCount(day['executed']),

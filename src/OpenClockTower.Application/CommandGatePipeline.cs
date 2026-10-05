@@ -153,6 +153,7 @@ public static class CommandGatePipeline
 
             AskArtistQuestionCommand => ArtistQuestionGate.IdentityRejection(actor),
             AskSavantQuestionCommand => SavantQuestionGate.IdentityRejection(actor),
+            MakeJugglerGuessesCommand => JugglerGuessGate.IdentityRejection(actor),
 
             CountVotesCommand when actor.Kind is ActorKind.Host or ActorKind.Storyteller => null,
             CountVotesCommand => Reject(
@@ -329,6 +330,10 @@ public static class CommandGatePipeline
             // 博学者的要信息同理（R-0057）：是不是博学者、今天要过没有在内核里判。
             case AskSavantQuestionCommand:
                 return SavantQuestionGate.DayRequirement(machine);
+
+            // 杂耍艺人的公开猜测同理（R-0057-B）：是不是杂耍艺人、是不是首个白天在内核里判。
+            case MakeJugglerGuessesCommand:
+                return JugglerGuessGate.DayRequirement(machine);
 
             // 处罚处决可在任何已开始的阶段发生（含夜晚、含提名阶段之外：百科《畸形秀演员》；
             // R-0020）：具体依据（要求是否生效 / 是不是畸形秀演员）在内核里判，这里只要求对局已开始。

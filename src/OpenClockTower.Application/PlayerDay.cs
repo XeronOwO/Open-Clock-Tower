@@ -67,4 +67,10 @@ public sealed record PlayerDay
 
     /// <summary>额外提名的可提名席位（窗口授予本席时 = 在局座次全部，含今天已被提名过的人；R-0050）。</summary>
     public required IReadOnlyList<SeatId> ExtraNominationCandidates { get; init; }
+
+    /// <summary>
+    /// 现在能不能公开猜测（本席持有杂耍艺人、今天是这次持有的**首个白天**、且还没猜过；R-0057-B）。
+    /// 与内核的 <c>JugglerGuessMachine</c> 同源，服务端算好，前端只按它使能输入（web/AGENTS §4）。
+    /// </summary>
+    public required bool CanMakeJugglerGuesses { get; init; }
 }

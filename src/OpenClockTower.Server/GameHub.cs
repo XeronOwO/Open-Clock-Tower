@@ -105,35 +105,11 @@ public sealed class GameHub : Hub<IGameClient>
         };
     }
 
-    /// <summary>说书人加入：票据定位身份，签发连接凭据（同局同一时刻只保留一条有效说书人连接）。</summary>
-    public async Task<StorytellerJoinDto> JoinStoryteller(string ticket)
-    {
-        var setup = await LoadSetupAsync();
-        if (!string.Equals(setup.StorytellerTicket, ticket, StringComparison.Ordinal))
-        {
-            _logger.LogWarning("说书人加入被拒：票据无效 connection={ConnectionId}", Context.ConnectionId);
-            throw new HubException("说书人票据无效");
-        }
-
-        var credential = _registry.IssueForStoryteller(Context.ConnectionId);
-        _logger.LogInformation(
-            "已签发说书人连接凭据：connection={ConnectionId} 指纹={Fingerprint}（旧说书人连接已作废）",
-            Context.ConnectionId,
-            ConnectionCredential.FingerprintOf(credential.Value));
-
-        var view = ProjectionMapper.ToDto(_session.GetStorytellerView());
-        _logger.LogInformation(
-            "说书人已加入：connection={ConnectionId} 序号={Sequence} 挂起={Held}",
-            Context.ConnectionId,
-            view.Sequence,
-            view.Pending is not null);
-
-        return new StorytellerJoinDto
-        {
-            Credential = credential.Value,
-            View = view,
-        };
-    }
+    /// <summary>
+    /// 说书人加入：票据定位身份，签发连接凭据（同局同一时刻只保留一条有效说书人连接）。
+    /// </summary>
+    /// <remarks>流程本体在 <see cref="HubJoinFlow"/>（单文件 600 行门禁）；这里只把当前连接接上。</remarks>
+    public Task<StorytellerJoinDto> JoinStoryteller(string ticket) => JoinFlow.JoinStorytellerAsync(ticket);
 
     /// <summary>玩家提交响应。</summary>
     public Task<CommandResultDto> SubmitResponse(
@@ -165,6 +141,16 @@ public sealed class GameHub : Hub<IGameClient>
         ExecuteAsync(
             ResolveActor(credential),
             Commands().AskSavantQuestion(),
+            idempotencyKey);
+
+    /// <summary>玩家（杂耍艺人）在自己的首个白天公开猜测 0–5 名玩家的角色（R-0057-B）。</summary>
+    public Task<CommandResultDto> MakeJugglerGuesses(
+        string credential,
+        JugglerGuessDto[]? guesses,
+        string idempotencyKey) =>
+        ExecuteAsync(
+            ResolveActor(credential),
+            Commands().MakeJugglerGuesses(guesses),
             idempotencyKey);
 
     /// <summary>说书人强制作废。</summary>
@@ -561,19 +547,9 @@ public sealed class GameHub : Hub<IGameClient>
         long clientSequence = 0) =>
         _executor.ExecuteAsync(actor, command, idempotencyKey, clientSequence, Context.ConnectionAborted);
 
-    private async Task<GameSetup> LoadSetupAsync()
-    {
-        var setup = await _catalog.FindAsync(_gameId, Context.ConnectionAborted);
-        if (setup is null)
-        {
-            _logger.LogWarning(
-                "命令被拒绝（会话）：connection={ConnectionId} 原因=本局还没有会话信息",
-                Context.ConnectionId);
-            throw new HubException("本局还没有会话信息");
-        }
-
-        return setup;
-    }
+    /// <summary>本次调用的说书人加入流程（连接 id 与取消令牌属于本次调用）。</summary>
+    private HubJoinFlow JoinFlow =>
+        new(_catalog, _gameId, _session, _registry, _logger, Context.ConnectionId, Context.ConnectionAborted);
 
     /// <summary>
     /// 凭据 → 身份（唯一的身份来源；D-0012：客户端声明一律不认）。

@@ -34,6 +34,12 @@ public sealed record DayRecord
     public IReadOnlyList<DayProtectionDecision> ProtectionDecisions { get; init; } = [];
 
     /// <summary>
+    /// 当天杂耍艺人的公开猜测，按发生顺序（R-0057-B）：这是**公开事实**——所有玩家都听到了那几句话，
+    /// 因此随白天公开面一起下发；猜对数不在这里（当晚由说书人给出，只到本人）。
+    /// </summary>
+    public IReadOnlyList<JugglerGuessRecord> JugglerGuesses { get; init; } = [];
+
+    /// <summary>
     /// 当前「即将被处决」的玩家；null = 当前没有人（无人提名 / 票数不够 / 最高票平局）。
     /// 只由计票改写（《投票》：计票后不再重判）。
     /// </summary>

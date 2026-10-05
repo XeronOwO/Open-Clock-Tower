@@ -21,6 +21,12 @@ public sealed record DayViewDto
     /// <summary>当天已裁定的死亡保护，按裁定顺序（每席位至多一条；R-0048）。</summary>
     public required DayProtectionDto[] Protections { get; init; }
 
+    /// <summary>
+    /// 当天杂耍艺人的公开猜测，按发生顺序（**公开事实**：所有玩家都听到了，R-0057-B 第 2 条）；
+    /// 猜对数不在这里——它当晚由说书人给出、只到本人。
+    /// </summary>
+    public required DayJugglerGuessDto[] JugglerGuesses { get; init; }
+
     /// <summary>当天打开的额外提名窗口（屠夫）；null = 没有窗口（R-0050）。</summary>
     public DayExtraNominationDto? ExtraNomination { get; init; }
 

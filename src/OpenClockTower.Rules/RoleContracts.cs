@@ -50,6 +50,10 @@ public static class RoleContracts
     public static IReadOnlyList<ISavantQuestionSource> SavantQuestions { get; } =
         [new SavantQuestionSource()];
 
+    /// <summary>杂耍艺人猜测依据契约（R-0057-B）：「首个白天」的起算与合法角色名。</summary>
+    public static IReadOnlyList<IJugglerGuessSource> JugglerGuesses { get; } =
+        [new JugglerGuessSource()];
+
     /// <summary>死亡保护来源（R-0048）：怪咖的「当天不能被流放」（流放致死收口读它）。</summary>
     public static IReadOnlyList<IDeathProtectionSource> DeathProtections { get; } =
         [new DeviantProtectionSource()];

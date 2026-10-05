@@ -54,6 +54,7 @@ public static class NightActions
             [new CharacterId("fang-gu")] = new FangGuNightAction(),
             [new CharacterId("philosopher")] = new PhilosopherNightAction(),
             [new CharacterId("seamstress")] = new SeamstressNightAction(),
+            [new CharacterId("juggler")] = new JugglerNightAction(),
             [new CharacterId("barista")] = new BaristaNightAction(),
             [new CharacterId("bone-collector")] = new BoneCollectorNightAction(),
             [new CharacterId("harlot")] = new HarlotNightAction(),

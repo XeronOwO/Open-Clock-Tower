@@ -165,6 +165,9 @@ internal static class StepMachineFolder
             // 屠夫窗口（D4 / R-0050）：首次处决后的开窗与窗口内的额外提名，都折进当天账。
             ExtraNominationWindowOpenedEvent or ExtraNominationMadeEvent => ApplyDay(state, gameEvent),
 
+            // 杂耍艺人的公开猜测（R-0057-B）：当天公开事实，折进白天账（与上面几族同一路径）。
+            JugglerGuessesMadeEvent => ApplyDay(state, gameEvent),
+
             // 夜晚处罚处决（DayNumber = null）不写白天账：不把"还没有白天"物化成空账（R-0020）。
             ExecutedEvent { DayNumber: null } => Require(state, gameEvent),
             ExecutedEvent => ApplyDay(state, gameEvent),

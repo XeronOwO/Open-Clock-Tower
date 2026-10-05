@@ -135,13 +135,17 @@ public static class GameStateMachine
             // 侵染产生的角色 / 阵营变化与死亡另有配套的 SeatStateChangedEvent 折进账里。
             FangGuInfectionRecordedEvent => current,
 
+            // 杂耍艺人的公开猜测（R-0057-B）：它是**白天账**里的公开事实（折进 DayRecord），
+            // 既不压维度也不产生效果，六维度与效果不变。
+            JugglerGuessesMadeEvent => current,
+
             // 亡骨魔杀死爪牙（R-0056）：记进状态账（保留能力窗口与邻近镇民中毒都由常驻来源按它派生）。
             VigormortisKillRecordedEvent recorded => ApplyVigormortisKillRecorded(current, recorded),
 
             // 白天流程事件：它们改变的是步骤机状态里的白天账（StepMachineFolder），不改六维度与效果；
             // 处决产生的死亡由配套的 SeatStateChangedEvent 折进账里（处决 ≠ 死亡，百科《处决》）。
             // 例外：黎明要推进失效账本的窗口起点（R-0004 第 2 条，见 ApplyDawn）——六维度与效果仍不变。
-            DayStartedEvent => ApplyDawn(current),
+            DayStartedEvent started => ApplyDawn(current, started),
             NominationMadeEvent => current,
             VoteCastEvent => current,
             VoteSweepStartedEvent => current,
@@ -454,11 +458,11 @@ public static class GameStateMachine
     /// <remarks>
     /// 不删记录（R-0004 第 4 条：记录与数学家是否在场无关）；首夜还没有黎明，窗口起点保持 0（全账）。
     /// </remarks>
-    private static GameState ApplyDawn(GameState state) =>
+    private static GameState ApplyDawn(GameState state, DayStartedEvent started) =>
         state with
         {
             Malfunctions = state.Malfunctions.AdvanceDawn(),
-            Activity = SeatActivityFolder.Dawn(state.Activity),
+            Activity = SeatActivityFolder.Dawn(state.Activity, started.DayNumber),
         };
 
     /// <summary>按事件里记录的分类逐条追加，顺序与事件一致（R-0004）。</summary>

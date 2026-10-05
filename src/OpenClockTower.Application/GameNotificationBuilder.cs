@@ -49,6 +49,7 @@ public static class GameNotificationBuilder
                 or DayProtectionDecidedEvent
                 or ExtraNominationWindowOpenedEvent
                 or ExtraNominationMadeEvent
+                or JugglerGuessesMadeEvent
                 or ExecutedEvent
                 or DayClosedEvent)
             {

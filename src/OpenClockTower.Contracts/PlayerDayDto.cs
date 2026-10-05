@@ -62,4 +62,10 @@ public sealed record PlayerDayDto
     /// 窗口不开或本席不是授予席位时为空。
     /// </summary>
     public required int[] ExtraNominationCandidates { get; init; }
+
+    /// <summary>
+    /// 现在能不能公开猜测（本席持有杂耍艺人、今天是这次持有的**首个白天**、且还没猜过；R-0057-B）。
+    /// 服务端算好，前端只按它使能输入（web/AGENTS §4）。
+    /// </summary>
+    public required bool CanMakeJugglerGuesses { get; init; }
 }

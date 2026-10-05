@@ -53,6 +53,7 @@ internal static class SessionSettlement
             AdjudicatedExecutions = RoleContracts.AdjudicatedExecutions,
             ArtistQuestions = RoleContracts.ArtistQuestions,
             SavantQuestions = RoleContracts.SavantQuestions,
+            JugglerGuesses = RoleContracts.JugglerGuesses,
             DeathProtections = RoleContracts.DeathProtections,
             ExtraNominations = RoleContracts.ExtraNominations,
             Machine = machine,
