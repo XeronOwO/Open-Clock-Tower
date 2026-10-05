@@ -115,24 +115,24 @@
 | 7 | 无关玩家视角 | 保留能力 / 中毒标记只说书人可见 | 真宿主：旁观席（4 号）与当事席（2 号）的 `PlayerView.InformationResults` 为空、无待响应请求；标记只出现在说书人视图的 `PersistentEffects`。结构性依据：`PlayerView` 没有效果通道，DTO 名单由 `PlayerProjectionLeakGateTests` 扫 | 通过 |
 
 **界面级（装置）证据**：批次 E40 判出——新装置 `tools/verify-retention-day-info.mjs`
-（6 席一局：亡骨魔 / 女巫 / 呆瓜 / 博学者 / 杂耍艺人 / 神谕者；取证档 **66 项全部通过 / 0 失败**、
-12 张截图，逐项见 `docs/acceptance/batches.md` 批次 E40）：
+（6 席一局：亡骨魔 / 女巫 / 呆瓜 / 博学者 / 杂耍艺人 / 神谕者；取证档 **74 项全部通过 / 0 失败**、
+13 张截图，逐项见 `docs/acceptance/batches.md` 批次 E40）：
 
-- `retention-08-vigormortis-side-decision`：说书人侧开出追加裁定点「亡骨魔杀死了爪牙 2 号：请选择哪一侧
+- `retention-09-vigormortis-side-decision`：说书人侧开出追加裁定点「亡骨魔杀死了爪牙 2 号：请选择哪一侧
   最近的镇民中毒」，两个候选分别是「4 号玩家（顺时针最近的镇民）」与「6 号玩家（逆时针最近的镇民）」
   ——哪一侧是谁由平台算好，说书人只做选择（R-0056 第 2 条）；
-- `retention-10-dead-minion-retained`：2 号牌面「已死亡 + 保留能力」、6 号牌面「中毒」；状态账里
+- `retention-11-dead-minion-retained`：2 号牌面「已死亡 + 保留能力」、6 号牌面「中毒」；状态账里
   2 号生死=死亡（来由 `sv:night-2:vigormortis:kill`）、6 号中毒=中毒（来由
   `standing:vigormortis.retention:1:2:poison:6`）；效果归因链同时列出保留能力窗口（1 → 2）、
   中毒（1 → 6）与击杀（1 → 2）三条；失效账本里 6 号 oracle 的原因分类为「中毒」；
-- `retention-12-dead-witch-woken`：**第 3 夜**，已经死亡（说书人牌面 `data-life=Dead`）的 2 号在自己的
+- `retention-13-dead-witch-woken`：**第 3 夜**，已经死亡（说书人牌面 `data-life=Dead`）的 2 号在自己的
   设备上收到「女巫选择一名玩家诅咒」的请求并提交成功——这是行 3 的界面面（死亡不等于不再被唤醒）。
 
 ## 界面级取证（批次 E40，2026-10-05）
 
 - 装置：`tools/verify-retention-day-info.mjs`（新装置，登记在 `docs/acceptance/devices.md` §1）；
-  取证档 `--quota 2 --screenshots-all --build`：**66 项全部通过 / 0 失败 / 0 跳过、退出码 0**、79s，
-  12 张截图均为本次运行写入；迭代档 33s。
+  取证档 `--quota 2 --screenshots-all --build`：**74 项全部通过 / 0 失败 / 0 跳过、退出码 0**、151s，
+  13 张截图均为本次运行写入；迭代档 37s。
 - 本票相关的运行时断言：首夜女巫之外全是空槽（亡骨魔「每个夜晚*」首夜不入格）→ 第 2 夜爪牙段先醒 →
   恶魔杀 2 号 → 选侧裁定点（两候选各含席位号）→ 2 号 `data-life=Dead` + 保留能力窗口 + 6 号状态账「中毒」→
   **不随黄昏到期**（第 3 夜开始时窗口仍在）→ 第 3 夜死者被唤醒并提交；
