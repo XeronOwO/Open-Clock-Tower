@@ -125,10 +125,11 @@
 2. **说书人面板呈现**——**已收口**：口径选择入口、裁定点上下文、账本与结算结论、效果链接由批次 E2 判过；
    每步摘要（`StepDigest`）由 `done/storyteller-step-insights.md` 交付（`StepDigestDto` 已在契约里）；
    `MalfunctionKind` 等枚举值的中文文案在 `src/OpenClockTower.Application/ReplayText.cs`。
-3. **玩家端的角色展示**——**仍有效，已立票**：信息结果已按收件人下发（含重连补齐），
-   但玩家投影（`src/OpenClockTower.Contracts/PlayerViewDto.cs`）仍无「本人角色」出口：
-   玩家看不到自己拿到什么角色。2026-10-05 由 `todo/player-own-character.md` 接管
-   （本条原先只写「随玩家端票据」，而那张票据并不存在）。
+3. **玩家端的角色展示**——**已收口（2026-10-05）**：`PlayerViewDto.Character` / `.Alignment` 两个
+   **只描述收件人本人**的标量字段 + 换角 / 换阵营的定向本人视图推送，口径见 `rulings.md` R-0059，
+   交付见 `done/player-own-character.md`（批次 E44 逐行判定）。本条的经过：信息结果已按收件人下发
+   （含重连补齐），但玩家投影一直没有「本人角色」出口；2026-10-05 由 `todo/player-own-character.md`
+   接管并落地（本条原先只写「随玩家端票据」，而那张票据并不存在）。
 4. **疯狂要求的产生方**——**已收口**：洗脑师的夜间契约直接产出
    `MadnessRequirementIssuedEvent`（`CerenovusNightAction`），折叠与重放呈现都在链路里。
 5. **R-0004 的路径**——**部分收口**：涡流（`VortoxInterference`）、咖啡师（R-0004 表 2026-10-04 已收口）、

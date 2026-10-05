@@ -1089,6 +1089,47 @@ Integration 188 · NormativeGates 24）；`dotnet format` 就地通过；`npm ru
   `DayProjectionTests` / `JugglerGuessMachineTests` / `SavantAccusationFacts` / `verify-retention-day-info`。
 - 残余：无。
 
+## 批次 E44（2026-10-05，玩家端「本人角色」出口：投影 + 换角推送 + 前端呈现）
+
+**本批票据**：`done/player-own-character.md`（唯一在飞票）。冻结版本：本批代码（提交 `3c95910`；
+跑批期间的唯一改动是**装置断言**的当场修正——见下「本批装置咬出的真红」，**产品代码全程未动**）。
+
+**本批取证构成**：
+
+| 取证 | 命令 | 结果 |
+|---|---|---|
+| 主装置（本批主证据，取证档） | `node tools/verify-storyteller-panel.mjs --quota 2 --screenshots-all --build` | **全部通过（判定 310 项 · 跳过 0 项）**，截图 54 张，耗时 162.8s |
+| 门禁（冻结版） | `dotnet build` / `dotnet test OpenClockTower.slnx` / `dotnet format` / `npm run gate` | 0 警告 0 错误 · **1268 通过 / 0 失败**（内核 501 · 规则 494 · 门禁 26 · 集成 247）· format 退出 0 · web 199 项 + typecheck / lint / build 全绿 |
+| 宿主用例（新增） | `PlayerOwnCharacterHostTests`（3 例）+ `PlayerNotificationBuilderTests`（+1 例） | 真宿主 + 真 SignalR + 真 SQLite；本人可见 / 无关席位零泄漏 / 换角跟随 / 重连 / 终局 |
+
+**本批判出**：验收矩阵 4 行**全部通过**（逐行证据见票据）——矩阵行 3 的六条路径按性质拆开判：
+四条**写角色维度**的（舞蛇人 / 麻脸巫婆 / 方古 / 理发师）各补宿主断言（含阵营维度：
+麻脸巫婆造出的"善良恶魔"、方古侵染的"邪恶方古"），两条**不写角色维度**的
+（哲学家代行 / 集骨者重获）补「不变身」负向断言。票据转 `done/`。
+
+**本批装置咬出的真红（跨票相互作用，当场修）**：
+
+- 取证档首跑在 `day1` 段报红「旅行者阵营不进无关玩家的任何面（善良 / 邪恶 / Good / Evil 零命中）」——
+  命中的是本票新增的「我的角色」面板：每个玩家本来就该看到**自己的**阵营（R-0059），
+  而那条断言是全页文本扫描。**修法是收窄断言而不是放宽它**：扫描前把本人角色面板从 `.shell`
+  临时摘掉（`display: none` + `try/finally` 还原），剩下的面里出现那四个词才算越权。
+- 修完**做了变异验证**（断言收窄后是否还有牙）：在面板之外塞「善良 邪恶」→ 该行 7 席全部变红；
+  还原后复跑 `--only day1` 48 项全绿。首跑那份取证作废，本批以修正后的第二次取证档为准。
+
+**见红验证（本批新增门禁与用例逐条）**：
+
+| 变异 | 期望红 | 实测 |
+|---|---|---|
+| `PlayerViewDto` 加 `public string[] SeatCharacters` | 门禁「本人角色字段必须标量」 | 红，并指向该行 |
+| `GameProjection.ForSeat` 的 `Character` 改 `null` | 宿主 `PlayerOwnCharacterHostTests` | 红（2/3；`BeforeAssignment` 仍绿，符合预期） |
+| `GameNotificationBuilder` 去掉角色 / 阵营定向推送 | `PlayerNotificationBuilderTests` + 宿主换角跟进 | 红（2 项） |
+| 玩家面板里硬塞别人的角色标注 | 主装置「看不到别人的角色」 | 红，4 席列出泄漏值 |
+| 面板**之外**塞「善良 邪恶」 | 主装置「旅行者阵营不进无关玩家的任何面」 | 红，7 席列出 |
+
+**被证伪的一条假设（登记）**：装置 `[exit code: 1]` 曾被当成失败——实为 `2>&1` 把装置 stderr
+（重建段 vite 代理的 `ECONNRESET` 噪音）折成 PowerShell ErrorRecord 所致，
+真实 `$LASTEXITCODE=0`、报告末行 `全部通过`。已写进 `AGENTS.local.md`「工具陷阱」。
+
 ## 间歇性失败记录（不进批次，可复现时才升级为缺陷）
 
 ### `DeathTriggerResidueHostTests.SweetheartDrunkTarget_MayBeDeadSeat` 投票一步偶发 `Kind = Failed`（2026-10-05）
