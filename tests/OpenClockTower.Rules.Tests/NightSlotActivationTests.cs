@@ -27,13 +27,13 @@ public sealed class NightSlotActivationTests
             seats: [new SeatId(1), new SeatId(2), new SeatId(3)],
             catalog: NightActions.Default);
 
-        Assert.NotNull(activation);
-        Assert.Equal(1, activation!.SlotIndex);
-        Assert.Equal(new StepSlotId("vortox"), activation.SlotId);
-        Assert.Equal(new SeatId(2), activation.Actor);
-        Assert.NotEmpty(activation.Prompt.Options);
+        var activated = Assert.IsType<SlotActivatedEvent>(activation);
+        Assert.Equal(1, activated.SlotIndex);
+        Assert.Equal(new StepSlotId("vortox"), activated.SlotId);
+        Assert.Equal(new SeatId(2), activated.Actor);
+        Assert.NotEmpty(activated.Prompt.Options);
         Assert.Contains(
-            activation.Dependencies,
+            activated.Dependencies,
             dependency => dependency.Seat == new SeatId(2) && dependency.RequiredCharacter == new CharacterId("vortox"));
     }
 
@@ -119,11 +119,11 @@ public sealed class NightSlotActivationTests
             seats: [new SeatId(1), new SeatId(2)],
             catalog: NightActions.Default);
 
-        Assert.NotNull(activation);
-        Assert.Equal(0, activation!.SlotIndex);
-        Assert.Equal(new SeatId(2), activation.Actor);
+        var activated = Assert.IsType<SlotActivatedEvent>(activation);
+        Assert.Equal(0, activated.SlotIndex);
+        Assert.Equal(new SeatId(2), activated.Actor);
         Assert.Contains(
-            activation.Dependencies,
+            activated.Dependencies,
             dependency => dependency.Seat == new SeatId(2) && dependency.RequiredCharacter == new CharacterId("vortox"));
     }
 
@@ -199,8 +199,10 @@ public sealed class NightSlotActivationTests
             seats: [new SeatId(1), new SeatId(5)],
             catalog: NightActions.Default);
 
-        Assert.NotNull(activation);
-        Assert.Contains("推演：是", activation!.Prompt.Context, StringComparison.Ordinal);
+        Assert.Contains(
+            "推演：是",
+            Assert.IsType<SlotActivatedEvent>(activation).Prompt.Context,
+            StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -225,12 +227,12 @@ public sealed class NightSlotActivationTests
             seats: [new SeatId(1), new SeatId(2)],
             catalog: NightActions.Default);
 
-        Assert.NotNull(activation);
-        Assert.Equal(1, activation!.SlotIndex);
-        Assert.Equal(new SeatId(2), activation.Actor);
-        Assert.NotEmpty(activation.Prompt.Options);
+        var activated = Assert.IsType<SlotActivatedEvent>(activation);
+        Assert.Equal(1, activated.SlotIndex);
+        Assert.Equal(new SeatId(2), activated.Actor);
+        Assert.NotEmpty(activated.Prompt.Options);
         Assert.Contains(
-            activation.Dependencies,
+            activated.Dependencies,
             dependency => dependency.Seat == new SeatId(2)
                 && dependency.RequiredLife is null
                 && dependency.RequiredCharacter == new CharacterId("dreamer"));
@@ -290,10 +292,10 @@ public sealed class NightSlotActivationTests
             catalog: NightActions.Default,
             noActionResult: "「seamstress」已经用过 2 次：重获生效也超过上限（R-0054 第 4 条）");
 
-        Assert.NotNull(activation);
-        Assert.False(activation!.Prompt.HasOptions);
-        Assert.Equal(NoOptionBehavior.Skip, activation.Prompt.OnNoOption);
-        Assert.Contains("R-0054", activation.Prompt.Context, StringComparison.Ordinal);
+        var activated = Assert.IsType<SlotActivatedEvent>(activation);
+        Assert.False(activated.Prompt.HasOptions);
+        Assert.Equal(NoOptionBehavior.Skip, activated.Prompt.OnNoOption);
+        Assert.Contains("R-0054", activated.Prompt.Context, StringComparison.Ordinal);
     }
 
     private static ChoicePrompt Prompt() => new()

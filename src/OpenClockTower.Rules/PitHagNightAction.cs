@@ -157,9 +157,8 @@ internal sealed class PitHagNightAction : INightAction, IAbilityResolution
 
         // 「如果因此创造了一个恶魔，当晚的死亡由说书人决定」——开一个到「最后一个能造成死亡的恶魔
         // 行动结束后」为止的裁量窗口（百科《麻脸巫婆》· 规则细节 1；平台口径 rulings.md R-0030 第 1 条）。
-        // 首版剧本里四个恶魔（方古 / 亡骨魔 / 诺-达鲺 / 涡流）都会造成死亡，所以窗口关闭点就是
-        // 计划里最后一个恶魔角色槽位。
-        if (IsDemon(character) && LastDemonSlotIndex(context.Plan) is { } closesAfter)
+        // 关闭点与「非首夜的进场能力追加位」共用 <see cref="NightDeathWindow"/> 的同一处口径。
+        if (IsDemon(character) && NightDeathWindow.LastCapableSlotIndex(context.Plan) is { } closesAfter)
         {
             events.Add(new PitHagNightOpenedEvent
             {
@@ -215,25 +214,6 @@ internal sealed class PitHagNightAction : INightAction, IAbilityResolution
     /// <summary>所选角色是不是恶魔类型（角色表里的类型标签，不猜）。</summary>
     private static bool IsDemon(CharacterId character) =>
         SectsAndVioletsRoster.TypeOf(character) == CharacterType.Demon;
-
-    /// <summary>计划里最后一个恶魔角色槽位的下标；没有（不该发生）时返回 null。</summary>
-    private static int? LastDemonSlotIndex(StepPlan? plan)
-    {
-        if (plan is null)
-        {
-            return null;
-        }
-
-        for (var index = plan.Slots.Count - 1; index >= 0; index--)
-        {
-            if (plan.Slots[index].Character is { } character && IsDemon(character))
-            {
-                return index;
-            }
-        }
-
-        return null;
-    }
 
     /// <summary>该角色是否已经在场（含已死亡玩家持有的角色——死亡玩家的角色标记仍在魔典上）。</summary>
     private static bool IsInPlay(GameState state, CharacterId character) =>

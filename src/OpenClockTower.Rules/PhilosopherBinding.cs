@@ -42,8 +42,7 @@ internal static class PhilosopherBinding
 
     /// <summary>该角色在本阶段顺序表上是不是**角色行动**格（触发格不算行动）。</summary>
     internal static bool HasActionOnPhase(CharacterId character, GamePhase phase, NightOrderVariant variant) =>
-        NightOrderTable.For(phase, variant)
-            .Any(entry => entry.Character == character && entry.Kind == NightOrderEntryKind.CharacterAction);
+        NightOrderTable.HasAction(character, phase, variant);
 
     /// <summary>
     /// 该角色此刻有没有**存活**持有者；生死未观测时按"有"处理——不猜，

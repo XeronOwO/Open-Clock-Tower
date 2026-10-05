@@ -82,6 +82,10 @@ internal static class StepMachineFolder
             PromptSkippedEvent skipped => Require(state, skipped),
             SlotActivatedEvent activated => SlotActivationFolder.Apply(state, activated),
 
+            // 槽位追加（R-0055）：非首个夜晚获得的「首个夜晚」能力在顺序表上没有位置，
+            // 由结算契约追加一格（与激活的区别：那一格本来不存在）。
+            SlotInsertedEvent inserted => SlotInsertionFolder.Apply(state, inserted),
+
             // 麻脸巫婆之夜的死亡裁量窗口（R-0030）。
             PitHagNightOpenedEvent opened => ApplyPitHagNightOpened(state, opened),
             DeferredDeathRecordedEvent recorded => ApplyDeferredDeathRecorded(state, recorded),

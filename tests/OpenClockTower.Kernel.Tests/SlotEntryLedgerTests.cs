@@ -35,6 +35,24 @@ public sealed class SlotEntryLedgerTests
         Assert.DoesNotContain(outcome.Events, gameEvent => gameEvent is OperationRequestIssuedEvent);
     }
 
+    /// <summary>
+    /// 追加格（R-0055）轮到一名**已死亡**的行动者：与集骨者那条放行判据同源——
+    /// 只有「重获能力」窗口仍在时才放行，否则显式跳过（不静默）。
+    /// </summary>
+    [Fact]
+    public void AppendedEntrySlot_DeadActorWithoutRegainWindow_Skips()
+    {
+        var plan = StepFixture.Plan(
+            "sv:night-2",
+            StepFixture.Action("clockmaker@2", seat: 2, owner: "clockmaker"));
+        var ledger = Ledger((2, "clockmaker", LifeState.Dead));
+
+        var outcome = StepMachine.StartPhase(plan, previous: null, ledger);
+
+        Assert.Contains(outcome.Events, gameEvent => gameEvent is PromptSkippedEvent);
+        Assert.DoesNotContain(outcome.Events, gameEvent => gameEvent is OperationRequestIssuedEvent);
+    }
+
     /// <summary>账里还没有这一席（内核夹具 / 半初始化）→ 判定不了就不改变行为：照常发请求。</summary>
     [Fact]
     public void ActorNotObserved_KeepsIssuingRequest()

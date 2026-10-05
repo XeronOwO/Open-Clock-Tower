@@ -98,6 +98,7 @@ public static class GameStateMachine
             // （计划里的那一格、窗口与待定死亡表），不改六维度与效果。
             // 待定死亡落成死亡事实时另有配套的 SeatStateChangedEvent 折进账里。
             SlotActivatedEvent => current,
+            SlotInsertedEvent => current,
             PitHagNightOpenedEvent => current,
             DeferredDeathRecordedEvent => current,
             DeferredDeathResolvedEvent => current,

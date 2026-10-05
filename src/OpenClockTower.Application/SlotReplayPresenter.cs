@@ -11,6 +11,7 @@ internal sealed class SlotReplayPresenter : IReplayStepPresenter
     public IReadOnlyList<Type> HandledTypes =>
     [
         typeof(SlotActivatedEvent),
+        typeof(SlotInsertedEvent),
         typeof(SlotBlockedEvent),
         typeof(SlotUnblockedEvent),
         typeof(PromptSkippedEvent),
@@ -20,6 +21,15 @@ internal sealed class SlotReplayPresenter : IReplayStepPresenter
     public ReplayStep Present(ReplayStepContext context) => context.Stored.Event switch
     {
         SlotActivatedEvent activated => PresentActivated(context, activated),
+        SlotInsertedEvent inserted => new ReplayStep
+        {
+            Sequence = context.Stored.Sequence,
+            Kind = ReplayStepKind.Slot,
+            Phase = context.Phase,
+            Summary = $"{context.SeatText.Seat(inserted.Slot.Actor!)} 被唤醒"
+                + "（获得的『首个夜晚』能力在顺序表上没有位置，追加结算）",
+            Detail = inserted.Slot.Prompt?.Context,
+        },
         SlotBlockedEvent blocked => new ReplayStep
         {
             Sequence = context.Stored.Sequence,

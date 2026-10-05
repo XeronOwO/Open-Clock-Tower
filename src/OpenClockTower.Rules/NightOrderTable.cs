@@ -42,6 +42,17 @@ public static class NightOrderTable
                 "夜晚顺序表只覆盖首夜与其他夜晚"),
         };
 
+    /// <summary>
+    /// 该角色在某个阶段、某个口径的顺序表上有没有**角色行动**格（触发格不算行动格）。
+    /// </summary>
+    /// <remarks>
+    /// 消费者的两处判据共用它，避免"建表 / 结算各判一次"漂移：哲学家的落格（R-0036）与
+    /// 「非首个夜晚获得的『首个夜晚』能力」的追加判定（R-0055）。
+    /// </remarks>
+    public static bool HasAction(CharacterId character, GamePhase phase, NightOrderVariant variant) =>
+        For(phase, variant).Any(entry =>
+            entry.Character == character && entry.Kind == NightOrderEntryKind.CharacterAction);
+
     private static readonly IReadOnlyList<NightOrderEntry> FirstNightOriginal =
         Array.AsReadOnly<NightOrderEntry>(
             [
