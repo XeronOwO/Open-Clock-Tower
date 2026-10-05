@@ -162,6 +162,36 @@ public sealed class SavantFactCatalogTests
 
         Assert.All(options, option => Assert.NotNull(option.Truth));
         Assert.All(options, option => Assert.StartsWith("fact:", option.Value, StringComparison.Ordinal));
+        Assert.All(options, option => Assert.False(string.IsNullOrWhiteSpace(option.Code)));
+    }
+
+    /// <summary>
+    /// 互斥组随候选项下发（说书人端据此把"与另一槽位互为反面"的那条预先灰掉）：
+    /// 同互斥组的候选恰好两条、同编码、取值不同——它们必然一真一假，是 C4 要拒的那一对。
+    /// </summary>
+    [Fact]
+    public void Candidates_CarryTheirExclusionGroup()
+    {
+        var options = Options(NightLedger());
+        var grouped = options.Where(option => option.ExclusionGroup is not null).ToArray();
+
+        Assert.NotEmpty(grouped);
+        Assert.All(grouped, option => Assert.Equal(option.Code, option.ExclusionGroup));
+
+        foreach (var family in grouped.GroupBy(option => option.ExclusionGroup!, StringComparer.Ordinal))
+        {
+            Assert.Equal(2, family.Count());
+            Assert.Single(family.Select(option => option.Code).Distinct(StringComparer.Ordinal));
+            Assert.Equal(2, family.Select(option => option.Value).Distinct(StringComparer.Ordinal).Count());
+        }
+
+        // 多取值的事实（爪牙距离 / 存活人数 / 席位阵营）里只有"奇偶"那一对是反面对，
+        // 其余取值的互斥组为 null——前端据此只灰掉真正互为反面的那一条。
+        foreach (var code in new[] { "demon-minion-gap", "alive-count-equals", "seat-is-evil" })
+        {
+            var family = options.Where(option => option.Code == code).ToArray();
+            Assert.Contains(family, option => option.ExclusionGroup is null);
+        }
     }
 
     private static IReadOnlyList<DecisionOption> Options(GameState state) =>

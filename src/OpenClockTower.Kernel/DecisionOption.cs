@@ -31,6 +31,27 @@ public sealed record DecisionOption
     /// </summary>
     public string? Group { get; init; }
 
+    /// <summary>
+    /// 候选**事实编码**（信息类候选才有，如 <c>demon-seat-parity</c>）：同编码、不同取值的两条候选
+    /// 在措辞上互为对照。null = 不适用。
+    /// </summary>
+    /// <remarks>
+    /// 与 <see cref="ExclusionGroup"/> 配对使用：前者回答"是不是同一条事实"，后者回答
+    /// "同一条事实的不同取值算不算互为反面"。两个字段都由**规则层**填，内核只搬运呈现元数据。
+    /// </remarks>
+    public string? Code { get; init; }
+
+    /// <summary>
+    /// 取值互斥组（信息类候选才有，如奇 / 偶两条事实共用一个组名）：同 <see cref="Code"/> 且组名非空的两条
+    /// 候选**必然一真一假**——等于只给了一条信息，因此这一对不能同时入选（R-0057-C 第 3 条 C4）。
+    /// null = 各取值彼此独立（如"3 号是邪恶"与"5 号是邪恶"）。
+    /// </summary>
+    /// <remarks>
+    /// 服务端在提交时按它拒绝（权威判定）；说书人端据它在候选上**预先灰掉**那一条并写明原因，
+    /// 省一次注定被拒的往返（前端不做规则判断，web/AGENTS.md §4）。
+    /// </remarks>
+    public string? ExclusionGroup { get; init; }
+
     /// <summary>候选徽章（信息类候选才有，如「高强度」）；按顺序显示，不进答案值。</summary>
     public IReadOnlyList<string> Tags { get; init; } = [];
 }

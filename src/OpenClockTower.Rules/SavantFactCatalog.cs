@@ -75,7 +75,7 @@ internal static class SavantFactCatalog
             Group = definition.Group,
             Truth = evaluation.Truth,
             HighIntensity = definition.HighIntensity,
-            OppositeGroup = definition.OppositeGroup,
+            ExclusionGroup = definition.ExclusionGroup,
         };
     }
 

@@ -1,6 +1,8 @@
 import type { DecisionOptionDto } from '@/contracts/game'
 import {
+  EXCLUSION_REASON,
   combinationVerdict,
+  exclusionConflictOf,
   filterSavantOptions,
   savantDecisionOf,
   savantGroupsOf,
@@ -14,12 +16,21 @@ function option(
   preview: string,
   truth: string | null,
   group: string | null = '座位关系',
+  code: string | null = null,
+  exclusionGroup: string | null = null,
 ): DecisionOptionDto {
-  return { value, preview, truth, group, tags: [] }
+  return { value, preview, truth, group, code, exclusionGroup, tags: [] }
 }
 
 const T = option('fact:a', '恶魔坐在奇数位', 'True')
 const F = option('fact:b', '恶魔坐在偶数位', 'False')
+
+/** 服务端下发的真·奇偶一对：同编码 `demon-seat-parity`、同互斥组、取值不同。 */
+const ODD = option('fact:demon-seat-parity:odd', '恶魔坐在奇数位', 'True', '座位关系', 'demon-seat-parity', 'demon-seat-parity')
+const EVEN = option('fact:demon-seat-parity:even', '恶魔坐在偶数位', 'False', '座位关系', 'demon-seat-parity', 'demon-seat-parity')
+/** 同一组事实的其它取值（如两个爪牙距离）不是反面对：服务端不给互斥组。 */
+const GAP_0 = option('fact:demon-minion-gap:0', '恶魔与最近的爪牙相邻', 'True', '座位关系', 'demon-minion-gap', null)
+const GAP_1 = option('fact:demon-minion-gap:1', '恶魔与最近的爪牙之间隔着 1 名玩家', 'False', '座位关系', 'demon-minion-gap', null)
 
 describe('truthLabelOf / truthToneOf', () => {
   it('只认服务端给的两个取值，未知取值原样回显', () => {
@@ -78,6 +89,30 @@ describe('filterSavantOptions', () => {
   })
 })
 
+describe('exclusionConflictOf（互为反面：C4 防呆）', () => {
+  it('同编码、同互斥组、取值不同 = 互为反面，给出可读理由', () => {
+    const conflict = exclusionConflictOf(EVEN, ODD)
+    expect(conflict?.other.value).toBe(ODD.value)
+    expect(conflict?.reason).toBe(EXCLUSION_REASON)
+    expect(exclusionConflictOf(ODD, EVEN)?.reason).toBe(EXCLUSION_REASON)
+  })
+
+  it('同一条候选（取值相同）不算反面对：那是"写两遍"，另有一条结论', () => {
+    expect(exclusionConflictOf(ODD, ODD)).toBeNull()
+  })
+
+  it('另一个槽位没选 / 服务端没给互斥组 / 编码不同 ⇒ 不拦', () => {
+    expect(exclusionConflictOf(EVEN, null)).toBeNull()
+    expect(exclusionConflictOf(GAP_1, GAP_0)).toBeNull()
+    expect(exclusionConflictOf(T, ODD)).toBeNull()
+  })
+
+  it('缺事实编码的旧服务端数据宁可放行，也不误灰（服务端提交时仍会拒绝）', () => {
+    const legacy = option('fact:x', '恶魔坐在奇数位', 'True', '座位关系', null, 'demon-seat-parity')
+    expect(exclusionConflictOf(legacy, ODD)).toBeNull()
+  })
+})
+
 describe('combinationVerdict', () => {
   it('两个槽位没选全时不给提交', () => {
     expect(combinationVerdict('ExactlyOneTrue', T, null).ok).toBe(false)
@@ -86,6 +121,13 @@ describe('combinationVerdict', () => {
 
   it('同一条事实写两遍不给提交', () => {
     expect(combinationVerdict('ExactlyOneTrue', T, T).ok).toBe(false)
+  })
+
+  it('互为反面的一对不给提交，并指路自由文本兜底（真值上它确实"一真一假"）', () => {
+    const mirror = combinationVerdict('ExactlyOneTrue', ODD, EVEN)
+    expect(mirror.ok).toBe(false)
+    expect(mirror.text).toContain('互为反面')
+    expect(mirror.text).toContain('自由文本')
   })
 
   it('能力生效：一真一假可以，双真 / 双假都不行', () => {

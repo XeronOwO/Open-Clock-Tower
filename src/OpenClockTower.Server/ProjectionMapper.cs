@@ -58,8 +58,8 @@ public static class ProjectionMapper
     };
 
     /// <summary>
-    /// 一个合法选项 → DTO。真值 / 分组 / 徽章是信息类候选（博学者 R-0057-C）的呈现元数据；
-    /// 普通候选没有它们（null / 空数组），前端只显示、不推算。
+    /// 一个合法选项 → DTO。真值 / 分组 / 事实编码 / 互斥组 / 徽章是信息类候选（博学者 R-0057-C）的
+    /// 呈现元数据；普通候选没有它们（null / 空数组），前端只显示、不推算。
     /// </summary>
     public static DecisionOptionDto ToDto(DecisionOption option) => new()
     {
@@ -67,6 +67,8 @@ public static class ProjectionMapper
         Preview = option.Preview,
         Truth = option.Truth?.ToString(),
         Group = option.Group,
+        Code = option.Code,
+        ExclusionGroup = option.ExclusionGroup,
         Tags = [.. option.Tags],
     };
 

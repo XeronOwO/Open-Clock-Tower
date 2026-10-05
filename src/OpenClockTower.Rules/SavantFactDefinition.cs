@@ -20,10 +20,14 @@ internal sealed record SavantFactDefinition
     public bool HighIntensity { get; init; }
 
     /// <summary>
-    /// 互斥组：同组不同取值**互为反面**（奇 / 偶、善良 / 邪恶一类）。组合校验据此拒绝
+    /// 取值互斥组：同组不同取值**互为反面**（奇 / 偶、善良 / 邪恶一类）。组合校验据此拒绝
     /// "两条互为反面"的搭配（C4）；null = 各取值彼此独立（如"3 号是邪恶"与"5 号是邪恶"）。
     /// </summary>
-    public string? OppositeGroup { get; init; }
+    /// <remarks>
+    /// 这个组名会随候选项下发到说书人端（<see cref="DecisionOption.ExclusionGroup"/>），
+    /// 前端据此把"与另一槽位互为反面"的那条候选**预先灰掉**——命名的两处必须一致，否则界面不灰。
+    /// </remarks>
+    public string? ExclusionGroup { get; init; }
 
     /// <summary>可选取值（无参数事实给空集合）；顺序 = 候选顺序。</summary>
     public Func<SavantFactWorld, IReadOnlyList<string>> Parameters { get; init; } = _ => [];

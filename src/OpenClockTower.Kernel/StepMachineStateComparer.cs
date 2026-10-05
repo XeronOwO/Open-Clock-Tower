@@ -533,8 +533,8 @@ public static class StepMachineStateComparer
     }
 
     /// <summary>
-    /// 两份候选列表是否同源：值、预览、真值、分组与徽章**逐项按顺序**比较。
-    /// 新增候选元数据（真值 / 分组 / 徽章）必须一并比较，否则重放与实时视图会被判成"等价"。
+    /// 两份候选列表是否同源：值、预览、真值、分组、事实编码、互斥组与徽章**逐项按顺序**比较。
+    /// 新增候选元数据（真值 / 分组 / 编码 / 互斥组 / 徽章）必须一并比较，否则重放与实时视图会被判成"等价"。
     /// </summary>
     private static bool OptionsEquivalent(IReadOnlyList<DecisionOption> left, IReadOnlyList<DecisionOption> right)
     {
@@ -544,6 +544,8 @@ public static class StepMachineStateComparer
                 || !string.Equals(left[index].Preview, right[index].Preview, StringComparison.Ordinal)
                 || left[index].Truth != right[index].Truth
                 || !string.Equals(left[index].Group, right[index].Group, StringComparison.Ordinal)
+                || !string.Equals(left[index].Code, right[index].Code, StringComparison.Ordinal)
+                || !string.Equals(left[index].ExclusionGroup, right[index].ExclusionGroup, StringComparison.Ordinal)
                 || !left[index].Tags.SequenceEqual(right[index].Tags, StringComparer.Ordinal))
             {
                 return false;

@@ -34,7 +34,7 @@ internal static class SavantFactCombination
                 return Reject("平台防呆：两条不能是同一条事实（要给重复内容请走自由文本兜底）");
             }
 
-            if (first.OppositeGroup is not null)
+            if (first.ExclusionGroup is not null)
             {
                 return Reject(
                     $"平台防呆：「{first.Text}」与「{second.Text}」互为反面，必然一真一假——"

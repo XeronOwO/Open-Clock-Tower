@@ -88,7 +88,7 @@ describe('重连包规范化', () => {
       requestId: 'r1',
       seat: 1,
       context: '',
-      options: [{ value: 'a', preview: 'a', truth: null, group: null, tags: [] }],
+      options: [{ value: 'a', preview: 'a', truth: null, group: null, code: null, exclusionGroup: null, tags: [] }],
       secondaryOptions: [],
     })
   })

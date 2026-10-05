@@ -23,7 +23,7 @@ internal static class SavantSeatFacts
         {
             Code = "demon-seat-parity",
             Group = Group,
-            OppositeGroup = "demon-seat-parity",
+            ExclusionGroup = "demon-seat-parity",
             Parameters = _ => ["odd", "even"],
             Evaluate = (world, parameter) =>
                 parameter is not ("odd" or "even") || world.SingleDemon is not { } demon
@@ -84,7 +84,7 @@ internal static class SavantSeatFacts
         {
             Code = "demon-neighbours-team",
             Group = Group,
-            OppositeGroup = "demon-neighbours-team",
+            ExclusionGroup = "demon-neighbours-team",
             Parameters = _ => ["good", "evil"],
             Evaluate = (world, parameter) => parameter is not ("good" or "evil")
                 ? null

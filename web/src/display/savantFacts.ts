@@ -28,6 +28,17 @@ export interface SavantOptionGroup {
   readonly options: DecisionOptionDto[]
 }
 
+/** 一条候选与另一槽位已选项**互为反面**：说这条路会被服务端拒绝（R-0057-C 的 C4）。 */
+export interface SavantExclusionConflict {
+  /** 与它冲突的那条候选（另一槽位已选的）。 */
+  readonly other: DecisionOptionDto
+  /** 候选上写的短提示（"与已选的一条互为反面，必然一真一假"）。 */
+  readonly reason: string
+}
+
+/** 候选上写的短提示文案（服务端给的互斥组判出来的，前端只显示）。 */
+export const EXCLUSION_REASON = '与已选的一条互为反面，必然一真一假'
+
 /** 没有分组的候选归入这一栏（服务端一般都会给分组）。 */
 export const UNGROUPED_LABEL = '其它'
 
@@ -109,6 +120,33 @@ export function filterSavantOptions(
 }
 
 /**
+ * 两条候选是不是**互为反面**（R-0057-C 的 C4）：服务端下发的互斥组相同、事实编码相同、
+ * 而取值不同——如「恶魔坐在奇数位」与「恶魔坐在偶数位」，必然一真一假，等于只给了一条信息。
+ *
+ * 与另一槽位已选项命中时返回那条冲突（供候选**预先灰掉**与结论条用），否则返回 null。
+ * 服务端提交时仍会按当时的账重新核对一次——这里只是省一次注定被拒的往返。
+ */
+export function exclusionConflictOf(
+  candidate: DecisionOptionDto,
+  other: DecisionOptionDto | null,
+): SavantExclusionConflict | null {
+  if (other === null || candidate.exclusionGroup === null) {
+    return null
+  }
+
+  if (
+    candidate.code === null ||
+    candidate.code !== other.code ||
+    candidate.exclusionGroup !== other.exclusionGroup ||
+    candidate.value === other.value
+  ) {
+    return null
+  }
+
+  return { other, reason: EXCLUSION_REASON }
+}
+
+/**
  * 组合结论：服务端声明的约束 × 两条候选的真值。
  *
  * 未知约束（服务端将来加了新取值）一律**不拦**——原样放行、由服务端判定，前端不替它猜。
@@ -124,6 +162,16 @@ export function combinationVerdict(
 
   if (first.value === second.value) {
     return { ok: false, text: '两条不能是同一条事实' }
+  }
+
+  const exclusion = exclusionConflictOf(second, first)
+  if (exclusion !== null) {
+    return {
+      ok: false,
+      text:
+        `「${first.preview}」与「${second.preview}」互为反面，必然一真一假——等于只给了一条信息。` +
+        '要这么给请走下面的自由文本兜底（服务端也会拒绝这一对）',
+    }
   }
 
   switch (rule as TruthCombinationRule | null) {

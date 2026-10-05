@@ -20,6 +20,13 @@ export interface DecisionOptionDto {
   truth: string | null
   /** 候选分组（如「座位关系」）；不分组时为 null。 */
   group: string | null
+  /** 候选事实编码（如 `demon-seat-parity`）；不适用时为 null。 */
+  code: string | null
+  /**
+   * 取值互斥组：同编码、同互斥组的两条候选必然一真一假（奇 / 偶一类），
+   * 说书人端据此把与另一槽位互为反面的那条**预先灰掉**；不适用时为 null。
+   */
+  exclusionGroup: string | null
   /** 候选徽章（如「高强度」）。 */
   tags: string[]
 }

@@ -24,9 +24,9 @@ import {
 } from '@/display/format'
 import type { DecisionOptionDto, SeatDisplayNameDto } from '@/contracts/game'
 
-/** 选项夹具：真值 / 分组 / 徽章是信息类候选才有的元数据，普通候选一律为空。 */
+/** 选项夹具：真值 / 分组 / 编码 / 互斥组 / 徽章是信息类候选才有的元数据，普通候选一律为空。 */
 function optionOf(value: string, preview: string): DecisionOptionDto {
-  return { value, preview, truth: null, group: null, tags: [] }
+  return { value, preview, truth: null, group: null, code: null, exclusionGroup: null, tags: [] }
 }
 
 describe('不可信输入规范化（架构 §4.4）', () => {
@@ -166,7 +166,7 @@ describe('说书人视图规范化', () => {
     expect(view.lastResolution?.effective).toBe(false)
     expect(view.lastResolution?.malfunctions).toEqual(['Poisoned'])
     expect(view.awaitingDecisionOptions).toEqual([
-      { value: 'a', preview: '选它', truth: null, group: null, tags: [] },
+      { value: 'a', preview: '选它', truth: null, group: null, code: null, exclusionGroup: null, tags: [] },
     ])
   })
 
@@ -203,6 +203,43 @@ describe('说书人视图规范化', () => {
     const zeroSeats = normalizeStorytellerView({ awaitingDecisionSeat: 0, currentSlotActor: 0 })
     expect(zeroSeats.awaitingDecisionSeat).toBeNull()
     expect(zeroSeats.currentSlotActor).toBeNull()
+  })
+
+  it('信息类候选的五项元数据照实归一化；缺项降级为 null / 空数组，不编造', () => {
+    const view = normalizeStorytellerView({
+      awaitingDecisionOptions: [
+        {
+          value: 'fact:demon-seat-parity:odd',
+          preview: '恶魔坐在奇数位',
+          truth: 'True',
+          group: '座位关系',
+          code: 'demon-seat-parity',
+          exclusionGroup: 'demon-seat-parity',
+          tags: ['高强度'],
+        },
+        { value: 'fact:x', preview: '缺元数据的一条' },
+      ],
+    })
+
+    const options = view.awaitingDecisionOptions ?? []
+    expect(options[0]).toEqual({
+      value: 'fact:demon-seat-parity:odd',
+      preview: '恶魔坐在奇数位',
+      truth: 'True',
+      group: '座位关系',
+      code: 'demon-seat-parity',
+      exclusionGroup: 'demon-seat-parity',
+      tags: ['高强度'],
+    })
+    expect(options[1]).toEqual({
+      value: 'fact:x',
+      preview: '缺元数据的一条',
+      truth: null,
+      group: null,
+      code: null,
+      exclusionGroup: null,
+      tags: [],
+    })
   })
 
   it('每步摘要与最近作废按形状归一化，枚举/数字类型不猜', () => {

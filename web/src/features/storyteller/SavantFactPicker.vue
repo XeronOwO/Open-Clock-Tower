@@ -4,11 +4,13 @@
  *
  * 只做呈现与拼装：候选与真值都来自服务端，组合结论 = **服务端声明的约束** × 服务端下发的真值
  * （见 `display/savantFacts.ts`）；提交仍由服务端按当时的账重新求值与核对（前端拦下非法组合
- * 只是省一次往返，不是权威判定）。兜底入口保留自由文本（平台不校验真假，R-0057 第 3 条）。
+ * 只是省一次往返，不是权威判定）。「与另一槽位互为反面」的候选按服务端给的互斥组**预先灰掉**。
+ * 兜底入口保留自由文本（平台不校验真假，R-0057 第 3 条）。
  */
 import type { DecisionOptionDto } from '@/contracts/game'
 import {
   combinationVerdict,
+  exclusionConflictOf,
   filterSavantOptions,
   savantDecisionOf,
   savantGroupsOf,
@@ -48,6 +50,18 @@ const firstTruth = computed(() => truthLabelOf(first.value?.truth ?? null))
 const firstTone = computed(() => `tone-${truthToneOf(first.value?.truth ?? null)}`)
 const secondTruth = computed(() => truthLabelOf(second.value?.truth ?? null))
 const secondTone = computed(() => `tone-${truthToneOf(second.value?.truth ?? null)}`)
+
+/**
+ * 这条候选与「另一个槽位已选的那条」互为反面时的理由（C4 防呆，R-0057-C）；
+ * 不互为反面（或另一个槽位还空着）时返回 null。
+ *
+ * 「另一个槽位」= 这条候选没坐的那个槽位：已经坐在第一个槽位里 → 与第二个比，反之亦然。
+ * 命中就该灰掉并写明原因：点它必然被服务端拒绝（服务端提交时仍会按当时的账再拒一次）。
+ */
+function oppositeReasonOf(candidate: DecisionOptionDto): string | null {
+  const other = candidate.value === first.value?.value ? second.value : first.value
+  return exclusionConflictOf(candidate, other)?.reason ?? null
+}
 
 /** 点候选 → 填进当前槽位；另一个槽位还空着就把焦点交过去（两次点击完成两条）。 */
 function pick(option: DecisionOptionDto): void {
@@ -178,11 +192,14 @@ function submitFree(): void {
         :key="option.value"
         type="button"
         class="option"
-        :class="{ picked: isPicked(option) }"
-        :disabled="busy"
+        :class="{ picked: isPicked(option), blocked: oppositeReasonOf(option) !== null }"
+        :disabled="busy || oppositeReasonOf(option) !== null"
         :data-testid="`savant-option-${option.value}`"
         :data-truth="option.truth === null ? '' : option.truth"
         :data-group="option.group === null ? '' : option.group"
+        :data-opposite="oppositeReasonOf(option) === null ? '' : 'true'"
+        :data-code="option.code === null ? '' : option.code"
+        :data-exclusion="option.exclusionGroup === null ? '' : option.exclusionGroup"
         @click="pick(option)"
       >
         <span class="option-text">{{ option.preview }}</span>
@@ -190,6 +207,9 @@ function submitFree(): void {
           {{ truthLabelOf(option.truth) }}
         </span>
         <span v-for="tag in option.tags" :key="tag" class="tag">{{ tag }}</span>
+        <span v-if="oppositeReasonOf(option) !== null" class="blocked-note">
+          {{ oppositeReasonOf(option) }}
+        </span>
       </button>
     </div>
     <p v-else class="hint">没有匹配的候选：换个关键字，或清掉分类筛选。</p>
@@ -326,6 +346,20 @@ function submitFree(): void {
 .option.picked {
   border-color: #6a8cff;
   font-weight: 600;
+}
+
+/* 与另一槽位互为反面：灰掉并写明原因（C4 防呆，R-0057-C）——点它必然被服务端拒绝。 */
+.option.blocked {
+  opacity: 0.45;
+}
+
+.option.blocked .option-text {
+  text-decoration: line-through;
+}
+
+.blocked-note {
+  font-size: 0.75rem;
+  opacity: 0.9;
 }
 
 .badge {

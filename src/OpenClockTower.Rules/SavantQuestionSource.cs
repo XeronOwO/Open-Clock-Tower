@@ -119,7 +119,10 @@ internal sealed class SavantQuestionSource : ISavantQuestionSource
         };
     }
 
-    /// <summary>候选事实 → 裁定点的候选项（真值、分组与高强度徽章随候选一起下发）。</summary>
+    /// <summary>
+    /// 候选事实 → 裁定点的候选项（真值、分组、事实编码、互斥组与高强度徽章随候选一起下发——
+    /// 说书人端据此分栏、显示真值，并把「互为反面」的那一条**预先灰掉**）。
+    /// </summary>
     private static IReadOnlyList<DecisionOption> BuildOptions(SavantFactWorld world) =>
     [
         .. SavantFactCatalog.Candidates(world).Select(candidate => new DecisionOption
@@ -128,6 +131,8 @@ internal sealed class SavantQuestionSource : ISavantQuestionSource
             Preview = candidate.Text,
             Truth = candidate.Truth,
             Group = candidate.Group,
+            Code = candidate.Code,
+            ExclusionGroup = candidate.ExclusionGroup,
             Tags = candidate.HighIntensity ? [SavantAccusationFacts.HighIntensityTag] : [],
         }),
     ];

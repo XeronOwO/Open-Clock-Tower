@@ -38,7 +38,7 @@ internal static class SavantNumberFacts
         {
             Code = "alive-count-parity",
             Group = Group,
-            OppositeGroup = "alive-count-parity",
+            ExclusionGroup = "alive-count-parity",
             Parameters = _ => ["odd", "even"],
             Evaluate = (world, parameter) => parameter is not ("odd" or "even")
                 || !TryCounts(world, out var good, out var evil)

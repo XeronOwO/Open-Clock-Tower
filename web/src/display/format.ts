@@ -376,7 +376,7 @@ export function normalizeRoomHealth(raw: unknown): RoomHealthDto {
   }
 }
 
-/** 归一化一条合法选项：真值 / 分组 / 徽章缺失时降级为 null / 空数组，不编造。 */
+/** 归一化一条合法选项：真值 / 分组 / 编码 / 互斥组 / 徽章缺失时降级为 null / 空数组，不编造。 */
 export function normalizeOption(raw: unknown): DecisionOptionDto | null {
   if (raw === null || typeof raw !== 'object') {
     return null
@@ -393,6 +393,8 @@ export function normalizeOption(raw: unknown): DecisionOptionDto | null {
     preview: asSizedText(option['preview'], 512) ?? value,
     truth: asText(option['truth']),
     group: asText(option['group']),
+    code: asText(option['code']),
+    exclusionGroup: asText(option['exclusionGroup']),
     tags: asArray<unknown>(option['tags'])
       .map((tag) => asSizedText(tag, 64))
       .filter((tag): tag is string => tag !== null),
