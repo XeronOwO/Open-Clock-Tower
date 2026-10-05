@@ -1,8 +1,8 @@
 # 博学者的两条信息：候选事实库 + 说书人辅助排版与自动校验
 
-- Status: Review
+- Status: Done
 - Priority: High
-- Depends on: `docs/backlog/in-progress/juggler-and-savant-day-abilities.md`（R-0057 已落地：
+- Depends on: `docs/backlog/done/juggler-and-savant-day-abilities.md`（R-0057 已落地：
   白天命令 → 归属裁定点 → 两条信息只到本人；本票把那个"自由文本裁定框"升级成**结构化辅助面**）
 
 ## 要解决的问题
@@ -160,8 +160,8 @@
 **已落地**：内核（候选元数据 + 真值组合声明 + `SavantPromptContext`）、规则层（A–E 五组候选事实库、
 真值求值、组合校验 C1–C6、自由文本兜底）、服务端（`DecisionOptionDto` 真值 / 分组 / 徽章、
 `AwaitingDecisionTruthRule` / `TruthNote`）、前端（`SavantFactPicker.vue` 两槽位辅助面：分类分栏 + 搜索 +
-真值徽章 + 高强度标 + 常驻组合结论 + 非法禁用 + 自由文本兜底）。**装置取证并入批次 E40**（与亡骨魔、
-杂耍艺人同批，见第 11 行）。
+真值徽章 + 高强度标 + 常驻组合结论 + 非法禁用 + 自由文本兜底）。**界面级取证：批次 E40 判出**
+（与亡骨魔、杂耍艺人同批；见下面「界面级取证」一节，第 11 行由该批的 12 条断言 + 5 张截图判出）。
 
 **与草案清单的偏差**（清单取舍仍待需求方过一遍，见「残余 / 风险」）：
 
@@ -218,5 +218,24 @@
 - 与 R-0057 的兼容：自由文本路径保持受理（老设备 / 老客户端不受影响）；本票只**新增**结构化路径。
 - `last-night` 的口径已登记为 **R-0057-C**（最近一个**已结束**的夜晚阶段；
   「变化」要求变化前后都已知；失效类与数学家同一份计数口径）。
-- **界面级（装置）证据待批次 E40**：装置段要判「候选带真值 / 分类分栏 / 组合非法禁用 / 提交后玩家只收到
-  人话文案」四件事，与亡骨魔、杂耍艺人同批取证。
+- ~~**界面级（装置）证据待批次 E40**~~（E40 已判出）：装置段要判的四件事——「候选带真值 / 分类分栏 /
+  组合非法禁用 / 提交后玩家只收到人话文案」——由新装置 `tools/verify-retention-day-info.mjs` 一次判完
+  （157 条候选逐条带真值、6 个分类按钮、两条同真时结论转红且提交禁用、结清后本人收到两条人话）。
+
+## 界面级取证（批次 E40，2026-10-05）
+
+- 装置：`tools/verify-retention-day-info.mjs`（6 席一局，登记在 `docs/acceptance/devices.md` §1）；
+  取证档 `--quota 2 --screenshots-all --build`：**66 项全部通过 / 0 失败、退出码 0**、79s；迭代档 33s。
+- 与第 11 行逐条对应（截图均为本次运行写入）：
+  - `retention-03-savant-entry`：4 号玩家端「要两条信息」入口（`data-question-state=idle` → 点击后 `waiting`）；
+  - `retention-04-savant-illegal-combination`：**157 条候选逐条带服务端真值**（真值集合 True/False）、
+    **6 个分类按钮分栏**（座位关系 / 阵营与人数 / 昨晚与今天 / 状态读数 / 点名）、两条同真时
+    常驻结论「现在两条都为真：能力生效时必须一真一假」且提交禁用；
+  - `retention-05-savant-mirror-rejected`：互为反面的两条前端照常放行（拿不到互斥组信息），
+    提交被服务端拒绝——`savant.decision_invalid：平台防呆：「恶魔坐在奇数位」与「恶魔坐在偶数位」
+    互为反面，必然一真一假……（要这么给请走自由文本兜底）`；
+  - `retention-06-savant-legal-combination`：改成一真一假后结论「一真一假 ✓」、提交恢复可用，
+    两个槽位记下 `fact:demon-seat-parity:odd | fact:demon-minion-gap:1`；
+  - `retention-07-savant-two-informations`：结清后玩家端只看到两条人话（「恶魔坐在奇数位」
+    「恶魔与最近的爪牙之间隔着 1 名玩家」），无事实编码与真值；**入口整块撤下**（今天已经要过），
+    无关席位（2 号女巫）的信息面板始终为空。

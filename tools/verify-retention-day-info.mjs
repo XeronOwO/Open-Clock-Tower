@@ -1,8 +1,8 @@
 /**
  * 保留能力与白天信息族批次装置 —— 三张票据的界面级（装置）取证：
- *   · 亡骨魔「死亡但保留能力」（docs/backlog/review/vigormortis-death-ability-retention.md 的行 4 / 7 界面面）；
- *   · 博学者候选辅助面（docs/backlog/review/savant-information-picker.md 的行 11）；
- *   · 杂耍艺人公开猜测与当晚报数（docs/backlog/review/juggler-and-savant-day-abilities.md 的行 2 / 6 / 8 界面面）。
+ *   · 亡骨魔「死亡但保留能力」（docs/backlog/done/vigormortis-death-ability-retention.md 的行 4 / 7 界面面）；
+ *   · 博学者候选辅助面（docs/backlog/done/savant-information-picker.md 的行 11）；
+ *   · 杂耍艺人公开猜测与当晚报数（docs/backlog/done/juggler-and-savant-day-abilities.md 的行 2 / 6 / 8 界面面）。
  *
  * 它回答：**「死亡但保留能力的爪牙仍在自己的格上被唤醒」「博学者的两条信息在说书人界面上靠候选
  * 辅助面选出来」「杂耍艺人的公开猜测录得进、当晚报数只到本人」这三条界面链路，真机跑得通吗？**
