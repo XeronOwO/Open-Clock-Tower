@@ -60,7 +60,7 @@ todo/  →  in-progress/  →  review/  →  done/
 
 ### Todo
 
-（空）
+- [玩家端没有「本人角色」出口](todo/player-own-character.md) — **High** — 玩家在自己的设备上看不到自己是什么角色，六条换角路径也不跟随；契约 / 投影 / 前端三处都是既有面，缺的只是这一条出口
 
 ### In progress
 
