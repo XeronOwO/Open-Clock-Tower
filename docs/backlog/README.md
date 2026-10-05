@@ -60,11 +60,16 @@ todo/  →  in-progress/  →  review/  →  done/
 
 ### Todo
 
+- [亡骨魔：夜间击杀 + 爪牙「保留能力」+ 集骨者「先失去」前置](todo/vigormortis-death-ability-retention.md) — **High** — 契约落地前抽到它的局开不了夜；同时补「死亡不等于失去能力」这条平台还没有的判据
+- [白天信息族剩余两名：杂耍艺人 + 博学者](todo/juggler-and-savant-day-abilities.md) — **Medium** — 首个白天公开猜测 / 每个白天一真一假两条信息；契约落地前带他们的局开不了白天
+
 ### In progress
 
 ### Review
 
 ### Done
+
+- [非首个夜晚获得的「首个夜晚」能力没有结算位](done/granted-entry-ability-insertion.md) — **High** — 哲学家 / 集骨者 / 角色变更三条来源同病：能力被获得却永远不结算；补内核槽位追加原语（`SlotInsertedEvent`）+ 规则层追加位（最后一条致死行动格之后）；批次 E39 判出矩阵 12 行全过（主装置取证档 293 项 / 0 跳过；冻结版门禁 1115 通过）
 
 - [屠夫额外提名落靶 / 二次处决真机夹具](done/butcher-second-execution-fixture.md) — 独立装置覆盖 R-0050 落靶路径（窗口公开 / 越权拒绝 / 二次处决真实死亡 / 当日关账 Used），并把主装置行 3 断言收紧为窗口状态 = Used；批次 E38 判出矩阵 3 行全过（新装置 40 项 + 主装置 286 项）
 - [处罚处决接入统一死亡保护查询（R-0020 路径）](done/punishment-execution-death-protection.md) — **Medium** — 把第二条处决致死路径（处罚处决）接进统一死亡保护查询，消除「新来源只在一半处决路径上生效」的隐患
