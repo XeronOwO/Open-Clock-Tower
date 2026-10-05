@@ -1013,6 +1013,26 @@ Integration 188 · NormativeGates 24）；`dotnet format` 就地通过；`npm ru
 - 残余（随票据留档）：博学者 28 条候选清单的取舍仍待需求方过一遍；集骨者重获已死亡的杂耍艺人
   （百科《集骨者》· 范例 4）专项用例未补（夜晚格与建表绑定均已就位）。
 
+## 间歇性失败记录（不进批次，可复现时才升级为缺陷）
+
+### `DeathTriggerResidueHostTests.SweetheartDrunkTarget_MayBeDeadSeat` 投票一步偶发 `Kind = Failed`（2026-10-05）
+
+- **现象**：一次全量 `dotnet test OpenClockTower.slnx` 里，该用例在「4 名投票者依次举手」的第 3 步
+  断言失败：期望 `Accepted`，实际 `Failed`（服务端 `GameSession` 的命令异常分支，不是普通拒绝）。
+  当时断言只写了 `Assert.Equal("Accepted", voted.Kind)`，**服务端给的原因与宿主日志都没有打出来**，
+  因此无法定位（不知道是哪一步之后失败、异常是什么）。
+- **复现尝试（全部绿，未复现）**：单独跑该测试类 15 轮；全量解决方案串行 4 轮；
+  8 个并行 worker × 10 轮（80 次）、10 个并行 worker × 15 轮（150 次）——**0 次复现**。
+  期间该用例本身没有任何改动（当时的 `dotnet test` 全量为 1250/1251 通过）。
+- **已落地（把下一次失败变成可定位）**：该文件的命令断言统一改走 `AssertAccepted`——
+  不被受理时打印 `Kind` / `RejectionCode` / `RejectionMessage` / `Failure` / 序号 +
+  **宿主日志最近 30 行**（`TestServerHost.Logs`）。覆盖：分配花名册 / 开首夜 / 开白天 /
+  自我提名 / 4 名投票者（带席位号）/ 计票 / 结束白天 / 两处触发裁定 / 开第 2 夜 / 恶魔击杀提交。
+- **下一次出现时怎么做**：先看打印出来的 `RejectionCode` ——
+  `day.seat_collected` = 控制面节拍器抢在玩家举手之前收了这一席（时间线问题）；
+  `RejectionMessage` 为空且 `Failure` 非空 = 服务端抛异常（真缺陷，按异常栈查）；
+  其余拒绝码按内核判定路径查。**复现出来的当次就要按缺陷修，不许再当"偶发"放过去。**
+
 ## 相关阅读
 
 - 验收规程：`docs/acceptance/AGENTS.md`

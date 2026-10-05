@@ -59,8 +59,8 @@ public sealed class DeathTriggerResidueHostTests
         await using var klutz = await host.ConnectSeatAsync(new SeatId(KlutzSeat));
         await using var barber = await host.ConnectSeatAsync(new SeatId(BarberSeat));
 
-        await AssignAsync(storyteller, "release");
-        await FinishFirstNightAsync(storyteller, "release");
+        await AssignAsync(host, storyteller, "release");
+        await FinishFirstNightAsync(host, storyteller, "release");
         await ExecuteSweetheartAsync(host, storyteller, demon, sage, sweetheart, klutz, barber, "release");
 
         var decision = await WaitForTriggerDecisionAsync(storyteller, "心上人");
@@ -71,7 +71,7 @@ public sealed class DeathTriggerResidueHostTests
             $"seat:{KlutzSeat}",
             null,
             "test-death-trigger-residue-release-sting");
-        Assert.Equal("Accepted", sting.Kind);
+        AssertAccepted(host, "release", "心上人裁定（醉 4 号）", sting);
         await WaitForDrunkAsync(storyteller, KlutzSeat);
 
         // 来源（3 号心上人）已经死亡，但效果是在死亡之后落账的既成事实：此刻仍生效、未终止（R-0039 第 4 条）。
@@ -83,17 +83,16 @@ public sealed class DeathTriggerResidueHostTests
         // 第二夜：1 号恶魔击杀 5 号理发师；理发师格随后唤醒恶魔，由恶魔把 3 / 4 号角色互换。
         var nightTwo = await storyteller.InvokeAsync<CommandResultDto>(
             "StartNight", 2, "Original", "test-death-trigger-residue-release-night-2");
-        Assert.Equal("Accepted", nightTwo.Kind);
+        AssertAccepted(host, "release", "开第 2 夜", nightTwo);
 
         var kill = await WaitForRequestAsync(host, new SeatId(DemonSeat), $"seat:{BarberSeat}", "恶魔击杀请求");
-        Assert.Equal(
-            "Accepted",
-            (await demon.InvokeAsync<CommandResultDto>(
-                "SubmitResponse",
-                kill.Id.Value,
-                $"seat:{BarberSeat}",
-                "test-death-trigger-residue-release-kill",
-                1L)).Kind);
+        var killed = await demon.InvokeAsync<CommandResultDto>(
+            "SubmitResponse",
+            kill.Id.Value,
+            $"seat:{BarberSeat}",
+            "test-death-trigger-residue-release-kill",
+            1L);
+        AssertAccepted(host, "release", "提交恶魔击杀", killed);
         Assert.Equal(LifeState.Dead, LifeOf(host, BarberSeat));
 
         var swap = await WaitForRequestAsync(host, new SeatId(DemonSeat), "pair:3+4", "理发师交换请求");
@@ -167,8 +166,8 @@ public sealed class DeathTriggerResidueHostTests
                 await using var klutz = await first.ConnectSeatAsync(new SeatId(KlutzSeat));
                 await using var barber = await first.ConnectSeatAsync(new SeatId(BarberSeat));
 
-                await AssignAsync(storyteller, "restart");
-                await FinishFirstNightAsync(storyteller, "restart");
+                await AssignAsync(first, storyteller, "restart");
+                await FinishFirstNightAsync(first, storyteller, "restart");
                 await ExecuteSweetheartAsync(first, storyteller, demon, sage, sweetheart, klutz, barber, "restart");
 
                 var pending = await WaitForTriggerDecisionAsync(storyteller, "心上人");
@@ -220,7 +219,7 @@ public sealed class DeathTriggerResidueHostTests
                 $"seat:{KlutzSeat}",
                 null,
                 "test-death-trigger-residue-restart-sting");
-            Assert.Equal("Accepted", sting.Kind);
+            AssertAccepted(restarted, "restart", "重启后裁定（醉 4 号）", sting);
             await WaitForDrunkAsync(storytellerAfter, KlutzSeat);
 
             // 效果事件里 E24 新字段非空：既成事实类（来源死亡不终止）效果。
@@ -256,8 +255,8 @@ public sealed class DeathTriggerResidueHostTests
         await using var klutz = await host.ConnectSeatAsync(new SeatId(KlutzSeat));
         await using var barber = await host.ConnectSeatAsync(new SeatId(BarberSeat));
 
-        await AssignAsync(storyteller, "dead-target");
-        await FinishFirstNightAsync(storyteller, "dead-target");
+        await AssignAsync(host, storyteller, "dead-target");
+        await FinishFirstNightAsync(host, storyteller, "dead-target");
         await ExecuteSweetheartAsync(host, storyteller, demon, sage, sweetheart, klutz, barber, "dead-target");
 
         var decision = await WaitForTriggerDecisionAsync(storyteller, "心上人");
@@ -267,7 +266,7 @@ public sealed class DeathTriggerResidueHostTests
             $"seat:{SweetheartSeat}",
             null,
             "test-death-trigger-residue-dead-target-sting");
-        Assert.Equal("Accepted", sting.Kind);
+        AssertAccepted(host, "dead-target", "心上人裁定（醉死亡席位）", sting);
         await WaitForDrunkAsync(storyteller, SweetheartSeat);
 
         var view = host.Session.GetStorytellerView();
@@ -285,7 +284,7 @@ public sealed class DeathTriggerResidueHostTests
     }
 
     /// <summary>分配 5 席固定花名册（夹具口径见类注释）。</summary>
-    private static async Task AssignAsync(GameClient storyteller, string tag)
+    private static async Task AssignAsync(TestServerHost host, GameClient storyteller, string tag)
     {
         var assigned = await storyteller.InvokeAsync<CommandResultDto>(
             "AssignCharacters",
@@ -296,18 +295,18 @@ public sealed class DeathTriggerResidueHostTests
                 (KlutzSeat, "klutz"),
                 (BarberSeat, "barber")),
             $"test-death-trigger-residue-{tag}-assign");
-        Assert.Equal("Accepted", assigned.Kind);
+        AssertAccepted(host, tag, "分配花名册", assigned);
     }
 
     /// <summary>首夜：五席都没有首夜行动格 → 配额走完即自然收口。</summary>
-    private static async Task FinishFirstNightAsync(GameClient storyteller, string tag)
+    private static async Task FinishFirstNightAsync(TestServerHost host, GameClient storyteller, string tag)
     {
         var night = await storyteller.InvokeAsync<CommandResultDto>(
             "StartNight",
             1,
             "Original",
             $"test-death-trigger-residue-{tag}-night-1");
-        Assert.Equal("Accepted", night.Kind);
+        AssertAccepted(host, tag, "开首夜", night);
         await WaitForViewAsync(storyteller, view => view.PlanCompleted, "首夜没有自然走完");
     }
 
@@ -325,7 +324,7 @@ public sealed class DeathTriggerResidueHostTests
         var day = await storyteller.InvokeAsync<CommandResultDto>(
             "StartDay",
             $"test-death-trigger-residue-{tag}-day-start");
-        Assert.Equal("Accepted", day.Kind);
+        AssertAccepted(host, tag, "开白天", day);
         await WaitForViewAsync(
             storyteller,
             view => view.Day is { Status: "Open", DayNumber: 1 },
@@ -335,10 +334,11 @@ public sealed class DeathTriggerResidueHostTests
             "Nominate",
             SweetheartSeat,
             $"test-death-trigger-residue-{tag}-nominate");
-        Assert.Equal("Accepted", nominated.Kind);
+        AssertAccepted(host, tag, "心上人自我提名", nominated);
         await VoteSweepTestDriver.StartAsync(host, 1, $"test-death-trigger-residue-{tag}-sweep:start");
 
         var voters = new[] { demon, sage, klutz, barber };
+        var voterSeats = new[] { DemonSeat, SageSeat, KlutzSeat, BarberSeat };
         for (var index = 0; index < voters.Length; index++)
         {
             var voted = await voters[index].InvokeAsync<CommandResultDto>(
@@ -346,7 +346,7 @@ public sealed class DeathTriggerResidueHostTests
                 1,
                 true,
                 $"test-death-trigger-residue-{tag}-vote-{index}");
-            Assert.Equal("Accepted", voted.Kind);
+            AssertAccepted(host, tag, $"{voterSeats[index]} 号投票", voted);
         }
 
         await VoteSweepTestDriver.CollectAllAsync(host, 1, 5, $"test-death-trigger-residue-{tag}-sweep");
@@ -355,12 +355,38 @@ public sealed class DeathTriggerResidueHostTests
             "CountVotes",
             1,
             $"test-death-trigger-residue-{tag}-count");
-        Assert.Equal("Accepted", counted.Kind);
+        AssertAccepted(host, tag, "计票", counted);
 
         var closed = await storyteller.InvokeAsync<CommandResultDto>(
             "CloseDay",
             $"test-death-trigger-residue-{tag}-close");
-        Assert.Equal("Accepted", closed.Kind);
+        AssertAccepted(host, tag, "结束白天", closed);
+    }
+
+    /// <summary>
+    /// 断言一条命令被受理；不被受理时把**服务端给的原因与宿主日志**一起打出来
+    /// （本用例曾在全量并行下偶发一次 `Kind = Failed`，当时的输出只有 `Failed` 三个字，
+    /// 查不出是哪一步、为什么——这条断言把那次的取证缺口补上）。
+    /// </summary>
+    private static void AssertAccepted(
+        TestServerHost host,
+        string tag,
+        string step,
+        CommandResultDto result)
+    {
+        if (result.Kind == "Accepted")
+        {
+            return;
+        }
+
+        var logs = string.Join(
+            Environment.NewLine,
+            host.Logs.TakeLast(30));
+        Assert.Fail(
+            $"{tag}：{step}被拒 → Kind={result.Kind}"
+            + $" / 拒绝码={result.RejectionCode ?? "无"} / 拒绝说明={result.RejectionMessage ?? "无"}"
+            + $" / 失败说明={result.Failure ?? "无"} / 序号={result.Sequence}"
+            + $"{Environment.NewLine}--- 宿主日志（最近 30 行）---{Environment.NewLine}{logs}");
     }
 
     private static async Task<StorytellerViewDto> WaitForTriggerDecisionAsync(GameClient storyteller, string token)
