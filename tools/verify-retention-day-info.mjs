@@ -107,7 +107,7 @@ let storytellerPage = null
  * 改动本装置、增删断言时必须同步这个数字：条件分支被静默跳过（"互为反面"的夹具没找到、
  * 女巫请求没出现……）会让项数变少——那必须红，而不是悄悄少判几行。
  */
-const EXPECTED_CHECKS = 74
+const EXPECTED_CHECKS = 77
 
 const PUSH_METHODS = [
   'ReceiveOperationRequest',
@@ -408,13 +408,22 @@ async function driveSavantPickers(savantPage, witchPage) {
   const ruleNote = compact(await readTextBounded(picker.getByTestId('savant-rule-note')))
   check('辅助面常驻服务端给的组合约束说明', ruleNote.length > 0, ruleNote.slice(0, 160))
 
-  const candidates = await picker.locator('[data-testid^="savant-option-"]').evaluateAll((nodes) =>
-    nodes.map((node) => ({
-      value: (node.getAttribute('data-testid') ?? '').replace('savant-option-', ''),
-      truth: node.getAttribute('data-truth') ?? '',
-      group: node.getAttribute('data-group') ?? '',
-    })),
-  )
+  // 候选探针：读的是**此刻**的界面。`:disabled` 来自 Vue 的绑定，
+  // 点选之后必须重读一次——否则读到的是点选前的旧属性（"互为反面"那一段就踩过这个坑）。
+  const probeCandidates = () =>
+    picker.locator('[data-testid^="savant-option-"]').evaluateAll((nodes) =>
+      nodes.map((node) => ({
+        value: (node.getAttribute('data-testid') ?? '').replace('savant-option-', ''),
+        truth: node.getAttribute('data-truth') ?? '',
+        group: node.getAttribute('data-group') ?? '',
+        code: node.getAttribute('data-code') ?? '',
+        exclusion: node.getAttribute('data-exclusion') ?? '',
+        opposite: node.getAttribute('data-opposite') === 'true',
+        disabled: node.disabled,
+      })),
+    )
+
+  const candidates = await probeCandidates()
   check(
     '候选逐条带服务端真值（真 / 假，不是让说书人自己记）',
     // 下界取实际量级（本局实测 157 条）：候选缩水一半必须红，而不是被 `>= 10` 兜住。
@@ -439,8 +448,12 @@ async function driveSavantPickers(savantPage, witchPage) {
     `真 ${trueOptions.length} / 假 ${falseOptions.length}`,
   )
 
+  // 两条同真：第二条必须挑**另一条事实**（编码不同）——同一条事实的两个取值互为反面（奇 / 偶），
+  // 选上第一条之后那一条已经被灰掉，点不动（本装置上一版就把它当成"第二条真"用了，结果两槽位同值）。
+  const codeOf = (value) => value.slice(0, value.lastIndexOf(':'))
+  const everyTrue = trueOptions.find((item) => codeOf(item.value) !== codeOf(trueOptions[0].value))
   await picker.locator(`[data-testid="savant-option-${trueOptions[0].value}"]`).click()
-  await picker.locator(`[data-testid="savant-option-${trueOptions[1].value}"]`).click()
+  await picker.locator(`[data-testid="savant-option-${everyTrue.value}"]`).click()
   const badVerdict = await waitForAttribute(picker.getByTestId('savant-verdict'), 'data-verdict-ok', 'false', 10_000)
   const badText = compact(await readTextBounded(picker.getByTestId('savant-verdict')))
   const badDisabled = await picker.getByTestId('savant-submit').isDisabled()
@@ -497,33 +510,80 @@ async function driveSavantPickers(savantPage, witchPage) {
     )
   }
 
-  // 「互为反面」（奇 / 偶这类同族两条）必然一真一假——前端拿不到互斥组信息，因此照常放行；
-  // 服务端在提交时按当时的账拒绝。这一段把"界面不预拦、平台兜得住"的现状钉在证据里（票据「残余」第 4 条）。
-  const familyOf = (value) => value.slice(0, value.lastIndexOf(':'))
-  const mirror = falseOptions.find((item) => familyOf(item.value) === familyOf(trueOptions[0].value))
-  const independent = falseOptions.find((item) => familyOf(item.value) !== familyOf(trueOptions[0].value))
+  // 「互为反面」的界面预拦（C4 防呆）：两个槽位各占一条时，与其中一条**同族**的那条候选
+  // 必须当场灰掉、写明原因、点不动；服务端在提交时仍会拒绝（规则层用例判它——界面已经拦住，
+  // 真机再也走不到"提交后被拒"那一步）。这一段把票据「残余」第 4 条收口。
+  // 夹具（每一步都写明前置，不依赖上一段留下的槽位）：
+  //   第一条 = `trueOptions[0]`（本局恶魔奇偶位那条，**有互斥组**）→ 真；
+  //   第二条 = `anotherFalse`（另一族、为假）→ 一真一假，合法组合。
+  // 于是 `mirror`（与第一条同族的另一取值）必须被标出来并灰掉，而第二条自己不能被灰。
+  const anotherFalse = falseOptions.find((item) => codeOf(item.value) !== codeOf(trueOptions[0].value))
+  // 选第二条：`anotherFalse` 与第一条不同族 ⇒ 它自己不会被灰，能正常落进槽位。
+  await picker.getByTestId('savant-slot-2').getByRole('button', { name: '第二条' }).click()
+  await picker.locator(`[data-testid="savant-option-${anotherFalse.value}"]`).click()
+  await waitForAttribute(picker.getByTestId('savant-slot-2'), 'data-slot-value', anotherFalse.value, 10_000)
+  console.log(
+    `  [诊断] 装好夹具后 pair=${await readAttributeBounded(picker, 'data-pair')}`
+    + ` reasons=${await readAttributeBounded(picker, 'data-reasons')}`
+    + ` probe=${await readAttributeBounded(picker, 'data-probe')}`
+    + ` slot1=${await readAttributeBounded(picker.getByTestId('savant-slot-1'), 'data-slot-value')}`
+    + ` slot2=${await readAttributeBounded(picker.getByTestId('savant-slot-2'), 'data-slot-value')}`,
+  )
+  // 点选只是派发事件；`:disabled` / `data-opposite` 要等 Vue 下一帧才写进 DOM，
+  // 因此这里**等**一个候选被标出来再读（直接读会拿到点选前的旧属性——本装置踩过一次）。
+  const oppositeShown = await picker
+    .locator('[data-opposite="true"]')
+    .first()
+    .waitFor({ timeout: 10_000 })
+    .then(() => true)
+    .catch(() => false)
+  const probed = await probeCandidates()
+  const opposite = probed.filter((item) => item.opposite)
+  const mirror = opposite[0]
+  check(
+    '互为反面的候选：另一槽位选上一条之后，这条的反面候选当场被标出来',
+    oppositeShown && mirror !== undefined,
+    `槽位 1 = ${trueOptions[0].value}；被标为反面的候选：${opposite.map((item) => item.value).join('/') || '无'}`,
+  )
+
   if (mirror !== undefined) {
-    await picker.getByTestId('savant-slot-2').getByRole('button', { name: '第二条' }).click()
-    await picker.locator(`[data-testid="savant-option-${mirror.value}"]`).click()
-    const mirrorVerdict = await waitForAttribute(picker.getByTestId('savant-verdict'), 'data-verdict-ok', 'true', 10_000)
-    check(
-      '互为反面的两条：前端不知互斥、按真值照常放行（残余第 4 条的现状）',
-      mirrorVerdict === 'true',
-      compact(await readTextBounded(picker.getByTestId('savant-verdict'))),
-    )
-    const rejected = await runCommand(storytellerPage, '提交互为反面的组合', () =>
-      picker.getByTestId('savant-submit').click(),
+    const mirrorNote = compact(
+      await readTextBounded(picker.locator(`[data-testid="savant-option-${mirror.value}"]`)),
     )
     check(
-      '互为反面的两条：服务端当场拒绝并给出可读原因（平台防呆）',
-      rejected.kind !== 'Accepted' && rejected.raw.includes('互为反面'),
-      rejected.raw.slice(0, 200),
+      '互为反面的候选：灰掉不可点，并在候选上写明原因（不是只靠提交后被拒）',
+      mirror.disabled === true && mirrorNote.includes('互为反面'),
+      `disabled=${mirror.disabled}；文案=${mirrorNote.slice(0, 120)}`,
     )
-    await screenshot(storytellerPage, 'retention-06-savant-mirror-rejected')
+    // 灰掉要"点不动"才算数：真去点它，槽位不许变（`:disabled` 只是外观，行为也要钉住）。
+    await picker.locator(`[data-testid="savant-option-${mirror.value}"]`).click().catch(() => {})
+    const afterClick = await readAttributeBounded(picker.getByTestId('savant-slot-2'), 'data-slot-value')
+    check(
+      '灰掉的候选点不动：槽位 2 仍是原来那条（不是只写了个空属性）',
+      afterClick === anotherFalse.value,
+      `槽位 2 = ${afterClick}`,
+    )
+    check(
+      '灰掉的是"已选那条的反面"，别的一条都没灰（不是随手灰一片）',
+      opposite.length === 1
+        && codeOf(mirror.value) === codeOf(trueOptions[0].value)
+        && mirror.value !== trueOptions[0].value
+        && mirror.truth === 'False',
+      `槽位 1 ${trueOptions[0].value}=${trueOptions[0].truth}；灰掉 ${opposite.map((item) => `${item.value}=${item.truth}`).join('/') || '无'}`,
+    )
+    await screenshot(storytellerPage, 'retention-06-savant-mirror-blocked')
   }
 
+  check(
+    '另一条独立事实（非同族）不会被误标为反面',
+    probed.some((item) => item.value === anotherFalse.value && item.opposite === false && item.disabled === false),
+    `独立候选 ${anotherFalse.value}；被灰掉 ${opposite.length} 条`,
+  )
+
+  // 收尾成合法的一真一假：第二条换成**另一族**里为假的那条（`anotherFalse`）——
+  // 被灰掉的那条点不动，所以这里也顺带证明"另一个槽位照样能选别的事实"。
   await picker.getByTestId('savant-slot-2').getByRole('button', { name: '第二条' }).click()
-  await picker.locator(`[data-testid="savant-option-${independent.value}"]`).click()
+  await picker.locator(`[data-testid="savant-option-${anotherFalse.value}"]`).click()
   const okVerdict = await waitForAttribute(picker.getByTestId('savant-verdict'), 'data-verdict-ok', 'true', 10_000)
   const okText = compact(await readTextBounded(picker.getByTestId('savant-verdict')))
   const okDisabled = await picker.getByTestId('savant-submit').isDisabled()
@@ -534,9 +594,10 @@ async function driveSavantPickers(savantPage, witchPage) {
   const slotSecond = await readAttributeBounded(picker.getByTestId('savant-slot-2'), 'data-slot-value')
   check(
     '两个槽位各自记下所选事实的编码（提交的就是这两条）',
-    slotFirst === trueOptions[0].value && slotSecond === independent.value,
+    slotFirst === trueOptions[0].value && slotSecond === anotherFalse.value,
     `${slotFirst} | ${slotSecond}`,
   )
+
   await screenshot(storytellerPage, 'retention-07-savant-legal-combination')
 
   const settled = await runCommand(storytellerPage, '博学者按候选结清', () =>

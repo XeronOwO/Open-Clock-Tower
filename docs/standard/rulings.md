@@ -1818,8 +1818,13 @@
      - C1 能力生效 → 必须**恰一真一假**；
      - C2 能力未生效（醉酒 / 中毒 / 死亡）且涡流不在场 → **任意组合**（双真 / 双假 / 一真一假）；
      - C3 涡流在场 → **两条都必须为假**（R-0028），判定**优先于** C1 / C2；
-     - C4 同一条事实写两遍、或两条互为反面（编码相同、取值互斥，如奇 / 偶）→ 平台**防呆拒绝**：
-       这不是规则断言（醉酒时按规则可以随便给），想给重复内容走自由文本兜底。
+     - C4 同一条事实写两遍、或两条互为反面（**事实编码相同、取值互斥组相同**、取值不同，如奇 / 偶）→
+       平台**防呆拒绝**：这不是规则断言（醉酒时按规则可以随便给），想给重复内容走自由文本兜底。
+       互斥组随候选项下发（`DecisionOption.Code` / `DecisionOption.ExclusionGroup`），
+       因此**说书人端也预拦**：与已选那条互为反面的候选当场灰掉、写明原因、点不动
+       （2026-10-05 补：原先只有服务端拒绝，说书人点了才知道不行——见批次 E41）。
+       互斥组只对「同一条事实的两个取值」成立（如爪牙距离 0 / 1 / 2 中的 0 与 1 不是反面对），
+       服务端仍是唯一权威。
   4. **自由文本兜底**：任一条不是结构化编码 → 照 R-0057 第 3 条受理，注记显式标「未校验」（C6）。
   5. **快照与提交时刻**：候选与真值随裁定点提示下发（构造提示那一刻的账快照）；
      说书人提交时，规则层按**提交时刻**的账重新求值并核对组合——挂起期间局势变了，以提交时刻为准。
@@ -1832,8 +1837,9 @@
      两条信息仍按 R-0057 第 4 条都标「可能为假」——玩家不该知道哪条为真。
 - **影响面**：内核 `SeatActivityLedger` / `SeatActivity` / `SeatActivityKind` / `SeatActivityFolder`、
   `EffectSourceTermination`（从 `GameStateMachine` 拆出）、`GameState.Activity`、`OptionTruth` /
-  `TruthCombinationRule` / `DecisionOption`（真值 / 分组 / 徽章）/ `ChoicePrompt`（`TruthRule` / `TruthNote` /
-  两槽位答案形状）/ `StepMachineStateComparer`、`SavantPromptContext` / `ISavantQuestionSource.BuildPrompt`；
+  `TruthCombinationRule` / `DecisionOption`（真值 / 分组 / **事实编码 / 互斥组** / 徽章）/ `ChoicePrompt`
+  （`TruthRule` / `TruthNote` / 两槽位答案形状）/ `StepMachineStateComparer`、
+  `SavantPromptContext` / `ISavantQuestionSource.BuildPrompt`；
   规则层 `SavantFactWorld` / `SavantFactDefinition` / `SavantFactEvaluation` / `SavantFactCandidate` /
   `SavantFactFormat` / `SavantFactCatalog` / `SavantFactCombination` / `SavantCombinationVerdict` +
   A–E 五组事实 / `SavantQuestionSource`；服务端 `DecisionOptionDto` / `StorytellerViewDto`
@@ -1843,10 +1849,14 @@
 - **回归**：内核 `SeatActivityLedgerTests`（开局与首次观测不算变化 / 死亡与换角换阵营要求前后已知 /
   夜晚与白天两窗口 / 夜晚处决不落"今天" / 没有黎明就没有"昨晚" / 失效只记计入数学家的分类）、
   `SavantQuestionMachineTests`（提示来自当时的账）；规则 `SavantFactCatalogTests`（A–E 组的真值与参数、
-  判不了不进候选、分组与高强度徽章）、`SavantQuestionSourceTests`（组合声明 / 结构化受理与拒绝 /
-  自由文本未校验兜底 / 涡流 / 判不了）；集成 `SavantHostTests`（真宿主：候选真值与约束下发 → 双真被拒且不落信息
-  → 一真一假受理 → 玩家只收到人话文案）；规范门禁 `ContractMirrorGateTests`（新字段镜像对账）。
-  **界面级（装置）证据留在验收批次 E40**（与亡骨魔、杂耍艺人同批取证）。
+  判不了不进候选、分组与高强度徽章、**事实编码与互斥组随候选下发**）、`SavantQuestionSourceTests`
+  （组合声明 / 结构化受理与拒绝 / 自由文本未校验兜底 / 涡流 / 判不了）；集成 `SavantHostTests`
+  （真宿主：候选真值与约束下发 → 双真被拒且不落信息 → 一真一假受理 → 玩家只收到人话文案）；
+  前端 `display/savantFacts.spec.ts`（**互为反面判定**与组合结论）/ `display/format.spec.ts`
+  （新元数据归一化）；规范门禁 `ContractMirrorGateTests`（新字段镜像对账）。
+  **界面级（装置）证据**：批次 E40（服务端拒绝那一路）+ 批次 E41（界面预拦那一路：
+  `tools/verify-retention-day-info.mjs` 判「反面候选被标出 / 灰掉不可点并在候选上写明原因 /
+  独立事实不被误灰」）。
 
 ## 维护规则
 
