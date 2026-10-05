@@ -111,6 +111,7 @@ public static class SettlementReconciler
                     Target = expectation.Target,
                     SourceCharacter = expectation.SourceCharacter,
                     Dimension = expectation.Dimension,
+                    Window = expectation.Window,
                 },
             });
         }

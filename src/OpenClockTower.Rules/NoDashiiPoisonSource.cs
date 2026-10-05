@@ -75,14 +75,15 @@ public sealed class NoDashiiPoisonSource : IStandingEffectSource
 
         if (demonLife == LifeState.Dead)
         {
-            switch (context.State.RegainedAbilityOn(seats[demonIndex]))
+            switch (context.State.AbilityPresentOn(seats[demonIndex]))
             {
                 case true:
-                    // 集骨者「重获能力」：死者重新握有能力，继续按在场下毒（R-0054）。
+                    // 集骨者「重获能力」（R-0054）/ 亡骨魔「保留能力」（R-0056）：死者重新握有能力，
+                    // 继续按在场下毒。
                     break;
                 case null:
                     return StandingEffectAssessment.Inconclusive(
-                        $"诺-达鲺（{seats[demonIndex].Value} 号）的重获能力窗口判定不了：本次不重算");
+                        $"诺-达鲺（{seats[demonIndex].Value} 号）是否握有能力判定不了：本次不重算");
                 default:
                     // 玩家死亡即失去角色能力（百科《术语汇总》「死亡」）；既有中毒效果由折叠终止、
                     // 维度由重算解除，对账本身不再期望任何新效果——别让死人继续下毒。

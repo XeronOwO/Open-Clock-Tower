@@ -126,6 +126,9 @@ public static class GameStateMachine
             // 侵染产生的角色 / 阵营变化与死亡另有配套的 SeatStateChangedEvent 折进账里。
             FangGuInfectionRecordedEvent => current,
 
+            // 亡骨魔杀死爪牙（R-0056）：记进状态账（保留能力窗口与邻近镇民中毒都由常驻来源按它派生）。
+            VigormortisKillRecordedEvent recorded => ApplyVigormortisKillRecorded(current, recorded),
+
             // 白天流程事件：它们改变的是步骤机状态里的白天账（StepMachineFolder），不改六维度与效果；
             // 处决产生的死亡由配套的 SeatStateChangedEvent 折进账里（处决 ≠ 死亡，百科《处决》）。
             // 例外：黎明要推进失效账本的窗口起点（R-0004 第 2 条，见 ApplyDawn）——六维度与效果仍不变。
@@ -214,22 +217,23 @@ public static class GameStateMachine
         }
 
         var regained = state.PersistentEffects
-            .Where(effect => LosesAbility(effect, changed) && effect.Window == EffectWindowKind.RegainedAbility)
+            .Where(effect => LosesAbility(state, effect, changed) && effect.Window is not null)
             .ToArray();
 
         var effects = state.PersistentEffects
-            .Select(effect => LosesAbility(effect, changed) ? effect.Terminate(termination) : effect)
+            .Select(effect => LosesAbility(state, effect, changed) ? effect.Terminate(termination) : effect)
             .ToArray();
 
         // 疯狂要求与持续型效果同源同命运：来源死亡 / 换角色 → 立即撤下（R-0021）。
         // 目标**自己**的死亡 / 换角不撤下要求——已死亡的目标仍可能因不够疯狂被处决（R-0021）。
         var requirementTermination = BuildRequirementTermination(changed);
         var seats = state.Seats
-            .Select(entry => entry.Madnesses.Any(requirement => LosesRequirementAbility(requirement, changed))
+            .Select(entry => entry.Madnesses.Any(requirement =>
+                    LosesRequirementAbility(state, requirement, changed))
                 ? entry with
                 {
                     Madnesses = [.. entry.Madnesses.Select(requirement =>
-                        LosesRequirementAbility(requirement, changed)
+                        LosesRequirementAbility(state, requirement, changed)
                             ? requirement.Terminate(requirementTermination)
                             : requirement)],
                 }
@@ -238,10 +242,10 @@ public static class GameStateMachine
 
         var next = state with { PersistentEffects = effects, Seats = seats };
 
-        // 来源死亡 / 换角把某条重获窗口收掉时，被重获的能力同步失去（R-0054）。
-        foreach (var regain in regained)
+        // 来源死亡 / 换角把某条能力窗口收掉时，被重获（R-0054）或保留（R-0056）的能力同步失去。
+        foreach (var window in regained)
         {
-            next = RegainDependentTermination.Terminate(next, regain, termination);
+            next = AbilityWindowDependentTermination.Terminate(next, window, termination);
         }
 
         return next;
@@ -274,7 +278,7 @@ public static class GameStateMachine
         var regained = state.PersistentEffects
             .Where(effect => !effect.IsTerminated
                 && (effect.Source == departed.Seat || effect.Target == departed.Seat)
-                && effect.Window == EffectWindowKind.RegainedAbility)
+                && effect.Window is not null)
             .ToArray();
 
         var effects = state.PersistentEffects
@@ -314,27 +318,37 @@ public static class GameStateMachine
             PersistentEffects = effects,
         };
 
-        // 离场把某条重获窗口收掉时（来源 = 集骨者离场，或目标离场），被重获的能力同步失去（R-0054）。
-        foreach (var regain in regained)
+        // 离场把某条能力窗口收掉时（来源 = 集骨者 / 亡骨魔离场，或目标离场），
+        // 被重获（R-0054）或保留（R-0056）的能力同步失去。
+        foreach (var window in regained)
         {
-            next = RegainDependentTermination.Terminate(next, regain, effectTermination);
+            next = AbilityWindowDependentTermination.Terminate(next, window, effectTermination);
         }
 
         return next;
     }
 
     /// <summary>来源死亡一律终止；来源角色与效果记录的施加时角色不同也终止。已终止的不重复处理。</summary>
-    private static bool LosesAbility(PersistentEffect effect, SeatStateChangedEvent changed) =>
+    /// <remarks>
+    /// 死亡之所以不再一律终止：被亡骨魔杀死的爪牙**从未失去**能力（保留能力窗口，R-0056）——
+    /// 百科《死后能力保留》· 2026-10-01 抓取 · 能力简介：「这类能力生效与否不关注玩家的生死状态」。
+    /// 窗口判定不了时按"没有保留"处理（照常终止）：这一格是**不可逆**的写操作，宁可少保留、
+    /// 不可凭一个未观测的窗口把该终止的效果留下（与 D-0015 的保守姿态同向）。
+    /// </remarks>
+    private static bool LosesAbility(GameState state, PersistentEffect effect, SeatStateChangedEvent changed) =>
         effect.Source == changed.Seat
         && !effect.IsTerminated
-        && (changed.Life == LifeState.Dead
+        && ((changed.Life == LifeState.Dead && state.RetainedAbilityOn(changed.Seat) != true)
             || (changed.Character is { } character && character != effect.SourceCharacter));
 
-    /// <summary>疯狂要求的同款判定：来源死亡或换角色即撤下。</summary>
-    private static bool LosesRequirementAbility(MadnessRequirement requirement, SeatStateChangedEvent changed) =>
+    /// <summary>疯狂要求的同款判定：来源死亡（且没有保留能力）或换角色即撤下。</summary>
+    private static bool LosesRequirementAbility(
+        GameState state,
+        MadnessRequirement requirement,
+        SeatStateChangedEvent changed) =>
         requirement.Source == changed.Seat
         && !requirement.IsTerminated
-        && (changed.Life == LifeState.Dead
+        && ((changed.Life == LifeState.Dead && state.RetainedAbilityOn(changed.Seat) != true)
             || (changed.Character is { } character && character != requirement.SourceCharacter));
 
     private static EffectTermination? BuildTermination(SeatStateChangedEvent changed)
@@ -422,9 +436,47 @@ public static class GameStateMachine
         effects[index] = terminatedEffect;
 
         var next = state with { PersistentEffects = effects };
-        return terminatedEffect.Window == EffectWindowKind.RegainedAbility
-            ? RegainDependentTermination.Terminate(next, terminatedEffect, terminated.Termination)
+        return terminatedEffect.Window is not null
+            ? AbilityWindowDependentTermination.Terminate(next, terminatedEffect, terminated.Termination)
             : next;
+    }
+
+    /// <summary>
+    /// 记下「亡骨魔杀死爪牙」（R-0056）：保留能力窗口与邻近镇民中毒都由常驻来源按它派生，
+    /// 因此这里只做**流完整性**校验——同一名爪牙不能被杀两次，中毒侧必须是已定义的方向。
+    /// </summary>
+    /// <remarks>
+    /// 不校验"目标此刻已死"：这条事实可能排在死亡事件**之前**（顺序有语义，见
+    /// <see cref="PitHagNightMachine.AppendOutcome"/>），折叠不该依赖事件顺序之外的现状。
+    /// </remarks>
+    private static GameState ApplyVigormortisKillRecorded(
+        GameState state,
+        VigormortisKillRecordedEvent recorded)
+    {
+        if (recorded.Side is { } side && !Enum.IsDefined(side))
+        {
+            throw new InvalidOperationException($"事件流损坏：未知的中毒侧 {side}");
+        }
+
+        if (state.VigormortisKills.Any(kill => kill.Minion == recorded.Minion))
+        {
+            throw new InvalidOperationException(
+                $"事件流损坏：席位 {recorded.Minion.Value} 已经记过一次「被亡骨魔杀死」");
+        }
+
+        return state with
+        {
+            VigormortisKills =
+            [
+                .. state.VigormortisKills,
+                new VigormortisKill
+                {
+                    Demon = recorded.Demon,
+                    Minion = recorded.Minion,
+                    Side = recorded.Side,
+                },
+            ],
+        };
     }
 
     private static GameState ApplyMadnessRequirementIssued(GameState state, MadnessRequirementIssuedEvent issued)

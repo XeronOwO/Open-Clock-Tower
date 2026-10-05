@@ -45,8 +45,8 @@ export interface EffectDto {
   /** 「获得能力」类效果被获得的角色（哲学家）；普通效果为 null。口径见 rulings.md R-0036。 */
   grantedCharacter: string | null
   /**
-   * 这条效果开启的窗口分类（EffectWindowKind 名）：AfflictionImmunity / SecondAction / RegainedAbility；
-   * null = 普通效果。口径见 rulings.md R-0047 / R-0052 / R-0054。
+   * 这条效果开启的窗口分类（EffectWindowKind 名）：AfflictionImmunity / SecondAction /
+   * RegainedAbility / RetainedAbility；null = 普通效果。口径见 rulings.md R-0047 / R-0052 / R-0054 / R-0056。
    */
   window: string | null
   terminated: boolean

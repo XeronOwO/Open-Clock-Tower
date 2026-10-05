@@ -20,6 +20,12 @@ namespace OpenClockTower.Kernel;
 /// 第二位消费者是旅行者集骨者的「重获能力」（<see cref="RegainedAbility"/>，R-0054）：
 /// 目标保持死亡但重新获得其角色能力，直到下个黄昏——窗口存续期间该席位按「握有角色能力」处理。
 /// </para>
+/// <para>
+/// 第三位消费者是恶魔亡骨魔的「保留能力」（<see cref="RetainedAbility"/>，R-0056）：
+/// 被他杀死的爪牙**始终没有失去**能力——死亡不改这一格的答案，窗口只随亡骨魔失去能力或
+/// 该爪牙不再是爪牙而终止。它与 <see cref="RegainedAbility"/> 的分工是**寿命**：
+/// 那个到下个黄昏到期，这个不随黄昏到期（见 <c>DuskExpiry</c> 的到期族）。
+/// </para>
 /// </remarks>
 public enum EffectWindowKind
 {
@@ -41,4 +47,13 @@ public enum EffectWindowKind
     /// 名下的持续型效果一并终止。首位消费者是旅行者集骨者，口径见 R-0054。
     /// </summary>
     RegainedAbility,
+
+    /// <summary>
+    /// 保留能力：目标死亡但**从未失去**其角色能力（被亡骨魔杀死的爪牙），只要亡骨魔握有该能力、
+    /// 且该席位仍是爪牙角色就一直成立——不随黄昏到期。窗口存续期间该席位按「握有角色能力」处理：
+    /// 生效判定、夜晚建表绑定与入格放行、能力存续族按它放行；死亡也不终止它名下的持续型效果
+    /// 与疯狂要求（没有失去能力，就没有 <see cref="GameStateMachine"/> 的失能传播）。
+    /// 口径见 <c>docs/standard/rulings.md</c> R-0056。
+    /// </summary>
+    RetainedAbility,
 }

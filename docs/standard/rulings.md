@@ -1521,7 +1521,7 @@
      `DuskExpiry` 统一终止全部窗口；开夜命令**建表之前**先按同一份实现收口——否则建表期读到的还是
      上一夜的窗口（女裁缝会多开一格、被重获的死者会被误判仍有能力）；与触发器共用、重复求值幂等。
   3. **窗口终止 → 效果级联**：被重获能力**再次失去**，它在这段窗口里产生的持续型效果与疯狂要求
-     一并终止（《重要细节》二-3；`RegainDependentTermination`）；`SourceStateIndependent` 的
+     一并终止（《重要细节》二-3；`AbilityWindowDependentTermination`——2026-10-05 起同时覆盖亡骨魔的「保留能力」窗口，R-0056）；`SourceStateIndependent` 的
      既成事实类效果（心上人醉酒）不回溯（R-0039）。
   4. **「每局限一次」的上限**：重获让「已用过」的能力可再用一次，但总次数上限仍是 2（与 R-0052 的
      窗口同尺）；已经到 2 的格子绑成无选项的显式跳过（入格留可归因的 `PromptSkippedEvent`）。
@@ -1542,11 +1542,17 @@
      「失去能力」照放、机会照消耗（`AbilityUseLedger` 记一次未生效的使用）。
   9. **死者按「握有角色能力」处理**：`GameState.AbilityPresentOn`（存活，或死亡但有生效中的重获窗口）
      统一供给——生效判定、效果生效与疯狂要求、女巫 / 诺-达鲺 / 涡流等能力存续族、入槽放行。
+     **2026-10-05 更新（R-0056）**：这一份口径同时覆盖亡骨魔的「保留能力」窗口；女巫 / 诺-达鲺 / 涡流
+     三处原本直接读 `RegainedAbilityOn` 的判定已整族改读 `AbilityPresentOn`。
   10. **「先失去」前置**：死亡时仍保有能力的例外（受亡骨魔影响的爪牙 / 「假死」的僵怖）在平台里尚无
       契约（这两类角色的夜间行动未实现，带它们的局开不了夜），本批不建模；落地时按本条补判据。
+      **2026-10-05 落地（R-0056）**：亡骨魔已实现，判据 = `GameState.AbilityPresentOn`——
+      `BoneCollectorNightAction` 的候选与结算都排除「死亡但仍握有能力」的席位，被挡掉的候选数写进提示；
+      僵怖（假死）仍随跨剧本票，本条对该角色继续有效。
 - **影响面**：`EffectWindowKind.RegainedAbility`、`GameState.AbilityPresentOn / RegainedAbilityOn /
   IsOperative`、`AbilityEffectivenessEvaluator`、`StepSlotEntry`、`NightSlotActivation.PlanRegained`、
-  `RegainDependentTermination`、`DuskExpiry`、`BoneCollectorNightAction` / `BoneCollectorDuskTrigger`、
+  `AbilityWindowDependentTermination`（R-0056 起改名，同时服务保留能力族）、`DuskExpiry`、
+  `BoneCollectorNightAction` / `BoneCollectorDuskTrigger`、
   `WitchAbility` / `NoDashiiPoisonSource` / `VortoxInterference`、`ExtraNominationMachine` /
   `ArtistQuestionMachine`、`GameCommandDispatcher`（开夜前收口）。
 - **回归**：内核 `RegainedAbilityTests`（存续查询 / 死亡覆盖 / 生效与酒毒 / 级联终止 / 来源死亡 /
@@ -1629,6 +1635,70 @@
   `BoneCollectorHostTests.BoneCollector_RegainingFirstNightAbility_AppendsSlotAndWakesTheDeadPlayer`
   （已死亡的钟表匠 + 追加位落点 + 信息隔离）；装置 `verify-storyteller-panel.mjs` 的 night2-3 段
   （总格数 +1、当前槽位标识 = `clockmaker@1`、追加格裁定归属、死亡玩家收到信息、无关席位读不到）。
+
+### R-0056 · 亡骨魔「保留能力」+ 邻近镇民中毒的平台口径（Decided）
+
+- **状态**：Decided（2026-10-05，本票实现落地）
+- **依据**（钟楼百科 · 2026-10-01 抓取）：《亡骨魔》· 角色能力——「每个夜晚*，你要选择一名玩家：
+  他死亡。」「被你杀死的爪牙保留他的能力，且与他邻近的两名镇民之一中毒。[-1外来者]」；
+  · 规则细节 11–24（夜序、两类标记的放置 / 移除时机、中毒标记的动态检测）；
+  · 角色简介 1–9（爪牙死后仍能在夜晚行动、说书人选侧、所有被杀的爪牙都保留能力、
+  变成非爪牙即失效、醉酒 / 中毒期间失效）；旁证《死后能力保留》· 能力简介——这类能力
+  「生效与否不关注玩家的生死状态（同理也不关注『假死』和『活尸』状态），但与其他状态的互动
+  仍然遵循一般规则」；《集骨者》· 规则细节 1（regain 以「先失去」为前提）。
+- **效果形状**：击杀当场落三样东西（按此顺序）：① `PersistentEffect`（`Window = RetainedAbility`、
+  `Source = 亡骨魔`、`Target = 爪牙`、`SourceCharacter = vigormortis`）；②
+  `VigormortisKillRecordedEvent`（折进 `GameState.VigormortisKills`，含说书人选的中毒侧）；
+  ③ 统一击杀出口的即时效果 + 死亡事实。中毒（`Dimension = Poison`）由常驻来源派生，不在契约里零散施加。
+- **处理（Decided；代码注释按下列序号引用）**：
+  1. **击杀出口**：与方古 / 诺-达鲺同一处（`NightKill`）；「选择一名玩家」含自己与已死亡玩家
+     （《重要细节》三-1），已死亡者不会再次死亡 → 既不落击杀事实、也不放保留能力标记。
+  2. **死亡 ≠ 失去能力**：`GameState.AbilityPresentOn` = 存活，或死亡但有生效中的**重获**窗口
+     （R-0054）或**保留**窗口；两者都判定不了时才返回「判定不了」（不猜）。女巫 / 诺-达鲺 / 涡流
+     三处原本直接读重获窗口的存续判定**整族改读这一份口径**——被保留能力的爪牙（例如女巫）
+     死后其诅咒不再被终止，也仍按「能力在」参与存续条件。
+  3. **死亡不再终止它名下的东西**：折叠层按「这次死亡是否真的失去能力」决定要不要终止该席位名下的
+     持续型效果与疯狂要求（`LosesAbility`）。因此保留窗口**必须排在死亡事件之前**——顺序有语义。
+  4. **窗口寿命**：不随黄昏到期（与 R-0052 / R-0054 的窗口分族，`DuskExpiry` 的到期族是显式集合）；
+     只随①亡骨魔失去能力（死亡 / 离场 / 换角）或②被标记的爪牙不再是爪牙角色而终止，且**移除后不复原**
+     （同一条击杀事实只兑现一次；本局他不可能被亡骨魔再杀一次）。终止时按 R-0054 第 3 条的同一处
+     级联实现，把它名下这段窗口里的效果与疯狂要求一并终止。
+  5. **中毒目标 = 说书人选的那一侧**：击杀当场由契约开一个追加裁定点，两个候选分别是爪牙**顺时针 /
+     逆时针最近的镇民**（跳过非镇民角色；死亡照算，规则细节 3）。只记**侧**不记席位：目标随座次 /
+     角色变化按同侧重算（规则细节 23「不会因此替换到另一侧去」），效果标识含目标，换人即换标识
+     （旧的由对账终止，与诺-达鲺同款）。全场只有一名镇民时两个方向数到同一人 → 不开裁定点，
+     记录按顺时针；全场没有镇民 → 侧记 null（保留下能力照常）。
+  6. **「成功杀死」才算**：记录只说明说书人作出了选择，落效果还要求账上有这次击杀的即时型效果
+     （规则细节 19 的措辞是「被亡骨魔**成功**杀死」）。麻脸巫婆之夜的待定死亡被阻止时两者都不产生。
+  7. **麻脸巫婆之夜**：击杀记为待定死亡（R-0030 第 2 条），保留能力载荷随它走
+     （`DeferredRetention`）；说书人**确认**时先落窗口与击杀事实再落死亡（与普通夜晚同一条路径），
+     **阻止**时整条不产生。
+  8. **仍要行动**：建表把「死亡但 `AbilityPresentOn == true`」的持有者绑成真实行动格
+     （依赖不锁生死、只锁角色——与集骨者的重获格同款）；同一角色出现**多名**这样的持有者时显式拒绝建表
+     （不猜是哪一位）。
+  9. **集骨者「先失去」前置**：候选与结算都排除仍保有能力的死亡席位（R-0054 第 10 条的落地判据就是这一份
+     `AbilityPresentOn`）；被挡掉的候选数写进提示，不静默省略。
+  10. **旁观族逐个表态**：数学家读的是失效账本（与"能力在不在"无关，不受影响）；屠夫的额外提名
+     只作用于旅行者（保留能力只颁给爪牙角色，不受影响）；艺术家的「已用过的提问可以再用」是**重获**语义，
+     保留能力的死者不可能是镇民角色（角色一旦不是爪牙即失去保留），因此不进那一路。
+- **影响面**：`EffectWindowKind.RetainedAbility`、`VigormortisKill` / `VigormortisKillRecordedEvent` /
+  `DeferredRetention`、`GameState.AbilityPresentOn` / `RetainedAbilityOn` / `VigormortisKills` /
+  `IsOperative`、`GameStateMachine`（折叠 + 失能传播）、`AbilityWindowDependentTermination`（原
+  `RegainDependentTermination`，现覆盖重获 / 保留两族）、`StandingEffectExpectation.Window`、
+  `SettlementReconciler`、`NightPlanBuilder`、`NightKill`、`PitHagNightMachine`、`DuskExpiry`、
+  `VigormortisAbility` / `VigormortisNightAction` / `VigormortisRetentionSource`、`NightActions`、
+  `BoneCollectorNightAction`、`NoDashiiPoisonSource` / `VortoxInterference` / `WitchAbility`、
+  `StateReplayPresenter` / `TriggerReplayPresenter`（标记 slug `retained-ability`）。
+- **回归**：内核 `RetainedAbilityTests`（存续查询 / 来源醉酒挂起 / 判定不了 / 死亡不终止名下效果 /
+  失能级联 / 疯狂要求 / 击杀事实折叠 / 重复与未知取值拒绝 / 离场级联）、
+  `PitHagNightMachineTests`（确认时窗口与事实排在死亡之前 / 阻止时整条不产生 / 窗口收口按自然结果）；
+  规则 `VigormortisNightActionTests`（提示 / 非爪牙击杀 / 窗口与事实顺序 / 选侧裁定点 / 只有一名镇民 /
+  没有镇民 / 死目标 / 未生效 / 未知裁定 / 待定载荷）、`VigormortisRetentionSourceTests`
+  （两条期望 / 跳过非镇民 / 死亡镇民照中毒 / 亡骨魔死亡 · 离场 · 换角 / 爪牙不再是爪牙 /
+  标记不复原 / 同侧重算 / 判定不了）、`NightPlanBuilderTests`（保留能力的死者被唤醒 + 依赖不锁生死 /
+  多名持有者拒绝）、`BoneCollectorNightActionTests`（候选排除 + 提示说明 + 结算拒绝）、
+  `DuskExpiryTests`（到期族逐个表态）；集成 `VigormortisHostTests`（真宿主：开夜 → 杀爪牙 →
+  窗口与中毒落账 → 下一夜死者被唤醒并提交选择 → 亡骨魔死亡时两者收口）。
 
 ## 维护规则
 

@@ -25,4 +25,13 @@ public sealed record DeferredDeathRecordedEvent : GameEvent
     /// 改为方古死亡，外来者变成邪恶的方古」。平台口径见 <c>docs/standard/rulings.md</c> R-0034。
     /// </remarks>
     public DeferredTransformation? Transformation { get; init; }
+
+    /// <summary>
+    /// 确认时**先于死亡**落下的「保留能力」载荷（亡骨魔杀死的爪牙）；null = 不含保留能力。
+    /// </summary>
+    /// <remarks>
+    /// 与 <see cref="Transformation"/> 互斥：转化不产生死亡事实，也就没有"死亡后仍保留能力"这回事。
+    /// 平台口径见 <c>docs/standard/rulings.md</c> R-0056。
+    /// </remarks>
+    public DeferredRetention? Retention { get; init; }
 }

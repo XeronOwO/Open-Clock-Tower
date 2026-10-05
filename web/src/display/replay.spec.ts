@@ -130,6 +130,7 @@ describe('复盘归一化与文案（服务端数据是不可信输入）', () =
     expect(markerLabelOf('protected')).toBe('受死亡保护')
     expect(markerLabelOf('extra-nomination')).toBe('额外提名窗口')
     expect(markerLabelOf('regained-ability')).toBe('重获能力')
+    expect(markerLabelOf('retained-ability')).toBe('保留能力')
     expect(markerLabelOf('effect-window')).toBe('效果窗口')
   })
 

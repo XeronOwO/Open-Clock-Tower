@@ -29,4 +29,13 @@ public sealed record DeferredDeath
     /// 依据与平台口径见 <see cref="DeferredTransformation"/> 与 <c>docs/standard/rulings.md</c> R-0034。
     /// </remarks>
     public DeferredTransformation? Transformation { get; init; }
+
+    /// <summary>
+    /// 确认时**先于死亡**落下的「保留能力」载荷（亡骨魔杀死的爪牙）；null = 不含保留能力。
+    /// </summary>
+    /// <remarks>
+    /// 与 <see cref="Transformation"/> 互斥；口径见 <see cref="DeferredRetention"/> 与
+    /// <c>docs/standard/rulings.md</c> R-0056。
+    /// </remarks>
+    public DeferredRetention? Retention { get; init; }
 }

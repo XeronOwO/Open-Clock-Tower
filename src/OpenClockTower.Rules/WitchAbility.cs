@@ -77,8 +77,9 @@ internal static class WitchAbility
         if (witchLife == LifeState.Dead)
         {
             // 玩家死亡即失去角色能力（百科《术语汇总》「死亡」）：诅咒由折叠链路终止。
-            // 例外：集骨者的「重获能力」让死者重新握有角色能力（R-0054）——按存活继续判存活人数条件。
-            switch (state.RegainedAbilityOn(witchSeat.Value))
+            // 例外：死者仍握有能力时按存活继续判存活人数条件——集骨者的「重获能力」（R-0054）
+            // 与亡骨魔的「保留能力」（R-0056）都走 GameState.AbilityPresentOn 这一份口径。
+            switch (state.AbilityPresentOn(witchSeat.Value))
             {
                 case true:
                     break;

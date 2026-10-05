@@ -27,4 +27,15 @@ public sealed record StandingEffectExpectation
 
     /// <summary>这条效果压制哪个维度；null = 不压制维度（如保护类效果）。</summary>
     public EffectDimension? Dimension { get; init; }
+
+    /// <summary>
+    /// 这条效果在目标身上开启哪种窗口；null = 不开窗口。
+    /// </summary>
+    /// <remarks>
+    /// 补这一格的理由与 <see cref="Dimension"/> 相同：期望项是「此刻应当存在的那条效果」的完整描述，
+    /// 少一格就只能补出一条**形状不对**的效果。首位消费者是亡骨魔的「保留能力」窗口
+    /// （<see cref="EffectWindowKind.RetainedAbility"/>，R-0056）——它的目标随座次变化重算，
+    /// 因此必须由常驻来源按期望集补齐。
+    /// </remarks>
+    public EffectWindowKind? Window { get; init; }
 }

@@ -45,6 +45,33 @@ public sealed class DuskExpiryTests
         Assert.Empty(DuskExpiry.ExpireAll(after));
     }
 
+    /// <summary>
+    /// 到期族是**显式集合**：每个窗口族都必须在这里有明确归属——枚举加了新窗口而忘了表态时，
+    /// 这条测试会红（规则靠可失败门禁，不靠自觉）。保留能力（R-0056）**不**随黄昏到期：
+    /// 它只随亡骨魔失去能力、或该爪牙不再是爪牙角色而终止。
+    /// </summary>
+    [Fact]
+    public void ExpireAll_CoversEveryWindowKindDeliberately()
+    {
+        var expected = new Dictionary<EffectWindowKind, bool>
+        {
+            [EffectWindowKind.AfflictionImmunity] = true,
+            [EffectWindowKind.SecondAction] = true,
+            [EffectWindowKind.RegainedAbility] = true,
+            [EffectWindowKind.RetainedAbility] = false,
+        };
+
+        Assert.Equal(
+            Enum.GetValues<EffectWindowKind>().OrderBy(value => value),
+            expected.Keys.OrderBy(value => value));
+
+        foreach (var (kind, expires) in expected)
+        {
+            var events = DuskExpiry.ExpireAll(Ledger(WindowEffect($"test:{kind}", kind)));
+            Assert.Equal(expires ? 1 : 0, events.Count);
+        }
+    }
+
     /// <summary>「新的一夜开始」只认夜晚阶段的 PhaseStartedEvent；白天阶段不算。</summary>
     [Fact]
     public void NightStarted_OnlyMatchesNightPhases()

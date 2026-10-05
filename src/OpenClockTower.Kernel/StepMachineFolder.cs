@@ -114,6 +114,10 @@ internal static class StepMachineFolder
             // 方古的「限一次」标记（R-0034）：整局事实，落下后不再重复。
             FangGuInfectionRecordedEvent infection => ApplyFangGuInfection(state, infection),
 
+            // 亡骨魔杀死爪牙（R-0056）：事实落在**状态账**（GameStateMachine），步骤机状态不因它改变
+            // ——保留能力窗口与邻近镇民中毒由常驻来源按它派生。
+            VigormortisKillRecordedEvent => state,
+
             SeatStateChangedEvent => state,
 
             // 旅行者加入 / 离场：六维度账与离场账都在 GameStateMachine 折叠；步骤机状态不因席位变化而启动——
@@ -396,6 +400,7 @@ internal static class StepMachineFolder
                         Ability = recorded.Ability,
                         Note = recorded.Note,
                         Transformation = recorded.Transformation,
+                        Retention = recorded.Retention,
                     },
                 ],
             },

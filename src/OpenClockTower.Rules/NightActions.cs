@@ -29,9 +29,9 @@ public static class NightActions
     /// <summary>说书人裁定类提示的实时重建来源（入槽时按当前账重算提示上下文）。</summary>
     public static ISlotPromptSource Prompts { get; } = new NightActionPromptSource(Registry);
 
-    /// <summary>常驻效果来源（提交前对账用）：诺-达鲺的中毒与哲学家的醉酒。</summary>
+    /// <summary>常驻效果来源（提交前对账用）：诺-达鲺的中毒、哲学家的醉酒、亡骨魔的保留能力。</summary>
     public static IReadOnlyList<IStandingEffectSource> StandingEffects { get; } =
-        [new NoDashiiPoisonSource(), new PhilosopherDrunkSource()];
+        [new NoDashiiPoisonSource(), new PhilosopherDrunkSource(), new VigormortisRetentionSource()];
 
     private sealed class Catalog : INightActionCatalog, IAbilityResolutionCatalog
     {
@@ -45,6 +45,7 @@ public static class NightActions
             [new CharacterId("mathematician")] = new MathematicianNightAction(),
             [new CharacterId("no-dashii")] = new NoDashiiNightAction(),
             [new CharacterId("vortox")] = new VortoxNightAction(),
+            [new CharacterId("vigormortis")] = new VigormortisNightAction(),
             [new CharacterId("witch")] = new WitchNightAction(),
             [new CharacterId("cerenovus")] = new CerenovusNightAction(),
             [new CharacterId("evil-twin")] = new EvilTwinNightAction(),

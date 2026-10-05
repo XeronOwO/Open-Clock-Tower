@@ -60,12 +60,13 @@ todo/  →  in-progress/  →  review/  →  done/
 
 ### Todo
 
-- [亡骨魔：夜间击杀 + 爪牙「保留能力」+ 集骨者「先失去」前置](todo/vigormortis-death-ability-retention.md) — **High** — 契约落地前抽到它的局开不了夜；同时补「死亡不等于失去能力」这条平台还没有的判据
 - [白天信息族剩余两名：杂耍艺人 + 博学者](todo/juggler-and-savant-day-abilities.md) — **Medium** — 首个白天公开猜测 / 每个白天一真一假两条信息；契约落地前带他们的局开不了白天
 
 ### In progress
 
 ### Review
+
+- [亡骨魔：夜间击杀 + 爪牙「保留能力」+ 集骨者「先失去」前置](review/vigormortis-death-ability-retention.md) — **High** — 契约落地前抽到它的局开不了夜；同时补「死亡不等于失去能力」这条平台还没有的判据
 
 ### Done
 

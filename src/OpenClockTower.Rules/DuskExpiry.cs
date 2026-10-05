@@ -49,7 +49,17 @@ public static class DuskExpiry
         ];
     }
 
-    /// <summary>账上仍存续的**全部**窗口效果（开夜前收口用：两族一起收）。</summary>
-    public static IReadOnlyList<GameEvent> ExpireAll(GameState state) =>
-        Expire(state, _ => true);
+    /// <summary>账上仍存续、且到**下个黄昏**到期的全部窗口效果（开夜前收口用：到期族一起收）。</summary>
+    /// <remarks>
+    /// 「到期族」是显式集合、不是"所有窗口"：亡骨魔的「保留能力」窗口（R-0056）不随黄昏到期——
+    /// 它只在亡骨魔失去能力、或该爪牙不再是爪牙角色时终止。新增窗口族时必须在这里表态，
+    /// `DuskExpiryTests` 会随枚举逐个核对（漏一个即红）。
+    /// </remarks>
+    public static IReadOnlyList<GameEvent> ExpireAll(GameState state) => Expire(state, ExpiresAtDusk);
+
+    /// <summary>到「下个黄昏」到期的窗口族。</summary>
+    private static bool ExpiresAtDusk(PersistentEffect effect) =>
+        effect.Window is EffectWindowKind.AfflictionImmunity
+            or EffectWindowKind.SecondAction
+            or EffectWindowKind.RegainedAbility;
 }

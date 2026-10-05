@@ -22,11 +22,16 @@ internal static class NightKill
     /// <param name="target">被击杀的席位（调用方已经判定他还活着）。</param>
     /// <param name="ability">发起击杀的能力标识。</param>
     /// <param name="note">死亡原因（进状态变化事实与审计）。</param>
+    /// <param name="retention">
+    /// 窗口期内随待定死亡一起记的「保留能力」载荷（亡骨魔杀爪牙，R-0056）；null = 无载荷。
+    /// 只在窗口期有意义——它要等说书人裁定「确认」时才落格。
+    /// </param>
     internal static IReadOnlyList<GameEvent> Resolve(
         AbilityResolutionContext context,
         SeatId target,
         AbilityId ability,
-        string note)
+        string note,
+        DeferredRetention? retention = null)
     {
         ArgumentNullException.ThrowIfNull(context);
 
@@ -40,8 +45,16 @@ internal static class NightKill
                     Source = context.Actor,
                     Ability = ability,
                     Note = $"{note}（麻脸巫婆之夜：死亡待说书人裁定）",
+                    Retention = retention,
                 },
             ];
+        }
+
+        if (retention is not null)
+        {
+            // 非窗口期不该带载荷：载荷的语义是"确认时才落"，没有待定死亡就没有承载它的东西。
+            throw new InvalidOperationException(
+                "击杀带了「保留能力」载荷，却不在麻脸巫婆之夜的死亡裁量窗口里（R-0056）");
         }
 
         var effectId = new EffectId($"{context.SlotKey}:kill");

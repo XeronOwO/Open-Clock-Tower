@@ -192,8 +192,28 @@ public static class NightPlanBuilder
 
         if (aliveOwners.Length == 0)
         {
-            // 全部持有者都已死亡：空槽位，照样走配额（复活 / 换角后由进入时求值决定是否唤醒）。
-            return (StepSlot.Empty(new StepSlotId(tag), character), null);
+            // 全部持有者都已死亡——但**死亡时仍保有能力的**持有者照样要被唤醒（被亡骨魔杀死的爪牙，
+            // 百科《亡骨魔》· 角色简介 1「虽然爪牙会死亡，但只要亡骨魔还存活，该爪牙就能保留能力，
+            // 且仍能在夜晚行动」；口径见 rulings.md R-0056）。
+            // 一个都没有时才是常规空槽位（复活 / 换角后由进入时求值决定是否唤醒）。
+            var retained = owners
+                .Where(owner => request.State.AbilityPresentOn(owner.Seat) == true)
+                .ToArray();
+            if (retained.Length > 1)
+            {
+                return (null, NightPlanOutcome.Failure(
+                    "plan.character_duplicated",
+                    $"角色 {character.Value} 同时被多名「死亡但保留能力」的玩家持有："
+                    + string.Join(", ", retained.Select(owner => owner.Seat.Value))
+                    + "（不猜是哪一位行动；rulings.md R-0056）"));
+            }
+
+            if (retained.Length == 0)
+            {
+                return (StepSlot.Empty(new StepSlotId(tag), character), null);
+            }
+
+            return (BuildRetainedSlot(request, character, tag, retained[0]), null);
         }
 
         var actor = aliveOwners[0];
@@ -249,6 +269,53 @@ public static class NightPlanBuilder
                 },
             ],
             character), null);
+    }
+
+    /// <summary>
+    /// 「死亡但保留能力」的持有者 → 行动格（亡骨魔杀死的爪牙，R-0056）：与常规行动格同一把尺子
+    /// （契约必须在、提示照常构建），差别只有**依赖不锁生死**——他本来就保持死亡，
+    /// 与他本人的重获格（<see cref="NightSlotActivation.PlanRegained"/>）同款。
+    /// </summary>
+    /// <remarks>
+    /// 走到这里时角色**必然是爪牙**：保留能力只颁给爪牙角色（规则细节 19 / 20），
+    /// 所以哲学家代行与「每局限一次」两处口径不会在这里成立——它们只作用于镇民 / 旅行者角色。
+    /// 角色类型不由这里判断：绑定只认状态账上的「握有能力」，类型判定在常驻来源那一处收口。
+    /// </remarks>
+    private static StepSlot BuildRetainedSlot(
+        NightPlanRequest request,
+        CharacterId character,
+        string tag,
+        SeatStateEntry actor)
+    {
+        if (request.Actions.Find(character) is not { } action)
+        {
+            // 在表上却没有契约：建表期已按 plan.contract_missing 拒绝，走到这里说明顺序表与契约目录不一致。
+            throw new InvalidOperationException(
+                $"角色 {character.Value} 在夜晚顺序表上却没有夜间行动契约（建表与契约目录不一致）");
+        }
+
+        var prompt = action.BuildPrompt(new NightActionContext
+        {
+            Actor = actor.Seat,
+            Seats = request.Seats,
+            State = request.State,
+            LastDay = request.LastDay,
+        });
+
+        return StepSlot.Action(
+            new StepSlotId(tag),
+            actor.Seat,
+            prompt,
+            [
+                new SeatDependency
+                {
+                    // 行动者保持死亡：生死一维不约束；角色换了这一格就失去意义。
+                    Seat = actor.Seat,
+                    RequiredLife = null,
+                    RequiredCharacter = character,
+                },
+            ],
+            character);
     }
 
     /// <summary>

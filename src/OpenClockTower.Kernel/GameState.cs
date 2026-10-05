@@ -36,6 +36,16 @@ public sealed record GameState
     /// <summary>失效账本：每次「能力未正常生效」及原因分类（R-0004）。</summary>
     public MalfunctionLedger Malfunctions { get; init; } = new();
 
+    /// <summary>
+    /// 亡骨魔杀死爪牙的事实（保留能力 + 说书人选择的中毒侧），按发生顺序。
+    /// </summary>
+    /// <remarks>
+    /// 依据：百科《亡骨魔》· 2026-10-01 抓取 · 规则细节 19 / 22（「保留能力」与「中毒」提示标记的放置条件）。
+    /// 两条持续型效果都由常驻来源按这份记录派生（席位变化时重算目标，标记随同侧移动）——
+    /// 契约只把事实记下来，效果不由契约零散施加。口径见 <c>docs/standard/rulings.md</c> R-0056。
+    /// </remarks>
+    public IReadOnlyList<VigormortisKill> VigormortisKills { get; init; } = [];
+
     /// <summary>还没有观测到任何东西的空账。</summary>
     public static GameState Empty { get; } = new();
 
@@ -121,8 +131,20 @@ public sealed record GameState
     public bool? RegainedAbilityOn(SeatId seat) => WindowOn(seat, EffectWindowKind.RegainedAbility);
 
     /// <summary>
-    /// 该席位此刻是否**握有角色能力**：存活 → true；死亡 → 看有没有生效中的重获窗口；
-    /// 生死未观测 → null（不猜）。生效判定与能力存续族共用这一份口径（R-0054）。
+    /// 某席位此刻是否因「保留能力」而**从未失去**其角色能力（亡骨魔杀死的爪牙，R-0056）。
+    /// true = 至少一条生效中的保留能力窗口；false = 没有窗口，或窗口全部确定不生效；
+    /// null = 有窗口但生效与否判定不了（不猜）。
+    /// </summary>
+    /// <remarks>
+    /// 与重获窗口的分工只有寿命：这个不随黄昏到期，只随亡骨魔失去能力或该爪牙不再是爪牙而终止
+    /// （百科《亡骨魔》· 2026-10-01 抓取 · 规则细节 20 / 24）。
+    /// </remarks>
+    public bool? RetainedAbilityOn(SeatId seat) => WindowOn(seat, EffectWindowKind.RetainedAbility);
+
+    /// <summary>
+    /// 该席位此刻是否**握有角色能力**：存活 → true；死亡 → 看有没有生效中的「重获能力」窗口
+    /// （集骨者 R-0054）或「保留能力」窗口（亡骨魔 R-0056）；生死未观测 → null（不猜）。
+    /// 生效判定与能力存续族共用这一份口径。
     /// </summary>
     public bool? AbilityPresentOn(SeatId seat)
     {
@@ -131,7 +153,25 @@ public sealed record GameState
             return null;
         }
 
-        return life == LifeState.Alive ? true : RegainedAbilityOn(seat);
+        if (life == LifeState.Alive)
+        {
+            return true;
+        }
+
+        var regained = RegainedAbilityOn(seat);
+        if (regained == true)
+        {
+            return true;
+        }
+
+        var retained = RetainedAbilityOn(seat);
+        if (retained == true)
+        {
+            return true;
+        }
+
+        // 两条窗口都确定不生效才算"确定没有能力"；任一条判定不了就返回"判定不了"（不猜）。
+        return regained is null || retained is null ? null : false;
     }
 
     /// <summary>
@@ -192,12 +232,12 @@ public sealed record GameState
         }
 
         // 死者：正常情况下角色能力已失去（R-0012 的来源挂起口径对死亡是终止）；但身上有生效中的
-        // 「重获能力」窗口时按「仍握有能力」处理（集骨者，R-0054）。窗口判定不了时不猜——与来源
-        // 维度未观测齐同款，不用默认值。
+        // 「重获能力」窗口（集骨者，R-0054）或「保留能力」窗口（亡骨魔，R-0056）时按「仍握有能力」
+        // 处理。窗口判定不了时不猜——与来源维度未观测齐同款，不用默认值。
         var effectiveLife = life;
         if (life == LifeState.Dead)
         {
-            switch (RegainedAbilityOn(effect.Source))
+            switch (AbilityPresentOn(effect.Source))
             {
                 case true:
                     effectiveLife = LifeState.Alive;
@@ -227,7 +267,7 @@ public sealed record GameState
     /// <summary>
     /// 一条疯狂要求当前是否生效：来源存活、未醉酒、未中毒（R-0012 的挂起口径）。
     /// 返回 null = 来源的生死 / 醉酒 / 中毒还没观测齐，**无法判定**——不做任何默认假设。
-    /// 来源死亡但身上有生效中的「重获能力」窗口时按「仍握有能力」处理（R-0054）。
+    /// 来源死亡但身上有生效中的「重获能力」/「保留能力」窗口时按「仍握有能力」处理（R-0054 / R-0056）。
     /// </summary>
     /// <param name="requirement">待判定的要求。</param>
     public bool? IsOperative(MadnessRequirement requirement)
@@ -250,7 +290,7 @@ public sealed record GameState
         var effectiveLife = life;
         if (life == LifeState.Dead)
         {
-            switch (RegainedAbilityOn(requirement.Source))
+            switch (AbilityPresentOn(requirement.Source))
             {
                 case true:
                     effectiveLife = LifeState.Alive;

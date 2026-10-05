@@ -431,6 +431,84 @@ public sealed class NightPlanBuilderTests
             ],
         };
 
+    /// <summary>
+    /// 被亡骨魔杀死并保留能力的爪牙：他仍是这一格的持有者，照样被唤醒——绑成真实行动格，
+    /// 依赖只锁角色、**不锁生死**（他本来就保持死亡；R-0056）。
+    /// </summary>
+    [Fact]
+    public void RetainedDeadMinion_IsWokenWithUnlockedLifeDependency()
+    {
+        var state = FullState(
+            (1, "vigormortis", LifeState.Alive),
+            (2, "witch", LifeState.Dead),
+            (3, "clockmaker", LifeState.Alive)) with
+        {
+            PersistentEffects = [RetainWindow(demon: 1, minion: 2)],
+        };
+
+        var plan = Build(Request(state, nightNumber: 2, seatCount: 3));
+
+        var witch = plan.Slots.Single(slot => slot.Id.Value == "witch");
+        Assert.Equal(StepSlotKind.Action, witch.Kind);
+        Assert.Equal(new SeatId(2), witch.Actor);
+        Assert.NotNull(witch.Prompt);
+        Assert.Contains(
+            witch.Dependencies,
+            dependency => dependency.Seat == new SeatId(2)
+                && dependency.RequiredLife is null
+                && dependency.RequiredCharacter == new CharacterId("witch"));
+    }
+
+    /// <summary>
+    /// 同一角色被**多名**「死亡但保留能力」的玩家持有：不猜是哪一位行动，显式拒绝建表（R-0056）。
+    /// </summary>
+    [Fact]
+    public void TwoRetainedDeadHolders_AreRejected()
+    {
+        var state = FullState(
+            (1, "vigormortis", LifeState.Alive),
+            (2, "witch", LifeState.Dead),
+            (3, "witch", LifeState.Dead),
+            (4, "clockmaker", LifeState.Alive)) with
+        {
+            PersistentEffects = [RetainWindow(demon: 1, minion: 2), RetainWindow(demon: 1, minion: 3)],
+        };
+
+        Assert.Equal("plan.character_duplicated", BuildFailure(Request(state, nightNumber: 2, seatCount: 4)));
+    }
+
+    /// <summary>
+    /// 五维度齐全的账：保留能力窗口的生效判定要读**来源**（亡骨魔）的生死 / 醉酒 / 中毒，
+    /// 缺一维就会返回"判定不了"，因此这一族的夹具必须给全（不猜，D-0015）。
+    /// </summary>
+    private static GameState FullState(params (int Seat, string Character, LifeState Life)[] rows) => new()
+    {
+        Seats = rows.Select(row => new SeatStateEntry
+        {
+            Seat = new SeatId(row.Seat),
+            Character = new StateFact<CharacterId>
+            {
+                Value = new CharacterId(row.Character),
+                Reason = "setup.assignment",
+            },
+            Alignment = new StateFact<Alignment> { Value = Alignment.Evil, Reason = "setup.assignment" },
+            Life = new StateFact<LifeState> { Value = row.Life, Reason = "setup.assignment" },
+            Drunk = new StateFact<DrunkState> { Value = DrunkState.Sober, Reason = "setup.assignment" },
+            Poison = new StateFact<PoisonState> { Value = PoisonState.Healthy, Reason = "setup.assignment" },
+        }).ToArray(),
+    };
+
+    /// <summary>「保留能力」窗口（R-0056）：来源 = 亡骨魔、目标 = 被他杀死的爪牙。</summary>
+    private static PersistentEffect RetainWindow(int demon, int minion) => new()
+    {
+        Id = new EffectId($"standing:vigormortis.retention:{demon}:{minion}"),
+        Source = new SeatId(demon),
+        Ability = new AbilityId("vigormortis.retention"),
+        Target = new SeatId(minion),
+        SourceCharacter = new CharacterId("vigormortis"),
+        Window = EffectWindowKind.RetainedAbility,
+    };
+
     /// <summary>同一角色出现在两个席位（状态账数据缺陷）：拒绝，不产出歧义计划。</summary>
     [Fact]
     public void CharacterOnTwoSeats_IsRejected()

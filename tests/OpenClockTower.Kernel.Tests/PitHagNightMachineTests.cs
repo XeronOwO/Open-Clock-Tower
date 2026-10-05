@@ -304,6 +304,116 @@ public sealed class PitHagNightMachineTests
             })!;
     }
 
+    /// <summary>
+    /// 携带「保留能力」载荷的待定死亡（亡骨魔杀爪牙，R-0056）：说书人确认时**先落窗口与击杀事实、
+    /// 再落死亡**——顺序有语义（死亡折叠时据此判定"没有失去能力"）；阻止时整条不产生。
+    /// </summary>
+    [Fact]
+    public void ResolveDeferred_Retention_LandsWindowAndRecordBeforeTheDeath()
+    {
+        var state = RetentionState(slotIndex: 1, closesAfter: 2);
+        var ledger = Ledger(
+            (1, "pit-hag", LifeState.Alive),
+            (2, "witch", LifeState.Alive),
+            (3, "vigormortis", LifeState.Alive));
+
+        var outcome = StepMachine.Handle(
+            state,
+            Context(ledger),
+            new ResolveDeferredDeathInput { Target = new SeatId(2), Killed = true });
+
+        Assert.Equal(StepMachineOutcomeKind.Applied, outcome.Kind);
+
+        var events = outcome.Events.ToArray();
+        var retainIndex = Array.FindIndex(events, gameEvent => gameEvent is PersistentEffectAppliedEvent);
+        var recordIndex = Array.FindIndex(events, gameEvent => gameEvent is VigormortisKillRecordedEvent);
+        var deathIndex = Array.FindIndex(events, gameEvent =>
+            gameEvent is SeatStateChangedEvent { Seat: var seat, Life: LifeState.Dead } && seat == new SeatId(2));
+        Assert.True(retainIndex >= 0 && recordIndex >= 0 && deathIndex >= 0);
+        Assert.True(retainIndex < deathIndex, "「保留能力」窗口必须排在死亡之前");
+        Assert.True(recordIndex < deathIndex, "击杀事实必须排在死亡之前");
+
+        var window = ((PersistentEffectAppliedEvent)events[retainIndex]).Effect;
+        Assert.Equal(EffectWindowKind.RetainedAbility, window.Window);
+        Assert.Equal(new SeatId(3), window.Source);
+        Assert.Equal(new SeatId(2), window.Target);
+
+        var recorded = (VigormortisKillRecordedEvent)events[recordIndex];
+        Assert.Equal(new SeatId(3), recorded.Demon);
+        Assert.Equal(new SeatId(2), recorded.Minion);
+        Assert.Equal(SeatRingDirection.CounterClockwise, recorded.Side);
+    }
+
+    /// <summary>阻止死亡 → 保留能力与击杀事实都不产生（保护的是"确认"与"自然结果"两条路径的一致）。</summary>
+    [Fact]
+    public void ResolveDeferred_Retention_PreventedDeathLandsNothing()
+    {
+        var state = RetentionState(slotIndex: 1, closesAfter: 2);
+        var ledger = Ledger(
+            (1, "pit-hag", LifeState.Alive),
+            (2, "witch", LifeState.Alive),
+            (3, "vigormortis", LifeState.Alive));
+
+        var outcome = StepMachine.Handle(
+            state,
+            Context(ledger),
+            new ResolveDeferredDeathInput { Target = new SeatId(2), Killed = false });
+
+        Assert.Equal(StepMachineOutcomeKind.Applied, outcome.Kind);
+        Assert.Empty(outcome.Events.OfType<PersistentEffectAppliedEvent>());
+        Assert.Empty(outcome.Events.OfType<VigormortisKillRecordedEvent>());
+        Assert.Empty(outcome.Events.OfType<SeatStateChangedEvent>());
+    }
+
+    /// <summary>窗口收口时未裁定的保留载荷按自然结果生效：窗口 + 事实 + 死亡一起落地。</summary>
+    [Fact]
+    public void WindowClose_Retention_TakesEffectOnConfirm()
+    {
+        var state = RetentionState(slotIndex: 2, closesAfter: 2);
+        var ledger = Ledger(
+            (1, "pit-hag", LifeState.Alive),
+            (2, "witch", LifeState.Alive),
+            (3, "vigormortis", LifeState.Alive));
+
+        var outcome = StepMachine.Handle(state, Context(ledger), new SlotQuotaElapsedInput());
+
+        Assert.Equal(StepMachineOutcomeKind.Applied, outcome.Kind);
+        Assert.Single(outcome.Events.OfType<PersistentEffectAppliedEvent>());
+        Assert.Single(outcome.Events.OfType<VigormortisKillRecordedEvent>());
+        Assert.Contains(
+            outcome.Events,
+            gameEvent => gameEvent is SeatStateChangedEvent { Seat: var seat, Life: LifeState.Dead }
+                && seat == new SeatId(2));
+    }
+
+    /// <summary>带一条「保留能力」载荷的窗口状态（目标 2 号爪牙、来源 3 号亡骨魔）。</summary>
+    private static StepMachineState RetentionState(int slotIndex, int closesAfter)
+    {
+        var state = NightState(slotIndex, closesAfter);
+        return StepMachine.Apply(
+            state,
+            new DeferredDeathRecordedEvent
+            {
+                Target = new SeatId(2),
+                Source = new SeatId(3),
+                Ability = new AbilityId("vigormortis"),
+                Note = "亡骨魔夜间击杀（麻脸巫婆之夜：死亡待说书人裁定）",
+                Retention = new DeferredRetention
+                {
+                    RetainEffect = new PersistentEffect
+                    {
+                        Id = new EffectId("standing:vigormortis.retention:3:2"),
+                        Source = new SeatId(3),
+                        Ability = new AbilityId("vigormortis.retention"),
+                        Target = new SeatId(2),
+                        SourceCharacter = new CharacterId("vigormortis"),
+                        Window = EffectWindowKind.RetainedAbility,
+                    },
+                    Side = SeatRingDirection.CounterClockwise,
+                },
+            })!;
+    }
+
     private static SettlementContext Context(GameState ledger) =>
         new()
         {

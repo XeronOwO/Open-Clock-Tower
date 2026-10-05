@@ -27,6 +27,7 @@ internal sealed class TriggerReplayPresenter : IReplayStepPresenter
         typeof(BarberNightSkippedEvent),
         typeof(SweetheartDeathSkippedEvent),
         typeof(FangGuInfectionRecordedEvent),
+        typeof(VigormortisKillRecordedEvent),
     ];
 
     /// <inheritdoc />
@@ -140,6 +141,17 @@ internal sealed class TriggerReplayPresenter : IReplayStepPresenter
             Summary = $"方古「限一次」已使用：{context.SeatText.Seat(infection.Source)} → "
                 + $"{context.SeatText.Seat(infection.Seat)} 侵染",
         },
+        VigormortisKillRecordedEvent kill => new ReplayStep
+        {
+            Sequence = context.Stored.Sequence,
+            Kind = ReplayStepKind.Trigger,
+            Phase = context.Phase,
+            Summary = $"亡骨魔杀死了爪牙：{context.SeatText.Seat(kill.Demon)} → "
+                + $"{context.SeatText.Seat(kill.Minion)}，他保留能力",
+            Detail = $"亡骨魔（{kill.Demon.Value} 号）杀死的爪牙保留自己的角色能力；"
+                + $"中毒侧：{(kill.Side is { } side ? SideText(side) : "场上没有镇民")}，"
+                + "那一侧最近的镇民中毒（rulings.md R-0056）",
+        },
         _ => throw new InvalidOperationException(
             $"TriggerReplayPresenter 不认领事件 {context.Stored.Event.GetType().Name}"),
     };
@@ -182,6 +194,14 @@ internal sealed class TriggerReplayPresenter : IReplayStepPresenter
                 + $"{context.SeatText.Seat(transformation.Dies)} 死亡");
         }
 
+        if (recorded.Retention is { } retention)
+        {
+            details.Add(
+                $"确认后：{context.SeatText.Seat(retention.RetainEffect.Target)} 保留角色能力"
+                + $"（中毒侧：{(retention.Side is { } side ? SideText(side) : "场上没有镇民")}）；"
+                + "说书人阻止死亡时两者都不发生（rulings.md R-0056）");
+        }
+
         return new ReplayStep
         {
             Sequence = context.Stored.Sequence,
@@ -220,4 +240,12 @@ internal sealed class TriggerReplayPresenter : IReplayStepPresenter
             Detail = string.Join("；", details),
         };
     }
+
+    /// <summary>中毒侧 → 中文文案（R-0056；未知取值原样回显，不猜）。</summary>
+    private static string SideText(SeatRingDirection side) => side switch
+    {
+        SeatRingDirection.Clockwise => "顺时针",
+        SeatRingDirection.CounterClockwise => "逆时针",
+        _ => side.ToString(),
+    };
 }

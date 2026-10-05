@@ -125,11 +125,12 @@ internal static class PitHagNightMachine
 
     /// <summary>
     /// 把一条待定死亡按它的载荷落成事实：携带「转化」载荷的按转化结算（方古侵染），
-    /// 否则按普通击杀。说书人「确认」与窗口关闭的默认结果都走这里——口径必须只有一处。
+    /// 携带「保留能力」载荷的先落保留格再按普通击杀结算，否则按普通击杀。
+    /// 说书人「确认」与窗口关闭的默认结果都走这里——口径必须只有一处。
     /// </summary>
     /// <remarks>
     /// 依据：百科《方古》· 2026-10-01 抓取 · 角色简介 2（「改为方古死亡，外来者变成邪恶的方古」）；
-    /// 平台口径见 <c>docs/standard/rulings.md</c> R-0034。
+    /// 平台口径见 <c>docs/standard/rulings.md</c> R-0034 与 R-0056。
     /// </remarks>
     internal static void AppendOutcome(
         List<GameEvent> events,
@@ -143,7 +144,33 @@ internal static class PitHagNightMachine
             return;
         }
 
+        AppendRetention(events, ledger, deferred);
         AppendKill(events, ledger, deferred, note);
+    }
+
+    /// <summary>
+    /// 「保留能力」载荷的落地（R-0056）：窗口效果与击杀记录排在**死亡事件之前**。
+    /// </summary>
+    /// <remarks>
+    /// 顺序在这里有语义：死亡折叠时按窗口判定「没有失去能力」，该爪牙名下既有的持续型效果与
+    /// 疯狂要求才不会被误终止（百科《死后能力保留》· 2026-10-01 抓取 · 能力简介）。
+    /// 目标已经死亡时整条不落：没有新的击杀，就没有新的保留能力。
+    /// </remarks>
+    private static void AppendRetention(List<GameEvent> events, GameState ledger, DeferredDeath deferred)
+    {
+        if (deferred.Retention is not { } retention
+            || ledger.Seat(deferred.Target)?.LifeValue == LifeState.Dead)
+        {
+            return;
+        }
+
+        events.Add(new PersistentEffectAppliedEvent { Effect = retention.RetainEffect });
+        events.Add(new VigormortisKillRecordedEvent
+        {
+            Demon = deferred.Source,
+            Minion = retention.RetainEffect.Target,
+            Side = retention.Side,
+        });
     }
 
     /// <summary>

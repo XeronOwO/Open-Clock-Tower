@@ -94,7 +94,8 @@ public static class StepMachineStateComparer
                 || a.Source != b.Source
                 || a.Ability != b.Ability
                 || !string.Equals(a.Note, b.Note, StringComparison.Ordinal)
-                || !TransformationEquivalent(a.Transformation, b.Transformation))
+                || !TransformationEquivalent(a.Transformation, b.Transformation)
+                || !RetentionEquivalent(a.Retention, b.Retention))
             {
                 return false;
             }
@@ -102,6 +103,39 @@ public static class StepMachineStateComparer
 
         return true;
     }
+
+    /// <summary>「保留能力」载荷（R-0056）进比较器：待定死亡表是否一致也取决于它。</summary>
+    private static bool RetentionEquivalent(DeferredRetention? left, DeferredRetention? right)
+    {
+        if (ReferenceEquals(left, right))
+        {
+            return true;
+        }
+
+        if (left is null || right is null)
+        {
+            return false;
+        }
+
+        return left.Side == right.Side
+               && PersistentEffectEquivalent(left.RetainEffect, right.RetainEffect);
+    }
+
+    /// <summary>
+    /// 两条持续型效果是否等价：逐字段比（含终止事实）。
+    /// 与状态账的比较同一把尺子——金额相同但归因不同的效果不是同一条效果。
+    /// </summary>
+    private static bool PersistentEffectEquivalent(PersistentEffect left, PersistentEffect right) =>
+        left.Id == right.Id
+        && left.Source == right.Source
+        && left.Ability == right.Ability
+        && left.Target == right.Target
+        && left.SourceCharacter == right.SourceCharacter
+        && left.GrantedCharacter == right.GrantedCharacter
+        && left.Dimension == right.Dimension
+        && left.Window == right.Window
+        && left.SourceStateIndependent == right.SourceStateIndependent
+        && (left.Termination is null) == (right.Termination is null);
 
     private static bool TransformationEquivalent(DeferredTransformation? left, DeferredTransformation? right)
     {

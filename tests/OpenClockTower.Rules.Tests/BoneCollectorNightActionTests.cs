@@ -176,6 +176,62 @@ public sealed class BoneCollectorNightActionTests
         return Assert.IsType<StepPlan>(outcome.Plan);
     }
 
+    /// <summary>
+    /// 「先失去」前置（百科《集骨者》· 规则细节 1；R-0054 第 10 条 / R-0056）：死亡但**仍保有**
+    /// 角色能力的席位（被亡骨魔杀死的爪牙）不进候选——regain 以"先失去"为前提；
+    /// 被挡掉这件事必须写在提示里，不静默省略。
+    /// </summary>
+    [Fact]
+    public void Prompt_SkipsSeatsThatNeverLostTheirAbility()
+    {
+        var state = GameStateMachine.Apply(
+            Ledger(
+                (1, "vigormortis", LifeState.Alive),
+                (2, "bone-collector", LifeState.Alive),
+                (3, "clockmaker", LifeState.Dead),
+                (4, "witch", LifeState.Dead)),
+            new PersistentEffectAppliedEvent { Effect = RetainWindow(demon: 1, minion: 4) });
+
+        var prompt = PromptContract().BuildPrompt(new NightActionContext
+        {
+            Actor = new SeatId(2),
+            Seats = [new SeatId(1), new SeatId(2), new SeatId(3), new SeatId(4)],
+            State = state,
+        });
+
+        Assert.Equal(new[] { "seat:3", "decline" }, prompt.Options.Select(option => option.Value).ToArray());
+        Assert.Contains("仍保有角色能力", prompt.Context, StringComparison.Ordinal);
+        Assert.Contains("先失去", prompt.Context, StringComparison.Ordinal);
+    }
+
+    /// <summary>结算期同样挡住：选了仍保有能力的死亡席位 → 显式失败，不落重获窗口（不猜）。</summary>
+    [Fact]
+    public void Grant_ToRetainedSeat_Throws()
+    {
+        var state = GameStateMachine.Apply(
+            Ledger(
+                (1, "vigormortis", LifeState.Alive),
+                (2, "bone-collector", LifeState.Alive),
+                (4, "witch", LifeState.Dead)),
+            new PersistentEffectAppliedEvent { Effect = RetainWindow(demon: 1, minion: 4) });
+
+        var exception = Assert.Throws<InvalidOperationException>(
+            () => Contract().Resolve(Context(state, "seat:4")));
+
+        Assert.Contains("先失去", exception.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>「保留能力」窗口（R-0056）：来源 = 亡骨魔、目标 = 被他杀死的爪牙。</summary>
+    private static PersistentEffect RetainWindow(int demon, int minion) => new()
+    {
+        Id = new EffectId($"standing:vigormortis.retention:{demon}:{minion}"),
+        Source = new SeatId(demon),
+        Ability = new AbilityId("vigormortis.retention"),
+        Target = new SeatId(minion),
+        SourceCharacter = new CharacterId("vigormortis"),
+        Window = EffectWindowKind.RetainedAbility,
+    };
+
     private static AbilityResolutionContext Context(
         GameState state,
         string choice,

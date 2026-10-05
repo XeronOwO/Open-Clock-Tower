@@ -155,7 +155,8 @@
 
 ## 残余（本票不做，另行登记）
 
-- 「死亡时仍保有能力的例外」不重获（R-0054 第 10 条）：依赖亡骨魔 / 僵怖的夜间契约，见
-  `docs/backlog/todo/vigormortis-death-ability-retention.md`。
+- 「死亡时仍保有能力的例外」不重获（R-0054 第 10 条）：亡骨魔一路已随
+  `docs/backlog/review/vigormortis-death-ability-retention.md` 落地（R-0056 第 9 条）；
+  僵怖（「假死」）仍随跨剧本票。
 - 首夜能力被获得的**提示文案**是否要说书人额外说明（《集骨者》规则细节 2：非强制能力无需提示）：
   本票按既有口径只给行动格、不额外造提示。

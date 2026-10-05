@@ -50,9 +50,18 @@ internal sealed class BoneCollectorNightAction : INightAction, IAbilityResolutio
     {
         ArgumentNullException.ThrowIfNull(context);
 
-        var options = context.Seats
+        var dead = context.Seats
             .OrderBy(seat => seat.Value)
             .Where(seat => context.State.Seat(seat)?.LifeValue == LifeState.Dead)
+            .ToArray();
+
+        // 「先失去」前置（百科《集骨者》· 规则细节 1）：死亡时**仍保有**能力的玩家不会被再次授予能力
+        // ——regain 以"先失去"为前提。受亡骨魔影响的爪牙是首例（R-0056），判定统一读
+        // GameState.AbilityPresentOn（R-0054 第 9 条那一份口径）。
+        var candidates = dead.Where(seat => !RetainsAbility(context.State, seat)).ToArray();
+        var skipped = dead.Length - candidates.Length;
+
+        var options = candidates
             .Select(seat => new DecisionOption
             {
                 Value = SeatChoice.Format(seat),
@@ -69,11 +78,30 @@ internal sealed class BoneCollectorNightAction : INightAction, IAbilityResolutio
         {
             Context = "集骨者（旅行者）：选择一名已死亡的玩家，让他重新获得角色能力直到下个黄昏；"
                 + "也可以摇头不用（每局限一次；被选玩家不会得知自己被选中，但可能发现自己又被唤醒）"
-                + "（百科《集骨者》· 2026-10-04 抓取 · 角色能力 / 运作方式；R-0054）",
+                + "（百科《集骨者》· 2026-10-04 抓取 · 角色能力 / 运作方式；R-0054）"
+                + SkippedNote(skipped),
             Options = options,
             OnNoOption = NoOptionBehavior.BlockAndAlert,
         };
     }
+
+    /// <summary>
+    /// 被「先失去」前置挡掉的候选数说明；一个都没有时为空串（不写多余的噪声）。
+    /// </summary>
+    /// <remarks>
+    /// 挡掉这件事**必须说出来**：说书人看不到某个死亡席位出现在候选里，只有这句能告诉他为什么
+    /// （不静默跳过，R-0054 第 10 条）。
+    /// </remarks>
+    private static string SkippedNote(int skipped) => skipped == 0
+        ? string.Empty
+        : $"。另有 {skipped} 个已死亡的席位仍保有角色能力（死后能力保留，如被亡骨魔杀死的爪牙）："
+            + "不会被再次授予——regain 以「先失去」为前提（R-0054 第 10 条）";
+
+    /// <summary>
+    /// 该席位是否**仍保有**角色能力：判定不了时按"仍保有"处理——不猜，也不多给一次机会
+    /// （与建表期「每局限一次」的保守姿态同向）。
+    /// </summary>
+    private static bool RetainsAbility(GameState state, SeatId seat) => state.AbilityPresentOn(seat) != false;
 
     /// <inheritdoc />
     /// <remarks>选择即为结算，不再补一次裁定。</remarks>
@@ -110,6 +138,15 @@ internal sealed class BoneCollectorNightAction : INightAction, IAbilityResolutio
             throw new InvalidOperationException(
                 $"集骨者只能选择已死亡的玩家：席位 {target.Value} 的生死是 "
                 + $"{entry.LifeValue?.ToString() ?? "未观测"}");
+        }
+
+        if (RetainsAbility(context.State, target))
+        {
+            // 「先失去」前置（R-0054 第 10 条）：死亡但从未失去能力的玩家不能被"再次获得"。
+            throw new InvalidOperationException(
+                $"席位 {target.Value} 死亡时仍保有角色能力（死后能力保留，如被亡骨魔杀死的爪牙）："
+                + "集骨者不能让他「再次获得」——regain 以「先失去」为前提"
+                + "（百科《集骨者》· 2026-10-04 抓取 · 规则细节 1；rulings.md R-0054 第 10 条 / R-0056）");
         }
 
         if (entry.CharacterValue is not { } targetCharacter)

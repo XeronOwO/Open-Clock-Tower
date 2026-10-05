@@ -182,7 +182,12 @@ internal sealed class StateReplayPresenter : IReplayStepPresenter
             details.Add($"窗口：{WindowText(window)}");
             markers.Add(new ReplayMarker
             {
-                Kind = window == EffectWindowKind.RegainedAbility ? "regained-ability" : "effect-window",
+                Kind = window switch
+                {
+                    EffectWindowKind.RegainedAbility => "regained-ability",
+                    EffectWindowKind.RetainedAbility => "retained-ability",
+                    _ => "effect-window",
+                },
                 Seat = effect.Target,
                 Text = WindowText(window),
             });
@@ -246,12 +251,13 @@ internal sealed class StateReplayPresenter : IReplayStepPresenter
         _ => dimension.ToString(),
     };
 
-    /// <summary>效果窗口 → 中文文案（R-0047 / R-0052 / R-0054；未知取值原样回显，不猜）。</summary>
+    /// <summary>效果窗口 → 中文文案（R-0047 / R-0052 / R-0054 / R-0056；未知取值原样回显，不猜）。</summary>
     private static string WindowText(EffectWindowKind window) => window switch
     {
         EffectWindowKind.AfflictionImmunity => "清醒且健康（免疫窗口）",
         EffectWindowKind.SecondAction => "行动两次",
         EffectWindowKind.RegainedAbility => "重获能力（直到下个黄昏）",
+        EffectWindowKind.RetainedAbility => "保留能力（死后仍握有能力）",
         _ => window.ToString(),
     };
 }

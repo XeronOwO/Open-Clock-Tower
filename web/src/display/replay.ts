@@ -75,6 +75,8 @@ const MARKER_LABELS: Record<string, string> = {
   protected: '受死亡保护',
   'extra-nomination': '额外提名窗口',
   'regained-ability': '重获能力',
+  // 亡骨魔「保留能力」（R-0056）：死者从未失去能力，与「重获能力」区分开——那个到下个黄昏到期，这个不。
+  'retained-ability': '保留能力',
   'effect-window': '效果窗口',
 }
 
