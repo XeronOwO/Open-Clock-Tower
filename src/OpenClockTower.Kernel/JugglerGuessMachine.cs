@@ -12,6 +12,7 @@ namespace OpenClockTower.Kernel;
 /// <para>
 /// 三条硬口径（R-0057-B）：只在**该角色被持有后的首个白天**能猜（角色变更后重新起算）；
 /// 每个首个白天只有**一次**公开猜测（0–5 条，一次提交）；猜测**公开**、猜对数只到本人。
+/// 「重获能力」窗口把这一次持有重新起算（集骨者，R-0054 第 4 条；与艺术家提问同款放宽）。
 /// </para>
 /// </remarks>
 internal static class JugglerGuessMachine
@@ -66,7 +67,13 @@ internal static class JugglerGuessMachine
                 + "先补齐观测与变化记录，再让他猜（不猜，D-0015）");
         }
 
-        if (firstDay != day.DayNumber)
+        // 集骨者「重获能力」窗口（R-0054 第 4 条）：重获 = 这一次持有重新起算——死亡但重获能力的杂耍艺人
+        // 即使先前已经猜过，也能在窗口存续的这个白天再猜一次（与艺术家提问的同一处放宽，
+        // 见 ArtistQuestionMachine.Ask；窗口到期（下个黄昏）后回到原口径）。
+        var regained = context.State.RegainedAbilityOn(input.Seat) == true;
+        var tenureStart = regained ? day.DayNumber : firstDay;
+
+        if (tenureStart != day.DayNumber)
         {
             return DayOutcome.Reject(
                 "juggler.not_first_day",
@@ -75,9 +82,10 @@ internal static class JugglerGuessMachine
         }
 
         // 「用过一次」按**这次持有**记账：首个白天当天或之后出现过的猜测记录都算用过
-        // （首个白天只有一次公开猜测，见 R-0057-B）。
+        // （首个白天只有一次公开猜测，见 R-0057-B）；重获窗口把起算点挪到今天，因此**窗口内那次**
+        // 用的是这一次机会，重获之前猜过也不影响——但同一天仍然只有一次（窗口终止后回到原起算点）。
         if (state.Days.Any(record => record.JugglerGuesses.Any(guess =>
-                guess.Seat == input.Seat && guess.DayNumber >= firstDay)))
+                guess.Seat == input.Seat && guess.DayNumber >= tenureStart)))
         {
             return DayOutcome.Reject(
                 "juggler.already_guessed",

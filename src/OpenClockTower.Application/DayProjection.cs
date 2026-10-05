@@ -148,7 +148,8 @@ public static class DayProjection
 
     /// <summary>
     /// 杂耍艺人此刻能不能公开猜测（R-0057-B）：本席持有杂耍艺人、当天就是**这次持有的首个白天**、
-    /// 且这次持有还没猜过。判断口径与内核的 <c>JugglerGuessMachine</c> 同源（「首个白天」由规则层给）；
+    /// 且这次持有还没猜过；集骨者「重获能力」窗口把起算点挪到今天（R-0054 第 4 条）。
+    /// 判断口径与内核的 <c>JugglerGuessMachine</c> 同源（「首个白天」由规则层给）；
     /// 角色没观测到 / 判不了一律给 false（保守：宁可少给入口，不让前端自己推算）。
     /// </summary>
     private static bool CanMakeJugglerGuesses(DayState days, DayRecord openDay, GameState state, SeatId seat)
@@ -159,12 +160,19 @@ public static class DayProjection
         }
 
         var source = RoleContracts.JugglerGuesses.FirstOrDefault(candidate => candidate.Character == character);
-        if (source?.FirstHeldDay(state, seat) is not { } firstDay || firstDay != openDay.DayNumber)
+        if (source?.FirstHeldDay(state, seat) is not { } firstDay)
+        {
+            return false;
+        }
+
+        // 与内核同一处放宽：重获窗口存续期间，这一次持有从今天重新起算（窗口内只能猜一次）。
+        var tenureStart = state.RegainedAbilityOn(seat) == true ? openDay.DayNumber : firstDay;
+        if (tenureStart != openDay.DayNumber)
         {
             return false;
         }
 
         return !days.Days.Any(record => record.JugglerGuesses.Any(guess =>
-            guess.Seat == seat && guess.DayNumber >= firstDay));
+            guess.Seat == seat && guess.DayNumber >= tenureStart));
     }
 }

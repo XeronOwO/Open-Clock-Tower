@@ -45,18 +45,20 @@ public sealed class DayProjectionTests
             }),
         ]);
 
-    /// <summary>投影某个席位；座次默认 = 在局四人。</summary>
+    /// <summary>投影某个席位；座次默认 = 在局四人；跨天账默认只含这一天。</summary>
+    /// <param name="days">跨天账（多天场景要连历史一起给：公开猜测的「这次持有猜过没有」读它）。</param>
     private static PlayerDay Project(
         DayRecord day,
         int seat,
         GameState? state = null,
+        DayState? days = null,
         params int[] inGame)
     {
         var seats = inGame.Length == 0
             ? BallotSeats
             : inGame.Select(value => new SeatId(value)).ToArray();
         return DayProjection.ForSeat(
-            new DayState { Days = [day] },
+            days ?? new DayState { Days = [day] },
             state ?? Baseline(),
             seats,
             new SeatId(seat),
@@ -257,6 +259,60 @@ public sealed class DayProjectionTests
 
         Assert.Equal(4, dto.ExtraNomination?.Seat);
         Assert.Equal("Open", dto.ExtraNomination?.Status);
+    }
+
+    /// <summary>
+    /// 集骨者「重获能力」窗口（R-0054 第 4 条）：死亡但重获能力的杂耍艺人**这一次持有从今天重新起算**，
+    /// 因此第 2 天仍有公开猜测入口——即使他第 1 天已经猜过；没有窗口时不给（起算点回到第 1 天）。
+    /// </summary>
+    /// <remarks>与内核的 <c>JugglerGuessMachine</c> 同一处放宽：投影只给权限位，合法性仍由内核再判一次。</remarks>
+    [Fact]
+    public void JugglerGuesses_DeadButRegainedJuggler_GetsTheEntryOnTheRegainedDay()
+    {
+        var juggler = new SeatId(4);
+        var secondDay = new DayRecord { DayNumber = 2, Status = DayStatus.Open };
+        var guessedOnDayOne = new DayRecord
+        {
+            DayNumber = 1,
+            Status = DayStatus.Closed,
+            JugglerGuesses =
+            [
+                new JugglerGuessRecord
+                {
+                    Seat = juggler,
+                    DayNumber = 1,
+                    Guesses = [new JugglerGuess { Seat = new SeatId(2), Character = new CharacterId("deviant") }],
+                },
+            ],
+        };
+        var days = new DayState { Days = [guessedOnDayOne, secondDay] };
+        var ledger = State(
+            (1, "dreamer", LifeState.Alive),
+            (2, "deviant", LifeState.Alive),
+            (3, "bone-collector", LifeState.Alive),
+            (4, "juggler", LifeState.Dead));
+        var regained = GameStateMachine.Apply(
+            ledger,
+            new PersistentEffectAppliedEvent
+            {
+                Effect = new PersistentEffect
+                {
+                    Id = new EffectId("test:regain:4"),
+                    Source = new SeatId(3),
+                    Ability = new AbilityId("bone-collector.regain"),
+                    Target = juggler,
+                    SourceCharacter = new CharacterId("bone-collector"),
+                    GrantedCharacter = new CharacterId("juggler"),
+                    Window = EffectWindowKind.RegainedAbility,
+                    SourceStateIndependent = true,
+                },
+            });
+
+        var withWindow = Project(secondDay, seat: 4, regained, days);
+        var withoutWindow = Project(secondDay, seat: 4, ledger, days);
+
+        Assert.True(withWindow.CanMakeJugglerGuesses);
+        Assert.False(withoutWindow.CanMakeJugglerGuesses);
     }
 
     /// <summary>效果 DTO 带出窗口分类（咖啡师 / 集骨者窗口的说书人呈现面；R-0047 / R-0052 / R-0054）。</summary>

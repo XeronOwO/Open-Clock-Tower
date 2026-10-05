@@ -115,6 +115,48 @@ public sealed class JugglerGuessMachineTests
         Assert.Equal("day.not_open", Make(night, Context(), (2, "clockmaker")).RejectionCode);
     }
 
+    /// <summary>
+    /// 集骨者「重获能力」（R-0054 第 4 条）：死亡但重获能力的杂耍艺人**这一次持有重新起算**——
+    /// 已经猜过一次也还能在窗口存续的这个白天再猜一次；没有窗口时按既有口径拒绝。
+    /// </summary>
+    [Fact]
+    public void Make_AllowsDeadButRegainedJuggler_WhenAlreadyGuessedOnce()
+    {
+        var guessed = Make(Day(1), Context(), (2, "clockmaker")).State;
+
+        // 先正常关掉第一天，再开第二天（白天账要求一天一天走）。
+        var closed = StepMachine.Handle(guessed, Context(), new CloseDayInput());
+        Assert.Equal(StepMachineOutcomeKind.Applied, closed.Kind);
+        var reopened = StepMachine.StartDay(
+            new StepPlan
+            {
+                Label = "sv:day-2",
+                Phase = GamePhase.Day,
+                Slots = [StepSlot.DayWindow(new StepSlotId("day-window"))],
+            },
+            dayNumber: 2,
+            previous: closed.State).State;
+
+        Assert.Equal("juggler.not_first_day", Make(reopened, Context(), (3, "savant")).RejectionCode);
+
+        var outcome = Make(reopened, Context(regained: true), (3, "savant"));
+
+        Assert.Equal(StepMachineOutcomeKind.Applied, outcome.Kind);
+        var made = Assert.Single(outcome.Events.OfType<JugglerGuessesMadeEvent>());
+        Assert.Equal(2, made.DayNumber);
+    }
+
+    /// <summary>重获窗口内也只有一个白天一次：同一天第二次照样拒绝（放宽的是起算点，不是次数）。</summary>
+    [Fact]
+    public void Make_StillRejectsSecondGuessInTheRegainedDay()
+    {
+        var first = Make(Day(1), Context(regained: true), (2, "clockmaker")).State;
+
+        var second = Make(first, Context(regained: true), (3, "savant"));
+
+        Assert.Equal("juggler.already_guessed", second.RejectionCode);
+    }
+
     /// <summary>该席位不是杂耍艺人：找不到猜测来源契约，显式拒绝。</summary>
     [Fact]
     public void Make_RejectsNonJugglerSeat()
@@ -192,26 +234,49 @@ public sealed class JugglerGuessMachineTests
             dayNumber).State;
 
     /// <summary>结算上下文：1 号是指定角色；席位 1 / 2 / 3 在局。</summary>
+    /// <param name="regained">预置集骨者「重获能力」窗口（1 号按规则保持死亡，R-0054）。</param>
     private static SettlementContext Context(
         string character = "juggler",
         int? firstDay = 1,
-        bool observed = true) =>
+        bool observed = true,
+        bool regained = false) =>
         new()
         {
-            State = GameStateMachine.Fold(
-            [
-                new SeatStateChangedEvent
-                {
-                    Seat = Juggler,
-                    Life = LifeState.Alive,
-                    Character = observed ? new CharacterId(character) : null,
-                    Reason = "测试夹具",
-                },
-            ]),
+            State = regained
+                ? GameStateMachine.Apply(
+                    Ledger(character, observed, dead: true),
+                    new PersistentEffectAppliedEvent
+                    {
+                        Effect = new PersistentEffect
+                        {
+                            Id = new EffectId("test:regain:1"),
+                            Source = new SeatId(2),
+                            Ability = new AbilityId("bone-collector.regain"),
+                            Target = Juggler,
+                            SourceCharacter = new CharacterId("bone-collector"),
+                            GrantedCharacter = new CharacterId(character),
+                            Window = EffectWindowKind.RegainedAbility,
+                            SourceStateIndependent = true,
+                        },
+                    })
+                : Ledger(character, observed),
             Seats = [Juggler, new SeatId(2), new SeatId(3)],
             Abilities = NoAbilities.Instance,
             JugglerGuesses = [new FakeSource { FirstDay = firstDay }],
         };
+
+    /// <summary>基础账：1 号按参数观测到的角色与生死（集骨者只选已死亡的玩家）。</summary>
+    private static GameState Ledger(string character, bool observed, bool dead = false) =>
+        GameStateMachine.Fold(
+        [
+            new SeatStateChangedEvent
+            {
+                Seat = Juggler,
+                Life = dead ? LifeState.Dead : LifeState.Alive,
+                Character = observed ? new CharacterId(character) : null,
+                Reason = "测试夹具",
+            },
+        ]);
 
     /// <summary>测试用猜测来源：首个白天固定（null = 判不了）；角色名只认两个。</summary>
     private sealed class FakeSource : IJugglerGuessSource
