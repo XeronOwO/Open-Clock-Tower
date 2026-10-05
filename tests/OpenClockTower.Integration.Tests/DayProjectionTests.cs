@@ -315,6 +315,79 @@ public sealed class DayProjectionTests
         Assert.False(withoutWindow.CanMakeJugglerGuesses);
     }
 
+    /// <summary>
+    /// 集骨者窗口**到期**之后（下个黄昏 = 新的一夜开始，<see cref="DuskExpiry"/>）：起算点回到原处
+    /// ——第 3 天既不给公开猜测入口，也不认第 2 天那次窗口内的猜测（票据
+    /// `review/bone-collector-regained-juggler-day-entry.md` 行 5，原先只有间接覆盖）。
+    /// </summary>
+    /// <remarks>
+    /// 这里把"窗口到期"这一步真的走一遍（<see cref="DuskExpiry.ExpireAll"/> → 状态账折叠），
+    /// 而不是手搓一个"没有窗口的账"——两者差在「窗口曾经存在、随后被终止」这条路径上。
+    /// </remarks>
+    [Fact]
+    public void JugglerGuesses_WindowExpiresAtDusk_EntryDisappearsOnTheNextDay()
+    {
+        var juggler = new SeatId(4);
+        var guessedOnDayOne = new DayRecord
+        {
+            DayNumber = 1,
+            Status = DayStatus.Closed,
+            JugglerGuesses =
+            [
+                new JugglerGuessRecord
+                {
+                    Seat = juggler,
+                    DayNumber = 1,
+                    Guesses = [new JugglerGuess { Seat = new SeatId(2), Character = new CharacterId("deviant") }],
+                },
+            ],
+        };
+        var guessedOnDayTwo = new DayRecord
+        {
+            DayNumber = 2,
+            Status = DayStatus.Closed,
+            JugglerGuesses =
+            [
+                new JugglerGuessRecord
+                {
+                    Seat = juggler,
+                    DayNumber = 2,
+                    Guesses = [new JugglerGuess { Seat = new SeatId(2), Character = new CharacterId("deviant") }],
+                },
+            ],
+        };
+        var thirdDay = new DayRecord { DayNumber = 3, Status = DayStatus.Open };
+        var days = new DayState { Days = [guessedOnDayOne, guessedOnDayTwo, thirdDay] };
+        var ledger = State(
+            (1, "dreamer", LifeState.Alive),
+            (2, "deviant", LifeState.Alive),
+            (3, "bone-collector", LifeState.Alive),
+            (4, "juggler", LifeState.Dead));
+        var regained = GameStateMachine.Apply(
+            ledger,
+            new PersistentEffectAppliedEvent
+            {
+                Effect = new PersistentEffect
+                {
+                    Id = new EffectId("test:regain:4"),
+                    Source = new SeatId(3),
+                    Ability = new AbilityId("bone-collector.regain"),
+                    Target = juggler,
+                    SourceCharacter = new CharacterId("bone-collector"),
+                    GrantedCharacter = new CharacterId("juggler"),
+                    Window = EffectWindowKind.RegainedAbility,
+                    SourceStateIndependent = true,
+                },
+            });
+
+        var expired = DuskExpiry.ExpireAll(regained)
+            .Aggregate(regained, GameStateMachine.Apply);
+
+        Assert.True(regained.RegainedAbilityOn(juggler));
+        Assert.False(expired.RegainedAbilityOn(juggler));
+        Assert.False(Project(thirdDay, seat: 4, expired, days).CanMakeJugglerGuesses);
+    }
+
     /// <summary>效果 DTO 带出窗口分类（咖啡师 / 集骨者窗口的说书人呈现面；R-0047 / R-0052 / R-0054）。</summary>
     [Fact]
     public void EffectDto_CarriesWindowKind()

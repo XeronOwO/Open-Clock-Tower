@@ -60,17 +60,18 @@ todo/  →  in-progress/  →  review/  →  done/
 
 ### Todo
 
+- [重获「白天能力」之后的那一夜：死者的行动格被点活却整夜停住](todo/regained-day-ability-night-slot-stall.md) — **High** — 集骨者重获杂耍艺人这类**白天**能力后，当夜那一格被 `PlanRegained` 点活（`SlotActivatedEvent` 确已落账），但计划走到那里既不挂裁定点也不发请求、`PlanCompleted` 永远为假——整夜卡死；真宿主确定性复现 + 实测证据表在票里
 ### In progress
 
 ### Review
 
-- [集骨者重获能力：死亡杂耍艺人的白天入口（首个白天重新起算）](review/bone-collector-regained-juggler-day-entry.md) — **Medium** — 集骨者救活已死亡杂耍艺人的能力后，那名玩家在界面上拿不到公开猜测入口、提交也被拒（起算日只认角色变化记录）；补上重获窗口内「这一次持有从当天重新起算」的内核判定与投影权限位
-- [博学者候选事实清单：取舍与条数口径](review/savant-fact-list-tradeoffs.md) — **Low** — A 类（重复 / 不可达取值 / 同一段代码写两遍）、B2、C1、D1 已自决落地（合并「旁边有谁」、三态 `alive-lead`、补 `type-count-equals` 与 `demon-neighbours-team:mixed`、爪牙读数统一成钟表匠的距离；新增「取值互斥」声明与越界自检）；候选 157 → **182 条**（装置断言改精确值）；**只剩 B1**：`role-in-play`/`role-dead` 要不要收窄成"本局在场的角色"
-
 ### Done
 
+- [集骨者重获能力：死亡杂耍艺人的白天入口（首个白天重新起算）](done/bone-collector-regained-juggler-day-entry.md) — **Medium** — 集骨者救活已死亡杂耍艺人的能力后，那名玩家在界面上拿不到公开猜测入口、提交也被拒（起算日只认角色变化记录）；补上重获窗口内「这一次持有从当天重新起算」的内核判定与投影权限位；批次 E42 判出矩阵 7 行全过（新装置 `verify-bone-collector-juggler` 取证档 42 项），咬出的"重获白天能力后当夜整夜停住"另立 `todo/regained-day-ability-night-slot-stall.md`
+- [博学者候选事实清单：取舍与条数口径](done/savant-fact-list-tradeoffs.md) — **Low** — A 类（重复 / 不可达取值 / 同一段代码写两遍）、B1（`role-in-play` / `role-dead` 收窄成"本局在场角色"）、B2、C1、D1 全部自决落地；候选 182 → **134**，装置断言改**逐族精确条数**；批次 E42 判出矩阵 7 行全过（`verify-retention-day-info` 取证档 78 项）；C2（"昨晚没有人的能力未正常生效"）按缺观测面不做
+
 - [亡骨魔：夜间击杀 + 爪牙「保留能力」+ 集骨者「先失去」前置](done/vigormortis-death-ability-retention.md) — **High** — 契约落地前抽到它的局开不了夜；同时补上「死亡不等于失去能力」这条判据（保留能力窗口 + 说书人选中毒侧 + 死者在自己的格上仍被唤醒）；批次 E40 判出矩阵 7 行全过（新装置 `verify-retention-day-info` 74 项；冻结版门禁 1246 通过；主谋等跨剧本相克随扩展票）
-- [博学者的两条信息：候选事实库 + 说书人辅助排版与自动校验](done/savant-information-picker.md) — **High** — 把自由文本裁定框升级成结构化辅助面：28 条事实候选（6 席局展开 157 条）+ 平台按账求真值 + 组合非法当场拦下；批次 E40 判出矩阵 11 行全过（界面面由新装置判出：真值徽章 / 分类分栏 / 同真禁用），批次 E41 补上「互为反面」的界面预拦（同族反面候选当场灰掉、写明原因、点不动；服务端仍会拒绝）；**清单取舍仍待需求方过一遍**
+- [博学者的两条信息：候选事实库 + 说书人辅助排版与自动校验](done/savant-information-picker.md) — **High** — 把自由文本裁定框升级成结构化辅助面：28 条事实候选（6 席局展开 157 条）+ 平台按账求真值 + 组合非法当场拦下；批次 E40 判出矩阵 11 行全过（界面面由新装置判出：真值徽章 / 分类分栏 / 同真禁用），批次 E41 补上「互为反面」的界面预拦（同族反面候选当场灰掉、写明原因、点不动；服务端仍会拒绝）；清单取舍由 `done/savant-fact-list-tradeoffs.md` 在批次 E42 收口
 - [白天信息族剩余两名：杂耍艺人 + 博学者](done/juggler-and-savant-day-abilities.md) — **Medium** — 首个白天公开猜测（当晚报数只到本人）/ 每个白天一真一假两条信息；批次 E40 判出矩阵 8 行全过（公开猜测在真玩家页面录进、下发到每一席、同日第二次入口消失）
 
 - [非首个夜晚获得的「首个夜晚」能力没有结算位](done/granted-entry-ability-insertion.md) — **High** — 哲学家 / 集骨者 / 角色变更三条来源同病：能力被获得却永远不结算；补内核槽位追加原语（`SlotInsertedEvent`）+ 规则层追加位（最后一条致死行动格之后）；批次 E39 判出矩阵 12 行全过（主装置取证档 293 项 / 0 跳过；冻结版门禁 1115 通过）

@@ -1013,6 +1013,45 @@ Integration 188 · NormativeGates 24）；`dotnet format` 就地通过；`npm ru
 - 残余（随票据留档）：博学者 28 条候选清单的取舍仍待需求方过一遍；集骨者重获已死亡的杂耍艺人
   （百科《集骨者》· 范例 4）专项用例未补（夜晚格与建表绑定均已就位）。
 
+## 批次 E42（2026-10-05，博学者清单取舍 + 集骨者重获白天能力的界面取证）
+
+冻结版本：`main` @ `82112bb`（本轮开工前的提交）；跑的是同一套真宿主 + 真 Vite + 真浏览器 + 真 SQLite。
+本批覆盖两张 `review/` 票据：博学者候选清单的 B1 收窄（规则层 + 装置断言）、集骨者重获能力的白天入口
+（新装置）。冻结版门禁：`dotnet build` 0 警告 0 错误；`dotnet test` **1258 通过 / 0 失败**
+（内核 501 · 规则 489 · 集成 243 · 规范门禁 25）；`dotnet format` 退出 0；前端 `npm run gate` 退出 0。
+
+- 博学者 B1（自决收窄）：`role-in-play` / `role-dead` 的取值从全花名册 30 改成**本局在场的角色**
+  （去重、未观测的不进），理由与判据写在票据里——全花名册在 6 席局里给 60 条恒定取值的候选，
+  「点名」组三分之二是同一句恒假；官方范例里出现的是"某个在场角色"的说法。
+  规则用例 `SavantFactCatalogTests.RoleClaims_ListOnlyInPlayCharacters` 逐个钉住取值集合，
+  `CandidateFamilies_ArePartitionedByGroup` 钉住分组形状（7 席账：点名 91 = 席位 7 + 席位对 21 +
+  席位×在场角色 49 + 在场角色 × 2）。
+- 装置 `tools/verify-retention-day-info.mjs`（取证档 `--quota 2 --screenshots-all --build`）：
+  **78 项全部通过 / 0 失败、退出码 0**。候选那条断言从"总数精确值 182"改成**逐族精确值 + 总数**：
+  座位关系 13 / 阵营与人数 41 / 昨晚与今天 7 / 状态读数 4 / 点名 69 = **134**（同一份账上的两轮时点不同，
+  逐族数字的差里既有收窄也有当天账的不同；装置那一行注释写明了这一点）。
+  取证档跑红两次的经过如实记在这里：首版按"另一时点的推算值"写死 140 / 11 / 83，装置实测给的是
+  134 / 13 / 69——**装置读数才是那一份账的真相**，改断言而不是改产品。
+- 新装置 `tools/verify-bone-collector-juggler.mjs`（取证档同样 `--quota 2 --screenshots-all`）：
+  **42 项全部通过 / 0 失败、退出码 0**；19 张截图均为本次运行写入。它判的是
+  `done/bone-collector-regained-juggler-day-entry.md` 的界面面：活着的杂耍艺人第 1 天猜一次 →
+  第 2 夜恶魔杀他、集骨者的候选里一个死者都没有（摇头不用）→ 第 3 夜集骨者的候选只有刚死的他
+  （逐条写明「已死亡」，请求正文写明"重新获得角色能力直到下个黄昏"）→ 选中后落「重获能力」窗口 →
+  **第 2 天已经死亡的他重新拿到公开猜测入口**、在页面上填表提交、进当天账与公开面、无关席位看到同一份。
+- 本批新增的三层用例（都是"窗口到期"这条原先只有间接覆盖的行）：
+  内核 `JugglerGuessMachineTests.Make_RejectsAgainAfterTheWindowExpires`（窗口开了又关）、
+  集成 `DayProjectionTests.JugglerGuesses_WindowExpiresAtDusk_EntryDisappearsOnTheNextDay`
+  （走 `DuskExpiry.ExpireAll` 真的终止窗口）与真宿主
+  `BoneCollectorHostTests.BoneCollector_RegainingDayAbility_LetTheDeadJugglerGuessAgainOnThatDay`
+  （命令面受理 + 窗口在下个黄昏终止）。
+- **本批咬出的新缺陷（已立票，不在本批修）**：重获**白天**能力之后，当夜那一格被
+  `PlanRegained` 点活（`SlotActivatedEvent` 确已落账），但计划走到那里既不挂裁定点也不发请求——
+  真宿主里 `PlanCompleted` 永远为假。票：`todo/regained-day-ability-night-slot-stall.md`
+  （含确定性复现与实测证据表）。因此新装置**不跑到窗口到期的那一夜**，那一行的界面证据留作该票的
+  验收行之一（装置头注释里写明了这个分工）。
+- 残余（随票据留档）：博学者清单的 C2（"昨晚没有人的能力未正常生效"）首版不做，理由写在票据里
+  （缺的是观测面，不是候选清单）；`role-in-play` 收窄后"某角色不在场"这类假话改走自由文本兜底。
+
 ## 间歇性失败记录（不进批次，可复现时才升级为缺陷）
 
 ### `DeathTriggerResidueHostTests.SweetheartDrunkTarget_MayBeDeadSeat` 投票一步偶发 `Kind = Failed`（2026-10-05）

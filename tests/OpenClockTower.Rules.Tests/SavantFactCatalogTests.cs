@@ -142,8 +142,11 @@ public sealed class SavantFactCatalogTests
         Assert.Equal(OptionTruth.False, TruthOf(state, "fact:two-seats-same-team:2:4"));
 
         Assert.Equal(OptionTruth.True, TruthOf(state, "fact:role-in-play:clockmaker"));
-        Assert.Equal(OptionTruth.False, TruthOf(state, "fact:role-in-play:juggler"));
         Assert.Equal(OptionTruth.True, TruthOf(state, "fact:role-dead:klutz"));
+        // 收窄（B1，2026-10-05）：取值 = 本局在场的角色，不在场的不再铺开——"某角色不在场"这类
+        // 假话走自由文本兜底（否则「点名」组里三分之二是同一句恒假）。在场的角色仍然给假话：
+        // 博学者还活着 ⇒「角色『博学者』已经死亡」为假，照样是可选的假信息。
+        Assert.False(HasOption(state, "fact:role-in-play:juggler"));
         Assert.Equal(OptionTruth.False, TruthOf(state, "fact:role-dead:savant"));
         Assert.Equal("角色「钟表匠」在场", TextOf(state, "fact:role-in-play:clockmaker"));
 
@@ -169,14 +172,67 @@ public sealed class SavantFactCatalogTests
     }
 
     /// <summary>角色维度没观测齐时，否定式断言（"场上没有 X"）判不了 → 不进候选；真话仍然给。</summary>
+    /// <remarks>
+    /// 收窄之后这条用例换了形状：取值本来就只含**在场**角色，所以"判不了就不给候选"落在
+    /// **角色未观测**的席位上——7 席里只有 4 号的角色被观测到，`role-in-play` 就只剩他一个取值
+    /// （<c>SavantAccusationFacts.InPlayCharacters</c> 只收已观测到的角色）。
+    /// </remarks>
     [Fact]
     public void FalseRoleClaims_AreAbsentWhenCharactersAreUnobserved()
     {
         var state = BaseLedger(allCharactersKnown: false);
 
         Assert.Equal(OptionTruth.True, TruthOf(state, "fact:role-in-play:no-dashii"));
+        Assert.Equal(
+            ["fact:role-in-play:no-dashii"],
+            RoleClaimValues(state, "role-in-play"));
         Assert.False(HasOption(state, "fact:role-in-play:juggler"));
         Assert.False(HasOption(state, "fact:traveller-present"));
+    }
+
+    /// <summary>
+    /// B1 收窄（2026-10-05 自决）：`role-in-play` / `role-dead` 的取值 = **本局在场的角色**，
+    /// 不在场的角色不再铺开——全花名册会让「点名」组里三分之二是同一句恒假。
+    /// </summary>
+    /// <remarks>
+    /// 断言取**集合**而不是顺序：候选顺序由花名册顺序决定（那是呈现细节，改花名册顺序不该红），
+    /// 这条用例钉的是"哪些角色进得了候选"。
+    /// </remarks>
+    [Fact]
+    public void RoleClaims_ListOnlyInPlayCharacters()
+    {
+        var state = NightLedger();
+
+        // 本局在册七席：博学者 / 钟表匠 / 筑梦师（夜里被理发师换成贤者）/ 诺-达鲺 / 女巫 / 呆瓜 / 艺术家
+        // —— 换角后"贤者"才是 3 号的实际角色（两个取值都在场）。
+        Assert.Equal(
+            [
+                "fact:role-in-play:artist",
+                "fact:role-in-play:clockmaker",
+                "fact:role-in-play:klutz",
+                "fact:role-in-play:no-dashii",
+                "fact:role-in-play:sage",
+                "fact:role-in-play:savant",
+                "fact:role-in-play:witch",
+            ],
+            [.. RoleClaimValues(state, "role-in-play").OrderBy(value => value, StringComparer.Ordinal)]);
+
+        // 「已经死亡」那一族用**同一份取值**（在场角色的集合），真值才区分谁死了：
+        // 这一账上 5 号女巫与 6 号呆瓜死了，其余在场角色给出"没死"的假话。
+        Assert.Equal(
+            [
+                "fact:role-dead:artist",
+                "fact:role-dead:clockmaker",
+                "fact:role-dead:klutz",
+                "fact:role-dead:no-dashii",
+                "fact:role-dead:sage",
+                "fact:role-dead:savant",
+                "fact:role-dead:witch",
+            ],
+            [.. RoleClaimValues(state, "role-dead").OrderBy(value => value, StringComparer.Ordinal)]);
+        Assert.Equal(OptionTruth.True, TruthOf(state, "fact:role-dead:witch"));
+        Assert.Equal(OptionTruth.False, TruthOf(state, "fact:role-dead:savant"));
+        Assert.DoesNotContain("fact:role-in-play:juggler", RoleClaimValues(state, "role-in-play"));
     }
 
     /// <summary>候选自带分组与真值：每一组都至少给出一条候选（说书人端据此分栏）。</summary>
@@ -193,6 +249,32 @@ public sealed class SavantFactCatalogTests
         Assert.All(options, option => Assert.NotNull(option.Truth));
         Assert.All(options, option => Assert.StartsWith("fact:", option.Value, StringComparison.Ordinal));
         Assert.All(options, option => Assert.False(string.IsNullOrWhiteSpace(option.Code)));
+    }
+
+    /// <summary>
+    /// 逐族条数的不变量（票据 B1 的收尾）：**每一族至少占一条、各条事实不重复铺开**，
+    /// 并且总量落在"逐族之和"上——装置端另有逐族精确值（`verify-retention-day-info.mjs`），
+    /// 这里护的是"参数空间被改大 / 改小"这件事在规则层就能看出来。
+    /// </summary>
+    /// <remarks>
+    /// 不写死每族数字：每种账能判的事实不一样（观测齐不齐），写死会让用例随夹具一起腐烂。
+    /// 钉的是**形状**：五族都有候选、取值不重复、组名与编码自洽。
+    /// </remarks>
+    [Fact]
+    public void CandidateFamilies_ArePartitionedByGroup()
+    {
+        var options = Options(NightLedger());
+        var grouped = options.GroupBy(option => option.Group).ToArray();
+
+        Assert.Equal(5, grouped.Length);
+        Assert.All(grouped, family => Assert.NotEmpty(family));
+        Assert.Equal(options.Count, grouped.Sum(family => family.Count()));
+        Assert.Equal(options.Count, options.Select(option => option.Value).Distinct(StringComparer.Ordinal).Count());
+
+        // 点名那一族是收窄的落点（7 席账）：席位 7 + 席位对 C(7,2)=21 + 席位×在场角色 7×7=49
+        // + 在场角色 × 2（role-in-play / role-dead：各 7）——收窄之后不再随花名册长度增长。
+        var accusation = grouped.Single(family => family.Key == "点名");
+        Assert.Equal(7 + 21 + 49 + 7 + 7, accusation.Count());
     }
 
     /// <summary>
@@ -289,6 +371,10 @@ public sealed class SavantFactCatalogTests
 
     private static bool HasOption(GameState state, string value) =>
         Options(state).Any(option => option.Value == value);
+
+    /// <summary>某条事实此刻给出的全部取值（按候选顺序），用于钉住参数空间本身。</summary>
+    private static IReadOnlyList<string> RoleClaimValues(GameState state, string code) =>
+        [.. Options(state).Where(option => option.Code == code).Select(option => option.Value)];
 
     private static string TextOf(GameState state, string value) => Option(state, value).Preview;
 

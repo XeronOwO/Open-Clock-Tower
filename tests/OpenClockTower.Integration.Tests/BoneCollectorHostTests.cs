@@ -337,6 +337,209 @@ public sealed class BoneCollectorHostTests
             "第 2 夜没有自然走完");
     }
 
+    /// <summary>
+    /// 重获的是**白天**能力（杂耍艺人的公开猜测，R-0057-B 第 4 条）：死亡但被重获能力的杂耍艺人
+    /// 在窗口存续的那个白天**在真宿主链路上**也能再猜一次——他的入口重新出现、命令被受理，
+    /// 同一份账下没有窗口时照原口径被拒（`juggler.not_first_day`）。
+    /// </summary>
+    /// <remarks>
+    /// 内核（<c>JugglerGuessMachine</c>）与投影（<c>DayProjection</c>）两侧各有单测，本用例补的是
+    /// **命令面到白天账**这一整条真宿主链路：票据
+    /// `review/bone-collector-regained-juggler-day-entry.md` 的界面级取证由
+    /// `tools/verify-bone-collector-juggler.mjs` 判，这里护住"受理"这件事。
+    /// </remarks>
+    [Fact]
+    public async Task BoneCollector_RegainingDayAbility_LetTheDeadJugglerGuessAgainOnThatDay()
+    {
+        await using var host = new TestServerHost(slotQuotaSeconds: 0.05, seatCount: 5, autoStartTestNight: false);
+        await using var storyteller = await host.ConnectStorytellerAsync();
+
+        // 1 号杂耍艺人（白天族）/ 2 号钟表匠（首夜行动，用来走完首夜）/ 3 号畸形秀演员 /
+        // 4 号呆瓜 / 5 号方古（其他夜晚击杀）。
+        Assert.Equal(
+            "Accepted",
+            (await storyteller.InvokeAsync<CommandResultDto>(
+                "AssignCharacters",
+                Seats((1, "juggler"), (2, "clockmaker"), (3, "mutant"), (4, "klutz"), (5, "fang-gu")),
+                "test-bone-juggler-assign")).Kind);
+
+        var joined = await storyteller.InvokeAsync<CommandResultDto>(
+            "JoinTraveller",
+            null,
+            "bone-collector",
+            "Good",
+            null,
+            "test-bone-juggler-join");
+        Assert.Equal("Accepted", joined.Kind);
+
+        OperationRequestDto? collectorRequest = null;
+        await using var collector = await host.ConnectSeatAsync(new SeatId(6), asked => collectorRequest = asked);
+        await using var juggler = await host.ConnectSeatAsync(new SeatId(1));
+
+        Assert.Equal(
+            "Accepted",
+            (await storyteller.InvokeAsync<CommandResultDto>(
+                "StartNight",
+                1,
+                "Original",
+                "test-bone-juggler-night-1")).Kind);
+        var clockmakerInfo = await TestServerHost.WaitForViewAsync(
+            storyteller,
+            view => view.CurrentSlotId == "clockmaker" && view.AwaitingDecisionId is not null,
+            Wait);
+        Assert.NotNull(clockmakerInfo);
+        Assert.Equal(
+            "Accepted",
+            (await storyteller.InvokeAsync<CommandResultDto>(
+                "ResolveDecisionPoint",
+                clockmakerInfo!.AwaitingDecisionId,
+                "恶魔离最近的爪牙有 1 名玩家",
+                null,
+                "test-bone-juggler-night-1-info")).Kind);
+        Assert.True(
+            (await TestServerHost.WaitForViewAsync(storyteller, view => view.PlanCompleted, Wait))!.PlanCompleted,
+            "首夜没有自然走完");
+
+        // 白天 1：杂耍艺人活着猜一次（这次持有用掉了）。
+        Assert.Equal(
+            "Accepted",
+            (await storyteller.InvokeAsync<CommandResultDto>("StartDay", "test-bone-juggler-day-1")).Kind);
+        Assert.True(
+            await TestServerHost.WaitUntilAsync(
+                () => host.Session.GetPlayerView(new SeatId(1)).Day?.CanMakeJugglerGuesses == true,
+                Wait),
+            "白天 1：杂耍艺人没有拿到猜测入口");
+        Assert.Equal(
+            "Accepted",
+            (await juggler.InvokeAsync<CommandResultDto>(
+                "MakeJugglerGuesses",
+                new[] { new JugglerGuessDto { Seat = 2, Character = "clockmaker" } },
+                "test-bone-juggler-guess-day-1")).Kind);
+
+        // 白天 1：让 1 号死亡（死因与本用例无关，只要集骨者行动前他已死亡——
+        // 与同文件第一个用例用 ReportSeatState 让卖花女孩先死是同一手法）。
+        Assert.Equal(
+            "Accepted",
+            (await storyteller.InvokeAsync<CommandResultDto>(
+                "ReportSeatState",
+                1,
+                "Dead",
+                null,
+                null,
+                null,
+                null,
+                "测试：让杂耍艺人在集骨者行动前死亡",
+                null,
+                "test-bone-juggler-kill")).Kind);
+        Assert.Equal(
+            "Accepted",
+            (await storyteller.InvokeAsync<CommandResultDto>("CloseDay", "test-bone-juggler-close-day-1")).Kind);
+
+        // 第 2 夜：集骨者把能力重获给已死亡的 1 号（黄昏格在恶魔之前）。
+        Assert.Equal(
+            "Accepted",
+            (await storyteller.InvokeAsync<CommandResultDto>(
+                "StartNight",
+                2,
+                "Original",
+                "test-bone-juggler-night-2")).Kind);
+        Assert.True(
+            await TestServerHost.WaitUntilAsync(
+                () => collectorRequest?.RequestId == "sv:night-2:bone-collector",
+                Wait),
+            $"集骨者没有收到黄昏行动请求（最后：{collectorRequest?.RequestId ?? "无"}）");
+        var regain = await collector.InvokeAsync<CommandResultDto>(
+            "SubmitResponse",
+            collectorRequest!.RequestId,
+            "seat:1",
+            "test-bone-juggler-regain",
+            1L);
+        Assert.True(
+            regain.Kind == "Accepted",
+            $"集骨者的重获被拒：{regain.RejectionCode} {regain.RejectionMessage}；"
+                + $"候选={string.Join('/', collectorRequest.Options.Select(option => option.Value))}");
+        Assert.True(
+            await TestServerHost.WaitUntilAsync(
+                () => host.Session.GetStorytellerView().PersistentEffects.Any(effect =>
+                    effect.Ability == new AbilityId("bone-collector.regain")
+                    && effect.Target == new SeatId(1)
+                    && !effect.IsTerminated),
+                Wait),
+            "没有落重获能力窗口");
+
+        // 第 2 夜收尾：先用说书人兜底推进（见上面的缺陷说明），再确认计划真的走完——
+        // 兜底可能要被推好几次（前几格被越过之后还有空槽），所以这里循环推到达成为止。
+        var completed = false;
+        for (var attempt = 0; attempt < 8 && !completed; attempt++)
+        {
+            completed = (await TestServerHost.WaitForViewAsync(storyteller, view => view.PlanCompleted, TimeSpan.FromSeconds(2)))
+                ?.PlanCompleted == true;
+            if (completed)
+            {
+                break;
+            }
+
+            Assert.Equal(
+                "Accepted",
+                (await storyteller.InvokeAsync<CommandResultDto>(
+                    "ForceAdvance",
+                    "测试：越过被重获的白天能力格（见 todo/regained-day-ability-night-slot-stall.md）",
+                    $"test-bone-juggler-force-{attempt}")).Kind);
+        }
+
+        Assert.True(completed, "第 2 夜没有走完（兜底推进之后仍不完成）");
+
+        // 白天 2（窗口存续）：入口重新出现，命令被受理 —— 本用例的正题。
+        Assert.Equal(
+            "Accepted",
+            (await storyteller.InvokeAsync<CommandResultDto>("StartDay", "test-bone-juggler-day-2")).Kind);
+        Assert.True(
+            await TestServerHost.WaitUntilAsync(
+                () => host.Session.GetPlayerView(new SeatId(1)).Day?.CanMakeJugglerGuesses == true,
+                Wait),
+            "白天 2：死亡但重获能力的杂耍艺人没有拿到猜测入口");
+        var second = await juggler.InvokeAsync<CommandResultDto>(
+            "MakeJugglerGuesses",
+            new[] { new JugglerGuessDto { Seat = 4, Character = "klutz" } },
+            "test-bone-juggler-guess-day-2");
+        Assert.True(
+            second.Kind == "Accepted",
+            $"白天 2 的公开猜测被拒：{second.RejectionCode} {second.RejectionMessage}");
+        Assert.True(
+            await TestServerHost.WaitUntilAsync(
+                // 公开面只带**当天**的记录（第 1 天那条留在第 1 天的账里），所以这里是 1 而不是 2。
+                () => host.Session.GetPlayerView(new SeatId(1)).Day?.PublicView.JugglerGuesses.Count == 1,
+                Wait),
+            "第二次猜测没有进当天账");
+        Assert.False(host.Session.GetPlayerView(new SeatId(1)).Day?.CanMakeJugglerGuesses ?? false);
+
+        // 同一天第二次照旧拒绝：放宽的是起算点，不是次数。
+        var again = await juggler.InvokeAsync<CommandResultDto>(
+            "MakeJugglerGuesses",
+            new[] { new JugglerGuessDto { Seat = 4, Character = "klutz" } },
+            "test-bone-juggler-guess-day-2-again");
+        Assert.Equal("juggler.already_guessed", again.RejectionCode);
+
+        // 收尾：关账 → 第 3 夜（下个黄昏）→ 窗口终止；再猜回到原口径（不是首个白天）。
+        Assert.Equal(
+            "Accepted",
+            (await storyteller.InvokeAsync<CommandResultDto>("CloseDay", "test-bone-juggler-close-day-2")).Kind);
+        Assert.Equal(
+            "Accepted",
+            (await storyteller.InvokeAsync<CommandResultDto>(
+                "StartNight",
+                3,
+                "Original",
+                "test-bone-juggler-night-3")).Kind);
+        Assert.True(
+            await TestServerHost.WaitUntilAsync(
+                () => host.Session.GetStorytellerView().PersistentEffects
+                    .Where(effect => effect.Ability == new AbilityId("bone-collector.regain"))
+                    .All(effect => effect.IsTerminated),
+                Wait),
+            "重获窗口没有在下个黄昏收口");
+    }
+
     private static SeatCharacterAssignmentDto[] Seats(params (int Seat, string Character)[] rows) =>
         [.. rows.Select(row => new SeatCharacterAssignmentDto { Seat = row.Seat, Character = row.Character })];
 }

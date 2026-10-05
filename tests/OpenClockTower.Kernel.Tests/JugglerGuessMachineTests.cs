@@ -146,7 +146,51 @@ public sealed class JugglerGuessMachineTests
         Assert.Equal(2, made.DayNumber);
     }
 
-    /// <summary>重获窗口内也只有一个白天一次：同一天第二次照样拒绝（放宽的是起算点，不是次数）。</summary>
+    /// <summary>
+    /// 重获窗口**到期之后**（下个黄昏，窗口被终止）：起算点回到原处——窗口内猜过的那一天不算数，
+    /// 但"这一次持有"已经用过，因此在窗口外的白天既不是首个白天、也没有可用的机会。
+    /// </summary>
+    /// <remarks>
+    /// 票据 `review/bone-collector-regained-juggler-day-entry.md` 行 5：原先只有间接覆盖
+    /// （"窗口不在 = 原口径"），这里把窗口**开了又关**走一遍。
+    /// </remarks>
+    [Fact]
+    public void Make_RejectsAgainAfterTheWindowExpires()
+    {
+        // 第 1 天他活着猜过一次。
+        var guessed = Make(Day(1), Context(), (2, "clockmaker")).State;
+        var closed = StepMachine.Handle(guessed, Context(), new CloseDayInput());
+        Assert.Equal(StepMachineOutcomeKind.Applied, closed.Kind);
+
+        // 第 2 天：窗口存续 → 受理（放宽的是起算点）。
+        var reopened = StepMachine.StartDay(
+            new StepPlan
+            {
+                Label = "sv:day-2",
+                Phase = GamePhase.Day,
+                Slots = [StepSlot.DayWindow(new StepSlotId("day-window"))],
+            },
+            dayNumber: 2,
+            previous: closed.State).State;
+        Assert.Equal(StepMachineOutcomeKind.Applied, Make(reopened, Context(regained: true), (2, "clockmaker")).Kind);
+
+        // 窗口到期（下个黄昏 → DuskExpiry 终止它），第 3 天再猜：起算点回到原处。
+        var closedSecond = StepMachine.Handle(reopened, ExpiredAfterRegain(), new CloseDayInput());
+        Assert.Equal(StepMachineOutcomeKind.Applied, closedSecond.Kind);
+        var thirdDay = StepMachine.StartDay(
+            new StepPlan
+            {
+                Label = "sv:day-3",
+                Phase = GamePhase.Day,
+                Slots = [StepSlot.DayWindow(new StepSlotId("day-window"))],
+            },
+            dayNumber: 3,
+            previous: closedSecond.State).State;
+
+        Assert.Equal("juggler.not_first_day", Make(thirdDay, ExpiredAfterRegain(), (2, "clockmaker")).RejectionCode);
+    }
+
+    /// <summary>重获窗口内的同一天仍然只一次：放宽的是起算点，不是次数。</summary>
     [Fact]
     public void Make_StillRejectsSecondGuessInTheRegainedDay()
     {
@@ -243,27 +287,57 @@ public sealed class JugglerGuessMachineTests
         new()
         {
             State = regained
-                ? GameStateMachine.Apply(
-                    Ledger(character, observed, dead: true),
-                    new PersistentEffectAppliedEvent
-                    {
-                        Effect = new PersistentEffect
-                        {
-                            Id = new EffectId("test:regain:1"),
-                            Source = new SeatId(2),
-                            Ability = new AbilityId("bone-collector.regain"),
-                            Target = Juggler,
-                            SourceCharacter = new CharacterId("bone-collector"),
-                            GrantedCharacter = new CharacterId(character),
-                            Window = EffectWindowKind.RegainedAbility,
-                            SourceStateIndependent = true,
-                        },
-                    })
+                ? GameStateMachine.Apply(Ledger(character, observed, dead: true), new PersistentEffectAppliedEvent
+                {
+                    Effect = RegainEffect(character),
+                })
                 : Ledger(character, observed),
             Seats = [Juggler, new SeatId(2), new SeatId(3)],
             Abilities = NoAbilities.Instance,
             JugglerGuesses = [new FakeSource { FirstDay = firstDay }],
         };
+
+    /// <summary>集骨者的「重获能力」窗口效果（R-0054）：目标 = 1 号，授予角色按参数。</summary>
+    private static PersistentEffect RegainEffect(string granted = "juggler") =>
+        new()
+        {
+            Id = new EffectId("test:regain:1"),
+            Source = new SeatId(2),
+            Ability = new AbilityId("bone-collector.regain"),
+            Target = Juggler,
+            SourceCharacter = new CharacterId("bone-collector"),
+            GrantedCharacter = new CharacterId(granted),
+            Window = EffectWindowKind.RegainedAbility,
+            SourceStateIndependent = true,
+        };
+
+    /// <summary>
+    /// 「重获窗口开了又关」的账：先落窗口，再按<strong>下个黄昏</strong>的口径终止它——
+    /// 窗口的寿命在规则层由 <c>DuskExpiry</c> 收口，这里照它产出的终止事件形状折叠。
+    /// </summary>
+    private static SettlementContext ExpiredAfterRegain()
+    {
+        var applied = GameStateMachine.Apply(
+            Ledger("juggler", observed: true, dead: true),
+            new PersistentEffectAppliedEvent { Effect = RegainEffect() });
+        var expired = GameStateMachine.Apply(applied, new PersistentEffectTerminatedEvent
+        {
+            EffectId = new EffectId("test:regain:1"),
+            Termination = new EffectTermination
+            {
+                Kind = EffectTerminationKind.NoLongerApplies,
+                Reason = "下个黄昏：窗口到期（R-0054）",
+            },
+        });
+
+        return new SettlementContext
+        {
+            State = expired,
+            Seats = [Juggler, new SeatId(2), new SeatId(3)],
+            Abilities = NoAbilities.Instance,
+            JugglerGuesses = [new FakeSource()],
+        };
+    }
 
     /// <summary>基础账：1 号按参数观测到的角色与生死（集骨者只选已死亡的玩家）。</summary>
     private static GameState Ledger(string character, bool observed, bool dead = false) =>

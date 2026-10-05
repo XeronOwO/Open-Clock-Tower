@@ -1,6 +1,6 @@
 # 集骨者重获能力：死亡杂耍艺人的白天入口（首个白天重新起算）
 
-- Status: Review
+- Status: Done
 - Priority: Medium
 - Depends on: 无（同族已落地：`done/traveller-and-exile.md`（集骨者 R-0054）、
   `done/juggler-and-savant-day-abilities.md`（杂耍艺人 R-0057-B）、`done/seamstress-and-artist.md`（艺术家 R-0040））
@@ -60,18 +60,23 @@
 
 | # | 场景 | 期望 | 证据 | 判定 |
 |---|---|---|---|---|
-| 1 | 死亡杂耍艺人被集骨者重获能力，窗口存续的那个白天再来猜 | 受理；猜测进当天账并公开 | 内核 `JugglerGuessMachineTests.Make_AllowsDeadButRegainedJuggler_WhenAlreadyGuessedOnce`（第 1 天猜过、第 2 天窗口内受理） | 通过 |
+| 1 | 死亡杂耍艺人被集骨者重获能力，窗口存续的那个白天再来猜 | 受理；猜测进当天账并公开 | 内核 `JugglerGuessMachineTests.Make_AllowsDeadButRegainedJuggler_WhenAlreadyGuessedOnce`（第 1 天猜过、第 2 天窗口内受理）+ 集成 `BoneCollectorHostTests.BoneCollector_RegainingDayAbility_LetTheDeadJugglerGuessAgainOnThatDay` 同一断言（真宿主命令面） | 通过 |
 | 2 | 同一份账**没有**重获窗口 | 照原口径拒绝（`juggler.not_first_day`） | 同一用例的前半段断言 + 内核 `Make_RejectsOutsideTheFirstDay` | 通过 |
-| 3 | 重获窗口内同一天猜第二次 | 拒绝（`juggler.already_guessed`）——放宽的是起算点，不是次数 | 内核 `Make_StillRejectsSecondGuessInTheRegainedDay` | 通过 |
-| 4 | 玩家端入口（权限位） | 有窗口 → 给入口；没窗口 → 不给 | 集成 `DayProjectionTests.JugglerGuesses_DeadButRegainedJuggler_GetsTheEntryOnTheRegainedDay` | 通过 |
-| 5 | 窗口到期（下个黄昏）之后 | 起算点回到原处：`not_first_day` 再次生效 | 由第 2 行同一判定路径覆盖（窗口不在 = 原口径）；窗口到期由 `DuskExpiry` 既有用例覆盖 | 通过（间接） |
-| 6 | 无关玩家视角 | 入口只发给本人；猜测仍是**公开**事实（与 R-0057-B 一致，不因重获改变） | 无需新增：字段未变、投影未新增下发面；R-0057-B 原有集成用例覆盖 | 通过（不适用） |
+| 3 | 重获窗口内同一天猜第二次 | 拒绝（`juggler.already_guessed`）——放宽的是起算点，不是次数 | 内核 `Make_StillRejectsSecondGuessInTheRegainedDay` + 真宿主同一断言 | 通过 |
+| 4 | 玩家端入口（权限位） | 有窗口 → 给入口；没窗口 → 不给 | 集成 `DayProjectionTests.JugglerGuesses_DeadButRegainedJuggler_GetsTheEntryOnTheRegainedDay`；**界面面**由新装置 `tools/verify-bone-collector-juggler.mjs` 判（死亡玩家的入口重新出现、在页面上填表提交、进公开面、无关席位看得到同一份） | 通过（批次 E42 取证档） |
+| 5 | 窗口到期（下个黄昏）之后 | 起算点回到原处：`not_first_day` 再次生效 | 内核 `Make_RejectsAgainAfterTheWindowExpires`（窗口开了又关）+ 集成 `DayProjectionTests.JugglerGuesses_WindowExpiresAtDusk_EntryDisappearsOnTheNextDay`；真宿主 `BoneCollectorHostTests` 断言窗口在下个黄昏终止 | 通过（测试层，界面面见下） |
+| 6 | 无关玩家视角 | 入口只发给本人；猜测仍是**公开**事实（与 R-0057-B 一致，不因重获改变） | 装置断言无关席位的入口数为 0、且看得到同一份公开猜测；字段未变、投影未新增下发面 | 通过（批次 E42 取证档） |
+| 7 | 集骨者的候选面 | 候选只含已死亡的席位、逐条写明「已死亡」，摇头始终可选 | 装置 `tools/verify-bone-collector-juggler.mjs`：第 2 夜 0 名（3 号还活着）、第 3 夜 1 名（刚死的 3 号）；请求正文写明「重新获得角色能力直到下个黄昏」 | 通过（批次 E42 取证档） |
 
 ## 残余 / 风险
 
-- **装置级（界面）证据未补**：本批只跑 `dotnet test`（纯逻辑 + 投影）。要做界面面，得让
-  `tools/verify-retention-day-info.mjs` 那一局多走一天（集骨者不在那局的花名册里，也没有集骨者席位），
-  成本是一整段新链路；登记为残余，不阻塞本票判行。
+- **装置级（界面）证据已补**（2026-10-05，批次 E42）：新装置 `tools/verify-bone-collector-juggler.mjs`
+  独立一局（5 席 + 集骨者第 6 席）：第 1 天活着的杂耍艺人猜一次 → 第 2 夜恶魔杀他 →
+  第 3 夜集骨者选中他重获能力 → 第 2 天（窗口存续）**已经死亡的他重新拿到公开猜测入口**、
+  在页面上填表提交、进当天账与公开面、无关席位看得到同一份、同日第二次被拒。
+- **装置不跑"窗口到期"那一夜**：重获**白天**能力之后，当夜那一格会被点活却把整夜卡住——
+  这是本票之外的一个真缺陷，已单独立票 `todo/regained-day-ability-night-slot-stall.md`（含确定性复现）。
+  到期证据因此在测试层（内核 + 集成两层），**界面面等那条票修好后再补进本装置**。
 - **规则细节 2 的后半句**（重获**夜晚会行动**的能力时说书人必须主动唤醒）由集骨者的落格路径覆盖
   （`NightSlotActivation.PlanRegained` + `GrantedEntryAbilityTests`），本票只补**白天**这一侧。
 - **「重获窗口 + 咖啡师行动两次」叠加**：杂耍艺人没有"每局限一次"的账本（用度按持有期起算），

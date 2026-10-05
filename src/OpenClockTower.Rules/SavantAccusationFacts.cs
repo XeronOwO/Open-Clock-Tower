@@ -12,8 +12,9 @@ namespace OpenClockTower.Rules;
 /// 「高强度」并算清真值，用不用、给不给，仍然由说书人裁量（票据「残余 / 风险」：强度平衡不属于平台职责）。
 /// </para>
 /// <para>
-/// 参数空间刻意有界：`seat-character` 只枚举**本局在场角色**（席位 × 在场角色）；
-/// 想报一个不在场的角色名，走 `role-in-play` 或自由文本兜底（不猜，也不把 30 × 席位全铺开）。
+/// 参数空间刻意有界：`seat-character` 与 `role-in-play` / `role-dead` 都只枚举**本局在场角色**
+/// （席位 × 在场角色 / 在场角色），不在场的角色不铺开——想报一个不在场的角色名走自由文本兜底
+/// （不猜，也不把 30 × 席位全铺开；取舍见 <see cref="RoleClaimValues"/> 的备注）。
 /// </para>
 /// </remarks>
 internal static class SavantAccusationFacts
@@ -66,7 +67,7 @@ internal static class SavantAccusationFacts
             Code = "role-in-play",
             Group = Group,
             HighIntensity = true,
-            Parameters = _ => [.. SectsAndVioletsRoster.All.Select(character => character.Value)],
+            Parameters = RoleClaimValues,
             Evaluate = (world, parameter) => CharacterOf(parameter) is { } character
                 ? AnySeatWith(world, character, life: null) is { } inPlay
                     ? SavantFactEvaluation.Of(inPlay, $"角色「{DisplayNameOf(character)}」在场")
@@ -78,7 +79,7 @@ internal static class SavantAccusationFacts
             Code = "role-dead",
             Group = Group,
             HighIntensity = true,
-            Parameters = _ => [.. SectsAndVioletsRoster.All.Select(character => character.Value)],
+            Parameters = RoleClaimValues,
             Evaluate = (world, parameter) => CharacterOf(parameter) is { } character
                 ? AnySeatWith(world, character, LifeState.Dead) is { } dead
                     ? SavantFactEvaluation.Of(dead, $"角色「{DisplayNameOf(character)}」已经死亡")
@@ -107,6 +108,18 @@ internal static class SavantAccusationFacts
             },
         },
     ];
+
+    /// <summary>
+    /// `role-in-play` / `role-dead` 的取值：**本局在场的角色**（去重，按花名册顺序）。
+    /// </summary>
+    /// <remarks>
+    /// 这里刻意**不是**全花名册（30 条）：一局 5–6 席里不在场的角色恒为假，全铺开会让「点名」组里
+    /// 三分之二是同一句恒假的废话（6 席局实测 125 条里 60 条）。说书人想报一个不在场的角色名，
+    /// 走自由文本兜底（平台不替他校验真值，那本来就该由他裁量）。
+    /// 取舍记录：`docs/backlog/review/savant-fact-list-tradeoffs.md`（B1，2026-10-05 由代理自决收窄）。
+    /// </remarks>
+    private static IReadOnlyList<string> RoleClaimValues(SavantFactWorld world) =>
+        [.. InPlayCharacters(world).Select(character => character.Value)];
 
     /// <summary>候选里的席位参数（在局席位，按座位号升序）。</summary>
     private static IReadOnlyList<string> SeatValues(SavantFactWorld world) =>

@@ -107,7 +107,7 @@ let storytellerPage = null
  * 改动本装置、增删断言时必须同步这个数字：条件分支被静默跳过（"互为反面"的夹具没找到、
  * 女巫请求没出现……）会让项数变少——那必须红，而不是悄悄少判几行。
  */
-const EXPECTED_CHECKS = 77
+const EXPECTED_CHECKS = 78
 
 const PUSH_METHODS = [
   'ReceiveOperationRequest',
@@ -424,14 +424,29 @@ async function driveSavantPickers(savantPage, witchPage) {
     )
 
   const candidates = await probeCandidates()
+  // 逐族条数（**按事实编码归类**，与界面上的分栏同源）：改事实库就会红，而且红的那条直接指出是哪一族
+  // 变了（原先只钉总数，改一族、另一族补回来照样绿）。本局（6 席、这一天的账）**本批取证档实测**：
+  //   座位关系 13 + 阵营与人数 41 + 昨晚与今天 7 + 状态读数 4 + 点名 69 = 134
+  // 点名那一族比收窄前（125）少了 56：`role-in-play` / `role-dead` 的取值从"全花名册 30 个"收窄成
+  // "本局在场的角色"（各 30 → 各 6），见 docs/backlog/review/savant-fact-list-tradeoffs.md 的 B1。
+  const familyCounts = {
+    座位关系: candidates.filter((item) => item.group === '座位关系').length,
+    阵营与人数: candidates.filter((item) => item.group === '阵营与人数').length,
+    昨晚与今天: candidates.filter((item) => item.group === '昨晚与今天').length,
+    状态读数: candidates.filter((item) => item.group === '状态读数').length,
+    点名: candidates.filter((item) => item.group === '点名').length,
+  }
+  const expectedFamilies = { 座位关系: 13, 阵营与人数: 41, 昨晚与今天: 7, 状态读数: 4, 点名: 69 }
+  check(
+    '候选逐族条数 = 实测值（逐族钉住：改一族不会被另一族补回来）',
+    Object.entries(expectedFamilies).every(([name, count]) => familyCounts[name] === count),
+    Object.entries(familyCounts).map(([name, count]) => `${name} ${count}/${expectedFamilies[name]}`).join('；'),
+  )
   check(
     '候选逐条带服务端真值（真 / 假，不是让说书人自己记）',
-    // 本局（6 席、角色与生死阵营都观测齐）实测 **182** 条，逐族：座位关系 11 + 阵营与人数 35 +
-    // 昨晚与今天 7 + 状态读数 4 + 点名 125。这里钉的是**精确条数**：改事实库就会红，
-    // 逼着改的人回来核对这个数字（原先的 `>= 150` 只证明"有一大堆候选"，缩水查不出来）。
-    candidates.length === 182
+    candidates.length === 134
       && candidates.every((entryItem) => entryItem.truth === 'True' || entryItem.truth === 'False'),
-    `${candidates.length} 条候选（期望 182）；真值集合=${[...new Set(candidates.map((item) => item.truth))].join('/')}`,
+    `${candidates.length} 条候选（期望 134）；真值集合=${[...new Set(candidates.map((item) => item.truth))].join('/')}`,
   )
   const groups = [...new Set(candidates.map((item) => item.group).filter((group) => group.length > 0))]
   const groupButtons = await picker.locator('[data-testid^="savant-group-"]').count()
