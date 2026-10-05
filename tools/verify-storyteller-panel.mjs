@@ -87,6 +87,8 @@ const webRoot = path.join(repositoryRoot, 'web')
 /** 两端共用的取证标记：唯一文本，用来验证"信息只到该到的人"。 */
 const CLOCKMAKER_INFO = '批次取证-钟表匠信息：本夜最小距离 2（说书人自由裁定）'
 const DREAMER_INFO = '批次取证-筑梦师信息：由说书人自由裁定、可能错误'
+/** 集骨者重获「首个夜晚」能力后，追加格给出的信息（R-0055；与首夜那条刻意不同，便于分辨）。 */
+const ENTRY_ABILITY_INFO = '批次取证-重获后的钟表匠信息：本夜最小距离 3（说书人自由裁定）'
 const VORTOX_INFO = '批次取证-涡流：这条信息必须为假（说书人自由裁定）'
 
 const { flags, rest } = extractProfileFlags(process.argv.slice(2))
@@ -1602,6 +1604,7 @@ async function main() {
       && !boneOptions.includes(`seat:${dreamerSeat}`),
     boneOptions.join(','),
   )
+  const counterBeforeRegain = await readSlotCounter(storyteller.page)
   await bonePage
     .locator('[data-testid="player-request-options"] label', { hasText: `${clockmakerSeat} 号玩家` })
     .locator('input[type=radio]')
@@ -1622,6 +1625,19 @@ async function main() {
     regainWindowText.slice(0, 200),
   )
   await screenshot(storyteller.page, 'night2-bone-collector-window')
+
+  // 行 10（R-0055）：重获的是「首个夜晚」能力（钟表匠）——其他夜晚顺序表上**没有他的格**，
+  // 平台因此**追加**一格：计划总格数 +1，落点是本夜最后一条可能致死的行动格（涡流）之后。
+  const appendedTotal = await waitForSlotTotal(
+    storyteller.page,
+    (counterBeforeRegain?.total ?? 0) + 1,
+    30_000,
+  )
+  check(
+    '行 10（集骨者·R-0055）：重获「首个夜晚」能力后计划追加一格（总格数 +1）',
+    appendedTotal !== null,
+    `重获前 ${counterBeforeRegain?.total ?? '不可读'} → 重获后 ${appendedTotal ?? '不可读'}`,
+  )
 
   // 行 2：第二夜诺-达鲺击杀请求 → 说书人代填 → 3 号玩家不刷新就回空态，并注明由谁了结。
   const demonPlayer = players.get(demonSeat)
@@ -1662,8 +1678,50 @@ async function main() {
     demonSettledNote || '（无了结说明）',
   )
   await screenshot(demonPlayer.page, '15-player-proxy-filled')
-  // 行 4：代填窗口里与这条请求无关的 1 号玩家必须持续零活动（钟表匠首夜之后不再有槽位）。
+  // 行 4：代填窗口里与这条请求无关的 1 号玩家必须持续零活动（追加格还没轮到：它在涡流之后）。
   await sampleUnrelatedIdle(players, [clockmakerSeat], '代填窗口', 2)
+
+  // 行 10（R-0055）：追加格进入 → 死亡的 1 号被唤醒，说书人给出钟表匠的信息（信息只到他本人）。
+  const entryDecision = await waitForDecision(
+    storyteller.page,
+    (text) => text.includes('钟表匠'),
+    180_000,
+  )
+  check(
+    '行 10（集骨者·R-0055）：追加格唤醒已死亡的钟表匠（说书人收到归属他的裁定点）',
+    entryDecision.includes('钟表匠'),
+    entryDecision.slice(0, 200),
+  )
+  const appendedSlotId = await readCurrentSlotId(storyteller.page)
+  check(
+    '行 10（集骨者·R-0055）：追加格就是当前槽位（标识 = 被获得角色@行动者）',
+    typeof appendedSlotId === 'string' && appendedSlotId.startsWith('clockmaker@'),
+    `currentSlotId=${appendedSlotId ?? '不可读'}`,
+  )
+  check(
+    '行 10（集骨者·R-0055）：当前槽位高亮落在 1 号（追加格的行动者是重获者本人）',
+    (await cardOf(clockmakerSeat).getAttribute('data-current-slot')) === 'true',
+    `current=${await cardOf(clockmakerSeat).getAttribute('data-current-slot')}`,
+  )
+  await screenshot(storyteller.page, 'night2-entry-ability-appended')
+  const entryOutcome = await settleFreeDecision(storyteller.page, ENTRY_ABILITY_INFO)
+  check('行 10（集骨者·R-0055）：追加格的裁定被受理', entryOutcome.kind === 'Accepted', entryOutcome.raw)
+  const entryInfoText = await waitForLocatorContains(
+    players.get(clockmakerSeat).page.locator('[data-testid="player-information"]'),
+    ENTRY_ABILITY_INFO,
+    30_000,
+  )
+  check(
+    '行 10（集骨者·R-0055）：已死亡的钟表匠收到重获后的信息（重获不是"什么都不发生"）',
+    entryInfoText.includes(ENTRY_ABILITY_INFO),
+    evidenceAround(entryInfoText, ENTRY_ABILITY_INFO),
+  )
+  const entryLeakText = `${await infoText(players.get(demonSeat).page)} ${await infoText(dreamerPlayer.page)}`
+  check(
+    '行 10（集骨者·R-0055）：信息只到本人——无关席位读不到这条信息',
+    !entryLeakText.includes(ENTRY_ABILITY_INFO),
+    entryLeakText.replace(/\s+/g, ' ').slice(0, 200) || '（无关席位无信息）',
+  )
 
   const dreamerNightTwo = await waitForAttribute(dreamerRequestPanel, 'data-request-state', 'pending', 180_000)
   check(
@@ -1699,7 +1757,8 @@ async function main() {
     dreamerSettledNote || '（无了结说明）',
   )
   await screenshot(dreamerPlayer.page, '16-player-forced-void')
-  // 行 4：作废窗口里 1 号与 3 号必须持续零活动（这是筑梦师槽位之后的最后一个行动槽）。
+  // 行 4：作废窗口里 1 号与 3 号必须持续零活动（这是追加格与筑梦师槽位之后的最后一个行动槽；
+  // 1 号刚在追加格里收过信息，本窗口测的是"没有新活动"，基线在窗口开始时取）。
   await sampleUnrelatedIdle(players, [clockmakerSeat, demonSeat], '强制作废窗口', 2)
 
   const nightTwoClose = await finishNightQuickly(storyteller.page, '第二夜')
@@ -3156,6 +3215,17 @@ async function reportSeatState(page, report) {
   )
 }
 
+/** 证据片段：截取包含目标子串的一小段（批次判读用；找不到就退回文本尾部）。 */
+function evidenceAround(text, needle, span = 60) {
+  const flat = text.replace(/\s+/g, ' ').trim()
+  const at = flat.indexOf(needle)
+  if (at < 0) {
+    return flat.slice(-span * 2)
+  }
+
+  return flat.slice(Math.max(0, at - span), at + needle.length + span)
+}
+
 /** 取面板文本里含某个席位的行（用于把断言钉在"真正渲染数据的面板"内）。 */
 function linesOf(text, needle) {
   return text
@@ -3219,6 +3289,38 @@ async function readSlotCounter(page) {
 /** 槽位下标（从 0 起）；读不到返回 null。 */
 async function readSlotIndex(page) {
   return (await readSlotCounter(page))?.index ?? null
+}
+
+/** 状态条上的当前槽位标识（原样回显服务端给的 slotId）；读不到返回 null。 */
+async function readCurrentSlotId(page) {
+  return page.evaluate(() => {
+    const cells = [...document.querySelectorAll('header.strip .cell')]
+    for (const cell of cells) {
+      if (cell.querySelector('.caption')?.textContent?.trim() !== '槽位') {
+        continue
+      }
+
+      return cell.querySelector('.mono')?.textContent?.trim() ?? null
+    }
+
+    return null
+  })
+}
+
+/** 等计划总格数变成期望值（槽位**追加**的观测点：R-0055）；超时返回最后一次读到的总数。 */
+async function waitForSlotTotal(page, expected, timeoutMs) {
+  const deadline = Date.now() + timeoutMs
+  let total = null
+  while (Date.now() < deadline) {
+    total = (await readSlotCounter(page))?.total ?? null
+    if (total === expected) {
+      return total
+    }
+
+    await sleep(150)
+  }
+
+  return total
 }
 
 /** 等槽位下标前进（或计划走完）。 */
