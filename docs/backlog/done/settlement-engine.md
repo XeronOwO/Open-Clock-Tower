@@ -2,7 +2,7 @@
 
 - Status: Done
 - Priority: High
-- Depends on: 自动步骤机与操作请求（`done/operation-request-step-machine.md`）；说书人上帝视角·第二片（`todo/storyteller-step-insights.md`）；《梦殒春宵》夜晚顺序表（已在 `OpenClockTower.Rules` 落地，票在 `done/`）
+- Depends on: 自动步骤机与操作请求（`done/operation-request-step-machine.md`）；说书人上帝视角·第二片（`done/storyteller-step-insights.md`）；《梦殒春宵》夜晚顺序表（已在 `OpenClockTower.Rules` 落地，票在 `done/`）
 
 ## 要解决的问题
 
@@ -37,9 +37,9 @@
 | 1 建表 | **已落地**：`NightPlanBuilder`（顺序表 + 状态账 + 席位名单 + 行动契约 → `StepPlan`）；口径记录进 `StepPlan.Variant`（R-0014）；说书人选择入口仍随面板 |
 | 前置：角色分配载体 | **已落地**：`AssignCharactersCommand` 进事件流（D-0017），同一条事件记录角色 + 初始生死（R-0015）+ 初始清醒 / 健康（R-0016）；角色唯一在提交时跨批校验 |
 | 前置：阶段前事件可重放 | **已落地**：步骤机折叠容忍账事件先于任何阶段（重启恢复路径的硬前提） |
-| 角色契约 | **已落地**：提示契约 `INightAction` + 结算契约 `IAbilityResolution`（同一批角色对象同时实现）；首批 = 钟表匠 / 筑梦师 / 诺-达鲺；未实现契约的夜晚角色在场时开夜显式拒绝（架构 §2.6 能力边界），25 个角色的逐角色实现另立票 |
+| 角色契约 | **已落地**：提示契约 `INightAction` + 结算契约 `IAbilityResolution`（同一批角色对象同时实现）；首批 = 钟表匠 / 筑梦师 / 诺-达鲺；未实现契约的夜晚角色在场时开夜显式拒绝（架构 §2.6 能力边界），25 个角色的逐角色实现另立票。**2026-10-05 收口**：逐角色实现已全部落地（见残余事项 1），本行"另立票"所指的工作已完成 |
 | 2 逐步推进 | **已落地**：`AbilitySettlement` 在「玩家答毕 / 说书人裁毕」后按 `StepSlot.Owner` 取契约结算；信息类先挂一次说书人裁定（`BuildPostChoiceDecision`）；Skip / 强推 / 作废不结算、不记「使用」 |
-| 3 能力生效判定 | **已落地**：`AbilityEffectivenessEvaluator`——存活 + 清醒 + 健康 = 生效；中毒 / 醉酒 / 死亡 = 不生效；同时中毒且醉酒记 `MalfunctionKind.Open`（R-0004 待核对清单）；维度未观测 → 整条输入被拒绝（不猜） |
+| 3 能力生效判定 | **已落地**：`AbilityEffectivenessEvaluator`——存活 + 清醒 + 健康 = 生效；中毒 / 醉酒 / 死亡 = 不生效；同时中毒且醉酒记**两条并列**（`MalfunctionKind.Poisoned` + `Drunk`，R-0004 闭合后不再记 `Open`）；维度未观测 → 整条输入被拒绝（不猜） |
 | 4 信息类结果 | **已落地**：`InformationResultIssuedEvent`（说书人裁定的内容 + 「可能为假」标记）；引擎不判定真假；标记只说书人可见，玩家只收内容（百科《重要细节》三-1） |
 | 5 事件产出与两本账 | **已落地**：`AbilityResolvedEvent` 折进 `GameState.AbilityUses` / `Malfunctions`；`PersistentEffectApplied` / `Terminated` / `InstantaneousEffectApplied` 由角色契约与对账产出 |
 | 6 维度 → 效果链接 | **已落地**：`SeatStateChangedEvent.EffectId` 折进 `StateFact<T>.EffectId`；`PersistentEffect.Dimension` 声明压制哪一维 |
@@ -52,7 +52,7 @@
 | `dotnet build OpenClockTower.slnx` | 0 警告 0 错误 |
 | `dotnet test OpenClockTower.slnx` | **226/226**（门禁 14 / 内核 123 / 规则 57 / 集成 32） |
 | `dotnet format OpenClockTower.slnx --verify-no-changes` | exit 0 |
-| 真实宿主链路（`SettlementHostTests`，矩阵 1–8） | 分配 → 诺-达鲺常驻中毒落账（带 EffectId 与归因）→ 首夜筑梦师请求 → 被毒者能力未生效 → 信息裁定点 → 信息只推给当事人 → 来源死亡即解除并归因；第二夜「中毒 + 醉酒」并存、分类 Open；重启后两本账、状态账与生效中的效果仍在 |
+| 真实宿主链路（`SettlementHostTests`，矩阵 1–8） | 分配 → 诺-达鲺常驻中毒落账（带 EffectId 与归因）→ 首夜筑梦师请求 → 被毒者能力未生效 → 信息裁定点 → 信息只推给当事人 → 来源死亡即解除并归因；第二夜「中毒 + 醉酒」并存、**两条原因并列进账**（`Poisoned` + `Drunk`；当时记的是 `Open`，R-0004 随后闭合为并列，见残余 5）；重启后两本账、状态账与生效中的效果仍在 |
 | 内核与规则用例 | 内核新增 31 条（生效判定 / 结算调度 / 两本账与链接 / 维度重算 / 固定点对账）；规则新增 25 条（花名册档案 / 诺-达鲺常驻毒与夜间契约 / 信息类契约） |
 | 单文件 ≤ 600 行 | `GameSession` 超限后拆出 `SessionSettlement`（结算管线），门禁复绿 |
 
@@ -61,7 +61,7 @@
 | # | 场景 | 期望 | 依据 | 证据 |
 |---|---|---|---|---|
 | 1 | 某玩家中毒后其夜间能力结算 | 摘要显示"中毒"、能力**未生效**、归因到施加者 | 百科《重要细节》三-3 | `SettlementHostTests.PoisonedDreamer_IsIneffective_AndReleaseIsAttributed`：2 号 Poison=Poisoned（CausedBy=1、EffectId 非空）→ `LastResolution{Effective=false, Malfunction=Poisoned}`；内核 `SlotSettlementTests.PoisonedActor_ResolvesIneffectiveButStillRecordsUse`。**呈现侧**（「中毒」等中文文案）随残余 2 的面板，本轮证据是引擎给出的分类值与归因 |
-| 2 | 玩家同时中毒且醉酒 | 两种状态并存、不相互抵消；能力未生效 | 同上 | `SettlementHostTests.PoisonedAndDrunk_DoNotCancel_AndLedgersSurviveRestart`：两格并存、`Malfunction=Open` + Note「同时中毒且醉酒」；内核 `AbilityEffectivenessEvaluatorTests.PoisonedAndDrunk_IsIneffectiveAndUnclassified` |
+| 2 | 玩家同时中毒且醉酒 | 两种状态并存、不相互抵消；能力未生效 | 同上 | `SettlementHostTests.PoisonedAndDrunk_DoNotCancel_AndLedgersSurviveRestart`：两格并存、`Malfunction=["Poisoned","Drunk"]` 两条并列 + Note「同时中毒且醉酒」；内核 `AbilityEffectivenessEvaluatorTests.PoisonedAndDrunk_IsIneffectiveWithBothCauses` |
 | 3 | 中毒玩家执行信息类能力 | 显示"信息由说书人决定（可能错误）"，**不自动生成**真假结论 | D-0002 + 三-3 | `SettlementHostTests.PoisonedDreamer_...`：裁定点上下文含「未生效」、内容为说书人自由文本；规则 `InfoResolutionTests.DreamerIneffective_TakesFreeFormInfoFromStoryteller` |
 | 4 | 对中毒玩家使用的能力 | 正常生效（查中毒的恶魔仍得正确阵营） | 三-3 | `SettlementHostTests.HealthyDreamerTargetingPoisonedDemon_IsEffective`：健康的筑梦师查中毒的恶魔 → `LastResolution{Effective=true}`、说书人候选 17 个善良角色、**信息内容里出现目标的真实角色（「诺-达鲺」）**；同一场景还钉住 R-0012 的挂起方向（来源中毒 → 目标解除且效果不终止 → 来源恢复 → **同一 EffectId** 重挂） |
 | 5 | 中毒来源死亡 / 能力终止 | 状态解除，摘要显示解除原因与对应事件 | 三-3 一-3 / D-0015 | `SettlementHostTests.PoisonedDreamer_...`：效果 `Terminated / SourceDied`、2 号 Poison=Healthy 且 EffectId 指向被终止效果、解除原因含「解除」；内核 `DimensionEffectReconcilerTests.TerminatedEffect_ReleasesDimension` / `SuspendedEffect_ReleasesDimension` |
@@ -109,23 +109,32 @@
 | 7 | 状态账 / 最近状态变化两处都带 `EffectId`（中毒与解除各一次） | **通过** |
 | 8 | 面板两本账可见（能力使用 / 失效）；重启后仍在由 `SettlementHostTests` 覆盖 | **通过** |
 
-残余 2 的"每步摘要（StepDigest）"仍由 `docs/backlog/todo/storyteller-step-insights.md` 收口
-（批次 E2 已把该票的行 1 / 2 / 5 判为不通过）。
+残余 2 的"每步摘要（StepDigest）"仍由 `docs/backlog/done/storyteller-step-insights.md` 收口（该票已 Done）
+（批次 E2 曾把该票的行 1 / 2 / 5 判为不通过）。
 
 ## 残余事项（随票，不许消失）
 
-1. **25 个角色的逐角色实现**（选项生成 + 能力结算 + 相克数据）：按角色分批另立票；
-   未实现契约的角色在场时开夜继续显式拒绝（架构 §2.6）。
-2. **说书人面板呈现**（口径选择入口、裁定点选项与后果、每步摘要 StepDigest、`MalfunctionKind` 等
-   枚举值的中文文案）：批次 E2 已判过口径入口、裁定点上下文、账本与结算结论、效果链接；
-   **每步摘要（StepDigest）仍在 `docs/backlog/todo/storyteller-step-insights.md` 收口**（该票行 1 / 2 / 5 因它被拒）。
-3. **玩家端的角色 / 信息展示**：信息结果已按收件人下发（含重连补齐），但玩家投影仍无角色出口；
-   随玩家端票据。
-4. **疯狂要求的产生方**（洗脑师等角色）：`MadnessRequirementIssuedEvent` 与折叠已就位，
-   由角色契约在裁定点链路里产出，随角色实现。
-5. **R-0004 未闭合**：涡流 / 咖啡师 / 相克等 `MalfunctionKind` 的产生路径随对应角色；
-   同时中毒且醉酒记 `Open` 的条目仍在待核对清单里。
-6. **胜败判定与处决流程**不在本票。
+> 2026-10-05 复核：逐条给出**当前状态**——已收口的写收口时间与证据指针，仍有效的保留并写明缺什么。
+> 清单不许留着"看起来像待办、其实早已做完"的条目（本票残余 1 / 2 / 4 / 6 都属这一类）。
+
+1. **25 个角色的逐角色实现**（选项生成 + 能力结算 + 相克数据）——**已收口（2026-10-05）**：
+   首版花名册 30 个角色三族归属无遗漏（21 个夜晚行动格 + 3 个夜晚触发格 + 13 个白天相关），
+   判据在架构 §2.6「能力边界」，由 `tests/OpenClockTower.Rules.Tests/CharacterContractCoverageTests.cs`
+   四条断言守住（逐条做过"抽掉一条登记 → 变红"的验证）。相克数据首版零触发面，
+   随 `future/cross-script-extension.md`；跨剧本角色的显式拒绝守卫仍在。
+2. **说书人面板呈现**——**已收口**：口径选择入口、裁定点上下文、账本与结算结论、效果链接由批次 E2 判过；
+   每步摘要（`StepDigest`）由 `done/storyteller-step-insights.md` 交付（`StepDigestDto` 已在契约里）；
+   `MalfunctionKind` 等枚举值的中文文案在 `src/OpenClockTower.Application/ReplayText.cs`。
+3. **玩家端的角色展示**——**仍有效**：信息结果已按收件人下发（含重连补齐），
+   但玩家投影（`src/OpenClockTower.Contracts/PlayerViewDto.cs`）仍无「本人角色」出口：
+   玩家看不到自己拿到什么角色。随玩家端票据。
+4. **疯狂要求的产生方**——**已收口**：洗脑师的夜间契约直接产出
+   `MadnessRequirementIssuedEvent`（`CerenovusNightAction`），折叠与重放呈现都在链路里。
+5. **R-0004 的路径**——**部分收口**：涡流（`VortoxInterference`）、咖啡师（R-0004 表 2026-10-04 已收口）、
+   「同时中毒且醉酒」都已落地——后者按**两条并列**（`MalfunctionKind.Poisoned` + `Drunk`）进账，
+   不再记 `Open`（`Open` 现在只表示"原因未定"）；**仍待核对**的是 R-0004 表内「说书人裁定」一行
+   （2026-10-04 复核为仍无实现路径）。
+6. **胜败判定与处决流程**——**已收口**：由 `done/win-loss-and-game-end.md` 交付（本票当时声明不在范围）。
 
 ## 决定与依据
 

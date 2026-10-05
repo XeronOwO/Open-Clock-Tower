@@ -12,7 +12,11 @@ namespace OpenClockTower.Rules;
 /// 结算找不到人"的分叉。
 /// </para>
 /// <para>
-/// 契约随角色分批实现（<c>docs/backlog/in-progress/settlement-engine.md</c>：25 个角色的逐角色实现另立票）。
+/// 首版花名册 30 个角色已全部落地：本目录覆盖夜晚顺序表上**全部 21 个行动格**角色；
+/// 另外 3 名死亡触发角色（理发师 / 心上人 / 贤者）走触发格与
+/// <see cref="RoleContracts.EventTriggers"/>，不由行动槽位承载。覆盖判据由
+/// <c>tests/OpenClockTower.Rules.Tests/CharacterContractCoverageTests.cs</c> 守住
+/// （顺序表每个行动格都必须能取到两种契约）。
 /// 目录不依赖枚举顺序（D-0008），只做按键检索。
 /// </para>
 /// </remarks>

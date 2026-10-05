@@ -17,8 +17,9 @@ namespace OpenClockTower.Rules;
 /// </para>
 /// <para>
 /// 已实现的白天契约登记在 <see cref="CoveredCharacters"/>：女巫的诅咒在夜晚施加、在下个白天触发
-/// （提名即死），触发与存续两族契约见 <see cref="RoleContracts"/>。角色分批实现时在这里登记，
-/// 并补上对应的运行时证据。
+/// （提名即死），触发与存续两族契约见 <see cref="RoleContracts"/>。首版 13 个白天相关角色
+/// **全部已实现**，两份子表完全相等——漏登记一个角色就是"白天静默跳过一条规则"，
+/// 因此这条等式由 <c>tests/OpenClockTower.Rules.Tests/CharacterContractCoverageTests.cs</c> 守住。
 /// </para>
 /// </remarks>
 public static class DayActions
@@ -51,7 +52,7 @@ public static class DayActions
     ];
 
     /// <summary>
-    /// 白天契约**已经实现**的角色（分批登记）：
+    /// 白天契约**已经实现**的角色（与 <see cref="DayRelevantCharacters"/> 完全相等的 13 个）：
     /// 女巫（夜晚诅咒 → 下个白天提名即死）；
     /// 洗脑师（夜晚签发疯狂要求 → 处罚处决，R-0020 / R-0021）；
     /// 畸形秀演员（说书人主动处罚处决，R-0020）；
@@ -113,6 +114,9 @@ public static class DayActions
     public static bool IsDayRelevant(CharacterId character) =>
         DayRelevantCharacters.Contains(character);
 
-    /// <summary>该角色的白天契约是否已实现；未实现的角色在场时开白天会被显式拒绝。</summary>
+    /// <summary>
+    /// 该角色的白天契约是否已实现。首版花名册里已无未实现者（两份子表相等），
+    /// 这道闸留给剧本外的角色——未覆盖者在场时开白天仍会被显式拒绝。
+    /// </summary>
     public static bool IsCovered(CharacterId character) => CoveredCharacters.Contains(character);
 }
