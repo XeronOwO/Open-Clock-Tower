@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   ROSTER,
+  alignmentLabelOf,
   characterLabelOf,
   characterNameOf,
   characterTypeOf,
@@ -113,5 +114,20 @@ describe('阵型修正提示（setup-modifier；rulings.md R-0042）', () => {
   it('没有带修正的角色（含未知 slug）→ 不编提示', () => {
     expect(setupModifiersOf(['clockmaker', 'not-a-character'])).toEqual([])
     expect(setupModifiersOf([])).toEqual([])
+  })
+})
+
+describe('本人角色与阵营（rulings.md R-0059）', () => {
+  it('角色走花名册中文名；未观测显示占位符，不猜', () => {
+    expect(characterLabelOf('vortox')).toBe('涡流（vortox）')
+    expect(characterLabelOf(null)).toBe('—')
+    expect(characterLabelOf('not-a-character')).toBe('not-a-character')
+  })
+
+  it('阵营独立成句（善良阵营 / 邪恶阵营）；未知取值原样回显、不吞', () => {
+    expect(alignmentLabelOf('Good')).toBe('善良阵营')
+    expect(alignmentLabelOf('Evil')).toBe('邪恶阵营')
+    expect(alignmentLabelOf('Weird')).toBe('Weird')
+    expect(alignmentLabelOf(null)).toBe('—')
   })
 })

@@ -191,6 +191,21 @@ public static class GameNotificationBuilder
                     });
                     break;
 
+                // 角色 / 阵营变化只关乎本人，但本人**必须第一时间知道**（R-0059；百科《重要细节》三-2
+                // 「第一时间秘密得知」、百科《阵营转变》「第一时间得知自己的当前阵营」）：
+                // 定向推一次本人视图，否则换角要等下一次快照才在界面上出现。
+                // 只认角色 / 阵营两维：生死那几维不在本人视图里（夜晚死亡到黎明才公告，R-0022），
+                // 为它们推等于用推送节拍泄露"你身上刚刚发生了事"。
+                case SeatStateChangedEvent identity
+                    when identity.Character is not null || identity.Alignment is not null:
+                    notifications.Add(new GameNotification
+                    {
+                        Kind = GameNotificationKind.PlayerViewChanged,
+                        Sequence = draft.Sequence,
+                        Seat = identity.Seat,
+                    });
+                    break;
+
                 case KlutzChoiceMadeEvent choice:
                     notifications.Add(new GameNotification
                     {

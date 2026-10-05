@@ -247,6 +247,54 @@ public sealed partial class PlayerProjectionLeakGateTests
             .Select(token => $"{relativePath} → {token}"),
     ];
 
+    /// <summary>
+    /// **反方向**：玩家投影里的「本人角色 / 阵营」必须是**标量**——一个席位一个值，
+    /// 不是"席位 → 角色"的映射（R-0059 第 4 条 / D-0012 §4.3）。
+    /// </summary>
+    /// <remarks>
+    /// 这张契约是**本人**的事实出口，不是全桌花名册。退化形态（顺手把 `Seats`/`Characters` 表
+    /// 塞进玩家视图）不会命中 <see cref="ForbiddenTokens"/> 里的任何一个词，所以单独按**形态**判：
+    /// 名字里带 Character / Alignment 的成员，声明类型不许是集合 / 映射 / 数组。
+    /// 正向断言同时锁住"字段确实在"——否则删掉字段这条门禁会静默变成空转。
+    /// </remarks>
+    [Fact]
+    public void OwnCharacterFields_AreScalarNotCollections()
+    {
+        var relativePath = Path.Combine("src", "OpenClockTower.Contracts", "PlayerViewDto.cs");
+        var code = SourceText.StripCommentsAndLiterals(
+            File.ReadAllText(RepositoryLayout.PathOf(relativePath)));
+
+        Assert.Matches(ScalarMember("Character"), code);
+        Assert.Matches(ScalarMember("Alignment"), code);
+        Assert.Empty(OwnIdentityCollectionOffenders(code));
+
+        // 判定自检：喂一段"把全桌花名册塞进玩家视图"的样本，必须命中——名单写错字不许静默变绿。
+        Assert.NotEmpty(OwnIdentityCollectionOffenders(
+            "public required SeatCharacterDto[] Characters { get; init; }"));
+        Assert.NotEmpty(OwnIdentityCollectionOffenders(
+            "public required IReadOnlyList<string> SeatAlignments { get; init; }"));
+        Assert.Empty(OwnIdentityCollectionOffenders("public string? Character { get; init; }"));
+    }
+
+    /// <summary>`public string? X { get; init; }` 形状的标量成员声明。</summary>
+    private static Regex ScalarMember(string name) =>
+        new($@"public\s+string\?\s+{Regex.Escape(name)}\s*\{{\s*get;\s*init;\s*\}}");
+
+    /// <summary>玩家投影里名字带 Character / Alignment、却是集合 / 映射 / 数组形态的成员行。</summary>
+    private static string[] OwnIdentityCollectionOffenders(string code) =>
+    [
+        .. code
+            .Split('\n')
+            .Select(line => line.Trim())
+            .Where(line => line.Contains("Character", StringComparison.OrdinalIgnoreCase)
+                || line.Contains("Alignment", StringComparison.OrdinalIgnoreCase))
+            .Where(line => CollectionShape().IsMatch(line)),
+    ];
+
+    /// <summary>集合 / 映射 / 数组的声明形状（含 `[]`、泛型集合与字典）。</summary>
+    [GeneratedRegex(@"(\[\s*\]|IReadOnlyList<|IReadOnlyDictionary<|IEnumerable<|Dictionary<|List<|HashSet<)")]
+    private static partial Regex CollectionShape();
+
     /// <summary>玩家端 TypeScript / Vue 源码不得引用说书人专属字段或专属模块。</summary>
     [Fact]
     public void PlayerFeatureSources_DoNotReferenceStorytellerFields()
@@ -420,6 +468,10 @@ public sealed partial class PlayerProjectionLeakGateTests
         // 配板建议：只说书人查询、不落账，玩家侧出现任何一个都说明越界（R-0041 / R-0042）。
         "SetupProposalDto",
         "SetupTypeCountDto",
+
+        // 全桌「席位 → 角色」的分配表（R-0059 第 4 条）：玩家侧只允许拿到**自己**那一个角色
+        // （`PlayerViewDto.Character`），出现这张表就说明有人把说书人的花名册接到了玩家面。
+        "SeatCharacterAssignmentDto",
     ];
 
     private static Regex WholeWord(string token) =>

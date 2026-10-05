@@ -541,6 +541,20 @@ export interface AccountDto {
 export interface PlayerViewDto {
   seat: number
   phase: string
+  /**
+   * **本席**当前的角色 slug；null = 还没有观测到（未分配 / 未上报）。
+   *
+   * 只描述收件人本人——不是"席位 → 角色"的映射（R-0059：百科《认知覆盖》"玩家可以随时向说书人
+   * 确认自己的当前角色和阵营，且必定会获得正确信息"）。换角后随事件即时跟随。
+   */
+  character: string | null
+  /**
+   * **本席**当前阵营（`Alignment` 枚举名 `Good` / `Evil`）；null = 还没有观测到。
+   *
+   * 它是事实、不是信息结果：不因醉酒 / 中毒 / 涡流而伪造（R-0059；百科《重要细节》三-2
+   * "得知自己的角色或阵营发生变化并不算是获得信息"）。
+   */
+  alignment: string | null
   pendingRequest: OperationRequestDto | null
   informationResults: InformationResultDto[]
   /** 白天投影（公开事实 + 自己能做什么）；还没有开过白天时为 null。 */

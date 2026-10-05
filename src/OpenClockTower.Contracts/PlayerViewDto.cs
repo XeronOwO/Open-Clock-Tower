@@ -11,6 +11,26 @@ public sealed record PlayerViewDto
     /// <summary>当前大阶段（昼夜属公开信息）。</summary>
     public required string Phase { get; init; }
 
+    /// <summary>
+    /// **本席**当前的角色 slug；null = 还没有观测到（未分配 / 未上报）——不猜、不给默认值（D-0015）。
+    /// </summary>
+    /// <remarks>
+    /// 只描述收件人本人：这是一名玩家**自己的**角色，不是"席位 → 角色"的映射（R-0059 第 4 条）。
+    /// 中文名走呈现层（`web/src/display/labels.ts` 的花名册副本，`RosterMirrorGateTests` 对账）。
+    /// 换角后随事件即时跟随（R-0059 第 2 条）。
+    /// </remarks>
+    public string? Character { get; init; }
+
+    /// <summary>
+    /// **本席**当前阵营（`Alignment` 枚举名 `Good` / `Evil`）；null = 还没有观测到。
+    /// </summary>
+    /// <remarks>
+    /// 百科《术语汇总》：「玩家始终会得知其当前的阵营。」百科《重要细节》三-2：变化"第一时间秘密得知"，
+    /// 且"得知自己的角色或阵营发生变化并不算是获得信息"，因此这两个字段**不是**信息结果、
+    /// 不受醉酒 / 中毒 / 涡流伪造（R-0059 第 3 条）。
+    /// </remarks>
+    public string? Alignment { get; init; }
+
     /// <summary>发给该玩家的挂起请求；没有时为 null。</summary>
     public OperationRequestDto? PendingRequest { get; init; }
 

@@ -103,6 +103,8 @@ public static class ProjectionMapper
     {
         Seat = view.Seat.Value,
         Phase = view.Phase?.ToString() ?? "NotStarted",
+        Character = view.Character?.Value,
+        Alignment = view.Alignment?.ToString(),
         PendingRequest = view.PendingRequest is { } pending ? ToDto(pending, view.Sequence) : null,
         InformationResults = [.. view.InformationResults.Select(ToDto)],
         Day = view.Day is { } day ? ToDto(day, view.Sequence) : null,

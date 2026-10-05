@@ -68,6 +68,8 @@ const credential = (fill: string): string => fill.repeat(43)
 const view = (overrides: Partial<PlayerViewDto> = {}): PlayerViewDto => ({
   seat: 1,
   phase: 'FirstNight',
+  character: null,
+  alignment: null,
   pendingRequest: null,
   informationResults: [],
   day: null,

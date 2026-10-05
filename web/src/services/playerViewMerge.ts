@@ -52,6 +52,11 @@ export class PlayerViewMerge {
   private phase = ''
   /** 各字段最近一次被表达的序号；`-1` = 还没有应用过任何快照 / 推送（序号非负）。 */
   private phaseSequence = -1
+  /** 「我是谁」（R-0059）：只描述本人的角色与阵营，随快照 / 本人视图推送按序号更新。 */
+  private character: string | null = null
+  private characterSequence = -1
+  private alignment: string | null = null
+  private alignmentSequence = -1
   private pending: OperationRequestDto | null = null
   private pendingSequence = -1
   private day: PlayerDayDto | null = null
@@ -98,6 +103,20 @@ export class PlayerViewMerge {
     if (sequence > this.phaseSequence) {
       this.phase = view.phase
       this.phaseSequence = sequence
+      changed = true
+    }
+
+    // 「我是谁」（R-0059）：与阶段同款按序号取新——换角 / 换阵营的推送带自己的事件序号，
+    // 迟到的旧快照不会把新角色覆盖回去；`null`（未观测）也是合法值，照实合并。
+    if (sequence > this.characterSequence) {
+      this.character = view.character
+      this.characterSequence = sequence
+      changed = true
+    }
+
+    if (sequence > this.alignmentSequence) {
+      this.alignment = view.alignment
+      this.alignmentSequence = sequence
       changed = true
     }
 
@@ -183,6 +202,10 @@ export class PlayerViewMerge {
   reset(): void {
     this.phase = ''
     this.phaseSequence = -1
+    this.character = null
+    this.characterSequence = -1
+    this.alignment = null
+    this.alignmentSequence = -1
     this.pending = null
     this.pendingSequence = -1
     this.day = null
@@ -288,6 +311,8 @@ export class PlayerViewMerge {
     return {
       seat: this.seat,
       phase: this.phase,
+      character: this.character,
+      alignment: this.alignment,
       pendingRequest: this.pending,
       informationResults: [...this.information.values()].sort(
         (left, right) => left.sequence - right.sequence,

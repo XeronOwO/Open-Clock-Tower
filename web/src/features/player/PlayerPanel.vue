@@ -15,7 +15,7 @@ import type {
   PlayerViewDto,
   ReplayViewDto,
 } from '@/contracts/game'
-import { characterLabelOf, labelOf, voidReasonLabelOf } from '@/display/labels'
+import { alignmentLabelOf, characterLabelOf, labelOf, voidReasonLabelOf } from '@/display/labels'
 import { optionDisplayOf, seatDisplayOf } from '@/display/format'
 import HelpTip from '@/features/common/HelpTip.vue'
 import { AccountGateway, type AccountProfile } from '@/services/accountGateway'
@@ -547,6 +547,31 @@ onBeforeUnmount(() => {
         </div>
       </header>
 
+      <!-- 「我是谁」（R-0059）：本人角色与阵营，只发给自己；换角后服务端定向推一次本人视图。 -->
+      <section
+        class="panel"
+        data-testid="player-own-character"
+        :data-character="view!.character ?? ''"
+        :data-alignment="view!.alignment ?? ''"
+      >
+        <h2>我的角色<HelpTip topic="player-character" /></h2>
+        <p class="block-question">你这一局拿到的角色与阵营；换角之后这里会跟着变。</p>
+        <p v-if="view!.character === null" class="placeholder" data-testid="player-own-character-empty">
+          还没有分配角色。
+        </p>
+        <p v-else class="own-character">
+          <strong data-testid="player-own-character-name">{{
+            characterLabelOf(view!.character)
+          }}</strong>
+          <span
+            v-if="view!.alignment !== null"
+            class="own-alignment"
+            data-testid="player-own-character-alignment"
+            >{{ alignmentLabelOf(view!.alignment) }}</span
+          >
+        </p>
+      </section>
+
       <section
         v-if="outcome"
         class="panel"
@@ -855,5 +880,20 @@ h1 {
   margin: 0 0 6px;
   font-size: 18px;
   font-weight: 700;
+}
+
+/* 「我的角色」：进桌第一眼要看到的东西，字号比正文大一档。 */
+.own-character {
+  margin: 0;
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  flex-wrap: wrap;
+  font-size: 18px;
+}
+
+.own-alignment {
+  font-size: 13px;
+  color: var(--ink-soft);
 }
 </style>

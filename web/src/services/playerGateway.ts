@@ -611,6 +611,9 @@ export function normalizePlayerView(raw: unknown): PlayerViewDto | null {
   return {
     seat,
     phase,
+    // 「我是谁」（R-0059）：有界文本——服务端数据是不可信输入，超长 / 非字符串退化成 null，不撑爆面板。
+    character: asSizedText(view['character'], 64),
+    alignment: asSizedText(view['alignment'], 32),
     pendingRequest: normalizeRequest(view['pendingRequest']),
     informationResults: asArray<unknown>(view['informationResults'])
       .map(normalizeInformation)
@@ -634,6 +637,8 @@ function emptyPlayerView(): PlayerViewDto {
   return {
     seat: 0,
     phase: '',
+    character: null,
+    alignment: null,
     pendingRequest: null,
     informationResults: [],
     day: null,

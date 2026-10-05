@@ -82,6 +82,13 @@ public sealed class PitHagNightHostTests
         Assert.Equal("vortox", CharacterOf(host, 3));
         Assert.Equal(LifeState.Alive, LifeOf(host, 2));
 
+        // 本人视图出口（R-0059）：3 号（被变者）自己的视图里就是新角色，且阵营仍是**善良**——
+        // 麻脸巫婆只写角色维度（六维度独立），本人的出口必须照实反映这个"善良恶魔"。
+        var transformed = host.Session.GetPlayerView(new SeatId(3));
+        Assert.Equal("vortox", transformed.Character?.Value);
+        Assert.Equal(Alignment.Good, transformed.Alignment);
+        Assert.Equal("pit-hag", host.Session.GetPlayerView(new SeatId(1)).Character?.Value);
+
         // 说书人在窗口内追加死亡：归因为麻脸巫婆。
         var casualty = await storyteller.InvokeAsync<CommandResultDto>(
             "PitHagCasualty",

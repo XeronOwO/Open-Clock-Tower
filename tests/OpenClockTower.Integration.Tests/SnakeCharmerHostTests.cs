@@ -82,6 +82,14 @@ public sealed class SnakeCharmerHostTests
         Assert.Equal(Alignment.Good, AlignmentOf(host, 4));
         Assert.Equal(PoisonState.Poisoned, PoisonOf(host, 4));
 
+        // 本人视图出口（R-0059）：交换对**双方本人**都跟着变——角色与阵营一起换手，谁都不落下。
+        var newDemon = host.Session.GetPlayerView(new SeatId(1));
+        Assert.Equal("vortox", newDemon.Character?.Value);
+        Assert.Equal(Alignment.Evil, newDemon.Alignment);
+        var newCharmer = host.Session.GetPlayerView(new SeatId(4));
+        Assert.Equal("snake-charmer", newCharmer.Character?.Value);
+        Assert.Equal(Alignment.Good, newCharmer.Alignment);
+
         var poison = host.Session.GetStorytellerView().PersistentEffects
             .Single(effect => effect.Ability == new AbilityId("snake-charmer.poison"));
         Assert.Equal(new SeatId(4), poison.Source);

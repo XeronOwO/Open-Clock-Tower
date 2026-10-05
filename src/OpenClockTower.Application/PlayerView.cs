@@ -17,6 +17,25 @@ public sealed record PlayerView
     /// <summary>当前大阶段（昼夜属公开信息）；未开局为 null。</summary>
     public GamePhase? Phase { get; init; }
 
+    /// <summary>
+    /// **本席**当前的角色；null = 还没有观测到（未分配 / 未上报）。
+    /// </summary>
+    /// <remarks>
+    /// 依据 R-0059：百科《认知覆盖》「玩家可以随时向说书人确认自己的当前角色和阵营，且必定会获得
+    /// 正确信息」。这条出口只描述收件人本人——不是"席位 → 角色"的映射（D-0012 §4.3）。
+    /// 首版花名册没有认知覆盖角色，因此下发账上真实值即为正确（R-0059 依据 5）。
+    /// </remarks>
+    public CharacterId? Character { get; init; }
+
+    /// <summary>
+    /// **本席**当前阵营；null = 还没有观测到。
+    /// </summary>
+    /// <remarks>
+    /// 依据 R-0059：百科《术语汇总》「玩家始终会得知其当前的阵营」，百科《重要细节》三-2
+    /// 「第一时间秘密得知」且"告知变化不算获得信息"——因此它不因醉酒 / 中毒 / 涡流而伪造。
+    /// </remarks>
+    public Alignment? Alignment { get; init; }
+
     /// <summary>只包含发给该席位、且仍在等待响应的请求。</summary>
     public OperationRequest? PendingRequest { get; init; }
 

@@ -314,6 +314,43 @@ async function main() {
     )
   }
 
+  // 「我是谁」（R-0059）：每一席自己的页面看得到**自己**的角色与阵营，且看不到别人的角色。
+  // 双向判（验收规程 §4「不该看见的人确实没看见」）：本人页含自己的「中文名（slug）」标注，
+  // 不含任何其他席位的同款标注——用带 slug 的标注而不是光秃秃的中文名，避免与「呆瓜的公开选择」
+  // 这类**标题**里的角色名混淆。
+  const ownLabels = options.assign.map((slug) => `${characterNameOf(slug)}（${slug}）`)
+  for (const [index, slug] of options.assign.entries()) {
+    const seat = index + 1
+    const page = players.get(seat).page
+    const ownPanel = page.locator('[data-testid="player-own-character"]')
+    await ownPanel.waitFor({ timeout: 15_000 })
+
+    const ownName = (await page.locator('[data-testid="player-own-character-name"]').innerText()).trim()
+    check(`玩家 ${seat} 号看得到本人角色（${ownLabels[index]}）`, ownName === ownLabels[index], ownName)
+    check(
+      `玩家 ${seat} 号的本人角色标注与分配一致`,
+      (await ownPanel.getAttribute('data-character')) === slug,
+      (await ownPanel.getAttribute('data-character')) ?? '（无）',
+    )
+
+    const shellText = await page.locator('.shell').innerText()
+    const leaked = ownLabels.filter(
+      (label, labelIndex) => labelIndex !== index && shellText.includes(label),
+    )
+    check(`玩家 ${seat} 号看不到别人的角色`, leaked.length === 0, leaked.join(',') || '（无泄漏）')
+  }
+
+  // 阵营维度是规则事实（R-0023 / R-0059）：恶魔邪恶、镇民善良——两席各判一次，别只判一个。
+  const alignmentOf = async (seat) =>
+    (await players.get(seat).page.locator('[data-testid="player-own-character"]').getAttribute('data-alignment')) ?? '（无）'
+  check(`恶魔席位（${demonSeat} 号）显示邪恶阵营`, (await alignmentOf(demonSeat)) === 'Evil', await alignmentOf(demonSeat))
+  check(
+    `镇民席位（${clockmakerSeat} 号）显示善良阵营`,
+    (await alignmentOf(clockmakerSeat)) === 'Good',
+    await alignmentOf(clockmakerSeat),
+  )
+  await screenshot(players.get(clockmakerSeat).page, '17b-player-own-character')
+
   if (!runner.begin('opening')) return
   // 视图是推送更新的：先等效果链 / 状态账把分配后的对账结果渲染出来，再断言。
   // 判据用**两条不同的效果标识**（来源：诺-达鲺所在席位；目标：最近的两名镇民），
@@ -986,7 +1023,28 @@ async function main() {
       continue // 邪恶旅行者本人知道自己是邪恶（私密面），不算越权。
     }
 
-    const shellText = await client.page.locator('.shell').innerText()
+    // 「我的角色」面板显的是**本人的**阵营——规则允许（R-0059：百科《术语汇总》「玩家始终会得知
+    // 其当前的阵营」），因此扫描前把它从 `.shell` 里摘掉：剩下的面里出现「善良 / 邪恶 / Good / Evil」
+    // 才是旅行者阵营的越权泄漏（本行判的是后者，不是"玩家不许知道自己的阵营"）。
+    const shellText = await client.page.evaluate(() => {
+      const shell = document.querySelector('.shell')
+      const own = document.querySelector('[data-testid="player-own-character"]')
+      if (shell === null) {
+        return ''
+      }
+
+      if (own === null) {
+        return shell.innerText
+      }
+
+      const previous = own.style.display
+      own.style.display = 'none'
+      try {
+        return shell.innerText
+      } finally {
+        own.style.display = previous
+      }
+    })
     const hits = ['善良', '邪恶', 'Good', 'Evil'].filter((word) => shellText.includes(word))
     if (hits.length > 0) {
       travellerFactionLeaks.push(`${seat} 号:${hits.join('/')}`)

@@ -61,6 +61,8 @@ function snapshotView(overrides: Partial<PlayerViewDto> = {}): PlayerViewDto {
   return {
     seat: 1,
     phase: 'FirstNight',
+    character: null,
+    alignment: null,
     pendingRequest: null,
     informationResults: [],
     day: null,
@@ -254,5 +256,40 @@ describe('同族：阶段 / 白天 / 请求三态不被迟到快照拉回', () =
 
     expect(merge.snapshot().phase).toBe('Day')
     expect(merge.snapshot().informationResults.map((item) => item.sequence)).toEqual([7])
+  })
+})
+
+describe('本人角色与阵营（R-0059）：换角随推送跟随，不被迟到快照拉回', () => {
+  it('分配：快照带来本人角色与阵营', () => {
+    const merge = new PlayerViewMerge()
+    merge.applySnapshot(snapshotView({ character: 'clockmaker', alignment: 'Good' }), 4)
+
+    expect(merge.snapshot().character).toBe('clockmaker')
+    expect(merge.snapshot().alignment).toBe('Good')
+  })
+
+  it('换角：序号更大的本人视图推送胜出；迟到快照（旧序号）不拉回', () => {
+    const merge = new PlayerViewMerge()
+    merge.applySnapshot(snapshotView({ character: 'clockmaker', alignment: 'Good' }), 4)
+
+    // 服务端在换角事件上定向推了一份新视图（席位 1 变成邪恶的涡流）。
+    merge.applySnapshot(snapshotView({ character: 'vortox', alignment: 'Evil' }), 9)
+    expect(merge.snapshot().character).toBe('vortox')
+    expect(merge.snapshot().alignment).toBe('Evil')
+
+    // 掉线补齐的响应后到（快照序号 4 < 9）：整份旧视图不许把角色覆盖回去。
+    merge.applySnapshot(snapshotView({ character: 'clockmaker', alignment: 'Good' }), 4)
+    expect(merge.snapshot().character).toBe('vortox')
+    expect(merge.snapshot().alignment).toBe('Evil')
+  })
+
+  it('reset 清空本人角色：序号回退后新快照成为新基线（不残留上一局的角色）', () => {
+    const merge = new PlayerViewMerge()
+    merge.applySnapshot(snapshotView({ character: 'vortox', alignment: 'Evil' }), 9)
+
+    merge.reset()
+
+    expect(merge.snapshot().character).toBeNull()
+    expect(merge.snapshot().alignment).toBeNull()
   })
 })

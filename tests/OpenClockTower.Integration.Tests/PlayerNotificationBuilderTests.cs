@@ -238,6 +238,59 @@ public sealed class PlayerNotificationBuilderTests
         Assert.Equal(32, broadcast.Sequence);
     }
 
+    /// <summary>
+    /// 角色 / 阵营变化只关乎本人，但本人**必须第一时间知道**（R-0059；百科《重要细节》三-2）：
+    /// 带角色或阵营的座位状态变化各产出一条**定向**本人视图推送（席位 = 变化者）；
+    /// 只有生死 / 醉酒 / 中毒的观测不推——那几维不在本人视图里，为它们推等于用推送节拍
+    /// 泄露"你身上刚刚发生了事"（夜晚死亡到黎明才公告，R-0022）。
+    /// </summary>
+    [Fact]
+    public void CharacterOrAlignmentChange_ProducesADirectedOwnViewPush()
+    {
+        var notifications = GameNotificationBuilder.Build(
+            [
+                Draft(
+                    41,
+                    new SeatStateChangedEvent
+                    {
+                        Seat = new SeatId(3),
+                        Character = new CharacterId("vortox"),
+                        Alignment = Alignment.Evil,
+                        Reason = "测试：舞蛇人交换角色与阵营",
+                    }),
+                Draft(
+                    42,
+                    new SeatStateChangedEvent
+                    {
+                        Seat = new SeatId(4),
+                        Life = LifeState.Dead,
+                        Reason = "测试：夜晚击杀（到黎明才公告）",
+                    }),
+                Draft(
+                    43,
+                    new SeatStateChangedEvent
+                    {
+                        Seat = new SeatId(5),
+                        Alignment = Alignment.Evil,
+                        Reason = "测试：只换阵营（异教领袖那类）",
+                    }),
+            ],
+            previousMachine: null,
+            publicSurfaceChanged: false);
+
+        var pushes = notifications
+            .Where(item => item.Kind == GameNotificationKind.PlayerViewChanged)
+            .ToArray();
+        Assert.Equal(2, pushes.Length);
+        Assert.Equal(new SeatId(3), pushes[0].Seat);
+        Assert.Equal(41, pushes[0].Sequence);
+        Assert.Equal(new SeatId(5), pushes[1].Seat);
+        Assert.Equal(43, pushes[1].Sequence);
+
+        // 只有生死的观测不推本人视图：没有这一条，"推送节拍"会变成一条侧信道。
+        Assert.DoesNotContain(pushes, item => item.Sequence == 42);
+    }
+
     /// <summary>测试用草案：只关心序号与事件本身，记录时刻统一取纪元。</summary>
     private static StoredEventDraft Draft(long sequence, GameEvent @event) => new()
     {

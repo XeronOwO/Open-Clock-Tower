@@ -81,6 +81,13 @@ public sealed class FangGuHostTests
         Assert.Equal("fang-gu", CharacterOf(host, 1));
         Assert.Null(host.Session.GetPlayerView(new SeatId(1)).PendingRequest);
 
+        // 本人视图出口（R-0059）：3 号自己的视图跟着变成「邪恶方古」；原方古（1 号）已死亡，
+        // 但角色维度不清零——他本人的视图里仍是方古（清的是存活，不是角色）。
+        var infected = host.Session.GetPlayerView(new SeatId(3));
+        Assert.Equal("fang-gu", infected.Character?.Value);
+        Assert.Equal(Alignment.Evil, infected.Alignment);
+        Assert.Equal("fang-gu", host.Session.GetPlayerView(new SeatId(1)).Character?.Value);
+
         // 公开生死面（R-0022）：夜晚的变化到黎明才公告——无关玩家此刻仍看到 1 号存活。
         Assert.Equal(LifeState.Alive, PublicLifeOf(host, viewer: 2, seat: 1));
 

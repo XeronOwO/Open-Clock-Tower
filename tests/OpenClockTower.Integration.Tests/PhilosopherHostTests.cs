@@ -56,6 +56,12 @@ public sealed class PhilosopherHostTests
         Assert.Equal("philosopher", CharacterOf(host, 1));
         Assert.Equal("dreamer", CharacterOf(host, 3));
         Assert.Equal(DrunkState.Drunk, DrunkOf(host, 3));
+
+        // 本人视图出口（R-0059）的负向：哲学家「代行」**不写角色维度**（R-0036 第 1 条：不变身），
+        // 所以他自己那份视图里的角色必须仍是哲学家——出错了就会变成"代行即变身"。
+        var philosopher = host.Session.GetPlayerView(new SeatId(1));
+        Assert.Equal("philosopher", philosopher.Character?.Value);
+        Assert.Equal(Alignment.Good, philosopher.Alignment);
         var afterGrant = host.Session.GetStorytellerView().PersistentEffects;
         Assert.Contains(
             afterGrant,

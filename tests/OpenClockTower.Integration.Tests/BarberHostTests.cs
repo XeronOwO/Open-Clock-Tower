@@ -402,6 +402,13 @@ public sealed class BarberHostTests
         Assert.Equal("no-dashii", CharacterOf(host, 3));
         Assert.Equal("dreamer", CharacterOf(host, 4));
 
+        // 本人视图出口（R-0059）：互换后双方**各自**的视图里都是自己拿到的新角色；阵营维度不写，
+        // 因此两人的阵营保持原样（理发师只换角色）。
+        Assert.Equal("no-dashii", host.Session.GetPlayerView(new SeatId(3)).Character?.Value);
+        var swappedFour = host.Session.GetPlayerView(new SeatId(4));
+        Assert.Equal("dreamer", swappedFour.Character?.Value);
+        Assert.Equal(Alignment.Evil, swappedFour.Alignment);
+
         // 换手后尚未进入的筑梦师格重绑给 4 号并开请求：能等到它就证明重进本格的配额再次生效。
         var dreamer = await WaitForRequestAsync(host, new SeatId(4));
         Assert.Equal(new SeatId(4), dreamer.Addressee);

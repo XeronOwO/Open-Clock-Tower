@@ -159,6 +159,12 @@ public sealed class EndedGamePendingRequestVoidTests
             Assert.Null(playerView.PendingRequest);
             Assert.Equal(Alignment.Good, playerView.Outcome!.Winner);
 
+            // 结束态（R-0059 矩阵行 4）：本人视图与进行中同源——重启 + 终局之后，1 号仍然只看到
+            // **自己**的角色（呆瓜），他没有因为"游戏结束"就变成能看别人角色的上帝视角。
+            Assert.Equal("klutz", playerView.Character?.Value);
+            Assert.Equal(Alignment.Good, playerView.Alignment);
+            Assert.Equal("vortox", restarted.Session.GetPlayerView(new SeatId(2)).Character?.Value);
+
             var storytellerView = restarted.Session.GetStorytellerView();
             Assert.Null(storytellerView.Pending);
             Assert.NotNull(storytellerView.Outcome);

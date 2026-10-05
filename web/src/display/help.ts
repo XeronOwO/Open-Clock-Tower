@@ -32,6 +32,7 @@ export type HelpTopicId =
   | 'once-marker'
   | 'barber-night'
   | 'player-request'
+  | 'player-character'
   | 'replay'
 
 export interface HelpTopic {
@@ -133,6 +134,10 @@ export const HELP_TOPICS: Readonly<Record<HelpTopicId, HelpTopic>> = {
   'player-request': {
     title: '请求',
     text: '轮到你了：服务端把这一步要做的选择发过来。没有请求就是还不用你出手；平台不会超时。',
+  },
+  'player-character': {
+    title: '我的角色',
+    text: '你这一局拿到的角色与阵营，只发给你自己。换角、换阵营之后这里会跟着变（R-0059）。',
   },
   replay: {
     title: '复盘',

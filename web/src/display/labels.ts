@@ -167,6 +167,27 @@ export function dimensionLabelOf(dimension: string): string {
   return DIMENSION_LABELS[dimension] ?? dimension
 }
 
+/**
+ * 阵营枚举名（Kernel `Alignment`，如 `Good` / `Evil`）→ 中文。
+ *
+ * 刻意与 `VALUE_LABELS` 里的 `Good` / `Evil` 分开：那里的用法是"阵营：善良"这类键值对，
+ * 玩家端「我的角色」要的是**独立成句**的文案（"善良阵营"），两处口径不同就不共表，
+ * 免得改一处悄悄改了另一处。未知取值原样回显，绝不吞掉。
+ */
+const ALIGNMENT_LABELS: Readonly<Record<string, string>> = {
+  Good: '善良阵营',
+  Evil: '邪恶阵营',
+}
+
+/** 阵营枚举名 → 中文；未知取值原样回显，不猜。 */
+export function alignmentLabelOf(raw: string | null | undefined): string {
+  if (raw === null || raw === undefined || raw === '') {
+    return '—'
+  }
+
+  return ALIGNMENT_LABELS[raw] ?? raw
+}
+
 /** 角色 slug → 中文名；不在花名册里的 slug 原样回显。 */
 export function characterNameOf(slug: string | null | undefined): string {
   if (slug === null || slug === undefined || slug === '') {

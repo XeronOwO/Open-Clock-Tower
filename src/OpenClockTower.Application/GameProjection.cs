@@ -42,6 +42,10 @@ public static class GameProjection
         var pending = machine?.PendingRequest;
         var ended = machine?.Outcome is not null;
 
+        // 本人那一行状态账：角色 / 阵营出口按它投影（R-0059）。只读**本席**那一行——
+        // 其他席位的角色根本不出现在这个投影里（D-0012 §4.3：越权信息不下发）。
+        var own = state.Seat(seat);
+
         // 结束态不再下发任何请求：终局快照可能还留着最后一条请求（作废要重排结束批次的管线），
         // 而它对玩家已经答不了（一切提交都被 phase.game_ended 拒）——推给他就是一条死信。
         var deliverable = !ended && pending is { Status: OperationRequestStatus.Pending } && pending.Addressee == seat
@@ -52,6 +56,12 @@ public static class GameProjection
         {
             Seat = seat,
             Phase = machine?.Plan.Phase,
+
+            // 「我是谁」：本席的角色与阵营，未观测则为 null（R-0059）。这两个字段是事实、不是信息结果，
+            // 不因醉酒 / 中毒 / 涡流而伪造（百科《重要细节》三-2："告知变化不算获得信息"）。
+            Character = own?.CharacterValue,
+            Alignment = own?.Alignment?.Value,
+
             PendingRequest = deliverable,
             InformationResults = trackers.InformationResultsFor(seat),
             Day = DayProjection.ForSeat(

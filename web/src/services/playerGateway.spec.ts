@@ -220,6 +220,8 @@ describe('重连补齐折叠（快照权威）', () => {
     view: {
       seat: 1,
       phase: 'FirstNight',
+      character: null,
+      alignment: null,
       pendingRequest: null,
       informationResults: [],
       day: null,
@@ -353,5 +355,26 @@ describe('个人视图推送的解析（与快照同一份口径，R-0040）', (
       canAskArtistQuestion: false,
       exhaustedAbilities: ['artist'],
     })
+  })
+
+  it('本人角色与阵营（R-0059）：照实解析；非字符串 / 超长退化成 null，不撑爆面板', () => {
+    expect(
+      normalizePlayerView({ seat: 2, phase: 'FirstNight', character: 'vortox', alignment: 'Evil' }),
+    ).toMatchObject({ character: 'vortox', alignment: 'Evil' })
+
+    // 未分配 / 未观测：服务端下发 null，客户端也不许自己编一个。
+    expect(normalizePlayerView({ seat: 2, phase: 'FirstNight' })).toMatchObject({
+      character: null,
+      alignment: null,
+    })
+
+    expect(
+      normalizePlayerView({
+        seat: 2,
+        phase: 'FirstNight',
+        character: 'x'.repeat(200),
+        alignment: 42,
+      }),
+    ).toMatchObject({ character: 'x'.repeat(64), alignment: null })
   })
 })
