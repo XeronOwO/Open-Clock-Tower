@@ -34,24 +34,35 @@ internal static class SavantSeatFacts
         },
         new()
         {
-            Code = "demon-minion-gap",
+            // 单位与钟表匠**同一套**（百科《钟表匠》· 2026-10-01 抓取 · 规则细节 3：「距离值等同于：
+            // 恶魔与爪牙这两名玩家之间的玩家数量 + 1。因此，钟表匠能得知的最小数字为『1』」）：
+            // 相邻 = 距离 1。同一局面下两处读数必须一致，否则说书人手里会出现两套刻度。
+            Code = "demon-minion-distance",
             Group = Group,
+
+            // 与「旁边有爪牙」是同一个事实的两种说法（距离 1 当且仅当恶魔的某个相邻席位是爪牙）：
+            // **只有距离 1 那个取值**与那条互斥（距离 2 / 3 是别的事），所以按取值给互斥组——
+            // 同组 ⇒ 说书人端互相灰掉，服务端在双真时也拒（R-0057-C 的 C1）。
+            ExclusionGroupOf = (_, parameter) => parameter == "1" ? "demon-minion-adjacency" : null,
             Parameters = world =>
             [
-                .. Enumerable.Range(0, world.MaxGap + 1)
-                    .Select(gap => gap.ToString(CultureInfo.InvariantCulture)),
+                .. Enumerable.Range(1, world.MaxDistance)
+                    .Select(distance => distance.ToString(CultureInfo.InvariantCulture)),
             ],
             Evaluate = (world, parameter) =>
-                TryGap(parameter, out var gap) && NearestMinionGap(world) is { } actual
+                TryDistance(parameter, out var distance) && NearestMinionDistance(world) is { } actual
                     ? SavantFactEvaluation.Of(
-                        actual == gap,
-                        gap == 0 ? "恶魔与最近的爪牙相邻" : $"恶魔与最近的爪牙之间隔着 {gap} 名玩家")
+                        actual == distance,
+                        distance == 1 ? "恶魔与最近的爪牙相邻（距离 1）" : $"恶魔与最近的爪牙相距 {distance}")
                     : null,
         },
         new()
         {
+            // 与上面那条距离读数是**同一个事实**：区别只在观测闸门——这条只要恶魔左右两个邻居的
+            // 角色已知就说得出口（全场角色没观测齐时仍然可用），那条要求全场角色已知。
             Code = "minion-beside-demon",
             Group = Group,
+            ExclusionGroup = "demon-minion-adjacency",
             Evaluate = (world, _) => NeighboursOfDemon(world) is { } neighbours
                 && neighbours.All(seat => world.CharacterOf(seat) is not null)
                     ? SavantFactEvaluation.Of(
@@ -113,10 +124,10 @@ internal static class SavantSeatFacts
     }
 
     /// <summary>
-    /// 恶魔与**最近的**爪牙之间隔着几名玩家；恶魔不唯一、角色没观测齐、或场上没有爪牙时返回 null
-    /// （说不清"最近"就不说）。
+    /// 恶魔与**最近的**爪牙之间的**距离**（钟表匠口径 = 隔着的人数 + 1，相邻 = 1）；
+    /// 恶魔不唯一、角色没观测齐、或场上没有爪牙时返回 null（说不清"最近"就不说）。
     /// </summary>
-    private static int? NearestMinionGap(SavantFactWorld world)
+    private static int? NearestMinionDistance(SavantFactWorld world)
     {
         if (!world.AllCharactersKnown || world.SingleDemon is not { } demon)
         {
@@ -130,7 +141,7 @@ internal static class SavantSeatFacts
         }
 
         var gaps = minions.Select(minion => world.GapBetween(demon, minion)).ToList();
-        return gaps.Any(gap => gap is null) ? null : gaps.Min();
+        return gaps.Any(gap => gap is null) ? null : gaps.Min() + 1;
     }
 
     /// <summary>这一组席位里有没有任意两名是相邻的（两两比较，圆桌上相邻 = 隔着 0 名玩家）。</summary>
@@ -150,7 +161,9 @@ internal static class SavantSeatFacts
         return false;
     }
 
-    /// <summary>解析 gap 参数：必须是非负整数（客户端塞了别的取值 = 判不了）。</summary>
-    private static bool TryGap(string? parameter, out int gap) =>
-        int.TryParse(parameter, NumberStyles.None, CultureInfo.InvariantCulture, out gap) && gap >= 0;
+    /// <summary>
+    /// 解析距离参数：必须是**正整数**（钟表匠口径的最小值是 1；客户端塞 0 或别的取值 = 判不了）。
+    /// </summary>
+    private static bool TryDistance(string? parameter, out int distance) =>
+        int.TryParse(parameter, NumberStyles.None, CultureInfo.InvariantCulture, out distance) && distance >= 1;
 }

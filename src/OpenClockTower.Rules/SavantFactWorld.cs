@@ -115,6 +115,12 @@ internal sealed record SavantFactWorld
     /// <summary>圆桌上一对席位里较短弧的最大"隔着几名玩家"（枚举 gap 参数时空集不出现）。</summary>
     internal int MaxGap => Math.Max(0, (Circle.Count - 2) / 2);
 
+    /// <summary>
+    /// 圆桌上两席位之间的最大**距离**（钟表匠口径 = 隔着的人数 + 1）——博学者的
+    /// <c>demon-minion-distance</c> 据此枚举取值（与 <see cref="MaxGap"/> 差 1，两处口径都要留着）。
+    /// </summary>
+    internal int MaxDistance => MaxGap + 1;
+
     private static int IndexIn(IReadOnlyList<SeatId> seats, SeatId seat)
     {
         for (var index = 0; index < seats.Count; index++)

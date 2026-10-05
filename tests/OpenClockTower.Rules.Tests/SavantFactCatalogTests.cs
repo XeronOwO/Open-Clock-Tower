@@ -25,10 +25,14 @@ public sealed class SavantFactCatalogTests
         Assert.Equal(OptionTruth.False, TruthOf(state, "fact:demon-seat-parity:odd"));
         Assert.Equal("恶魔坐在偶数位", TextOf(state, "fact:demon-seat-parity:even"));
 
-        // 7 席圆桌上"隔着几名玩家"最多 2 名：4 号恶魔与 5 号爪牙相邻 → 0 为真、1/2 为假。
-        Assert.Equal(OptionTruth.True, TruthOf(state, "fact:demon-minion-gap:0"));
-        Assert.Equal(OptionTruth.False, TruthOf(state, "fact:demon-minion-gap:1"));
-        Assert.False(HasOption(state, "fact:demon-minion-gap:3"));
+        // 7 席圆桌上距离最多 3（隔着最多 2 名玩家）：4 号恶魔与 5 号爪牙相邻 → 距离 1 为真，2/3 为假。
+        // 口径与钟表匠同一套（距离 = 隔着的人数 + 1，最小值 1；百科《钟表匠》· 规则细节 3）。
+        Assert.Equal(OptionTruth.True, TruthOf(state, "fact:demon-minion-distance:1"));
+        Assert.Equal("恶魔与最近的爪牙相邻（距离 1）", TextOf(state, "fact:demon-minion-distance:1"));
+        Assert.Equal(OptionTruth.False, TruthOf(state, "fact:demon-minion-distance:2"));
+        Assert.Equal("恶魔与最近的爪牙相距 2", TextOf(state, "fact:demon-minion-distance:2"));
+        Assert.False(HasOption(state, "fact:demon-minion-distance:4"));
+        Assert.False(HasOption(state, "fact:demon-minion-distance:0"));
 
         Assert.Equal(OptionTruth.True, TruthOf(state, "fact:minion-beside-demon"));
         Assert.Equal(OptionTruth.False, TruthOf(state, "fact:minions-adjacent"));
@@ -133,7 +137,7 @@ public sealed class SavantFactCatalogTests
         var state = BaseLedger(demon: false);
 
         Assert.False(HasOption(state, "fact:demon-seat-parity:odd"));
-        Assert.False(HasOption(state, "fact:demon-minion-gap:0"));
+        Assert.False(HasOption(state, "fact:demon-minion-distance:1"));
         Assert.False(HasOption(state, "fact:minion-beside-demon"));
         Assert.False(HasOption(state, "fact:demon-impaired"));
     }
@@ -166,8 +170,9 @@ public sealed class SavantFactCatalogTests
     }
 
     /// <summary>
-    /// 互斥组随候选项下发（说书人端据此把"与另一槽位互为反面"的那条预先灰掉）：
-    /// 同互斥组的候选恰好两条、同编码、取值不同——它们必然一真一假，是 C4 要拒的那一对。
+    /// 互斥组随候选项下发（说书人端据此把"与另一槽位互斥"的那条预先灰掉）。组的不变量是两件事：
+    /// 组里至少两个不同取值；**同一个编码在组里至多一条为真**（同一条事实的两个取值必然一真一假）。
+    /// 组名可以跨编码——那是"同一个事实的两种说法"（见下一个用例）。
     /// </summary>
     [Fact]
     public void Candidates_CarryTheirExclusionGroup()
@@ -176,22 +181,62 @@ public sealed class SavantFactCatalogTests
         var grouped = options.Where(option => option.ExclusionGroup is not null).ToArray();
 
         Assert.NotEmpty(grouped);
-        Assert.All(grouped, option => Assert.Equal(option.Code, option.ExclusionGroup));
 
         foreach (var family in grouped.GroupBy(option => option.ExclusionGroup!, StringComparer.Ordinal))
         {
-            Assert.Equal(2, family.Count());
-            Assert.Single(family.Select(option => option.Code).Distinct(StringComparer.Ordinal));
-            Assert.Equal(2, family.Select(option => option.Value).Distinct(StringComparer.Ordinal).Count());
+            Assert.True(
+                family.Select(option => option.Value).Distinct(StringComparer.Ordinal).Count() >= 2,
+                $"互斥组 {family.Key} 里只有一条候选：灰掉它等于把唯一的选择也灰了");
+
+            foreach (var byCode in family.GroupBy(option => option.Code, StringComparer.Ordinal))
+            {
+                Assert.True(
+                    byCode.Count(option => option.Truth == OptionTruth.True) <= 1,
+                    $"互斥组 {family.Key} 里 {byCode.Key} 有不止一条为真：同一条事实的两个取值是反面对");
+            }
         }
+
+        // 奇偶那一对是反面对：两条、取值不同、恰好一真一假。
+        var parity = options.Where(option => option.ExclusionGroup == "demon-seat-parity").ToArray();
+        Assert.Equal(2, parity.Length);
+        Assert.Single(parity, option => option.Truth == OptionTruth.True);
 
         // 多取值的事实（爪牙距离 / 存活人数 / 席位阵营）里只有"奇偶"那一对是反面对，
         // 其余取值的互斥组为 null——前端据此只灰掉真正互为反面的那一条。
-        foreach (var code in new[] { "demon-minion-gap", "alive-count-equals", "seat-is-evil" })
+        foreach (var code in new[] { "demon-minion-distance", "alive-count-equals", "seat-is-evil" })
         {
             var family = options.Where(option => option.Code == code).ToArray();
             Assert.Contains(family, option => option.ExclusionGroup is null);
         }
+    }
+
+    /// <summary>
+    /// 互斥组可以**跨编码**：爪牙距离 1（`demon-minion-distance:1`）与「恶魔旁边有爪牙」
+    /// （`minion-beside-demon`）是同一个事实的两种说法，因此同组——说书人端把两者互相灰掉，
+    /// 服务端在双真时也会拒（R-0057-C 的 C1）。
+    /// </summary>
+    [Fact]
+    public void DemonAdjacencyAlternatives_ShareOneExclusionGroup()
+    {
+        var state = NightLedger();
+
+        var beside = Option(state, "fact:minion-beside-demon");
+        var adjacent = Option(state, "fact:demon-minion-distance:1");
+
+        Assert.Equal("demon-minion-adjacency", beside.ExclusionGroup);
+        Assert.Equal(beside.ExclusionGroup, adjacent.ExclusionGroup);
+
+        // 两者在可判定的账上真值恒等（相邻 ⇔ 某个邻居是爪牙），互斥组表达的就是这件事；
+        // 同组里**恰好**这两条为真——服务端据此在双真时拒绝。
+        var trueInGroup = Options(state)
+            .Where(option => option.ExclusionGroup == "demon-minion-adjacency"
+                && option.Truth == OptionTruth.True)
+            .Select(option => option.Value)
+            .OrderBy(value => value, StringComparer.Ordinal)
+            .ToArray();
+        Assert.Equal(
+            new[] { "fact:demon-minion-distance:1", "fact:minion-beside-demon" },
+            trueInGroup);
     }
 
     private static IReadOnlyList<DecisionOption> Options(GameState state) =>
