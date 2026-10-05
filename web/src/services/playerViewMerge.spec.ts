@@ -21,7 +21,7 @@ const request = (sequence: number): OperationRequestDto => ({
   requestId: `r${sequence}`,
   seat: 1,
   context: '请选择目标',
-  options: [{ value: 'a', preview: '甲' }],
+  options: [{ value: 'a', preview: '甲', truth: null, group: null, tags: [] }],
   secondaryOptions: [],
 })
 

@@ -60,13 +60,13 @@ todo/  →  in-progress/  →  review/  →  done/
 
 ### Todo
 
-- [博学者的两条信息：候选事实库 + 说书人辅助排版与自动校验](todo/savant-information-picker.md) — **High** — 把自由文本裁定框升级成结构化辅助面：常用事实候选、平台按账求真值、组合非法当场拦下
-
 ### In progress
 
 - [白天信息族剩余两名：杂耍艺人 + 博学者](in-progress/juggler-and-savant-day-abilities.md) — **Medium** — 首个白天公开猜测 / 每个白天一真一假两条信息；契约落地前带他们的局开不了白天（博学者已落地，杂耍艺人未开工）
 
 ### Review
+
+- [博学者的两条信息：候选事实库 + 说书人辅助排版与自动校验](review/savant-information-picker.md) — **High** — 把自由文本裁定框升级成结构化辅助面：常用事实候选 + 平台按账求真值 + 组合非法当场拦下（清单取舍待需求方过一遍；装置取证并入批次 E40）
 
 - [亡骨魔：夜间击杀 + 爪牙「保留能力」+ 集骨者「先失去」前置](review/vigormortis-death-ability-retention.md) — **High** — 契约落地前抽到它的局开不了夜；同时补「死亡不等于失去能力」这条平台还没有的判据
 

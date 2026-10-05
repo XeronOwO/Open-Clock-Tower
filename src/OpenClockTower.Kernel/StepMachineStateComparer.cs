@@ -520,31 +520,31 @@ public static class StepMachineStateComparer
         if (!string.Equals(left.Context, right.Context, StringComparison.Ordinal)
             || left.OnNoOption != right.OnNoOption
             || left.Audience != right.Audience
+            || left.TruthRule != right.TruthRule
+            || !string.Equals(left.TruthNote, right.TruthNote, StringComparison.Ordinal)
             || left.Options.Count != right.Options.Count
             || left.SecondaryOptions.Count != right.SecondaryOptions.Count)
         {
             return false;
         }
 
-        for (var index = 0; index < left.Options.Count; index++)
-        {
-            if (!string.Equals(left.Options[index].Value, right.Options[index].Value, StringComparison.Ordinal)
-                || !string.Equals(left.Options[index].Preview, right.Options[index].Preview, StringComparison.Ordinal))
-            {
-                return false;
-            }
-        }
+        return OptionsEquivalent(left.Options, right.Options)
+            && OptionsEquivalent(left.SecondaryOptions, right.SecondaryOptions);
+    }
 
-        for (var index = 0; index < left.SecondaryOptions.Count; index++)
+    /// <summary>
+    /// 两份候选列表是否同源：值、预览、真值、分组与徽章**逐项按顺序**比较。
+    /// 新增候选元数据（真值 / 分组 / 徽章）必须一并比较，否则重放与实时视图会被判成"等价"。
+    /// </summary>
+    private static bool OptionsEquivalent(IReadOnlyList<DecisionOption> left, IReadOnlyList<DecisionOption> right)
+    {
+        for (var index = 0; index < left.Count; index++)
         {
-            if (!string.Equals(
-                    left.SecondaryOptions[index].Value,
-                    right.SecondaryOptions[index].Value,
-                    StringComparison.Ordinal)
-                || !string.Equals(
-                    left.SecondaryOptions[index].Preview,
-                    right.SecondaryOptions[index].Preview,
-                    StringComparison.Ordinal))
+            if (!string.Equals(left[index].Value, right[index].Value, StringComparison.Ordinal)
+                || !string.Equals(left[index].Preview, right[index].Preview, StringComparison.Ordinal)
+                || left[index].Truth != right[index].Truth
+                || !string.Equals(left[index].Group, right[index].Group, StringComparison.Ordinal)
+                || !left[index].Tags.SequenceEqual(right[index].Tags, StringComparer.Ordinal))
             {
                 return false;
             }

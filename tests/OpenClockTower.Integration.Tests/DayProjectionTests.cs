@@ -275,9 +275,9 @@ public sealed class DayProjectionTests
             SourceStateIndependent = true,
         };
 
-        Assert.Equal("RegainedAbility", ProjectionMapper.ToDto(effect).Window);
+        Assert.Equal("RegainedAbility", SeatLedgerProjectionMapper.ToDto(effect).Window);
 
         var plain = effect with { Window = null, GrantedCharacter = null };
-        Assert.Null(ProjectionMapper.ToDto(plain).Window);
+        Assert.Null(SeatLedgerProjectionMapper.ToDto(plain).Window);
     }
 }

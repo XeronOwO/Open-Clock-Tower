@@ -9,6 +9,7 @@
 import type { EffectDto, StorytellerViewDto } from '@/contracts/game'
 import GrimoireAnnotationControl from '@/features/storyteller/GrimoireAnnotationControl.vue'
 import HelpTip from '@/features/common/HelpTip.vue'
+import SavantFactPicker from '@/features/storyteller/SavantFactPicker.vue'
 import { ROSTER, characterLabelOf, dimensionLabelOf, labelOf } from '@/display/labels'
 import { causedByLabelOf, seatDisplayOf, waitingSecondsTextOf } from '@/display/format'
 import {
@@ -47,6 +48,14 @@ const model = computed(() => (props.seat === null ? null : buildSeatCard(props.v
 
 /** 待裁定归属的席位：与圆环高亮同一口径（服务端归属席位优先，再回退行动者 / 摘要）。 */
 const decisionSeat = computed(() => decisionSeatOf(props.view))
+
+/**
+ * 带真值的候选（信息类裁定点，博学者 R-0057-C）：有它们就把裁定框升级成两槽位辅助面；
+ * 真值与允许的组合都是服务端给的，这里只做筛选与显示。
+ */
+const truthDecisionOptions = computed(() =>
+  (props.view.awaitingDecisionOptions ?? []).filter((option) => option.truth !== null),
+)
 
 const seatNumbers = computed(() => seatNumbersOf(props.view, props.seatCount))
 
@@ -365,39 +374,50 @@ async function submitReport(): Promise<void> {
       </div>
       <p class="context">{{ view.awaitingDecisionContext ?? '（服务端未提供上下文）' }}</p>
 
-      <div v-if="(view.awaitingDecisionOptions ?? []).length > 0" class="options">
-        <button
-          v-for="option in view.awaitingDecisionOptions ?? []"
-          :key="option.value"
-          type="button"
-          class="primary"
-          :disabled="busy"
-          @click="decide(option.value)"
-        >
-          {{ option.preview }}
-          <!-- 席位候选的生死标注：对 `seat:N` / `{效果}:seat:N` / 两维第一维按状态账打标，
-               不影响候选集合（R-0039 / R-0052）。 -->
-          <span
-            v-if="optionSeatIsDead(view, option.value)"
-            class="tag dead"
-            data-testid="option-dead"
+      <!-- 信息类裁定点（博学者 R-0057-C）：候选带真值 → 两槽位辅助面（含组合结论与兜底入口）。 -->
+      <SavantFactPicker
+        v-if="truthDecisionOptions.length > 0"
+        :options="truthDecisionOptions"
+        :rule="view.awaitingDecisionTruthRule"
+        :note="view.awaitingDecisionTruthNote"
+        :busy="busy"
+        @submit="decide"
+      />
+      <template v-else>
+        <div v-if="(view.awaitingDecisionOptions ?? []).length > 0" class="options">
+          <button
+            v-for="option in view.awaitingDecisionOptions ?? []"
+            :key="option.value"
+            type="button"
+            class="primary"
+            :disabled="busy"
+            @click="decide(option.value)"
           >
-            已死亡
-          </span>
-        </button>
-      </div>
-      <p v-else class="hint">引擎没有给出候选选项——按 R-0009 由说书人自由决定。</p>
+            {{ option.preview }}
+            <!-- 席位候选的生死标注：对 `seat:N` / `{效果}:seat:N` / 两维第一维按状态账打标，
+                 不影响候选集合（R-0039 / R-0052）。 -->
+            <span
+              v-if="optionSeatIsDead(view, option.value)"
+              class="tag dead"
+              data-testid="option-dead"
+            >
+              已死亡
+            </span>
+          </button>
+        </div>
+        <p v-else class="hint">引擎没有给出候选选项——按 R-0009 由说书人自由决定。</p>
 
-      <div class="free">
-        <input v-model="freeDecision" placeholder="自由决定的内容（可为空）" />
-        <button
-          type="button"
-          :disabled="busy"
-          @click="decide(freeDecision.length > 0 ? freeDecision : null)"
-        >
-          按自由决定结清
-        </button>
-      </div>
+        <div class="free">
+          <input v-model="freeDecision" placeholder="自由决定的内容（可为空）" />
+          <button
+            type="button"
+            :disabled="busy"
+            @click="decide(freeDecision.length > 0 ? freeDecision : null)"
+          >
+            按自由决定结清
+          </button>
+        </div>
+      </template>
       <input v-model="decisionNote" placeholder="备注（可选，会记进事件流）" />
     </div>
 

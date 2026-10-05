@@ -37,6 +37,12 @@ public sealed record GameState
     public MalfunctionLedger Malfunctions { get; init; } = new();
 
     /// <summary>
+    /// 近期活动账：谁死了 / 谁换了角色或阵营 / 谁被处决，以及「最近一个已结束的夜晚」与「当前白天」
+    /// 两个窗口（R-0057-C 的 `last-night` / `today` 口径）。博学者候选事实库的「变化」组读它。
+    /// </summary>
+    public SeatActivityLedger Activity { get; init; } = new();
+
+    /// <summary>
     /// 亡骨魔杀死爪牙的事实（保留能力 + 说书人选择的中毒侧），按发生顺序。
     /// </summary>
     /// <remarks>

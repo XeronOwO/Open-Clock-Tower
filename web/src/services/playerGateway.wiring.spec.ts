@@ -336,7 +336,9 @@ describe('normalizeRequest 的两维选择（R-0021）', () => {
       options: [{ value: 'seat:1', preview: '1 号玩家' }],
       secondaryOptions: [{ value: 'clockmaker', preview: '钟表匠' }],
     })
-    expect(twoDimensional?.secondaryOptions).toEqual([{ value: 'clockmaker', preview: '钟表匠' }])
+    expect(twoDimensional?.secondaryOptions).toEqual([
+      { value: 'clockmaker', preview: '钟表匠', truth: null, group: null, tags: [] },
+    ])
 
     const missing = normalizeRequest({
       sequence: 8,

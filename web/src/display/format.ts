@@ -374,7 +374,7 @@ export function normalizeRoomHealth(raw: unknown): RoomHealthDto {
   }
 }
 
-/** 归一化一条合法选项。 */
+/** 归一化一条合法选项：真值 / 分组 / 徽章缺失时降级为 null / 空数组，不编造。 */
 export function normalizeOption(raw: unknown): DecisionOptionDto | null {
   if (raw === null || typeof raw !== 'object') {
     return null
@@ -386,7 +386,15 @@ export function normalizeOption(raw: unknown): DecisionOptionDto | null {
     return null
   }
 
-  return { value, preview: asSizedText(option['preview'], 512) ?? value }
+  return {
+    value,
+    preview: asSizedText(option['preview'], 512) ?? value,
+    truth: asText(option['truth']),
+    group: asText(option['group']),
+    tags: asArray<unknown>(option['tags'])
+      .map((tag) => asSizedText(tag, 64))
+      .filter((tag): tag is string => tag !== null),
+  }
 }
 
 /** 归一化钟盘收票呈现；缺相位时返回 null（不编收票进度，R-0017 目标形态）。 */
@@ -724,6 +732,8 @@ export function normalizeStorytellerView(raw: unknown): StorytellerViewDto {
     awaitingDecisionOptions: asArray<unknown>(view['awaitingDecisionOptions'])
       .map(normalizeOption)
       .filter((option): option is DecisionOptionDto => option !== null),
+    awaitingDecisionTruthRule: asText(view['awaitingDecisionTruthRule']),
+    awaitingDecisionTruthNote: asSizedText(view['awaitingDecisionTruthNote'], 512),
     awaitingDecisionSeat: asSeatNumber(view['awaitingDecisionSeat']),
     blockedReason: asText(view['blockedReason']),
     currentSlotActor: asSeatNumber(view['currentSlotActor']),

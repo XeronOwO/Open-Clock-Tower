@@ -16,6 +16,12 @@ export type ReadonlyArrayOf<T> = readonly T[]
 export interface DecisionOptionDto {
   value: string
   preview: string
+  /** 候选真值（`True` / `False`）；与真假无关的候选为 null（博学者候选事实库，R-0057-C）。 */
+  truth: string | null
+  /** 候选分组（如「座位关系」）；不分组时为 null。 */
+  group: string | null
+  /** 候选徽章（如「高强度」）。 */
+  tags: string[]
 }
 
 /** 状态账里的一条维度事实：哪个维度、当前值、怎么来的。 */
@@ -404,6 +410,10 @@ export interface StorytellerViewDto {
   awaitingDecisionId: string | null
   awaitingDecisionContext: string | null
   awaitingDecisionOptions: DecisionOptionDto[] | null
+  /** 待裁定裁定点的真值组合约束（博学者 R-0057 / 涡流 R-0028）；不是信息类裁定点时为 null。 */
+  awaitingDecisionTruthRule: string | null
+  /** 真值组合约束的说明（给说书人看的原因与依据）；不适用时为 null。 */
+  awaitingDecisionTruthNote: string | null
   /** 等待裁定的归属席位（"谁在等"）；没有挂起裁定时为 null。 */
   awaitingDecisionSeat: number | null
   blockedReason: string | null

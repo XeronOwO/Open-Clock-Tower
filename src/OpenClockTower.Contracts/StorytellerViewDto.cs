@@ -39,6 +39,16 @@ public sealed record StorytellerViewDto
     /// <summary>等待裁定的合法选项（引擎算出的候选）；无选项的裁定点为 null。</summary>
     public DecisionOptionDto[]? AwaitingDecisionOptions { get; init; }
 
+    /// <summary>
+    /// 待裁定裁定点的真值组合约束（博学者 R-0057 / 涡流 R-0028）：候选带真值的裁定点才有，
+    /// 取值为 <c>ExactlyOneTrue</c> / <c>AllFalse</c> / <c>AnyCombination</c> / <c>Indeterminate</c>；
+    /// 其余裁定点为 null。前端据此显示组合结论，服务端在提交时用同一条声明重新核对。
+    /// </summary>
+    public string? AwaitingDecisionTruthRule { get; init; }
+
+    /// <summary>真值组合约束的说明（给说书人看的原因与依据）；不适用时为 null。</summary>
+    public string? AwaitingDecisionTruthNote { get; init; }
+
     /// <summary>等待裁定的归属席位（"谁在等"）；没有挂起裁定时为 null。触发格 / 触发型裁定靠它归属。</summary>
     public int? AwaitingDecisionSeat { get; init; }
 

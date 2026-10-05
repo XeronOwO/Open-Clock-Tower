@@ -21,8 +21,15 @@ public interface ISavantQuestionSource
     /// <summary>结清时记账用的能力标识（进能力使用账本）。</summary>
     AbilityId Ability { get; }
 
-    /// <summary>构造裁定点提示（无选项：两条信息由说书人自由填写）。</summary>
-    ChoicePrompt BuildPrompt();
+    /// <summary>
+    /// 构造裁定点提示：候选事实（<see cref="ChoicePrompt.Options"/> / <see cref="ChoicePrompt.SecondaryOptions"/>
+    /// 两个槽位同源）、每条的真值，以及本次允许的真值组合（<see cref="ChoicePrompt.TruthRule"/>）。
+    /// </summary>
+    /// <remarks>
+    /// 真值随账求值：候选与真值都是**那一刻账**的函数（R-0057-C），没有选项时按
+    /// <see cref="NoOptionBehavior.StorytellerDecides"/> 自由决定。
+    /// </remarks>
+    ChoicePrompt BuildPrompt(SavantPromptContext context);
 
     /// <summary>结清一条裁定；返回 null = 判不了（不猜）。</summary>
     SavantQuestionResolution? Resolve(SavantQuestionResolutionContext context);

@@ -42,6 +42,25 @@ public sealed record ChoicePrompt
     /// <summary>无合法选项时的行为；必填（R-0009）。</summary>
     public required NoOptionBehavior OnNoOption { get; init; }
 
+    /// <summary>
+    /// 被选中候选项的真值必须满足什么组合（博学者 R-0057 / 涡流 R-0028）；默认不适用。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 这是一条**声明**，不是判定：说书人端据此显示组合结论、提交时服务端用同一条声明重新核对
+    /// （两端同源，前端不做规则判断）。见 <see cref="TruthCombinationRule"/>。
+    /// </para>
+    /// <para>
+    /// 声明了真值组合的裁定点，其答案形状是**两条候选**（<c>第一条|第二条</c>），两条都从
+    /// <see cref="Options"/> 这**同一个候选集合**里挑（博学者的两条信息同源）——见
+    /// <see cref="IsLegalAnswer"/>。候选本身只下发一份，不重复成两维。
+    /// </para>
+    /// </remarks>
+    public TruthCombinationRule TruthRule { get; init; } = TruthCombinationRule.Unspecified;
+
+    /// <summary>组合约束的说明（给说书人看的原因与依据）；<see cref="TruthRule"/> 不适用时为 null。</summary>
+    public string? TruthNote { get; init; }
+
     /// <summary>是否存在合法选项。</summary>
     public bool HasOptions => Options.Count > 0;
 
@@ -60,15 +79,25 @@ public sealed record ChoicePrompt
             return false;
         }
 
-        if (!Options.Any(option => string.Equals(option.Value, primary, StringComparison.Ordinal)))
+        if (!IsCandidateOf(Options, primary))
         {
             return false;
         }
 
+        // 真值类裁定点（博学者 R-0057）：答案恒为两条，两条都从同一个候选集合里挑。
+        if (TruthRule != TruthCombinationRule.Unspecified)
+        {
+            return secondary.Length > 0 && IsCandidateOf(Options, secondary);
+        }
+
         return HasSecondDimension
-            ? SecondaryOptions.Any(option => string.Equals(option.Value, secondary, StringComparison.Ordinal))
+            ? IsCandidateOf(SecondaryOptions, secondary)
             : secondary.Length == 0;
     }
+
+    /// <summary>某个取值是不是这份候选里的合法选项（按值精确匹配）。</summary>
+    private static bool IsCandidateOf(IReadOnlyList<DecisionOption> options, string value) =>
+        options.Any(option => string.Equals(option.Value, value, StringComparison.Ordinal));
 
     /// <summary>
     /// 按两维编码拆开答案：首个 <c>|</c> 之前是第一维、之后是第二维，两侧都必须非空；

@@ -272,9 +272,9 @@ public sealed class SavantQuestionMachineTests
 
         public AbilityId Ability => new("savant");
 
-        public ChoicePrompt BuildPrompt() => new()
+        public ChoicePrompt BuildPrompt(SavantPromptContext context) => new()
         {
-            Context = "测试：请给两条信息",
+            Context = $"测试：请给两条信息（{context.Seat.Value} 号）",
             Options = [],
             OnNoOption = NoOptionBehavior.StorytellerDecides,
         };

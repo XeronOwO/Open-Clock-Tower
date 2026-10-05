@@ -87,6 +87,15 @@ internal static class SavantQuestionMachine
         var slot = state.CurrentSlot
             ?? throw new InvalidOperationException("事件流损坏：白天打开却没有当前槽位");
 
+        // 提示按**提问时刻**的账现算（候选事实与真值都是那一刻的快照），随后随裁定点进事件流；
+        // 结清时规则层会按提交时刻的账重新求值（R-0057-C）。
+        var prompt = source.BuildPrompt(new SavantPromptContext
+        {
+            Seat = input.Seat,
+            State = context.State,
+            Seats = context.Seats,
+        });
+
         var events = new List<GameEvent>
         {
             new SavantQuestionAskedEvent
@@ -101,7 +110,7 @@ internal static class SavantQuestionMachine
                 DecisionPoint = new DecisionPoint
                 {
                     Id = DecisionIdOf(state),
-                    Prompt = source.BuildPrompt(),
+                    Prompt = prompt,
                 },
             },
         };

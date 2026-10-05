@@ -41,6 +41,8 @@ function viewOf(overrides: Partial<StorytellerViewDto> = {}): StorytellerViewDto
     awaitingDecisionId: null,
     awaitingDecisionContext: null,
     awaitingDecisionOptions: [],
+    awaitingDecisionTruthRule: null,
+    awaitingDecisionTruthNote: null,
     awaitingDecisionSeat: null,
     blockedReason: null,
     currentSlotActor: null,

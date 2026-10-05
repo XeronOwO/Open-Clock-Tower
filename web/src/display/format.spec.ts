@@ -22,7 +22,12 @@ import {
   seatTextOf,
   waitingSecondsTextOf,
 } from '@/display/format'
-import type { SeatDisplayNameDto } from '@/contracts/game'
+import type { DecisionOptionDto, SeatDisplayNameDto } from '@/contracts/game'
+
+/** 选项夹具：真值 / 分组 / 徽章是信息类候选才有的元数据，普通候选一律为空。 */
+function optionOf(value: string, preview: string): DecisionOptionDto {
+  return { value, preview, truth: null, group: null, tags: [] }
+}
 
 describe('不可信输入规范化（架构 §4.4）', () => {
   it('非数组一律退化成空集合，不炸渲染', () => {
@@ -62,12 +67,12 @@ describe('不可信输入规范化（架构 §4.4）', () => {
   it('选项文案按值格式本地化（D-0021）：有名字才改写，没名字保留服务端原文', () => {
     const names: SeatDisplayNameDto[] = [{ seat: 2, displayName: '小明' }]
 
-    expect(optionDisplayOf({ value: 'seat:2', preview: '2 号玩家' }, names)).toBe('2 号 · 小明')
-    expect(optionDisplayOf({ value: 'pair:2+5', preview: '2 号 + 5 号' }, names)).toBe('2 号 + 5 号')
-    expect(optionDisplayOf({ value: 'seat:3', preview: '3 号玩家' }, names)).toBe('3 号玩家')
-    expect(optionDisplayOf({ value: 'pair:3+4', preview: '3 号 + 4 号' }, names)).toBe('3 号 + 4 号')
-    expect(optionDisplayOf({ value: 'clockmaker', preview: '钟表匠' }, names)).toBe('钟表匠')
-    expect(optionDisplayOf({ value: 'seat:x', preview: '坏值原样' }, names)).toBe('坏值原样')
+    expect(optionDisplayOf(optionOf('seat:2', '2 号玩家'), names)).toBe('2 号 · 小明')
+    expect(optionDisplayOf(optionOf('pair:2+5', '2 号 + 5 号'), names)).toBe('2 号 + 5 号')
+    expect(optionDisplayOf(optionOf('seat:3', '3 号玩家'), names)).toBe('3 号玩家')
+    expect(optionDisplayOf(optionOf('pair:3+4', '3 号 + 4 号'), names)).toBe('3 号 + 4 号')
+    expect(optionDisplayOf(optionOf('clockmaker', '钟表匠'), names)).toBe('钟表匠')
+    expect(optionDisplayOf(optionOf('seat:x', '坏值原样'), names)).toBe('坏值原样')
   })
 
   it('两名玩家都有名字时，配对选项同样换成统一席位口径', () => {
@@ -76,7 +81,7 @@ describe('不可信输入规范化（架构 §4.4）', () => {
       { seat: 5, displayName: '小红' },
     ]
 
-    expect(optionDisplayOf({ value: 'pair:2+5', preview: '2 号 + 5 号' }, names)).toBe(
+    expect(optionDisplayOf(optionOf('pair:2+5', '2 号 + 5 号'), names)).toBe(
       '2 号 · 小明 + 5 号 · 小红',
     )
   })
@@ -160,7 +165,9 @@ describe('说书人视图规范化', () => {
     expect(view.malfunctions[0]?.kind).toBe('Poisoned')
     expect(view.lastResolution?.effective).toBe(false)
     expect(view.lastResolution?.malfunctions).toEqual(['Poisoned'])
-    expect(view.awaitingDecisionOptions).toEqual([{ value: 'a', preview: '选它' }])
+    expect(view.awaitingDecisionOptions).toEqual([
+      { value: 'a', preview: '选它', truth: null, group: null, tags: [] },
+    ])
   })
 
   it('归属席位与两枚整局事实（限一次 / 今晚理发）按形状归一化', () => {
