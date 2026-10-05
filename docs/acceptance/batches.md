@@ -869,10 +869,10 @@ Integration 188 · NormativeGates 24）；`dotnet format` 就地通过；`npm ru
 - 本批后 `review/`、`in-progress/` 清空；`todo/` 一张（印刷规则书回核，等实物）；`done/` 新增
   `butcher-second-execution-fixture.md`。
 
-## 批次 E39（2026-10-04，非首个夜晚获得的「首个夜晚」能力：追加一格结算）
+## 批次 E39（2026-10-05，非首个夜晚获得的「首个夜晚」能力：追加一格结算）
 
-冻结版本：`main` @ `a8b9b2c` + 本批工作树（实现 + 裁定 + 装置断言同批；跑批期间工作树冻结、
-不再编辑代码）。跑的是真宿主 + 真 Vite + 真浏览器 + 真 SQLite。
+冻结版本：`main` @ `a8b9b2c` + 本批工作树（跑批时的实现与装置分别落成提交 `2d93c1d` / `689c0b9`；
+跑批期间工作树冻结、不再编辑代码）。跑的是真宿主 + 真 Vite + 真浏览器 + 真 SQLite。
 
 - 主装置 `tools/verify-storyteller-panel.mjs`（取证档 `--quota 2 --screenshots-all --build`）：
   **293 项全部通过 / 0 失败 / 0 跳过、退出码 0**、合计 165.9s（含强制构建）；68 张截图均为本次
