@@ -26,6 +26,19 @@ public sealed record DayState
     public DayRecord? OpenDay =>
         Days.Count > 0 && Days[^1].Status == DayStatus.Open ? Days[^1] : null;
 
+    /// <summary>
+    /// 最近一个**已结束**的白天；还没有白天结束过时为 null。
+    /// </summary>
+    /// <remarks>
+    /// 夜晚行动里凡是要读「昨天」的能力（杂耍艺人 R-0057-B / 卖花女孩 / 城镇公告员 / 理发师 ……）
+    /// 都必须读它，而不是 <c>Days[^1]</c>：开夜并不要求上一白天已经关账，
+    /// 而「昨天」这话只对**已经结束**的白天成立——读到仍然开着的账等于把今天的半场事实
+    /// 当成昨天的既成事实（裁定见 <c>docs/standard/rulings.md</c> R-0058）。
+    /// 与 <see cref="OpenDay"/> 是同一个判断的两面：一个要"还开着"，一个要"已经收了"。
+    /// </remarks>
+    public DayRecord? LastClosedDay =>
+        Days.Count > 0 && Days[^1].Status == DayStatus.Closed ? Days[^1] : null;
+
     /// <summary>还没有开始过任何白天。</summary>
     public static DayState Empty { get; } = new();
 

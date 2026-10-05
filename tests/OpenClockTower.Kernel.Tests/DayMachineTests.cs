@@ -248,6 +248,10 @@ public sealed class DayMachineTests
         Assert.True(closed.State.IsPlanCompleted);
         Assert.Null(closed.State.Day!.OpenDay);
         Assert.Null(closed.State.Day.Days[^1].Executed);
+
+        // 关账之后「昨天」才是那个白天：夜晚能力读的就是这一份（R-0058）。
+        Assert.Equal(closed.State.Day.Days[^1], closed.State.Day.LastClosedDay);
+        Assert.Null(state.Day!.LastClosedDay);
     }
 
     [Fact]

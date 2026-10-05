@@ -67,7 +67,7 @@ internal static class AbilitySettlement
             Choice = choice,
             Decision = decision,
             DaysStarted = state.Day?.Days.Count ?? 0,
-            LastDay = state.Day?.Days.LastOrDefault(),
+            LastDay = state.Day?.LastClosedDay,
             Plan = state.Plan,
             SlotIndex = state.SlotIndex,
             SlotPass = state.SlotPass,

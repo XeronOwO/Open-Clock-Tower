@@ -1769,6 +1769,10 @@
      发生在白天 → 当天起算；开局分配的角色 → 第 1 天；开局之后才第一次观测到该角色 → 从"知道的那一天"
      起算（平台只能从这一刻算）。账上说不清时**显式拒绝**（`juggler.tenure_unknown`，不猜，D-0015）。
      不是首个白天 → 拒绝（`juggler.not_first_day`）。
+     **集骨者「重获能力」窗口把这一次持有重新起算**（2026-10-05 补，R-0054 第 4 条）：死亡但重获能力的
+     杂耍艺人在窗口存续的那个白天**从当天重新起算**，因此"先前已经猜过"不再拦他（与艺术家提问的同一处
+     放宽，R-0040 / `ArtistQuestionMachine.Ask`）；窗口内仍然只有一次（同一天第二次照旧
+     `juggler.already_guessed`），窗口到期（下个黄昏）后回到原起算点。
   5. **当晚的信息**：昨天白天**没有做出公开猜测** → 本夜不唤醒（空选项 + `Skip`，槽位照走配额）。
      做出过猜测 → 说书人裁定点（提示带推演值）；能力未生效（醉酒 / 中毒 / 死亡）与涡流在场（R-0028）
      照 R-0004 / R-0028 的口径记账、标「可能为假」并加注。规则细节 2 的「对新人宽容处理」
@@ -1785,7 +1789,8 @@
   契约 `JugglerGuessDto` / `DayJugglerGuessDto` / `DayViewDto` / `PlayerDayDto`；
   前端 `contracts/game.ts` / `display/format.ts` / `playerGateway` / `PlayerDayPanel.vue`。
 - **回归**：内核 `JugglerGuessMachineTests`（受理与公开账 / 0 条 / 超五条 / 同日第二次 / 非首个白天 /
-  非杂耍艺人 / 角色未观测 / 起算判不了 / 不在局席位 / 册外角色）、`SeatActivityLedgerTests`（角色变化的当天与
+  重获窗口内起算重新开始且仍只一次 / 非杂耍艺人 / 角色未观测 / 起算判不了 / 不在局席位 / 册外角色）、
+  `SeatActivityLedgerTests`（角色变化的当天与
   夜里标记）；规则 `JugglerGuessWindowTests`（开局 / 夜里 / 白天 / 首次观测 / 换回 / 判不了）、
   `JugglerNightActionTests`（没猜过 Skip / 推演计数 / 涡流注 / 只到本人 / 未生效标注 / 算不出 / 0 条）；
   集成 `JugglerHostTests`（真宿主：开白天 → 公开猜测进旁观席位视图 → 同日第二次被拒 → 当晚报数只到本人）；
@@ -1857,6 +1862,40 @@
   **界面级（装置）证据**：批次 E40（服务端拒绝那一路）+ 批次 E41（界面预拦那一路：
   `tools/verify-retention-day-info.mjs` 判「反面候选被标出 / 灰掉不可点并在候选上写明原因 /
   独立事实不被误灰」）。
+
+### R-0058 · 「昨天」只对**已经结束**的白天成立（`LastClosedDay`）（Decided）
+
+- **状态**：Decided（2026-10-05）
+- **问题**：夜晚行动里凡是要读「昨天」的能力（杂耍艺人 R-0057-B / 卖花女孩 / 城镇公告员 /
+  理发师 / 集骨者与哲学家的落格），拿到的都是 `Days[^1]`——**最近一个白天，不管它收没收口**。
+  可平台**并不强制**「白天关账之后才能开夜」：开夜命令只校验夜晚序号与席位名单
+  （`CommandGatePipeline.CheckStartNight`），既不要求上一个计划已走完，也不要求上一个阶段是白天。
+  于是「开夜 1 → 不关账直接开夜 2」这条路径上，第 3 夜会读到第 1 天那份**已经过时**的账：
+  杂耍艺人拿第 1 天的公开猜测再报一次数，卖花女孩 / 城镇公告员读到的是两天前那份提名。
+  更糟的是「账上仍然开着的那个白天」会被当成"昨天"读——那等于把今天的半场事实当成昨天的既成事实。
+- **依据**（项目内口径，不是百科规则）：
+  1. 百科《杂耍艺人》· 2026-10-01 抓取 · 角色能力——「在**当晚**，你会得知猜测正确的角色数量」：
+     当晚说的是**那个白天**的猜测；R-0057-B 第 5 条把「没有做出猜测」定为"本夜不唤醒"，而不是
+     "拿上上次的猜测再报一次"。
+  2. R-0037 的回溯读数同理：卖花女孩 / 城镇公告员读的是"最近一个**白天**的提名与投票"。
+  3. 正常玩法下一天一夜交替推进（`DayLedgerFolder` 也禁止"白天 1 还没结束又开始白天 2"），
+     因此这条口径**不改任何正常路径的行为**——它只把"说不清"的情形从"静默用旧账"改成"说不了就不说"。
+- **处理**：
+  1. `DayState` 新增只读访问器 **`LastClosedDay`** = 最近一个 `Status == Closed` 的白天；没有已结束的
+     白天时为 `null`（与 `OpenDay` 是同一个判断的两面）。**夜晚侧一切「昨天」读数都读它**——
+     已收口的四处：`AbilitySettlement`（结算上下文）、`GameCommandDispatcher`（开夜建表 +
+     手工换角重新绑定）、`StepSlotEntry.LivePrompt`（入槽实时重建提示）、`BarberSwapInteraction`
+     （理发师之夜的落格）。四处必须同源，否则"建表期看的是一份账、结算期看的是另一份"。
+  2. 没有已结束的白天 → `LastDay` 为 `null`，由各能力的既有口径处理（杂耍艺人：不唤醒 + `Skip`；
+     卖花女孩 / 城镇公告员：读数按"判不了"处理）——**不猜、也不用旧账顶上**（D-0015）。
+  3. 白天侧（说书人视图的当前白天、`DayProjection` 的当天账）继续读 `Days[^1]`：那里要的正是
+     "现在这一天"，不是"昨天"。
+- **影响面**：`DayState.LastClosedDay`（新）、`AbilitySettlement`、`GameCommandDispatcher`、
+  `StepSlotEntry`（`LivePrompt` 的文档与取值）、`BarberSwapInteraction`、
+  `NightPlanRequest.LastDay` / `SlotPromptRequest.LastDay`（口径写进注释）。
+- **回归**：内核 `DayMachineTests.CloseDay_WithoutCandidate_ClosesWithoutExecution`（关账后
+  `LastClosedDay` 才是那个白天；开着的白天不给）；规则 `JugglerNightActionTests` 已覆盖
+  `LastDay = null` → 不唤醒；集成 `JugglerHostTests` 覆盖正常一天一夜交替下的当晚读数。
 
 ## 维护规则
 

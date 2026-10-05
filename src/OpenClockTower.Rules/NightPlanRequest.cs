@@ -24,9 +24,13 @@ public sealed record NightPlanRequest
     public required GameState State { get; init; }
 
     /// <summary>
-    /// 最近一个白天的账目（首夜 / 还没有白天时为 null）：回溯型信息能力的计划期提示按它推演。
+    /// 最近一个**已结束**的白天的账目（首夜 / 还没有白天结束时为 null）：回溯型信息能力的提示按它推演。
     /// </summary>
-    /// <remarks>入槽时同一条记录经 <see cref="SlotPromptRequest.LastDay"/> 再送一次（实时重建）。</remarks>
+    /// <remarks>
+    /// 由 <c>DayState.LastClosedDay</c> 给出（R-0058）：开夜不要求上一白天已关账，
+    /// 而「昨天」只对已经结束的白天成立——仍然开着的账不能当昨天的既成事实读。
+    /// 入槽时同一条记录经 <see cref="SlotPromptRequest.LastDay"/> 再送一次（实时重建）。
+    /// </remarks>
     public DayRecord? LastDay { get; init; }
 
     /// <summary>角色夜间行动契约目录。</summary>

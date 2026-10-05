@@ -230,7 +230,7 @@ internal static class GameCommandDispatcher
             command.Seat,
             character,
             after,
-            machine.Day?.Days.LastOrDefault(),
+            machine.Day?.LastClosedDay,
             settlement.Seats,
             NightActions.Default);
         if (binding is null)
@@ -546,7 +546,7 @@ internal static class GameCommandDispatcher
             Variant = command.Variant,
             Seats = seats,
             State = ledger,
-            LastDay = machine?.Day?.Days.LastOrDefault(),
+            LastDay = machine?.Day?.LastClosedDay,
             Actions = NightActions.Default,
         });
 

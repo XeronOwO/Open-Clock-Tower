@@ -23,7 +23,8 @@ public sealed record SlotPromptRequest
     public required GameState State { get; init; }
 
     /// <summary>
-    /// 最近一个白天的账目（首夜 / 还没有白天时为 null）：回溯型信息能力的提示要按它推演。
+    /// 最近一个**已结束**的白天的账目（首夜 / 还没有白天结束时为 null）：回溯型信息能力的提示要按它推演。
     /// </summary>
+    /// <remarks>取值口径见 <see cref="DayState.LastClosedDay"/>（R-0058）：仍然开着的白天不是「昨天」。</remarks>
     public DayRecord? LastDay { get; init; }
 }

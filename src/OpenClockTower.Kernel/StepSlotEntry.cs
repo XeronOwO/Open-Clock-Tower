@@ -304,7 +304,7 @@ internal static class StepSlotEntry
                 });
                 break;
             case DecisionPointOutcome.StorytellerDecides:
-                var livePrompt = LivePrompt(slot, state.Day?.Days.LastOrDefault(), ledger, seats, prompts, events);
+                var livePrompt = LivePrompt(slot, state.Day?.LastClosedDay, ledger, seats, prompts, events);
                 events.Add(new DecisionPointRaisedEvent
                 {
                     SlotId = slot.Id,
@@ -339,8 +339,9 @@ internal static class StepSlotEntry
     /// 调用方退回计划快照，**本步语义不变**（求值分支仍由快照的求值结果决定）。
     /// </para>
     /// <para>
-    /// <paramref name="lastDay"/> 是最近的白天账：回溯型信息能力（卖花女孩 / 城镇公告员）
-    /// 的提示要按它推演（R-0037），与建表 / 结算取同一份记录。
+    /// <paramref name="lastDay"/> 是最近一个**已结束**的白天的账（<see cref="DayState.LastClosedDay"/>）：
+    /// 回溯型信息能力（卖花女孩 / 城镇公告员）的提示要按它推演（R-0037），
+    /// 与建表 / 结算取同一份记录（R-0058：仍然开着的白天不是「昨天」）。
     /// </para>
     /// </remarks>
     private static ChoicePrompt? LivePrompt(
