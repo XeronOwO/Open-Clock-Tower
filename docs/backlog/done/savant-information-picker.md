@@ -168,9 +168,9 @@
 
 | 草案 | 落地 | 为什么 |
 |---|---|---|
-| "数值由平台算"（`demon-minion-distance` / `alive-count-equals` / `good-lead` 等） | **一律参数化枚举**：`demon-minion-gap:N` / `alive-count-equals:N` / `good-lead:N`，每个取值各自带真值 | 平台算出的数字写进文案 = 那条候选**永远为真**，当不了假信息；参数化后同一族的"真"与"假"都在候选里 |
+| "数值由平台算"（`demon-minion-distance` / `alive-count-equals` / `good-lead` 等） | **一律参数化枚举**：`demon-minion-distance:N` / `alive-count-equals:N` / `good-lead:N`，每个取值各自带真值 | 平台算出的数字写进文案 = 那条候选**永远为真**，当不了假信息；参数化后同一族的"真"与"假"都在候选里 |
 | `demon-flanked-by-townsfolk` | `demon-neighbours-team:good/evil`（恶魔左右相邻席位**都是**善良 / 都是邪恶） | 原口径"两侧最近的镇民之间隔着 N 名非镇民"含两层距离计算、措辞也绕；新口径同价值、可判定且好念 |
-| `demon-minion-distance` | `demon-minion-gap`（隔着 N 名玩家；0 = 相邻） | 同上（参数化） |
+| `demon-minion-distance` | `demon-minion-distance`（**距离**：隔着的人数 + 1，相邻 = 1） | 参数化枚举（同上）。**2026-10-05 单位复核**：落地时曾按"隔着 N 名玩家"做（相邻 = 0），与同剧本钟表匠的距离口径差 1（需求方指出）；已改回**距离**口径与钟表匠同一套刻度（R-0057-C 第 1 条），编码 `demon-minion-gap` → `demon-minion-distance` |
 | `limited-role-exhausted` | `limited-ability-used`（读限次能力注册表 + 能力使用账本） | 与"失去能力"提示标记同源（R-0040），不新增第二份事实 |
 | `execution-happened`（C 组） | `execution-today`（同名口径，归入「昨晚与今天」组） | 它读的是白天窗口，和 C 组同源 |
 | `malfunction-last-night`（D 组） | 归入「昨晚与今天」组 | 它读的是"最近一个已结束的夜晚"窗口，和 C 组同源 |
@@ -251,9 +251,11 @@
     `savant.decision_invalid：平台防呆：「恶魔坐在奇数位」与「恶魔坐在偶数位」互为反面，
     必然一真一假……（要这么给请走自由文本兜底）`；
   - `retention-07-savant-legal-combination`：改成一真一假后结论「一真一假 ✓」、提交恢复可用，
-    两个槽位记下 `fact:demon-seat-parity:odd | fact:demon-minion-gap:1`；
+    两个槽位记下 `fact:demon-seat-parity:odd | fact:demon-minion-gap:1`
+    （当时的事实编码；2026-10-05 距离口径统一后同一局面记作 `fact:demon-minion-distance:2`）；
   - `retention-08-savant-two-informations`：结清后玩家端只看到两条人话（「恶魔坐在奇数位」
-    「恶魔与最近的爪牙之间隔着 1 名玩家」），无事实编码与真值；**入口整块撤下**（今天已经要过），
+    「恶魔与最近的爪牙之间隔着 1 名玩家」——同一局面按统一后的距离口径是人话「恶魔与最近的爪牙相距 2」），
+    无事实编码与真值；**入口整块撤下**（今天已经要过），
     无关席位（2 号女巫）的信息面板始终为空。
 
 ## 界面级取证（批次 E41，2026-10-05）：互为反面的界面预拦
@@ -261,7 +263,8 @@
 - 装置：`tools/verify-retention-day-info.mjs`（同一局同一批链路）；取证档
   `--quota 2 --screenshots-all --build`：**77 项全部通过 / 0 失败、退出码 0**、13 张截图均为本次运行写入。
 - 判出四件事（截图 `retention-06-savant-mirror-blocked`）：
-  1. 第一条选 `fact:demon-seat-parity:odd`、第二条选另一族的 `fact:demon-minion-gap:1` 之后，
+  1. 第一条选 `fact:demon-seat-parity:odd`、第二条选另一族的爪牙读数（当时编码
+     `fact:demon-minion-gap:1`；2026-10-05 距离口径统一后同一局面是 `fact:demon-minion-distance:2`）之后，
      **只有** `fact:demon-seat-parity:even` 这一条被标出来（`data-opposite="true"`，全表恰好 1 条）；
   2. 它**灰掉不可点**、并在候选上写明「与已选的一条互为反面，必然一真一假」；
   3. 真去点它，**槽位 2 仍是原来那条**（灰的是行为，不只是外观）；
