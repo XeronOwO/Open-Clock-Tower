@@ -65,7 +65,7 @@ todo/  →  in-progress/  →  review/  →  done/
 ### Review
 
 - [集骨者重获能力：死亡杂耍艺人的白天入口（首个白天重新起算）](review/bone-collector-regained-juggler-day-entry.md) — **Medium** — 集骨者救活已死亡杂耍艺人的能力后，那名玩家在界面上拿不到公开猜测入口、提交也被拒（起算日只认角色变化记录）；补上重获窗口内「这一次持有从当天重新起算」的内核判定与投影权限位
-- [博学者候选事实清单：取舍与条数口径（需求方拍板）](review/savant-fact-list-tradeoffs.md) — **Low** — 28 条候选的去重与补缺待拍板；**单位口径已收口**（爪牙读数改回钟表匠的「距离」，与「恶魔旁边有爪牙」共用互斥组）；`role-in-play`/`role-dead` 对全花名册 30 角色出候选（多数恒假）、缺「按类型计数」与「昨晚没有失效」仍待定；条数 157 的口径与装置的 `>= 150` 下界断言一并待定
+- [博学者候选事实清单：取舍与条数口径](review/savant-fact-list-tradeoffs.md) — **Low** — A 类（重复 / 不可达取值 / 同一段代码写两遍）、B2、C1、D1 已自决落地（合并「旁边有谁」、三态 `alive-lead`、补 `type-count-equals` 与 `demon-neighbours-team:mixed`、爪牙读数统一成钟表匠的距离；新增「取值互斥」声明与越界自检）；候选 157 → **182 条**（装置断言改精确值）；**只剩 B1**：`role-in-play`/`role-dead` 要不要收窄成"本局在场的角色"
 
 ### Done
 

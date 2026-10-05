@@ -15,30 +15,47 @@ internal static class SavantNumberFacts
     /// <summary>分组名（说书人端分栏）。</summary>
     internal const string Group = "阵营与人数";
 
+    /// <summary>`type-count-equals` 的取值维度：四种可数类型。</summary>
+    private static readonly (string Key, CharacterType Type, string Text)[] CountableTypes =
+    [
+        ("townsfolk", CharacterType.Townsfolk, "镇民"),
+        ("outsider", CharacterType.Outsider, "外来者"),
+        ("minion", CharacterType.Minion, "爪牙"),
+        ("demon", CharacterType.Demon, "恶魔"),
+    ];
+
     /// <summary>本组全部事实（顺序 = 候选顺序）。</summary>
     internal static IReadOnlyList<SavantFactDefinition> All { get; } =
     [
         new()
         {
-            Code = "evil-not-fewer",
+            // 三态合成一条：这三句话互斥且穷尽（邪恶多 / 平 / 善良多），拆成三条会给出"同一件事的两种说法"。
+            Code = "alive-lead",
             Group = Group,
-            Evaluate = (world, _) => TryCounts(world, out var good, out var evil)
-                ? SavantFactEvaluation.Of(evil >= good, "邪恶阵营的存活人数不少于善良阵营")
-                : null,
-        },
-        new()
-        {
-            Code = "evil-majority",
-            Group = Group,
-            Evaluate = (world, _) => TryCounts(world, out var good, out var evil)
-                ? SavantFactEvaluation.Of(evil > good, "邪恶阵营的存活人数多于善良阵营")
-                : null,
+            ExclusiveValues = true,
+            Parameters = _ => ["evil", "tied", "good"],
+            Evaluate = (world, parameter) => parameter is not ("evil" or "tied" or "good")
+                || !TryCounts(world, out var good, out var evil)
+                    ? null
+                    : SavantFactEvaluation.Of(
+                        parameter switch
+                        {
+                            "evil" => evil > good,
+                            "tied" => evil == good,
+                            _ => good > evil,
+                        },
+                        parameter switch
+                        {
+                            "evil" => "邪恶阵营的存活人数多于善良阵营",
+                            "tied" => "善良与邪恶的存活人数相同",
+                            _ => "善良阵营的存活人数多于邪恶阵营",
+                        }),
         },
         new()
         {
             Code = "alive-count-parity",
             Group = Group,
-            ExclusionGroup = "alive-count-parity",
+            ExclusiveValues = true,
             Parameters = _ => ["odd", "even"],
             Evaluate = (world, parameter) => parameter is not ("odd" or "even")
                 || !TryCounts(world, out var good, out var evil)
@@ -51,6 +68,7 @@ internal static class SavantNumberFacts
         {
             Code = "alive-count-equals",
             Group = Group,
+            ExclusiveValues = true,
             Parameters = world => Counts(world),
             Evaluate = (world, parameter) => TryCount(parameter, out var count)
                 && TryCounts(world, out var good, out var evil)
@@ -59,14 +77,21 @@ internal static class SavantNumberFacts
         },
         new()
         {
+            // 善良比邪恶多 N 名。N = 0（两边一样多）由 alive-lead:tied 表达，负值由 alive-lead:evil 表达，
+            // 因此取值从 1 起；上限 = 圆桌人数 − 1（邪恶至少有一名恶魔）。
             Code = "good-lead",
             Group = Group,
-            Parameters = world => Counts(world),
-            Evaluate = (world, parameter) => TryCount(parameter, out var lead)
+            ExclusiveValues = true,
+            Parameters = world =>
+            [
+                .. Enumerable.Range(1, Math.Max(0, world.Circle.Count - 1))
+                    .Select(lead => lead.ToString(CultureInfo.InvariantCulture)),
+            ],
+            Evaluate = (world, parameter) => TryCount(parameter, out var lead) && lead >= 1
                 && TryCounts(world, out var good, out var evil)
                     ? SavantFactEvaluation.Of(
                         good - evil == lead,
-                        lead == 0 ? "善良与邪恶的存活人数相同" : $"善良阵营比邪恶阵营多 {lead} 名存活玩家")
+                        $"善良阵营比邪恶阵营多 {lead} 名存活玩家")
                     : null,
         },
         new()
@@ -79,12 +104,55 @@ internal static class SavantNumberFacts
                     world.SeatsOfType(CharacterType.Traveller).Count > 0,
                     "场上有旅行者"),
         },
+        new()
+        {
+            // 「只有一名外来者在场」这类读数（百科《博学者》· 范例 4）：按角色类型数在局席位。
+            // 只数**已观测到类型**的席位——没观测齐时"恰好 N 名"可能变成"至少 N 名"，
+            // 因此要求所有在局席位的角色都已知（否则整条判不了，不猜，D-0015）。
+            Code = "type-count-equals",
+            Group = Group,
+            Parameters = world =>
+            [
+                .. from type in CountableTypes
+                   from count in Counts(world)
+                   select $"{type.Key}:{count}",
+            ],
+            Evaluate = (world, parameter) =>
+            {
+                if (!world.AllCharactersKnown || ParseCount(parameter) is not { } parsed)
+                {
+                    return null;
+                }
+
+                var type = CountableTypes.FirstOrDefault(candidate => candidate.Key == parsed.TypeKey);
+                return type == default
+                    ? null
+                    : SavantFactEvaluation.Of(
+                        world.SeatsOfType(type.Type).Count == parsed.Count,
+                        $"场上有 {parsed.Count} 名{type.Text}");
+            },
+        },
     ];
 
-    /// <summary>存活人数的候选取值（0 .. 圆桌人数）。</summary>
+    /// <summary>解析 <c>类型:人数</c> 参数；形状不对或人数不是非负整数时返回 null。</summary>
+    private static (string TypeKey, int Count)? ParseCount(string? parameter)
+    {
+        if (parameter is null)
+        {
+            return null;
+        }
+
+        var separator = parameter.IndexOf(':', StringComparison.Ordinal);
+        return separator <= 0 || !TryCount(parameter[(separator + 1)..], out var count)
+            ? null
+            : (parameter[..separator], count);
+    }
+
+    /// <summary>存活人数的候选取值（1 .. 圆桌人数）：账上恶魔在场 ⇒ 存活数不可能是 0。</summary>
     private static IReadOnlyList<string> Counts(SavantFactWorld world) =>
     [
-        .. Enumerable.Range(0, world.Circle.Count + 1).Select(count => count.ToString(CultureInfo.InvariantCulture)),
+        .. Enumerable.Range(1, Math.Max(0, world.Circle.Count))
+            .Select(count => count.ToString(CultureInfo.InvariantCulture)),
     ];
 
     /// <summary>解析人数参数：必须是非负整数。</summary>

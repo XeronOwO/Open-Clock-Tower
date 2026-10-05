@@ -426,10 +426,12 @@ async function driveSavantPickers(savantPage, witchPage) {
   const candidates = await probeCandidates()
   check(
     '候选逐条带服务端真值（真 / 假，不是让说书人自己记）',
-    // 下界取实际量级（本局实测 157 条）：候选缩水一半必须红，而不是被 `>= 10` 兜住。
-    candidates.length >= 150
+    // 本局（6 席、角色与生死阵营都观测齐）实测 **182** 条，逐族：座位关系 11 + 阵营与人数 35 +
+    // 昨晚与今天 7 + 状态读数 4 + 点名 125。这里钉的是**精确条数**：改事实库就会红，
+    // 逼着改的人回来核对这个数字（原先的 `>= 150` 只证明"有一大堆候选"，缩水查不出来）。
+    candidates.length === 182
       && candidates.every((entryItem) => entryItem.truth === 'True' || entryItem.truth === 'False'),
-    `${candidates.length} 条候选；真值集合=${[...new Set(candidates.map((item) => item.truth))].join('/')}`,
+    `${candidates.length} 条候选（期望 182）；真值集合=${[...new Set(candidates.map((item) => item.truth))].join('/')}`,
   )
   const groups = [...new Set(candidates.map((item) => item.group).filter((group) => group.length > 0))]
   const groupButtons = await picker.locator('[data-testid^="savant-group-"]').count()

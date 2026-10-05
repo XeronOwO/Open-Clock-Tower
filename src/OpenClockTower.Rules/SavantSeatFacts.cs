@@ -23,7 +23,7 @@ internal static class SavantSeatFacts
         {
             Code = "demon-seat-parity",
             Group = Group,
-            ExclusionGroup = "demon-seat-parity",
+            ExclusiveValues = true,
             Parameters = _ => ["odd", "even"],
             Evaluate = (world, parameter) =>
                 parameter is not ("odd" or "even") || world.SingleDemon is not { } demon
@@ -82,34 +82,65 @@ internal static class SavantSeatFacts
         },
         new()
         {
-            Code = "demon-beside-outsider",
+            // 「旁边有谁」合并成一条带类型参数的：爪牙 / 外来者 / 镇民三句话是同一段判断，
+            // 拆成两条等于同一段代码写两遍（镇民那一条原本根本给不出来）。
+            // 恶魔不唯一 / 邻居角色没观测齐时整条判不了（不猜，D-0015）。
+            Code = "demon-neighbour-type",
             Group = Group,
-            Evaluate = (world, _) => NeighboursOfDemon(world) is { } neighbours
-                && neighbours.All(seat => world.CharacterOf(seat) is not null)
-                    ? SavantFactEvaluation.Of(
-                        neighbours.Any(seat => world.TypeOf(seat) == CharacterType.Outsider),
-                        "恶魔左右相邻的席位里有外来者")
-                    : null,
+            Parameters = _ => ["minion", "outsider", "townsfolk"],
+            Evaluate = (world, parameter) => NeighbourType(parameter) is not { } type
+                ? null
+                : NeighboursOfDemon(world) is { } neighbours
+                    && neighbours.All(seat => world.CharacterOf(seat) is not null)
+                        ? SavantFactEvaluation.Of(
+                            neighbours.Any(seat => world.TypeOf(seat) == type),
+                            $"恶魔左右相邻的席位里有{TypeText(parameter)}")
+                        : null,
         },
         new()
         {
             Code = "demon-neighbours-team",
             Group = Group,
-            ExclusionGroup = "demon-neighbours-team",
-            Parameters = _ => ["good", "evil"],
-            Evaluate = (world, parameter) => parameter is not ("good" or "evil")
+            ExclusiveValues = true,
+            Parameters = _ => ["good", "evil", "mixed"],
+            Evaluate = (world, parameter) => parameter is not ("good" or "evil" or "mixed")
                 ? null
                 : NeighboursOfDemon(world) is { } neighbours
                     && neighbours.All(seat => world.AlignmentOf(seat) is not null)
                         ? SavantFactEvaluation.Of(
-                            neighbours.All(seat =>
-                                world.AlignmentOf(seat) == (parameter == "good" ? Alignment.Good : Alignment.Evil)),
-                            parameter == "good"
-                                ? "恶魔左右相邻的席位都是善良阵营"
-                                : "恶魔左右相邻的席位都是邪恶阵营")
+                            parameter switch
+                            {
+                                "good" => neighbours.All(seat => world.AlignmentOf(seat) == Alignment.Good),
+                                "evil" => neighbours.All(seat => world.AlignmentOf(seat) == Alignment.Evil),
+                                _ => neighbours.Any(seat => world.AlignmentOf(seat) == Alignment.Good)
+                                    && neighbours.Any(seat => world.AlignmentOf(seat) == Alignment.Evil),
+                            },
+                            parameter switch
+                            {
+                                "good" => "恶魔左右相邻的席位都是善良阵营",
+                                "evil" => "恶魔左右相邻的席位都是邪恶阵营",
+                                _ => "恶魔左右相邻的席位一善一恶",
+                            })
                         : null,
         },
     ];
+
+    /// <summary>「旁边有谁」的类型参数 → 角色类型；册外取值返回 null（判不了）。</summary>
+    private static CharacterType? NeighbourType(string? parameter) => parameter switch
+    {
+        "minion" => CharacterType.Minion,
+        "outsider" => CharacterType.Outsider,
+        "townsfolk" => CharacterType.Townsfolk,
+        _ => null,
+    };
+
+    /// <summary>「旁边有谁」的类型参数 → 人话里的类型名。</summary>
+    private static string TypeText(string? parameter) => parameter switch
+    {
+        "minion" => "爪牙",
+        "outsider" => "外来者",
+        _ => "镇民",
+    };
 
     /// <summary>恶魔的相邻席位；恶魔不唯一（麻脸巫婆造过第二个恶魔）或圆桌上没有相邻席位时返回 null。</summary>
     private static IReadOnlyList<SeatId>? NeighboursOfDemon(SavantFactWorld world)

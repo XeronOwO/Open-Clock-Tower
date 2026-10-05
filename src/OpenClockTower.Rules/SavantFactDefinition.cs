@@ -41,6 +41,16 @@ internal sealed record SavantFactDefinition
     /// </remarks>
     public Func<SavantFactWorld, string?, string?>? ExclusionGroupOf { get; init; }
 
+    /// <summary>
+    /// 这条事实的**取值互斥**：任意时刻至多一个取值为真（奇 / 偶，邪恶多 / 平 / 善良多一类）。
+    /// </summary>
+    /// <remarks>
+    /// true 时互斥组自动取事实编码，不用手写组名；组合校验与界面预拦据此拒"同一条事实给两遍"。
+    /// 违反这条不变量的定义（同一时刻有两个取值为真）会在 <see cref="SavantFactCatalog"/> 里
+    /// **当场抛错**——那种定义会让说书人端一次灰掉一整族候选，是编程错误而不是规则选择。
+    /// </remarks>
+    public bool ExclusiveValues { get; init; }
+
     /// <summary>可选取值（无参数事实给空集合）；顺序 = 候选顺序。</summary>
     public Func<SavantFactWorld, IReadOnlyList<string>> Parameters { get; init; } = _ => [];
 

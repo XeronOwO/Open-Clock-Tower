@@ -36,9 +36,14 @@ public sealed class SavantFactCatalogTests
 
         Assert.Equal(OptionTruth.True, TruthOf(state, "fact:minion-beside-demon"));
         Assert.Equal(OptionTruth.False, TruthOf(state, "fact:minions-adjacent"));
-        Assert.Equal(OptionTruth.False, TruthOf(state, "fact:demon-beside-outsider"));
+        // 恶魔（4 号）左右邻居是 3 号镇民与 5 号爪牙：一善一恶；「旁边有谁」按类型逐条判。
+        Assert.Equal(OptionTruth.True, TruthOf(state, "fact:demon-neighbour-type:minion"));
+        Assert.Equal(OptionTruth.True, TruthOf(state, "fact:demon-neighbour-type:townsfolk"));
+        Assert.Equal("恶魔左右相邻的席位里有镇民", TextOf(state, "fact:demon-neighbour-type:townsfolk"));
+        Assert.Equal(OptionTruth.False, TruthOf(state, "fact:demon-neighbour-type:outsider"));
         Assert.Equal(OptionTruth.False, TruthOf(state, "fact:demon-neighbours-team:good"));
         Assert.Equal(OptionTruth.False, TruthOf(state, "fact:demon-neighbours-team:evil"));
+        Assert.Equal(OptionTruth.True, TruthOf(state, "fact:demon-neighbours-team:mixed"));
     }
 
     /// <summary>B 组：存活人数与阵营读数（按存活席位算，人数类要求生死与阵营都观测齐）。</summary>
@@ -48,8 +53,9 @@ public sealed class SavantFactCatalogTests
         var state = NightLedger();
 
         // 死 6 / 5，7 号转为邪恶：存活 5（1 / 2 / 3 / 4 / 7），善良 3、邪恶 2。
-        Assert.Equal(OptionTruth.False, TruthOf(state, "fact:evil-not-fewer"));
-        Assert.Equal(OptionTruth.False, TruthOf(state, "fact:evil-majority"));
+        Assert.Equal(OptionTruth.True, TruthOf(state, "fact:alive-lead:good"));
+        Assert.Equal(OptionTruth.False, TruthOf(state, "fact:alive-lead:evil"));
+        Assert.Equal(OptionTruth.False, TruthOf(state, "fact:alive-lead:tied"));
         Assert.Equal(OptionTruth.True, TruthOf(state, "fact:alive-count-parity:odd"));
         Assert.Equal(OptionTruth.False, TruthOf(state, "fact:alive-count-parity:even"));
         Assert.Equal(OptionTruth.True, TruthOf(state, "fact:alive-count-equals:5"));
@@ -57,6 +63,26 @@ public sealed class SavantFactCatalogTests
         Assert.Equal(OptionTruth.True, TruthOf(state, "fact:good-lead:1"));
         Assert.Equal("善良阵营比邪恶阵营多 1 名存活玩家", TextOf(state, "fact:good-lead:1"));
         Assert.Equal(OptionTruth.False, TruthOf(state, "fact:traveller-present"));
+    }
+
+    /// <summary>
+    /// B 组补的「按类型数人数」（百科《博学者》· 范例 4 的「只有一名外来者在场」）：
+    /// 7 席局 = 4 镇民 + 1 外来者 + 1 爪牙 + 1 恶魔（3 号被换角成贤者仍算镇民），逐类型各一条为真。
+    /// </summary>
+    [Fact]
+    public void TypeCountFacts_EvaluateAgainstTheLedger()
+    {
+        var state = NightLedger();
+
+        Assert.Equal(OptionTruth.True, TruthOf(state, "fact:type-count-equals:outsider:1"));
+        Assert.Equal("场上有 1 名外来者", TextOf(state, "fact:type-count-equals:outsider:1"));
+        Assert.Equal(OptionTruth.False, TruthOf(state, "fact:type-count-equals:outsider:2"));
+        Assert.Equal(OptionTruth.True, TruthOf(state, "fact:type-count-equals:demon:1"));
+        Assert.Equal(OptionTruth.True, TruthOf(state, "fact:type-count-equals:minion:1"));
+        Assert.Equal(OptionTruth.True, TruthOf(state, "fact:type-count-equals:townsfolk:4"));
+
+        // 「存活人数恰好是 0」这类不可达取值已经删掉，人数取值从 1 起。
+        Assert.False(HasOption(state, "fact:alive-count-equals:0"));
     }
 
     /// <summary>C 组：昨晚与今天的变化（读近期活动账的两个窗口）。</summary>
@@ -200,14 +226,27 @@ public sealed class SavantFactCatalogTests
         var parity = options.Where(option => option.ExclusionGroup == "demon-seat-parity").ToArray();
         Assert.Equal(2, parity.Length);
         Assert.Single(parity, option => option.Truth == OptionTruth.True);
+    }
 
-        // 多取值的事实（爪牙距离 / 存活人数 / 席位阵营）里只有"奇偶"那一对是反面对，
-        // 其余取值的互斥组为 null——前端据此只灰掉真正互为反面的那一条。
-        foreach (var code in new[] { "demon-minion-distance", "alive-count-equals", "seat-is-evil" })
+    /// <summary>
+    /// 取值**不必**互斥的事实不能带互斥组：同一个恶魔可以既有爪牙邻居又有镇民邻居，
+    /// 三句话可以同时为真——带上互斥组会让说书人点了一条就再也点不了另一条。
+    /// </summary>
+    [Fact]
+    public void MultiValueFacts_WithoutExclusiveValues_CarryNoExclusionGroup()
+    {
+        var options = Options(NightLedger());
+
+        foreach (var code in new[] { "demon-neighbour-type", "seat-is-evil", "role-in-play" })
         {
             var family = options.Where(option => option.Code == code).ToArray();
-            Assert.Contains(family, option => option.ExclusionGroup is null);
+            Assert.NotEmpty(family);
+            Assert.All(family, option => Assert.Null(option.ExclusionGroup));
         }
+
+        // 本局恶魔左邻镇民、右邻爪牙 ⇒ 两条同时为真，正是"不能互斥"的证据。
+        Assert.Equal(OptionTruth.True, TruthOf(NightLedger(), "fact:demon-neighbour-type:minion"));
+        Assert.Equal(OptionTruth.True, TruthOf(NightLedger(), "fact:demon-neighbour-type:townsfolk"));
     }
 
     /// <summary>

@@ -1,3 +1,5 @@
+using OpenClockTower.Kernel;
+
 namespace OpenClockTower.Rules;
 
 /// <summary>
@@ -36,7 +38,31 @@ internal static class SavantFactCatalog
             }
         }
 
+        GuardExclusiveValues(candidates);
         return candidates;
+    }
+
+    /// <summary>
+    /// 守住"取值互斥"这条不变量：声明了 <see cref="SavantFactDefinition.ExclusiveValues"/> 的事实，
+    /// 同一时刻**至多一个取值为真**。违反了当场抛错——不是把问题留给说书人端
+    /// （前端会把整族候选互相灰掉，说书人一个都点不动，而且看不出为什么）。
+    /// </summary>
+    private static void GuardExclusiveValues(IReadOnlyList<SavantFactCandidate> candidates)
+    {
+        var offenders = candidates
+            .Where(candidate => candidate.ExclusiveValues && candidate.Truth == OptionTruth.True)
+            .GroupBy(candidate => candidate.Code, StringComparer.Ordinal)
+            .Where(family => family.Count() > 1)
+            .Select(family => $"{family.Key}（{string.Join(" / ", family.Select(item => item.Parameter))}）")
+            .ToArray();
+
+        if (offenders.Length > 0)
+        {
+            throw new InvalidOperationException(
+                "候选事实库定义错误：声明了「取值互斥」的事实同时有多个取值为真——"
+                + $"{string.Join("；", offenders)}。互斥的取值必须恰好覆盖所有情形（穷尽且互不重叠）；"
+                + "措辞重叠的定义要拆开或改成互不重叠的取值（R-0057-C）。");
+        }
     }
 
     /// <summary>
@@ -75,7 +101,10 @@ internal static class SavantFactCatalog
             Group = definition.Group,
             Truth = evaluation.Truth,
             HighIntensity = definition.HighIntensity,
-            ExclusionGroup = definition.ExclusionGroupOf?.Invoke(world, parameter) ?? definition.ExclusionGroup,
+            ExclusiveValues = definition.ExclusiveValues,
+            ExclusionGroup = definition.ExclusionGroupOf?.Invoke(world, parameter)
+                ?? definition.ExclusionGroup
+                ?? (definition.ExclusiveValues ? definition.Code : null),
         };
     }
 

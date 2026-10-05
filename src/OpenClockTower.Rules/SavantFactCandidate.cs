@@ -31,4 +31,7 @@ internal sealed record SavantFactCandidate
     /// null = 该事实的各取值彼此独立。
     /// </summary>
     public string? ExclusionGroup { get; init; }
+
+    /// <summary>这条候选所属事实声明了「取值互斥」（供候选目录自检；不随候选项下发）。</summary>
+    public bool ExclusiveValues { get; init; }
 }
