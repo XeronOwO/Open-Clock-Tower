@@ -37,7 +37,7 @@ export interface SavantExclusionConflict {
 }
 
 /** 候选上写的短提示文案（服务端给的互斥组判出来的，前端只显示）。 */
-export const EXCLUSION_REASON = '与已选的一条互为反面，必然一真一假'
+export const EXCLUSION_REASON = '与已选的一条互斥（必然一真一假）'
 
 /** 没有分组的候选归入这一栏（服务端一般都会给分组）。 */
 export const UNGROUPED_LABEL = '其它'
@@ -120,9 +120,11 @@ export function filterSavantOptions(
 }
 
 /**
- * 两条候选是不是**互为反面**（R-0057-C 的 C4）：服务端下发的互斥组相同、事实编码相同、
- * 而取值不同——如「恶魔坐在奇数位」与「恶魔坐在偶数位」，必然一真一假，等于只给了一条信息。
+ * 两条候选是不是**互斥**（R-0057-C 的 C4）：服务端下发的互斥组相同、取值不同——
+ * 同一条事实的两个取值（「恶魔坐在奇数位」与「恶魔坐在偶数位」，必然一真一假），
+ * 或**跨编码**的同一个事实（爪牙距离 1 与「恶魔左右相邻的席位里有爪牙」）都算。
  *
+ * 互斥组相同 = 两者**至多一条为真**：不能一起给（一起给等于只给了一条信息）。
  * 与另一槽位已选项命中时返回那条冲突（供候选**预先灰掉**与结论条用），否则返回 null。
  * 服务端提交时仍会按当时的账重新核对一次——这里只是省一次注定被拒的往返。
  */
@@ -130,13 +132,10 @@ export function exclusionConflictOf(
   candidate: DecisionOptionDto,
   other: DecisionOptionDto | null,
 ): SavantExclusionConflict | null {
-  if (other === null || candidate.exclusionGroup === null) {
-    return null
-  }
-
   if (
+    other === null ||
+    candidate.exclusionGroup === null ||
     candidate.code === null ||
-    candidate.code !== other.code ||
     candidate.exclusionGroup !== other.exclusionGroup ||
     candidate.value === other.value
   ) {

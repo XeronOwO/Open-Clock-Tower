@@ -510,7 +510,7 @@ async function driveSavantPickers(savantPage, witchPage) {
     )
   }
 
-  // 「互为反面」的界面预拦（C4 防呆）：两个槽位各占一条时，与其中一条**同族**的那条候选
+  // 「互斥」的界面预拦（C4 防呆）：两个槽位各占一条时，与其中一条**同互斥组**的那条候选
   // 必须当场灰掉、写明原因、点不动；服务端在提交时仍会拒绝（规则层用例判它——界面已经拦住，
   // 真机再也走不到"提交后被拒"那一步）。这一段把票据「残余」第 4 条收口。
   // 夹具（每一步都写明前置，不依赖上一段留下的槽位）：
@@ -552,7 +552,7 @@ async function driveSavantPickers(savantPage, witchPage) {
     )
     check(
       '互为反面的候选：灰掉不可点，并在候选上写明原因（不是只靠提交后被拒）',
-      mirror.disabled === true && mirrorNote.includes('互为反面'),
+      mirror.disabled === true && mirrorNote.includes('互斥'),
       `disabled=${mirror.disabled}；文案=${mirrorNote.slice(0, 120)}`,
     )
     // 灰掉要"点不动"才算数：真去点它，槽位不许变（`:disabled` 只是外观，行为也要钉住）。

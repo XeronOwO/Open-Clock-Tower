@@ -52,8 +52,8 @@ const secondTruth = computed(() => truthLabelOf(second.value?.truth ?? null))
 const secondTone = computed(() => `tone-${truthToneOf(second.value?.truth ?? null)}`)
 
 /**
- * 这条候选与「另一个槽位已选的那条」互为反面时的理由（C4 防呆，R-0057-C）；
- * 不互为反面（或另一个槽位还空着）时返回 null。
+ * 这条候选与「另一个槽位已选的那条」互斥时的理由（C4 防呆，R-0057-C）；
+ * 不互斥（或另一个槽位还空着）时返回 null。
  *
  * 「另一个槽位」= 这条候选没坐的那个槽位：已经坐在第一个槽位里 → 与第二个比，反之亦然。
  * 命中就该灰掉并写明原因：点它必然被服务端拒绝（服务端提交时仍会按当时的账再拒一次）。

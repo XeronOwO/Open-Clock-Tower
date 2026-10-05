@@ -29,8 +29,11 @@ const F = option('fact:b', '恶魔坐在偶数位', 'False')
 const ODD = option('fact:demon-seat-parity:odd', '恶魔坐在奇数位', 'True', '座位关系', 'demon-seat-parity', 'demon-seat-parity')
 const EVEN = option('fact:demon-seat-parity:even', '恶魔坐在偶数位', 'False', '座位关系', 'demon-seat-parity', 'demon-seat-parity')
 /** 同一组事实的其它取值（如两个爪牙距离）不是反面对：服务端不给互斥组。 */
-const GAP_0 = option('fact:demon-minion-gap:0', '恶魔与最近的爪牙相邻', 'True', '座位关系', 'demon-minion-gap', null)
-const GAP_1 = option('fact:demon-minion-gap:1', '恶魔与最近的爪牙之间隔着 1 名玩家', 'False', '座位关系', 'demon-minion-gap', null)
+const DIST_2 = option('fact:demon-minion-distance:2', '恶魔与最近的爪牙相距 2', 'True', '座位关系', 'demon-minion-distance', null)
+const DIST_3 = option('fact:demon-minion-distance:3', '恶魔与最近的爪牙相距 3', 'False', '座位关系', 'demon-minion-distance', null)
+/** 跨编码的同一个事实：爪牙距离 1 与「恶魔旁边有爪牙」同互斥组（服务端给的组相同、编码不同）。 */
+const DIST_1 = option('fact:demon-minion-distance:1', '恶魔与最近的爪牙相邻（距离 1）', 'True', '座位关系', 'demon-minion-distance', 'demon-minion-adjacency')
+const BESIDE = option('fact:minion-beside-demon', '恶魔左右相邻的席位里有爪牙', 'True', '座位关系', 'minion-beside-demon', 'demon-minion-adjacency')
 
 describe('truthLabelOf / truthToneOf', () => {
   it('只认服务端给的两个取值，未知取值原样回显', () => {
@@ -101,10 +104,20 @@ describe('exclusionConflictOf（互为反面：C4 防呆）', () => {
     expect(exclusionConflictOf(ODD, ODD)).toBeNull()
   })
 
-  it('另一个槽位没选 / 服务端没给互斥组 / 编码不同 ⇒ 不拦', () => {
+  it('另一个槽位没选 / 服务端没给互斥组 ⇒ 不拦', () => {
     expect(exclusionConflictOf(EVEN, null)).toBeNull()
-    expect(exclusionConflictOf(GAP_1, GAP_0)).toBeNull()
+    expect(exclusionConflictOf(DIST_3, DIST_2)).toBeNull()
     expect(exclusionConflictOf(T, ODD)).toBeNull()
+  })
+
+  it('跨编码但同互斥组也算互斥：爪牙距离 1 与「旁边有爪牙」不能一起给', () => {
+    expect(exclusionConflictOf(BESIDE, DIST_1)?.reason).toBe(EXCLUSION_REASON)
+    expect(exclusionConflictOf(DIST_1, BESIDE)?.reason).toBe(EXCLUSION_REASON)
+  })
+
+  it('互斥组不同 ⇒ 不拦（同组的其它取值不是反面）', () => {
+    const otherGroup = option('fact:x', '场上有玩家中毒', 'False', '状态读数', 'poisoned-present', 'poisoned-present')
+    expect(exclusionConflictOf(DIST_2, otherGroup)).toBeNull()
   })
 
   it('缺事实编码的旧服务端数据宁可放行，也不误灰（服务端提交时仍会拒绝）', () => {
