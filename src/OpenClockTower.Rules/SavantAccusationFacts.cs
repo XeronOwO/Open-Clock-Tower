@@ -116,7 +116,7 @@ internal static class SavantAccusationFacts
     /// 这里刻意**不是**全花名册（30 条）：一局 5–6 席里不在场的角色恒为假，全铺开会让「点名」组里
     /// 三分之二是同一句恒假的废话（6 席局实测 125 条里 60 条）。说书人想报一个不在场的角色名，
     /// 走自由文本兜底（平台不替他校验真值，那本来就该由他裁量）。
-    /// 取舍记录：`docs/backlog/review/savant-fact-list-tradeoffs.md`（B1，2026-10-05 由代理自决收窄）。
+    /// 取舍记录：`docs/backlog/done/savant-fact-list-tradeoffs.md`（B1，2026-10-05 由代理自决收窄）。
     /// </remarks>
     private static IReadOnlyList<string> RoleClaimValues(SavantFactWorld world) =>
         [.. InPlayCharacters(world).Select(character => character.Value)];

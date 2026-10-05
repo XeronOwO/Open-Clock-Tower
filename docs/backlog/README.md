@@ -60,14 +60,16 @@ todo/  →  in-progress/  →  review/  →  done/
 
 ### Todo
 
-- [重获「白天能力」之后的那一夜：死者的行动格被点活却整夜停住](todo/regained-day-ability-night-slot-stall.md) — **High** — 集骨者重获杂耍艺人这类**白天**能力后，当夜那一格被 `PlanRegained` 点活（`SlotActivatedEvent` 确已落账），但计划走到那里既不挂裁定点也不发请求、`PlanCompleted` 永远为假——整夜卡死；真宿主确定性复现 + 实测证据表在票里
+（空）
+
 ### In progress
 
 ### Review
 
 ### Done
 
-- [集骨者重获能力：死亡杂耍艺人的白天入口（首个白天重新起算）](done/bone-collector-regained-juggler-day-entry.md) — **Medium** — 集骨者救活已死亡杂耍艺人的能力后，那名玩家在界面上拿不到公开猜测入口、提交也被拒（起算日只认角色变化记录）；补上重获窗口内「这一次持有从当天重新起算」的内核判定与投影权限位；批次 E42 判出矩阵 7 行全过（新装置 `verify-bone-collector-juggler` 取证档 42 项），咬出的"重获白天能力后当夜整夜停住"另立 `todo/regained-day-ability-night-slot-stall.md`
+- [重获「白天能力」之后的那一夜：原判「整夜停住」被实测推翻](done/regained-day-ability-night-slot-stall.md) — **High** — 原票判"那一格被点活却整夜卡住、`UnavailableReason` 与 `Rebind` 口径对不上"；实测**证伪**：那一格照常挂归属该席位的说书人裁定点，结清后夜自然走完（跳过 / 阻塞事件各 0 条）。原"复现"真正卡住的是**恶魔击杀格没人应答**，被用例的 `ForceAdvance` 兜底掩盖；三条同族宿主用例已去掉兜底改真提交（第三个 18s → 3s），装置补齐当夜唤醒面与到期面后取证档 52 项全过
+- [集骨者重获能力：死亡杂耍艺人的白天入口（首个白天重新起算）](done/bone-collector-regained-juggler-day-entry.md) — **Medium** — 集骨者救活已死亡杂耍艺人的能力后，那名玩家在界面上拿不到公开猜测入口、提交也被拒（起算日只认角色变化记录）；补上重获窗口内「这一次持有从当天重新起算」的内核判定与投影权限位；批次 E42 判出矩阵 7 行全过（新装置 `verify-bone-collector-juggler` 取证档 42 项），该装置当时咬出的"重获白天能力后当夜整夜停住"经实测**不成立**，由 `done/regained-day-ability-night-slot-stall.md` 证伪收口（到期面已并入同一装置，现 52 项）
 - [博学者候选事实清单：取舍与条数口径](done/savant-fact-list-tradeoffs.md) — **Low** — A 类（重复 / 不可达取值 / 同一段代码写两遍）、B1（`role-in-play` / `role-dead` 收窄成"本局在场角色"）、B2、C1、D1 全部自决落地；候选 182 → **134**，装置断言改**逐族精确条数**；批次 E42 判出矩阵 7 行全过（`verify-retention-day-info` 取证档 78 项）；C2（"昨晚没有人的能力未正常生效"）按缺观测面不做
 
 - [亡骨魔：夜间击杀 + 爪牙「保留能力」+ 集骨者「先失去」前置](done/vigormortis-death-ability-retention.md) — **High** — 契约落地前抽到它的局开不了夜；同时补上「死亡不等于失去能力」这条判据（保留能力窗口 + 说书人选中毒侧 + 死者在自己的格上仍被唤醒）；批次 E40 判出矩阵 7 行全过（新装置 `verify-retention-day-info` 74 项；冻结版门禁 1246 通过；主谋等跨剧本相克随扩展票）

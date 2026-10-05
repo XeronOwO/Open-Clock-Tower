@@ -428,7 +428,7 @@ async function driveSavantPickers(savantPage, witchPage) {
   // 变了（原先只钉总数，改一族、另一族补回来照样绿）。本局（6 席、这一天的账）**本批取证档实测**：
   //   座位关系 13 + 阵营与人数 41 + 昨晚与今天 7 + 状态读数 4 + 点名 69 = 134
   // 点名那一族比收窄前（125）少了 56：`role-in-play` / `role-dead` 的取值从"全花名册 30 个"收窄成
-  // "本局在场的角色"（各 30 → 各 6），见 docs/backlog/review/savant-fact-list-tradeoffs.md 的 B1。
+  // "本局在场的角色"（各 30 → 各 6），见 docs/backlog/done/savant-fact-list-tradeoffs.md 的 B1。
   const familyCounts = {
     座位关系: candidates.filter((item) => item.group === '座位关系').length,
     阵营与人数: candidates.filter((item) => item.group === '阵营与人数').length,

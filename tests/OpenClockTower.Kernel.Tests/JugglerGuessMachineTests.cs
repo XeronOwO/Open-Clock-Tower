@@ -151,7 +151,7 @@ public sealed class JugglerGuessMachineTests
     /// 但"这一次持有"已经用过，因此在窗口外的白天既不是首个白天、也没有可用的机会。
     /// </summary>
     /// <remarks>
-    /// 票据 `review/bone-collector-regained-juggler-day-entry.md` 行 5：原先只有间接覆盖
+    /// 票据 `done/bone-collector-regained-juggler-day-entry.md` 行 5：原先只有间接覆盖
     /// （"窗口不在 = 原口径"），这里把窗口**开了又关**走一遍。
     /// </remarks>
     [Fact]

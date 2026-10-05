@@ -318,7 +318,7 @@ public sealed class DayProjectionTests
     /// <summary>
     /// 集骨者窗口**到期**之后（下个黄昏 = 新的一夜开始，<see cref="DuskExpiry"/>）：起算点回到原处
     /// ——第 3 天既不给公开猜测入口，也不认第 2 天那次窗口内的猜测（票据
-    /// `review/bone-collector-regained-juggler-day-entry.md` 行 5，原先只有间接覆盖）。
+    /// `done/bone-collector-regained-juggler-day-entry.md` 行 5，原先只有间接覆盖）。
     /// </summary>
     /// <remarks>
     /// 这里把"窗口到期"这一步真的走一遍（<see cref="DuskExpiry.ExpireAll"/> → 状态账折叠），

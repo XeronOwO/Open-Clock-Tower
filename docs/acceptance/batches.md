@@ -1049,8 +1049,45 @@ Integration 188 · NormativeGates 24）；`dotnet format` 就地通过；`npm ru
   真宿主里 `PlanCompleted` 永远为假。票：`todo/regained-day-ability-night-slot-stall.md`
   （含确定性复现与实测证据表）。因此新装置**不跑到窗口到期的那一夜**，那一行的界面证据留作该票的
   验收行之一（装置头注释里写明了这个分工）。
+  - **更正（批次 E43，2026-10-05）：这条判断经实测不成立。** 那一格照常挂出归属该席位的报数裁定点，
+    结清后夜自然走完；原"确定性复现"里真正卡住的是**恶魔击杀格没人应答**，被用例的 `ForceAdvance`
+    兜底掩盖。本批"装置不跑到期那一夜"的限制已在 E43 解除（装置现跑到第 4 夜与第 3 天、52 项）。
+    证伪过程与逐行结论：`done/regained-day-ability-night-slot-stall.md`。
 - 残余（随票据留档）：博学者清单的 C2（"昨晚没有人的能力未正常生效"）首版不做，理由写在票据里
   （缺的是观测面，不是候选清单）；`role-in-play` 收窄后"某角色不在场"这类假话改走自由文本兜底。
+
+## 批次 E43（2026-10-05，重获白天能力「当夜卡死」的证伪 + 三条宿主用例去兜底 + 装置补到期面）
+
+冻结版本：`main` @ `9bb901e`（本轮开工前的提交）；跑的是同一套真宿主 + 真 Vite + 真浏览器 + 真 SQLite。
+本批收口一张 `todo/` 票据（`regained-day-ability-night-slot-stall`，**结论是证伪**，票转 `done/`）。
+冻结版门禁：`dotnet build` 0 警告 0 错误；`dotnet test` **1258 通过 / 0 失败**
+（内核 501 · 规则 489 · 集成 243 · 规范门禁 25）；`dotnet format` 退出 0。
+
+- **证伪的实测证据**（真宿主 `BoneCollectorDayEntryHostTests`，三条一起看才是完整判断）：
+  1. 重获白天能力之后，那一格**照常挂出说书人裁定点**：`CurrentSlotId = juggler`、
+     `AwaitingDecisionId = sv:night-2:juggler:decision`、归属 1 号席位；
+  2. 结清之后第 2 夜自然走完（`PlanCompleted = true`），第 2 天照常开得起来；
+  3. 事件流里 `PromptSkippedEvent` **0** 条、`SlotBlockedEvent` **0** 条——那一格既没被跳过也没被阻塞，
+     走的是"挂裁定点"这条正常分支，原票怀疑的 `UnavailableReason` / `Rebind` 口径矛盾不成立。
+- **原判为什么会错**：原"确定性复现"用例要靠 `ForceAdvance` 兜底 **8 次**才走完第 2 夜；拆掉兜底后
+  看到真正停住的是**恶魔击杀格**——夹具没连恶魔席位、请求挂在 `sv:night-2:fang-gu` 上没人应答，
+  兜底每一次都把这个"等玩家"的状态推过去，于是被记成"那一格卡住"。装置侧是同一个混淆：
+  被重获者的当夜提示**受众是说书人**（没有玩家选项），3 号玩家页整夜 `idle`——
+  **玩家页没有请求 ≠ 夜里停住**；那一格的界面证据要读说书人侧。
+- **同族对齐**：三条宿主用例去掉兜底，恶魔击杀格改由恶魔本人提交（点名已死席位，不改变状态）——
+  `BoneCollectorHostTests` 两条 + `BoneCollectorDayEntryHostTests` 一条。第三个用例 **18s → 3s**
+  （少掉 8 次兜底与 2s 等待），并且现在**真的**验证了"那一格被唤醒"（裁定点归属席位断言）。
+- 装置 `tools/verify-bone-collector-juggler.mjs`（取证档 `--quota 2 --screenshots-all --build`）：
+  **52 项全部通过 / 0 失败、退出码 0**（原 42 项，+10 条）；新增两段并改写错误注释：
+  第 9 段（第 4 夜＝下个黄昏）——整夜不再出现报数裁定点、3 号页 `idle`；
+  第 10 段（第 3 天）——入口不再出现、效果链「已终止（下个黄昏：窗口到期）」；
+  第 7 段追加当夜唤醒面 3 条（裁定点正文含"杂耍艺人获得信息"、魔典 3 号席位卡 `data-decision=true`、
+  玩家侧 `idle` 如实记录）。到期至此三层齐备（内核 / 集成 / 界面）。
+- 架构门禁当场抓到一次超限：`BoneCollectorHostTests.cs` 609 行（>600）——按"超限先拆再改"把
+  **白天能力**那一族拆成 `BoneCollectorDayEntryHostTests`（拆后 366 / 269 行）。
+- 顺手修的陈旧引用：4 处指向 `review/…`（票已转 `done/`）的路径改为 `done/…`——
+  `DayProjectionTests` / `JugglerGuessMachineTests` / `SavantAccusationFacts` / `verify-retention-day-info`。
+- 残余：无。
 
 ## 间歇性失败记录（不进批次，可复现时才升级为缺陷）
 

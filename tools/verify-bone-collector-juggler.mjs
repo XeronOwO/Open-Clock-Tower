@@ -18,11 +18,16 @@
  *   4) 第 3 夜：集骨者的候选里出现 3 号（逐条写明「已死亡」）→ 本人选中 → 「重获能力」窗口生效、
  *      3 号在自己的格上被唤醒（报数请求真的挂起来）；
  *   5) 第 2 天：**已经死亡的 3 号**在玩家页面上重新拿到公开猜测入口（本票正题）、提交被受理、
- *      进公开面、无关席位看得到同一份；同日第二次入口消失、绕开界面再提交也被拒。
+ *      进公开面、无关席位看得到同一份；同日第二次入口消失、绕开界面再提交也被拒；
+ *   6) 第 4 夜（下个黄昏）：窗口到期，3 号那一格回到空槽——说书人侧整夜不再出现报数裁定点；
+ *   7) 第 3 天：入口不再出现（与第 2 天的同一界面构成对照），说书人侧「重获能力」窗口显示已终止。
  *
- * **不做**的部分（如实说明）：第 3 夜（窗口到期）不在本装置里跑——重获白天能力之后，当夜那一格
- * 会被激活成"死者代行"的行动格而计划走到那里就停住，见 `todo/regained-day-ability-night-slot-stall.md`。
- * 到期的证据在测试层（内核 / 集成两层用例），见下面的分工说明。
+ * **夜间唤醒面的口径**（2026-10-05 实测，曾一度被误记为"整夜停住"）：重获一个**白天**能力的角色
+ * 被激活的那一格，挂的是**说书人报数裁定点**（`JugglerNightAction` 的提示没有玩家选项、受众是说书人），
+ * 所以 3 号自己的玩家页整夜保持 idle——**玩家页看不到请求不等于夜里停住**。那一格的证据要读
+ * 说书人侧：魔典席位卡的「待裁定」标记 + 裁定点正文。`runNight` 会如实结清它，第 3 夜据此走完。
+ * 早先那条"计划走到这里就停住"的判断来自 `BoneCollectorHostTests` 里一个**被兜底推进掩盖的假复现**
+ * （真正卡住的是恶魔击杀格没人应答），现已在集成层改成完整链路。
  *
  * 与主批次的分工：`verify-retention-day-info.mjs` 跑「保留能力（亡骨魔）」那一族；本装置独立一局，
  * 只跑「重获能力（集骨者）」这一条链路，不动那个装置的夜晚剧情。
@@ -113,7 +118,7 @@ const REGAINED_DAY_GUESS = { seat: MUTANT_SEAT, character: 'mutant' }
  * 改动本装置、增删断言时必须同步这个数字：条件分支被静默跳过（裁定点没出现、请求没来……）
  * 会让项数变少——那必须红，而不是悄悄少判几行。
  */
-const EXPECTED_CHECKS = 42
+const EXPECTED_CHECKS = 52
 /** 说书人浏览器页：本装置只有一个，读面板 / 下命令的助手都从这里取。 */
 let storytellerPage = null
 
@@ -133,12 +138,12 @@ try {
 }
 
 async function main() {
-  console.log('=== 1/9 构建并启动真宿主（独立临时库，5 席；集骨者第 1 天追加为第 6 席）===')
+  console.log('=== 1/10 构建并启动真宿主（独立临时库，5 席；集骨者第 1 天追加为第 6 席）===')
   const artifacts = await ensureServerArtifacts({ repositoryRoot, buildMode: config.buildMode })
   console.log(`  宿主产物：${artifacts.artifact}（${artifacts.built ? '本次构建' : '复用'}）`)
   await startServer()
 
-  console.log('=== 2/9 取票据并起 Vite ===')
+  console.log('=== 2/10 取票据并起 Vite ===')
   const ticket = readStorytellerTicket(databasePath)
   const seatTickets = readSeatTickets(databasePath)
   check('席位票据齐备（5 席）', seatTickets.length === ASSIGN.length, `数据库 ${seatTickets.length} 张`)
@@ -155,7 +160,7 @@ async function main() {
   children.push(vite)
   await waitForHttp(viteUrl, 'Vite 开发服务器', 60_000)
 
-  console.log('=== 3/9 说书人 + 杂耍艺人 / 畸形秀演员加入真浏览器；恶魔走线级探针 ===')
+  console.log('=== 3/10 说书人 + 杂耍艺人 / 畸形秀演员加入真浏览器；恶魔走线级探针 ===')
   const browser = await playwright.chromium.launch()
   const consoleErrors = []
   storytellerPage = await newPage(browser, { width: 1600, height: 1100 }, consoleErrors)
@@ -183,7 +188,7 @@ async function main() {
   // 之后那一页的断言就全是假绿，本装置踩过一次：无关席位证人的公开面读数读到 null）。
   const demonSeat = await connectSeat(seatTickets[DEMON_SEAT - 1])
 
-  console.log('=== 4/9 配板 → 首夜（只有钟表匠入格）→ 第 1 天 ===')
+  console.log('=== 4/10 配板 → 首夜（只有钟表匠入格）→ 第 1 天 ===')
   const assignmentSelects = storytellerPage.locator('section', { hasText: '开局分配' }).locator('select')
   for (const [index, slug] of ASSIGN.entries()) {
     await assignmentSelects.nth(index).selectOption(slug)
@@ -209,7 +214,7 @@ async function main() {
   const dayStatus = await waitForAttribute(storytellerPage.getByTestId('st-day'), 'data-day-status', 'Open', 30_000)
   check('说书人面板进入「白天进行中」', dayStatus === 'Open', `data-day-status=${dayStatus}`)
 
-  console.log('=== 5/9 第 1 天：活着的 3 号猜一次 → 加入集骨者 → 关账 ===')
+  console.log('=== 5/10 第 1 天：活着的 3 号猜一次 → 加入集骨者 → 关账 ===')
   await guessOnDay(jugglerPage, 1, FIRST_DAY_GUESS, { label: '第 1 天（本人活着）' })
 
   await storytellerPage.getByTestId('traveller-character').selectOption('bone-collector')
@@ -239,7 +244,7 @@ async function main() {
   )
   check('结束第 1 天被受理（不处决任何人）', firstDayClosed.kind === 'Accepted', firstDayClosed.raw)
 
-  console.log('=== 6/9 第 2 夜：恶魔杀死 3 号；集骨者候选里一个死者都没有 → 摇头不用 ===')
+  console.log('=== 6/10 第 2 夜：恶魔杀死 3 号；集骨者候选里一个死者都没有 → 摇头不用 ===')
   const secondNight = await startNightWhenReady(storytellerPage, 2)
   check('开第 2 夜被受理（第 1 天已结束）', secondNight.kind === 'Accepted', secondNight.raw)
   const secondNightRun = await runNight(storytellerPage, '第 2 夜', {
@@ -258,7 +263,7 @@ async function main() {
   )
   check(`${JUGGLER_SEAT} 号杂耍艺人在第 2 夜被恶魔击杀（真的死了）`, jugglerDead === 'Dead', `data-life=${jugglerDead}`)
 
-  console.log('=== 7/9 第 3 夜：集骨者选中已死亡的 3 号 → 重获能力窗口 → 他在自己的格上被唤醒 ===')
+  console.log('=== 7/10 第 3 夜：集骨者选中已死亡的 3 号 → 重获能力窗口 → 他在自己的格上被唤醒 ===')
   const thirdNight = await startNightWhenReady(storytellerPage, 3)
   check('开第 3 夜被受理（第 2 天还没开过：本装置不插第 2 天）', thirdNight.kind === 'Accepted', thirdNight.raw)
   const thirdNightRun = await runNight(storytellerPage, '第 3 夜', {
@@ -286,12 +291,26 @@ async function main() {
     regainedWindow.includes('重获能力'),
     regainedWindow.slice(0, 220),
   )
-  // 这里**不断言**"3 号在自己的格上被重新唤醒"：重获白天能力之后当夜那一格会被点活却把整夜卡住，
-  // 那是另一条缺陷（`todo/regained-day-ability-night-slot-stall.md`，含确定性复现）。
-  // 本装置的职责是白天入口那一侧，夜间面的证据在那条票里。
+  // 夜间唤醒面：那一格在**说书人侧**挂出报数裁定点（受众是说书人，所以 3 号的玩家页整夜 idle）。
+  // 这三条与第 9 段（到期后不再出现）构成对照——只判"第 4 夜没有"会假绿，必须同装置内两夜都判。
+  check(
+    '第 3 夜：死者的那一格在说书人侧被唤醒（挂出杂耍艺人的报数裁定点）',
+    thirdNightRun.jugglerDecisionContext.includes('杂耍艺人'),
+    thirdNightRun.jugglerDecisionContext.slice(0, 200) || '（本夜没有出现杂耍艺人的裁定点）',
+  )
+  check(
+    `第 3 夜：裁定点在魔典上归属 ${JUGGLER_SEAT} 号席位（席位卡标出「待裁定」）`,
+    thirdNightRun.jugglerSeatCardDecision === 'true',
+    `data-decision=${thirdNightRun.jugglerSeatCardDecision || '（空）'}`,
+  )
+  check(
+    '第 3 夜：报数裁定点不投给玩家页（受众是说书人，3 号那一页整夜保持 idle）',
+    thirdNightRun.jugglerPending === false,
+    `玩家侧 pending=${thirdNightRun.jugglerPending}`,
+  )
   await screenshot(storytellerPage, 'bone-collector-01-regain-window')
 
-  console.log('=== 8/9 第 2 天：死亡但重获能力的 3 号拿到公开猜测入口 → 再猜一次 ===')
+  console.log('=== 8/10 第 2 天：死亡但重获能力的 3 号拿到公开猜测入口 → 再猜一次 ===')
   const secondDay = await startDayWhenReady(storytellerPage)
   check('开第 2 天被受理（第 3 夜已走完）', secondDay.kind === 'Accepted', secondDay.raw)
   const dayOpen = await waitForAttribute(storytellerPage.getByTestId('st-day'), 'data-day-status', 'Open', 30_000)
@@ -316,14 +335,45 @@ async function main() {
   )
   check('结束第 2 天被受理（重获窗口在白天结束时仍然存续）', secondDayClosed.kind === 'Accepted', secondDayClosed.raw)
 
-  // **到此收口**：本装置不跑"窗口到期"那一夜。
-  // 原因（2026-10-05 实测）：重获一个**白天**能力之后，当夜那一格（空槽）会被激活成"死者代行"的行动格，
-  // 而计划走到那一格时既不挂裁定点也不发请求、夜间就此停住——第 3 夜过不去（新票
-  // `todo/regained-day-ability-night-slot-stall.md` 有完整复现与证据）。
-  // 到期本身的证据在测试三层各有覆盖：内核 `JugglerGuessMachineTests.Make_RejectsAgainAfterTheWindowExpires`、
-  // 集成 `DayProjectionTests.JugglerGuesses_WindowExpiresAtDusk_EntryDisappearsOnTheNextDay` 与
-  // `BoneCollectorHostTests` 的窗口终止断言。
-  console.log('  [说明] 第 2 天之后不再推进：到期取证在测试层（见本文件头注释与那条新票）')
+  console.log('=== 9/10 第 4 夜：下个黄昏 → 重获窗口到期，那一格回到空槽 ===')
+  const fourthNight = await startNightWhenReady(storytellerPage, 4)
+  check('开第 4 夜被受理（第 2 天已结束）', fourthNight.kind === 'Accepted', fourthNight.raw)
+  const fourthNightRun = await runNight(storytellerPage, '第 4 夜', {
+    demonSeat,
+    // 恶魔照旧点名 3 号：他已经死了，这一刀不改变任何状态。
+    killSeat: JUGGLER_SEAT,
+    jugglerPage,
+  })
+  check(
+    '第 4 夜：说书人侧没有再出现杂耍艺人的报数裁定点（能力随窗口收回）',
+    fourthNightRun.jugglerDecisionContext === '',
+    fourthNightRun.jugglerDecisionContext.slice(0, 200) || '（本夜没有杂耍艺人的裁定点）',
+  )
+  check(
+    '第 4 夜：3 号那一页整夜没有请求（死者不再被唤醒）',
+    fourthNightRun.jugglerPending === false,
+    `玩家侧 pending=${fourthNightRun.jugglerPending}`,
+  )
+  await screenshot(storytellerPage, 'bone-collector-04-regain-expired-night')
+
+  console.log('=== 10/10 第 3 天：窗口到期后入口不再出现（与第 2 天同一界面对照）===')
+  const thirdDay = await startDayWhenReady(storytellerPage)
+  check('开第 3 天被受理（第 4 夜已走完）', thirdDay.kind === 'Accepted', thirdDay.raw)
+  const dayThreeOpen = await waitForAttribute(storytellerPage.getByTestId('st-day'), 'data-day-status', 'Open', 30_000)
+  check('说书人面板进入「白天进行中」（窗口已到期的那个白天）', dayThreeOpen === 'Open', `data-day-status=${dayThreeOpen}`)
+  const entryAfterExpiry = await jugglerPage.getByTestId('player-juggler').count()
+  check(
+    '第 3 天：3 号的公开猜测入口不再出现（重获能力已收回，起算点回到原处）',
+    entryAfterExpiry === 0,
+    `入口数=${entryAfterExpiry}`,
+  )
+  const expiredWindowRow = await effectWindowRow(storytellerPage, '重获能力')
+  check(
+    '说书人侧「重获能力」窗口显示已终止（下个黄昏收口）',
+    expiredWindowRow.includes('已终止'),
+    expiredWindowRow.slice(0, 220) || '（效果链里没有重获能力那一行）',
+  )
+  await screenshot(jugglerPage, 'bone-collector-05-entry-gone-after-expiry')
 
   check('浏览器控制台没有报错', consoleErrors.length === 0, consoleErrors.slice(0, 3).join(' | '))
   check(
@@ -425,6 +475,8 @@ async function runNight(page, label, night) {
   const summary = {
     deadCandidatePreviews: [],
     decisionCount: 0,
+    jugglerDecisionContext: '',
+    jugglerSeatCardDecision: '',
     jugglerPending: false,
     killed: false,
     pendingSeen: false,
@@ -448,6 +500,15 @@ async function runNight(page, label, night) {
     const decision = await readDecisionPanel(page)
     if (decision.context.length > 0) {
       summary.decisionCount += 1
+      if (decision.context.includes('杂耍艺人')) {
+        // 重获白天能力的当夜证据：那一格在**说书人侧**挂出报数裁定点，魔典上归属 3 号席位。
+        // 记下来但不在这里结清（下面照常按自由决定结清）——断言在第 7 段与第 9 段做。
+        summary.jugglerDecisionContext = decision.context
+        summary.jugglerSeatCardDecision = (await readAttributeBounded(
+          page.locator(`[data-testid="grimoire-seat"][data-seat="${JUGGLER_SEAT}"]`),
+          'data-decision',
+        )) ?? ''
+      }
 
       // 其余裁定点（钟表匠 / 杂耍艺人的报数一类自由决定）：如实结清。
       const settled = await settleFreeDecision(page, '0')
@@ -965,6 +1026,22 @@ async function waitForEffectWindow(page, needle, timeoutMs) {
   }
 
   return text
+}
+
+/**
+ * 效果链里含目标窗口名的**整行**文本（含状态列：生效中 / 已终止）。
+ *
+ * 与 `waitForEffectWindow` 的分工：那个读的是窗口标签那一个小 span（只判"窗口在不在"），
+ * 到期这条要读**整行**才能拿到状态列（`EffectChainPanel` 的「已终止」）。
+ */
+async function effectWindowRow(page, needle) {
+  await openDataDrawer(page)
+  const cell = page.locator('[data-window="true"]').filter({ hasText: needle }).first()
+  if ((await cell.count()) === 0) {
+    return ''
+  }
+
+  return compact(await cell.evaluate((element) => element.closest('tr')?.textContent ?? ''))
 }
 
 async function waitForText(locator, expected, timeoutMs) {
