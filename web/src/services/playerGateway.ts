@@ -307,6 +307,15 @@ export class PlayerGateway {
     )
   }
 
+  /** 博学者在白天向说书人要两条信息（R-0057；内容由说书人给，命令没有参数）。 */
+  async askSavantQuestion(idempotencyKey: string): Promise<unknown> {
+    return this.connection.invoke<unknown>(
+      'AskSavantQuestion',
+      this.requireCredential(),
+      idempotencyKey,
+    )
+  }
+
   /**
    * 拉取一页复盘（R-0043 / D-0020）。
    *
@@ -593,6 +602,8 @@ export function normalizePlayerView(raw: unknown): PlayerViewDto | null {
     seatNames: normalizeSeatNames(view['seatNames']),
     pendingQuestion: asSizedText(view['pendingQuestion'], 200),
     canAskArtistQuestion: asBoolean(view['canAskArtistQuestion']) ?? false,
+    canAskSavantQuestion: asBoolean(view['canAskSavantQuestion']) ?? false,
+    awaitingSavantQuestion: asBoolean(view['awaitingSavantQuestion']) ?? false,
     exhaustedAbilities: asTextArray(view['exhaustedAbilities']),
   }
 }
@@ -610,6 +621,8 @@ function emptyPlayerView(): PlayerViewDto {
     seatNames: [],
     pendingQuestion: null,
     canAskArtistQuestion: false,
+    canAskSavantQuestion: false,
+    awaitingSavantQuestion: false,
     exhaustedAbilities: [],
   }
 }

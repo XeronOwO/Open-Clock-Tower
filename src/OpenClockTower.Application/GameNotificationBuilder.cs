@@ -170,6 +170,26 @@ public static class GameNotificationBuilder
                     });
                     break;
 
+                // 博学者的要信息（R-0057）：同款——请求 / 结清各推一次本人视图，
+                // 否则入口与等待态只能等重连快照才更新。
+                case SavantQuestionAskedEvent savantAsked:
+                    notifications.Add(new GameNotification
+                    {
+                        Kind = GameNotificationKind.PlayerViewChanged,
+                        Sequence = draft.Sequence,
+                        Seat = savantAsked.Seat,
+                    });
+                    break;
+
+                case SavantQuestionClosedEvent savantClosed:
+                    notifications.Add(new GameNotification
+                    {
+                        Kind = GameNotificationKind.PlayerViewChanged,
+                        Sequence = draft.Sequence,
+                        Seat = savantClosed.Seat,
+                    });
+                    break;
+
                 case KlutzChoiceMadeEvent choice:
                     notifications.Add(new GameNotification
                     {

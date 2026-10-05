@@ -130,6 +130,25 @@ internal static class GameCommandDispatcher
             }));
         }
 
+        // 博学者的白天要信息（R-0057）：与艺术家同款——席位由凭据推导，命令没有参数。
+        if (envelope.Command is AskSavantQuestionCommand)
+        {
+            if (envelope.Actor.Seat is not { } savant)
+            {
+                return CommandDispatchResult.Rejected(new CommandRejection
+                {
+                    Code = "identity.player_only",
+                    Message = "博学者的要信息必须由持席位的玩家发出",
+                    Gate = "identity",
+                });
+            }
+
+            return Translate(StepMachine.Handle(machine, settlement, new AskSavantQuestionInput
+            {
+                Seat = savant,
+            }));
+        }
+
         if (envelope.Command is StartVoteSweepCommand or ResumeVoteSweepCommand or CountVotesCommand
             or StartExileSweepCommand or ResumeExileSweepCommand or CountExileVotesCommand
             or ResolveDayProtectionCommand

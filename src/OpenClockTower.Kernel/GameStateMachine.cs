@@ -122,6 +122,11 @@ public static class GameStateMachine
             ArtistQuestionAskedEvent => current,
             ArtistQuestionClosedEvent => current,
 
+            // 博学者的白天提问（R-0057）：与艺术家同族——改的是步骤机状态（进行中提问与「今天要过」的账），
+            // 两条信息走 InformationResultIssuedEvent 进事件流按收件人投影。
+            SavantQuestionAskedEvent => current,
+            SavantQuestionClosedEvent => current,
+
             // 方古的「限一次」标记（R-0034）：整局事实记在步骤机状态里，不改六维度与效果；
             // 侵染产生的角色 / 阵营变化与死亡另有配套的 SeatStateChangedEvent 折进账里。
             FangGuInfectionRecordedEvent => current,

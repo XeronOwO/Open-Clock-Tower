@@ -140,6 +140,25 @@ public sealed record StepMachineState
     /// </remarks>
     public ArtistQuestion? ArtistQuestion { get; init; }
 
+    /// <summary>
+    /// 博学者的进行中提问（白天向说书人要两条信息）；null = 没有进行中的提问（R-0057）。
+    /// </summary>
+    /// <remarks>
+    /// 与 <see cref="ArtistQuestion"/> 同族：只属于当前阶段，结清（已回答 / 强推作废）后清空；
+    /// 阶段边界上仍挂着即视为收口缺失（显式失败，不顺延）。
+    /// </remarks>
+    public SavantQuestion? SavantQuestion { get; init; }
+
+    /// <summary>
+    /// 今天已经要过信息的席位；null = 还没有人用过（R-0057：博学者**每个白天**一次）。
+    /// </summary>
+    /// <remarks>
+    /// 与艺术家的「每局限一次」不同：那个的用度记在能力使用账本上（整局累计），
+    /// 这个按白天记账——阶段边界不携带（新白天自然可以再要一次）。
+    /// 记席位而不是布尔：角色中途换手时，新的持有者今天还没用过。
+    /// </remarks>
+    public SeatId? SavantAskedSeat { get; init; }
+
     /// <summary>当前槽位；计划已走完时为 null。</summary>
     public StepSlot? CurrentSlot =>
         SlotIndex >= 0 && SlotIndex < Plan.Slots.Count ? Plan.Slots[SlotIndex] : null;

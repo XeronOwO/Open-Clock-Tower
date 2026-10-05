@@ -228,6 +228,8 @@ describe('重连补齐折叠（快照权威）', () => {
       seatNames: [],
       pendingQuestion: null,
       canAskArtistQuestion: false,
+      canAskSavantQuestion: false,
+      awaitingSavantQuestion: false,
       exhaustedAbilities: [],
     },
     events,

@@ -100,6 +100,8 @@ public static class ProjectionMapper
         SeatNames = [.. view.SeatNames.Select(ToDto)],
         PendingQuestion = view.PendingQuestion,
         CanAskArtistQuestion = view.CanAskArtistQuestion,
+        CanAskSavantQuestion = view.CanAskSavantQuestion,
+        AwaitingSavantQuestion = view.AwaitingSavantQuestion,
         ExhaustedAbilities = [.. view.ExhaustedAbilities],
     };
 

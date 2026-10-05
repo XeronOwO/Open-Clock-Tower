@@ -518,6 +518,10 @@ export interface PlayerViewDto {
   pendingQuestion: string | null
   /** 本人此刻能不能发起艺术家的白天提问（白天 + 本人是艺术家 + 还没用过）；只对本人生效。 */
   canAskArtistQuestion: boolean
+  /** 本人此刻能不能向说书人要两条信息（白天 + 本人是博学者 + 今天还没要过）；只对本人生效（R-0057）。 */
+  canAskSavantQuestion: boolean
+  /** 本人有一条博学者提问在等说书人给两条信息；只对本人生效（R-0057）。 */
+  awaitingSavantQuestion: boolean
   /** 本人已经用尽的一次性能力 slug（R-0040）；只列本人的。 */
   exhaustedAbilities: string[]
 }

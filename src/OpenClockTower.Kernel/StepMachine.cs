@@ -149,6 +149,7 @@ public static class StepMachine
             SeatStateChangedInput seatChanged => HandleSeatStateChanged(state, context, seatChanged),
             ResolveDecisionPointInput resolve => HandleDecisionResolved(state, context, resolve),
             AskArtistQuestionInput artistQuestion => ArtistQuestionMachine.Ask(state, context, artistQuestion),
+            AskSavantQuestionInput savantQuestion => SavantQuestionMachine.Ask(state, context, savantQuestion),
             PunishExecutionInput punish => AdjudicatedExecutionMachine.Handle(state, context, punish),
             PitHagCasualtyInput casualty => PitHagNightMachine.HandleCasualty(state, context, casualty),
             ResolveDeferredDeathInput deferredDeath => PitHagNightMachine.HandleResolve(state, context, deferredDeath),
@@ -502,6 +503,18 @@ public static class StepMachine
                 state,
                 context,
                 artistQuestion,
+                input.Decision,
+                input.Note);
+        }
+
+        // 博学者的白天提问（R-0057）：与艺术家同族，两条信息由说书人给。
+        if (state.SavantQuestion is { } savantQuestion
+            && state.AwaitingDecision.Id == SavantQuestionMachine.DecisionIdOf(state))
+        {
+            return SavantQuestionMachine.Resolve(
+                state,
+                context,
+                savantQuestion,
                 input.Decision,
                 input.Note);
         }

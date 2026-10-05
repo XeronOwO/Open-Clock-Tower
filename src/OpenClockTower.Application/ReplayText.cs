@@ -82,6 +82,14 @@ internal static class ReplayText
         _ => closure.ToString(),
     };
 
+    /// <summary>博学者提问结清方式文本（R-0057）。</summary>
+    internal static string SavantClosure(SavantQuestionClosure closure) => closure switch
+    {
+        SavantQuestionClosure.Answered => "已给出两条信息",
+        SavantQuestionClosure.Abandoned => "越过作废",
+        _ => closure.ToString(),
+    };
+
     /// <summary>把选项值翻译成人话：seat:N / pair:A+B / decline / 两维编码 / 未知原样回显。</summary>
     internal static string Option(string? value, ReplaySeatText seatText)
     {

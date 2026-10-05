@@ -43,6 +43,9 @@ public sealed record SettlementContext
     /// <summary>艺术家提问依据契约（规则层实现）；没有时任何提问都会被显式拒绝。</summary>
     public IReadOnlyList<IArtistQuestionSource> ArtistQuestions { get; init; } = [];
 
+    /// <summary>博学者提问依据契约（规则层实现，R-0057）；没有时任何要信息的命令都会被显式拒绝。</summary>
+    public IReadOnlyList<ISavantQuestionSource> SavantQuestions { get; init; } = [];
+
     /// <summary>
     /// 死亡保护来源（规则层实现，R-0048）；没有时任何死亡都不受保护——行为与保护机制引入前一致。
     /// </summary>

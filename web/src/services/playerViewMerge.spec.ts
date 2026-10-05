@@ -67,6 +67,8 @@ function snapshotView(overrides: Partial<PlayerViewDto> = {}): PlayerViewDto {
     seatNames: [],
     pendingQuestion: null,
     canAskArtistQuestion: false,
+    canAskSavantQuestion: false,
+    awaitingSavantQuestion: false,
     exhaustedAbilities: [],
     ...overrides,
   }
@@ -114,6 +116,23 @@ describe('补齐往返窗口：推送与快照按序号合并', () => {
 
     expect(changed).toBe(true)
     expect(merge.snapshot().seatNames).toEqual([{ seat: 1, displayName: '爱丽丝二世' }])
+  })
+
+  it('博学者的要信息入口与等待态随快照合并（R-0057）', () => {
+    const merge = new PlayerViewMerge()
+    merge.applySnapshot(snapshotView({ canAskSavantQuestion: true, awaitingSavantQuestion: false }), 4)
+    expect(merge.snapshot().canAskSavantQuestion).toBe(true)
+    expect(merge.snapshot().awaitingSavantQuestion).toBe(false)
+
+    // 开口之后：权限位撤下、等待态置起——两个字段各自按序号更新。
+    merge.applySnapshot(snapshotView({ canAskSavantQuestion: false, awaitingSavantQuestion: true }), 5)
+    expect(merge.snapshot().canAskSavantQuestion).toBe(false)
+    expect(merge.snapshot().awaitingSavantQuestion).toBe(true)
+
+    // 更早序号的快照不许把它们盖回去（陈旧包不采纳）。
+    merge.applySnapshot(snapshotView({ canAskSavantQuestion: true, awaitingSavantQuestion: false }), 3)
+    expect(merge.snapshot().canAskSavantQuestion).toBe(false)
+    expect(merge.snapshot().awaitingSavantQuestion).toBe(true)
   })
 
   it('同一条推送重复到达：按序号幂等（不重复）', () => {

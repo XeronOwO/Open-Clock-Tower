@@ -68,6 +68,28 @@ internal static class PendingChoiceGate
             : null;
     }
 
+    /// <summary>博学者的白天提问（R-0057）未结清：与艺术家同款——只挡阶段推进 / 收口白天。</summary>
+    internal static CommandRejection? SavantQuestionPending(StepMachineState? machine, GameCommand command)
+    {
+        if (machine?.SavantQuestion is null)
+        {
+            return null;
+        }
+
+        return command is StartPhaseCommand
+            or StartDayCommand
+            or StartNightCommand
+            or CloseDayCommand
+            or PunishExecutionCommand
+            ? new CommandRejection
+            {
+                Code = "phase.savant_question_pending",
+                Message = "还有一条未结清的博学者提问（说书人）：先给出两条信息，或由说书人强推作废",
+                Gate = "phase",
+            }
+            : null;
+    }
+
     /// <summary>「推进 / 收口类」命令的完整名单：与触发型挂起的既有口径一致。</summary>
     private static bool IsAdvancing(GameCommand command) =>
         command is StartPhaseCommand

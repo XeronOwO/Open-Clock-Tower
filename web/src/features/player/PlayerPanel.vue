@@ -56,6 +56,12 @@ const pendingQuestion = ref<string | null>(null)
 const artistQuestion = ref('')
 const artistQuestionSubmitting = ref(false)
 
+/** 博学者要两条信息（R-0057）：服务端只在"白天 + 本人是博学者 + 今天还没要过"时下发 true。 */
+const canAskSavantQuestion = ref(false)
+/** 本人有一条博学者提问在等说书人给两条信息（等待态，服务端下发）。 */
+const awaitingSavantQuestion = ref(false)
+const savantSubmitting = ref(false)
+
 let gateway: PlayerGateway | null = null
 let clientSequence = 0
 
@@ -266,6 +272,8 @@ function applyView(next: PlayerViewDto): void {
   klutzChoices.value = [...next.klutzChoices]
   canAskArtistQuestion.value = next.canAskArtistQuestion
   pendingQuestion.value = next.pendingQuestion
+  canAskSavantQuestion.value = next.canAskSavantQuestion
+  awaitingSavantQuestion.value = next.awaitingSavantQuestion
 
   if (next.pendingRequest === null) {
     selectedOption.value = ''
@@ -362,6 +370,29 @@ async function askArtistQuestion(): Promise<void> {
   }
 }
 
+/** 博学者要两条信息（R-0057）：内容由说书人给（一真一假），两条都只发给他自己。 */
+async function askSavantQuestion(): Promise<void> {
+  savantSubmitting.value = true
+  try {
+    const raw = await ensureGateway().askSavantQuestion(newIdempotencyKey('savant-question'))
+    if (raw === null || typeof raw !== 'object') {
+      pushDiagnostic('回执形状不可识别')
+      return
+    }
+
+    const kind = (raw as Record<string, unknown>)['kind']
+    if (kind === 'Accepted' || kind === 'Duplicate') {
+      return
+    }
+
+    pushDiagnostic(`要信息未成功：${String(kind)}`)
+  } catch (error) {
+    pushDiagnostic(`要信息失败：${error instanceof Error ? error.message : String(error)}`)
+  } finally {
+    savantSubmitting.value = false
+  }
+}
+
 async function submit(): Promise<void> {
   const request = pending.value
   if (request === null) {
@@ -432,6 +463,8 @@ async function disconnect(): Promise<void> {
   canAskArtistQuestion.value = false
   pendingQuestion.value = null
   artistQuestion.value = ''
+  canAskSavantQuestion.value = false
+  awaitingSavantQuestion.value = false
 }
 
 /** 胜方文案：未知取值原样回显（服务端数据是不可信输入，不猜、不吞）。 */
@@ -628,6 +661,34 @@ onBeforeUnmount(() => {
             提问
           </button>
         </template>
+      </section>
+
+      <!-- 三态：可要信息（idle）/ 等待说书人给两条（waiting）/ 今天已经要过（整块撤下）。 -->
+      <section
+        v-if="canAskSavantQuestion || awaitingSavantQuestion"
+        class="panel"
+        data-testid="player-savant-question"
+        :data-question-state="awaitingSavantQuestion ? 'waiting' : 'idle'"
+      >
+        <h2>向说书人要两条信息</h2>
+        <p class="block-question">每个白天一次；说书人会给你一条正确、一条错误的信息，你不知道哪条是哪个。两条都只发给你自己。</p>
+        <p
+          v-if="awaitingSavantQuestion"
+          class="context"
+          data-testid="player-savant-question-pending"
+        >
+          已开口，等待说书人给出两条信息。
+        </p>
+        <button
+          v-else
+          type="button"
+          class="primary"
+          :disabled="savantSubmitting"
+          data-testid="player-savant-question-submit"
+          @click="askSavantQuestion()"
+        >
+          要两条信息
+        </button>
       </section>
 
       <section v-if="klutzChoices.length > 0" class="panel" data-testid="player-klutz-choices">

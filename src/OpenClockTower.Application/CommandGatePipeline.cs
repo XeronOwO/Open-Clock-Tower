@@ -152,6 +152,7 @@ public static class CommandGatePipeline
                 => ExileGate.IdentityRejection(envelope.Command, actor),
 
             AskArtistQuestionCommand => ArtistQuestionGate.IdentityRejection(actor),
+            AskSavantQuestionCommand => SavantQuestionGate.IdentityRejection(actor),
 
             CountVotesCommand when actor.Kind is ActorKind.Host or ActorKind.Storyteller => null,
             CountVotesCommand => Reject(
@@ -230,6 +231,12 @@ public static class CommandGatePipeline
         if (PendingChoiceGate.ArtistQuestionPending(machine, envelope.Command) is { } artistPending)
         {
             return artistPending;
+        }
+
+        // 博学者的白天提问（R-0057）：与艺术家同款白名单。
+        if (PendingChoiceGate.SavantQuestionPending(machine, envelope.Command) is { } savantPending)
+        {
+            return savantPending;
         }
 
         switch (envelope.Command)
@@ -318,6 +325,10 @@ public static class CommandGatePipeline
             // 艺术家的提问同样只在白天开着时可用（R-0040）；具体规则（是不是艺术家、用没用过）在内核里判。
             case AskArtistQuestionCommand:
                 return ArtistQuestionGate.DayRequirement(machine);
+
+            // 博学者的要信息同理（R-0057）：是不是博学者、今天要过没有在内核里判。
+            case AskSavantQuestionCommand:
+                return SavantQuestionGate.DayRequirement(machine);
 
             // 处罚处决可在任何已开始的阶段发生（含夜晚、含提名阶段之外：百科《畸形秀演员》；
             // R-0020）：具体依据（要求是否生效 / 是不是畸形秀演员）在内核里判，这里只要求对局已开始。

@@ -35,6 +35,12 @@ public sealed record PlayerViewDto
     /// <summary>本人此刻能不能发起艺术家的白天提问（白天开着、本人是艺术家且还没用过）。只对本人生效。</summary>
     public bool CanAskArtistQuestion { get; init; }
 
+    /// <summary>本人此刻能不能向说书人要两条信息（白天开着、本人是博学者且今天还没要过；R-0057）。只对本人生效。</summary>
+    public bool CanAskSavantQuestion { get; init; }
+
+    /// <summary>本人有一条博学者提问在等说书人给两条信息（R-0057）。只对本人生效。</summary>
+    public bool AwaitingSavantQuestion { get; init; }
+
     /// <summary>本人已经用尽的一次性能力 slug（R-0040）；只列本人的。</summary>
     public string[] ExhaustedAbilities { get; init; } = [];
 }

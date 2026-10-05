@@ -68,6 +68,11 @@ export class PlayerViewMerge {
   private pendingQuestionSequence = -1
   private canAskArtistQuestion = false
   private canAskArtistQuestionSequence = -1
+  /** 博学者要信息（R-0057）：权限位与等待态，随快照 / 本人视图推送按序号更新。 */
+  private canAskSavantQuestion = false
+  private canAskSavantQuestionSequence = -1
+  private awaitingSavantQuestion = false
+  private awaitingSavantQuestionSequence = -1
   private exhaustedAbilities: string[] = []
   private exhaustedAbilitiesSequence = -1
   /** 已收到的信息结果：序号 → 条目（同一序号只可能有一条事实，天然去重）。 */
@@ -141,6 +146,18 @@ export class PlayerViewMerge {
       changed = true
     }
 
+    if (sequence > this.canAskSavantQuestionSequence) {
+      this.canAskSavantQuestion = view.canAskSavantQuestion
+      this.canAskSavantQuestionSequence = sequence
+      changed = true
+    }
+
+    if (sequence > this.awaitingSavantQuestionSequence) {
+      this.awaitingSavantQuestion = view.awaitingSavantQuestion
+      this.awaitingSavantQuestionSequence = sequence
+      changed = true
+    }
+
     if (sequence > this.exhaustedAbilitiesSequence) {
       this.exhaustedAbilities = [...view.exhaustedAbilities]
       this.exhaustedAbilitiesSequence = sequence
@@ -180,6 +197,10 @@ export class PlayerViewMerge {
     this.pendingQuestionSequence = -1
     this.canAskArtistQuestion = false
     this.canAskArtistQuestionSequence = -1
+    this.canAskSavantQuestion = false
+    this.canAskSavantQuestionSequence = -1
+    this.awaitingSavantQuestion = false
+    this.awaitingSavantQuestionSequence = -1
     this.exhaustedAbilities = []
     this.exhaustedAbilitiesSequence = -1
     this.information.clear()
@@ -277,6 +298,8 @@ export class PlayerViewMerge {
       seatNames: [...this.seatNames].sort((left, right) => left.seat - right.seat),
       pendingQuestion: this.pendingQuestion,
       canAskArtistQuestion: this.canAskArtistQuestion,
+      canAskSavantQuestion: this.canAskSavantQuestion,
+      awaitingSavantQuestion: this.awaitingSavantQuestion,
       exhaustedAbilities: [...this.exhaustedAbilities],
     }
   }

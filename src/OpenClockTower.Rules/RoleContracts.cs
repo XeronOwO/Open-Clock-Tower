@@ -46,6 +46,10 @@ public static class RoleContracts
     public static IReadOnlyList<IArtistQuestionSource> ArtistQuestions { get; } =
         [new ArtistQuestionSource()];
 
+    /// <summary>博学者提问依据契约（R-0057）：两条信息的格式、真假口径与失效分类。</summary>
+    public static IReadOnlyList<ISavantQuestionSource> SavantQuestions { get; } =
+        [new SavantQuestionSource()];
+
     /// <summary>死亡保护来源（R-0048）：怪咖的「当天不能被流放」（流放致死收口读它）。</summary>
     public static IReadOnlyList<IDeathProtectionSource> DeathProtections { get; } =
         [new DeviantProtectionSource()];

@@ -93,6 +93,15 @@ internal static class DayStepMachine
                 "还有艺术家的提问没有结清：先由说书人回答（或要求重问 / 强推作废），再结束白天");
         }
 
+        // 博学者的提问未结清时同样不能关账（R-0057）：两条信息必须在白天内给出——或由说书人强推作废。
+        if (input is CloseDayInput && state.SavantQuestion is not null)
+        {
+            return Reject(
+                state,
+                "day.savant_question_pending",
+                "还有博学者的提问没有结清：先由说书人给出两条信息（或强推作废），再结束白天");
+        }
+
         var day = state.Day ?? DayState.Empty;
         var outcome = input switch
         {
@@ -217,6 +226,26 @@ internal static class DayStepMachine
             {
                 Seat = artistQuestion.Seat,
                 Closure = ArtistQuestionClosure.Abandoned,
+            });
+        }
+
+        // 博学者的提问（R-0057）：强推越过时同样显式作废——不记账、不产信息，绝不留到下一阶段。
+        if (state.SavantQuestion is { } savantQuestion)
+        {
+            if (state.AwaitingDecision?.Id == SavantQuestionMachine.DecisionIdOf(state))
+            {
+                events.Add(new DecisionPointResolvedEvent
+                {
+                    DecisionPointId = SavantQuestionMachine.DecisionIdOf(state),
+                    Decision = null,
+                    Note = $"强推：{input.Reason}",
+                });
+            }
+
+            events.Add(new SavantQuestionClosedEvent
+            {
+                Seat = savantQuestion.Seat,
+                Closure = SavantQuestionClosure.Abandoned,
             });
         }
 

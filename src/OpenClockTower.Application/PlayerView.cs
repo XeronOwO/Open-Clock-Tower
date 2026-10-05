@@ -60,6 +60,18 @@ public sealed record PlayerView
     public bool CanAskArtistQuestion { get; init; }
 
     /// <summary>
+    /// 本人此刻能不能向说书人要两条信息（白天开着、本人是博学者且今天还没要过；R-0057）。
+    /// 只对本人生效——它是权限位，不是其他人的观察面。
+    /// </summary>
+    public bool CanAskSavantQuestion { get; init; }
+
+    /// <summary>
+    /// 本人此刻有一条博学者提问在等说书人给两条信息（R-0057）。
+    /// 只对本人生效——它是等待态，不是其他人的观察面。
+    /// </summary>
+    public bool AwaitingSavantQuestion { get; init; }
+
+    /// <summary>
     /// 本人已经用尽的一次性能力 slug（如 <c>artist</c> / <c>seamstress</c>）；空数组 = 没有用尽（R-0040）。
     /// 只列本人的：其他人的用度是私密信息（D-0012 §4.3）。
     /// </summary>

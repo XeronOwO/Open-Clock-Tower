@@ -32,6 +32,7 @@ public sealed class GameHub : Hub<IGameClient>
     private readonly SeatJoinCoordinator _join;
     private readonly SeatBindingService _bindings;
     private readonly SeatNameDirectory _seatNames;
+    private readonly HubCommandExecutor _executor;
     private readonly ILogger<GameHub> _logger;
 
     /// <summary>构造 Hub。</summary>
@@ -58,6 +59,7 @@ public sealed class GameHub : Hub<IGameClient>
         _join = join;
         _bindings = bindings;
         _seatNames = seatNames;
+        _executor = new HubCommandExecutor(session, dispatcher);
         _logger = logger;
     }
 
@@ -154,6 +156,15 @@ public sealed class GameHub : Hub<IGameClient>
         ExecuteAsync(
             ResolveActor(credential),
             Commands().AskArtistQuestion(question),
+            idempotencyKey);
+
+    /// <summary>玩家（博学者）在白天向说书人要两条信息（R-0057）。</summary>
+    public Task<CommandResultDto> AskSavantQuestion(
+        string credential,
+        string idempotencyKey) =>
+        ExecuteAsync(
+            ResolveActor(credential),
+            Commands().AskSavantQuestion(),
             idempotencyKey);
 
     /// <summary>说书人强制作废。</summary>
@@ -539,25 +550,16 @@ public sealed class GameHub : Hub<IGameClient>
         await base.OnDisconnectedAsync(exception);
     }
 
-    private async Task<CommandResultDto> ExecuteAsync(
+    /// <summary>
+    /// 执行一条命令（执行机制在 <see cref="HubCommandExecutor"/>，单文件 600 行门禁）；
+    /// 这里只把当前连接的取消令牌接上。
+    /// </summary>
+    private Task<CommandResultDto> ExecuteAsync(
         Actor actor,
         GameCommand command,
         string idempotencyKey,
-        long clientSequence = 0)
-    {
-        var result = await _session.ExecuteAsync(
-            new CommandEnvelope
-            {
-                Command = command,
-                Actor = actor,
-                IdempotencyKey = idempotencyKey,
-                ClientSequence = clientSequence,
-            },
-            Context.ConnectionAborted);
-
-        await _dispatcher.DispatchAsync(result, Context.ConnectionAborted);
-        return ProjectionMapper.ToDto(result);
-    }
+        long clientSequence = 0) =>
+        _executor.ExecuteAsync(actor, command, idempotencyKey, clientSequence, Context.ConnectionAborted);
 
     private async Task<GameSetup> LoadSetupAsync()
     {

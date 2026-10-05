@@ -377,6 +377,10 @@ public sealed class DayPhaseHostTests
     }
 
     /// <summary>与白天相关、但契约未实现的角色在场 → 开白天显式拒绝，不静默跳过。</summary>
+    /// <remarks>
+    /// 用还没实现的**杂耍艺人**（博学者已随 R-0057 落地；两者都在白天的"未覆盖"名单里进出，
+    /// 这条测试跟着名单走）。
+    /// </remarks>
     [Fact]
     public async Task StartDay_WithUnimplementedDayRelevantCharacter_IsRejected()
     {
@@ -389,14 +393,14 @@ public sealed class DayPhaseHostTests
             {
                 new() { Seat = 1, Character = "dreamer" },
                 new() { Seat = 2, Character = "clockmaker" },
-                new() { Seat = 3, Character = "savant" },
+                new() { Seat = 3, Character = "juggler" },
             },
-            "test-day-assign-savant");
+            "test-day-assign-juggler");
         Assert.Equal("Accepted", assigned.Kind);
 
         await CompleteFixtureNightAsync(host, storyteller);
 
-        var result = await storyteller.InvokeAsync<CommandResultDto>("StartDay", "test-day-savant");
+        var result = await storyteller.InvokeAsync<CommandResultDto>("StartDay", "test-day-juggler");
         Assert.Equal("Rejected", result.Kind);
         Assert.Equal("legality.day_contract_missing", result.RejectionCode);
     }

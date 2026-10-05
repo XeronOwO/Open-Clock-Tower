@@ -1700,6 +1700,63 @@
   `DuskExpiryTests`（到期族逐个表态）；集成 `VigormortisHostTests`（真宿主：开夜 → 杀爪牙 →
   窗口与中毒落账 → 下一夜死者被唤醒并提交选择 → 亡骨魔死亡时两者收口）。
 
+### R-0057 · 博学者「每个白天两条信息」的平台口径（Decided）
+
+- **状态**：Decided（2026-10-05，本票实现落地；同票的杂耍艺人另见下一条）
+- **依据**（钟楼百科 · 2026-10-01 抓取）：《博学者》· 角色能力——「每个白天，你可以**私下**询问说书人
+  以得知两条信息：一个是正确的，一个是错误的。」；· 角色简介——说书人选择两条信息、博学者不知道
+  哪条对哪条、可以选择不要、醉酒 / 中毒时可能两条全对或两条全错。
+- **处理（Decided；代码注释按下列序号引用）**：
+  1. **入口**：白天玩家命令（`AskSavantQuestionCommand`，命令**没有参数**——内容完全由说书人给），
+     席位由凭据推导（D-0012）；命令受理后开一条**归属该席位**的裁定点（与艺术家 R-0040 同族）。
+  2. **用度按白天记账**：每个白天一次，状态记在步骤机状态（`SavantAskedSeat`，记**席位**而不是布尔
+     ——角色中途换手时新的持有者今天还没用过）；阶段边界不携带（新白天自然可以再要一次）。
+     同一天第二次 → 拒绝 `savant.already_asked_today`；未结清时再来 → 拒绝 `savant.question_pending`。
+  3. **两条信息的格式**：说书人在裁定点里**自由填写**，两条用 `|` 分隔（例如 `3 号是镇民|5 号是爪牙`）。
+     自由文本是**用户输入**：不合格式（没有分隔符 / 分成三条 / 有一条为空）**显式拒绝**
+     （`savant.decision_invalid`），不抛异常、不落一条空信息。平台不校验内容真假。
+  4. **平台不判定哪条为真**（D-0002）：两条各发一条 `InformationResultIssuedEvent`，收件人只有本人，
+     **两条都标「可能为假」**——能力生效时必有一条是假的，而平台不知道是哪条（不猜）。
+  5. **能力未生效**（醉酒 / 中毒 / 死亡）：照样给两条（可能都对或都错），失效分类并列进账（R-0004 /
+     《重要细节》三-3）；**涡流在场**时两条都必须为假（R-0028），另记 `MalfunctionKind.Vortox`。
+  6. **未结清挡收口**：提问挂着时挡关账 / 处罚处决 / 阶段推进（与艺术家同款白名单），
+     说书人**强推**则显式作废（`SavantQuestionClosure.Abandoned`）——不记账、不产信息，绝不跨阶段残留；
+     跨阶段边界仍挂着即视为收口缺失（显式失败）。
+  7. **投影**：入口权限位（`CanAskSavantQuestion`）与等待态（`AwaitingSavantQuestion`）**只对本人下发**；
+     两条信息只进本人视图；说书人视图保留完整裁定原文与归属席位。
+- **影响面**：`ISavantQuestionSource` / `SavantQuestionMachine` / `SavantQuestionFolder` /
+  `SavantQuestion*`（记录 / 事件 / 裁定枚举 / 结清上下文）、`StepMachineState.SavantQuestion` /
+  `SavantAskedSeat`、`StepMachineStateComparer`、`StepMachineFolder`、`StepMachine`、`DayStepMachine`、
+  `AdjudicatedExecutionMachine`、`SettlementContext.SavantQuestions`、`SavantQuestionSource`（Rules）、
+  `RoleContracts.SavantQuestions`、`DayActions`（登记覆盖，开白天不再拒绝）、
+  `AskSavantQuestionCommand` / `SavantQuestionGate` / `PendingChoiceGate.SavantQuestionPending` /
+  `GameProjection.CanAskSavantQuestion` / `PlayerView` / `PlayerViewDto` / `ProjectionMapper` /
+  `GameNotificationBuilder` / `ChoiceReplayPresenter` / `ReplayText`、Server `GameHub.AskSavantQuestion` /
+  `GameCommandFactory`、前端 `playerGateway.askSavantQuestion` / `playerViewMerge` / `PlayerPanel`。
+- **回归**：内核 `SavantQuestionMachineTests`（提问事件与裁定点 / 连要两次 / 非白天 / 非博学者 /
+  同日第二次 / 新白天可以再要 / 结清两条结果与记账 / 缺裁定 / 格式不合 / 判不了 / 强推作废 / 关账被挡）；
+  规则 `SavantQuestionSourceTests`（提示无选项 / 两条切分与去空白 / 格式不合五种 / 中毒 / 涡流 / 判不了）；
+  集成 `SavantHostTests`（真宿主：开白天 → 要两条 → 说书人裁定 → 两条只到本人 → 同日第二次被拒 →
+  关账；界面级证据待装置）；规范门禁 `DayActionsTests`（覆盖名单）、`ReplayStepCatalogTests`（新事件认领）。
+
+### R-0057-B · 杂耍艺人「首个白天公开猜测 → 当晚报数」的平台口径（Open）
+
+- **状态**：**Open**（机制已清点，实现未落地；本条的默认行为在代码里**还不存在**，落地时按下述口径收口）
+- **依据**（钟楼百科 · 2026-10-01 抓取）：《杂耍艺人》· 角色能力——「在你的**首个白天**，你可以**公开**猜测
+  任意玩家的角色**最多五次**。在**当晚**，你会得知猜测正确的角色数量。」；· 角色简介 2——必须公开
+  （所有玩家听到）、可猜 0–5 个、玩家与角色可重复；· 角色简介 3——「如果在醉酒或中毒时做出了猜测，
+  但当晚触发时却清醒且健康，说书人仍然会给他真实的信息」（生效判定在**触发时刻**）；
+  · 范例 2——「第四个夜晚，博学者变成了杂耍艺人。**下个白天**，新的杂耍艺人猜测……当晚得知『1』」
+  （「首个白天」是**该角色**的第一个白天，不是整局的第一天；与《哲学家》提示 11 同义）。
+- **待定项（落地前必须回答）**：
+  1. 猜对数的**快照时刻**：取当晚结算时刻的角色快照（与「生效判定在触发时刻」同源），
+     还是猜测时刻的快照？平台拟取**结算时刻**（判定与生效同一时刻，可重放、可解释）；
+     落地时若与百科范例冲突再改。
+  2. 猜测的**公开面**：猜测是公开事实（所有玩家听到）→ 进公开投影；猜对数只到本人。
+  3. 「首个白天」的**起算**：按该角色被持有后的第一个白天（角色变更 / 重获能力后重新起算）。
+- **影响面（预计）**：新的白天玩家命令（0–5 条 `{席位, 角色}`）、公开事实的投影面、
+  `juggler` 的夜间契约（`NightOrderTable` 其他夜晚已有格）、`DayActions` 覆盖登记。
+
 ## 维护规则
 
 1. 新增任何机制时，先扫一遍本表：**已有条目能覆盖吗？** 不能就新增。

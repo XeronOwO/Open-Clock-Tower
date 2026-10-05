@@ -76,6 +76,8 @@ const view = (overrides: Partial<PlayerViewDto> = {}): PlayerViewDto => ({
   seatNames: [],
   pendingQuestion: null,
   canAskArtistQuestion: false,
+  canAskSavantQuestion: false,
+  awaitingSavantQuestion: false,
   exhaustedAbilities: [],
   ...overrides,
 })

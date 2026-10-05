@@ -41,7 +41,9 @@ public static class StepMachineStateComparer
                && BarberNightEquivalent(left.BarberNight, right.BarberNight)
                && SageNightEquivalent(left.SageNight, right.SageNight)
                && SweetheartSkipsEquivalent(left.SweetheartSkips, right.SweetheartSkips)
-               && ArtistQuestionEquivalent(left.ArtistQuestion, right.ArtistQuestion);
+               && ArtistQuestionEquivalent(left.ArtistQuestion, right.ArtistQuestion)
+               && SavantQuestionEquivalent(left.SavantQuestion, right.SavantQuestion)
+               && left.SavantAskedSeat == right.SavantAskedSeat;
     }
 
     /// <summary>
@@ -213,6 +215,15 @@ public static class StepMachineStateComparer
             ({ } a, { } b) => a.Seat == b.Seat
                 && a.Character == b.Character
                 && string.Equals(a.Question, b.Question, StringComparison.Ordinal),
+        };
+
+    /// <summary>博学者的进行中提问（R-0057）进比较器：席位与角色快照是投影 / 结清输入，漏比会让重建校验在这里失明。</summary>
+    private static bool SavantQuestionEquivalent(SavantQuestion? left, SavantQuestion? right) =>
+        (left, right) switch
+        {
+            (null, null) => true,
+            (not null, null) or (null, not null) => false,
+            ({ } a, { } b) => a.Seat == b.Seat && a.Character == b.Character,
         };
 
     private static bool OutcomeEquivalent(GameOutcome? left, GameOutcome? right) =>

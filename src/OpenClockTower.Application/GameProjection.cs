@@ -76,6 +76,12 @@ public static class GameProjection
             // 本人能不能发起提问（白天 + 本人是艺术家 + 还没用过）：前端据此显示入口，服务端仍逐项校验。
             CanAskArtistQuestion = CanAskArtistQuestion(machine, state, seat),
 
+            // 本人此刻能不能向说书人要两条信息（白天 + 本人是博学者 + 今天还没要过）：同款权限位（R-0057）。
+            CanAskSavantQuestion = CanAskSavantQuestion(machine, state, seat),
+
+            // 本人有一条博学者提问在等说书人：等待态只对本人可见（入口据此显示「等待说书人」）。
+            AwaitingSavantQuestion = machine?.SavantQuestion is { } savantQuestion && savantQuestion.Seat == seat,
+
             // 本人已用尽的一次性能力（重连后恢复"已用"状态，R-0040）：只列自己那一份。
             ExhaustedAbilities = ExhaustedFor(state, seat),
         };
@@ -156,6 +162,34 @@ public static class GameProjection
         return character is not null
             && RoleContracts.ArtistQuestions.Any(source =>
                 source.Character == character && !state.AbilityUses.WasUsed(seat, source.Ability));
+    }
+
+    /// <summary>
+    /// 本人此刻能不能向说书人要两条信息：白天开着、本人是博学者（按注册的提问来源）、**今天还没要过**（R-0057）。
+    /// 同 <see cref="CanAskArtistQuestion"/>：这只是本人的权限位，真正的合法性由内核按同一份账再判一次。
+    /// </summary>
+    private static bool CanAskSavantQuestion(StepMachineState? machine, GameState state, SeatId seat)
+    {
+        if (machine?.Plan.Phase != GamePhase.Day || machine.Day?.OpenDay is null)
+        {
+            return false;
+        }
+
+        // 已有未结清的提问：此刻不能再要（与内核的 savant.question_pending 同款判定）。
+        if (machine.SavantQuestion is not null)
+        {
+            return false;
+        }
+
+        // 今天已经要过：要等下一个白天（与内核的 savant.already_asked_today 同款判定）。
+        if (machine.SavantAskedSeat == seat)
+        {
+            return false;
+        }
+
+        var character = state.Seat(seat)?.CharacterValue;
+        return character is not null
+            && RoleContracts.SavantQuestions.Any(source => source.Character == character);
     }
 
     /// <summary>说书人视图（含卡点时长、状态账、效果归因、能力结算结论、每步摘要与房间健康位；时长由应用层时钟算出）。</summary>

@@ -17,6 +17,8 @@ internal sealed class ChoiceReplayPresenter : IReplayStepPresenter
         typeof(DecisionPointResolvedEvent),
         typeof(ArtistQuestionAskedEvent),
         typeof(ArtistQuestionClosedEvent),
+        typeof(SavantQuestionAskedEvent),
+        typeof(SavantQuestionClosedEvent),
     ];
 
     /// <inheritdoc />
@@ -52,6 +54,21 @@ internal sealed class ChoiceReplayPresenter : IReplayStepPresenter
             Kind = ReplayStepKind.Request,
             Phase = context.Phase,
             Summary = $"艺术家提问结清：{ReplayText.ArtistClosure(closed.Closure)}",
+        },
+        SavantQuestionAskedEvent savantAsked => new ReplayStep
+        {
+            Sequence = context.Stored.Sequence,
+            Kind = ReplayStepKind.Request,
+            Phase = context.Phase,
+            Summary = $"{context.SeatText.Seat(savantAsked.Seat)} 向说书人要两条信息",
+            Detail = $"私密请求（内容由说书人给，一真一假）；请求时角色：{ReplayText.Character(savantAsked.Character)}",
+        },
+        SavantQuestionClosedEvent savantClosed => new ReplayStep
+        {
+            Sequence = context.Stored.Sequence,
+            Kind = ReplayStepKind.Request,
+            Phase = context.Phase,
+            Summary = $"博学者提问结清：{ReplayText.SavantClosure(savantClosed.Closure)}",
         },
         _ => throw new InvalidOperationException(
             $"ChoiceReplayPresenter 不认领事件 {context.Stored.Event.GetType().Name}"),
