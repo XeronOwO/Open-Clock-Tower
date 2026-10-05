@@ -102,6 +102,13 @@ const EXPECTED_CORRECT = 1
 /** 说书人浏览器页：本装置只有一个，读面板 / 下命令的助手都从这里取。 */
 let storytellerPage = null
 
+/**
+ * 本装置的**固定断言数**（含末尾那条覆盖自检本身）。
+ * 改动本装置、增删断言时必须同步这个数字：条件分支被静默跳过（"互为反面"的夹具没找到、
+ * 女巫请求没出现……）会让项数变少——那必须红，而不是悄悄少判几行。
+ */
+const EXPECTED_CHECKS = 74
+
 const PUSH_METHODS = [
   'ReceiveOperationRequest',
   'ReceiveOperationRequestVoided',
@@ -145,12 +152,12 @@ try {
 }
 
 async function main() {
-  console.log('=== 1/7 构建并启动真宿主（独立临时库，6 席）===')
+  console.log('=== 1/8 构建并启动真宿主（独立临时库，6 席）===')
   const artifacts = await ensureServerArtifacts({ repositoryRoot, buildMode: config.buildMode })
   console.log(`  宿主产物：${artifacts.artifact}（${artifacts.built ? '本次构建' : '复用'}）`)
   await startServer()
 
-  console.log('=== 2/7 取票据并起 Vite ===')
+  console.log('=== 2/8 取票据并起 Vite ===')
   const ticket = readStorytellerTicket(databasePath)
   const seatTickets = readSeatTickets(databasePath)
   check('席位票据齐备（6 席）', seatTickets.length === ASSIGN.length, `数据库 ${seatTickets.length} 张`)
@@ -172,7 +179,7 @@ async function main() {
   children.push(vite)
   await waitForHttp(viteUrl, 'Vite 开发服务器', 60_000)
 
-  console.log('=== 3/7 说书人 + 女巫 / 博学者 / 杂耍艺人加入真浏览器；恶魔与神谕者走线级探针 ===')
+  console.log('=== 3/8 说书人 + 女巫 / 博学者 / 杂耍艺人加入真浏览器；恶魔与神谕者走线级探针 ===')
   const browser = await playwright.chromium.launch()
   const consoleErrors = []
   storytellerPage = await newPage(browser, { width: 1600, height: 1100 }, consoleErrors)
@@ -201,7 +208,7 @@ async function main() {
   const demonSeat = await connectSeat(seatTickets[DEMON_SEAT - 1])
   const oracleSeat = await connectSeat(seatTickets[ORACLE_SEAT - 1])
 
-  console.log('=== 4/7 分配 → 首夜（自动走完）→ 第 1 天 ===')
+  console.log('=== 4/8 分配 → 首夜（女巫之外都是空槽）→ 第 1 天 ===')
   const assignmentSelects = storytellerPage.locator('section', { hasText: '开局分配' }).locator('select')
   for (const [index, slug] of ASSIGN.entries()) {
     await assignmentSelects.nth(index).selectOption(slug)
@@ -213,7 +220,7 @@ async function main() {
   check(`分配 6 个角色被受理（${ASSIGN.join(' / ')}）`, assigned.kind === 'Accepted', assigned.raw)
 
   const firstNight = await startNightWhenReady(storytellerPage, 1)
-  check('开首夜被受理（六个角色都不在首夜顺序表上）', firstNight.kind === 'Accepted', firstNight.raw)
+  check('开首夜被受理（首夜表里只有女巫）', firstNight.kind === 'Accepted', firstNight.raw)
   await driveFirstNight(storytellerPage, witchPage, demonSeat)
 
   const firstDay = await startDayWhenReady(storytellerPage)
@@ -221,7 +228,7 @@ async function main() {
   const dayStatus = await waitForAttribute(storytellerPage.getByTestId('st-day'), 'data-day-status', 'Open', 30_000)
   check('说书人面板进入「白天进行中」', dayStatus === 'Open', `data-day-status=${dayStatus}`)
 
-  console.log('=== 5/7 第 1 天：杂耍艺人公开猜测 + 博学者候选辅助面 ===')
+  console.log('=== 5/8 第 1 天：杂耍艺人公开猜测 + 博学者候选辅助面 ===')
   await driveJugglerDayGuesses(jugglerPage, witchPage)
   await driveSavantPickers(savantPage, witchPage)
 
@@ -230,17 +237,31 @@ async function main() {
   )
   check('结束第 1 天被受理', closed.kind === 'Accepted', closed.raw)
 
-  console.log('=== 6/7 第 2 夜：女巫 → 亡骨魔杀爪牙 → 说书人选中毒侧 → 杂耍艺人报数 ===')
+  console.log('=== 6/8 第 2 夜：女巫 → 亡骨魔杀爪牙 → 说书人选中毒侧 → 杂耍艺人报数 ===')
   const secondNight = await startNightWhenReady(storytellerPage, 2)
   check('开第 2 夜被受理（第 1 天已结束）', secondNight.kind === 'Accepted', secondNight.raw)
   await driveSecondNight(storytellerPage, witchPage, savantPage, jugglerPage, demonSeat)
 
-  console.log('=== 7/7 第 3 夜：已死亡的爪牙仍被唤醒 + 收包扫描 ===')
-  const retentionAlive = await waitForEffectWindow(storytellerPage, '保留能力', 20_000)
-  check('第 3 夜开始时「保留能力」窗口仍在生效（不随黄昏到期）', retentionAlive.includes('保留能力'), retentionAlive.slice(0, 200))
+  console.log('=== 7/8 第 2 天（不做任何动作，只为让第 3 夜的「昨天」有一份白天账）===')
+  const secondDay = await startDayWhenReady(storytellerPage)
+  check('第 2 天开白天被受理（这一天不猜、不提名）', secondDay.kind === 'Accepted', secondDay.raw)
+  const secondDayClosed = await runCommand(storytellerPage, '结束第 2 天', () =>
+    storytellerPage.getByTestId('st-close-day').click(),
+  )
+  check('第 2 天直接结束被受理', secondDayClosed.kind === 'Accepted', secondDayClosed.raw)
 
+  console.log('=== 8/8 第 3 夜：已死亡的爪牙仍被唤醒 + 收包扫描 ===')
   const thirdNight = await startNightWhenReady(storytellerPage, 3)
-  check('开第 3 夜被受理（第 2 夜已走完）', thirdNight.kind === 'Accepted', thirdNight.raw)
+  check('开第 3 夜被受理（第 2 天已结束）', thirdNight.kind === 'Accepted', thirdNight.raw)
+
+  // 探针放在**开夜之后**：黄昏收口（DuskExpiry）是在开夜命令里跑的，开夜前读到的"还在"
+  // 证明不了"这一夜开始时还在"。属性本身还有下游兜底——第 3 夜死者的格被唤醒，窗口若被收掉就不会绑格。
+  const retentionAlive = await waitForEffectWindow(storytellerPage, '保留能力', 20_000)
+  check(
+    '开第 3 夜（黄昏收口）之后「保留能力」窗口仍在生效（不随黄昏到期）',
+    retentionAlive.includes('保留能力'),
+    retentionAlive.slice(0, 200),
+  )
   await driveThirdNight(storytellerPage, witchPage, savantPage, demonSeat)
 
   // 扫描面：无关席位（6 号神谕者）的全部推送，加上当事恶魔（1 号）**除自己请求正文以外**的推送
@@ -251,18 +272,30 @@ async function main() {
   ]
   const unrelatedText = JSON.stringify(scannedMessages)
   const leaked = FORBIDDEN_PLAYER_TOKENS.filter((token) => unrelatedText.includes(token))
+  // 阳性对照：扫描面必须真的有帧（本装置实测两席合计 18 条）。否则「一条都没收到」也会让下面的
+  // 「没有泄漏」为真——那正是最典型的假绿。
+  check(
+    '收包扫描的样本不是空集（阳性对照，实测两席合计 18 条）',
+    scannedMessages.length >= 4,
+    `已扫描 ${scannedMessages.length} 条`,
+  )
   check(
     `无关玩家（${DEMON_SEAT} 号恶魔 / ${ORACLE_SEAT} 号神谕者）的推送里没有保留能力与博学者字段`,
-    leaked.length === 0,
+    leaked.length === 0 && scannedMessages.length >= 4,
     leaked.join(', ') || `已扫描 ${scannedMessages.length} 条`,
   )
 
   const oracleInformations = oracleSeat.messages.filter((message) => message.method === 'ReceiveInformationResult')
   const oracleAbilities = oracleInformations.map((message) => String(message.payload?.ability ?? '?'))
   check(
-    '神谕者只收到自己那条信息（没有杂耍艺人的猜对数）',
-    !oracleAbilities.includes('juggler'),
+    '神谕者收到了自己的信息（阳性对照：她的信息通道是通的）',
+    oracleAbilities.includes('oracle'),
     oracleAbilities.join(', ') || '（无信息）',
+  )
+  check(
+    '神谕者只收到自己那条信息（没有杂耍艺人的猜对数）',
+    oracleAbilities.includes('oracle') && !oracleAbilities.includes('juggler'),
+    oracleAbilities.join(', '),
   )
   check(
     '女巫（当事玩家）的信息面板始终为空（她不是信息角色）',
@@ -271,6 +304,11 @@ async function main() {
   )
 
   check('浏览器控制台没有报错', consoleErrors.length === 0, consoleErrors.slice(0, 3).join(' | '))
+  check(
+    `装置覆盖自检：固定断言 ${EXPECTED_CHECKS} 项都命中（增删断言请同步 EXPECTED_CHECKS）`,
+    results.length + 1 === EXPECTED_CHECKS,
+    `实际 ${results.length + 1} 项`,
+  )
   await browser.close()
 }
 
@@ -379,12 +417,19 @@ async function driveSavantPickers(savantPage, witchPage) {
   )
   check(
     '候选逐条带服务端真值（真 / 假，不是让说书人自己记）',
-    candidates.length >= 10 && candidates.every((entryItem) => entryItem.truth === 'True' || entryItem.truth === 'False'),
+    // 下界取实际量级（本局实测 157 条）：候选缩水一半必须红，而不是被 `>= 10` 兜住。
+    candidates.length >= 150
+      && candidates.every((entryItem) => entryItem.truth === 'True' || entryItem.truth === 'False'),
     `${candidates.length} 条候选；真值集合=${[...new Set(candidates.map((item) => item.truth))].join('/')}`,
   )
   const groups = [...new Set(candidates.map((item) => item.group).filter((group) => group.length > 0))]
   const groupButtons = await picker.locator('[data-testid^="savant-group-"]').count()
-  check('候选按类别分栏（不是一条大列表）', groups.length >= 2 && groupButtons >= 2, `${groups.join('/')}；按钮 ${groupButtons}`)
+  check(
+    '候选按类别分栏（不是一条大列表）',
+    // 五组（座位关系 / 阵营与人数 / 昨晚与今天 / 状态读数 / 点名）+ 「全部」按钮 = 6 个按钮。
+    groups.length >= 5 && groupButtons >= 6,
+    `${groups.join('/')}；按钮 ${groupButtons}`,
+  )
 
   const trueOptions = candidates.filter((item) => item.truth === 'True')
   const falseOptions = candidates.filter((item) => item.truth === 'False')
@@ -402,6 +447,55 @@ async function driveSavantPickers(savantPage, witchPage) {
   check('两条同真：常驻结论转红并写明原因', badVerdict === 'false' && badText.includes('一真一假'), badText)
   check('两条同真：提交按钮当场禁用（非法组合拦在前端）', badDisabled === true, `disabled=${badDisabled}`)
   await screenshot(storytellerPage, 'retention-04-savant-illegal-combination')
+
+  // 行 9（R-0057-C）：挂起期间账变了 → 以**提交时刻**重新求值与校验。
+  // 挑一条"当前为假、但可以当场变真"的状态读数（「场上有玩家中毒」），与一条为真的座位事实配成
+  // 一真一假（前端按**快照**真值放行）；随后在挂起期间上报 3 号中毒——提交时账上已是"两条都为真"。
+  const mutableFact = candidates.find(
+    (item) => item.group === '状态读数' && item.truth === 'False' && item.value.includes('poison'),
+  )
+  if (mutableFact === undefined) {
+    check(
+      '挂起期间账变（行 9）的夹具：候选里有「场上有玩家中毒」这条可翻转的状态读数',
+      false,
+      '没找到可翻转的事实，本行判不了',
+    )
+  } else {
+    const fillSlots = async () => {
+      await picker.getByTestId('savant-slot-1').getByRole('button', { name: '第一条' }).click()
+      await picker.locator(`[data-testid="savant-option-${trueOptions[0].value}"]`).click()
+      await picker.getByTestId('savant-slot-2').getByRole('button', { name: '第二条' }).click()
+      await picker.locator(`[data-testid="savant-option-${mutableFact.value}"]`).click()
+    }
+
+    await fillSlots()
+    const freshVerdict = await waitForAttribute(picker.getByTestId('savant-verdict'), 'data-verdict-ok', 'true', 10_000)
+    check(
+      '挂起期间账变（行 9）：按提交时刻前的快照真值选出的一真一假先被前端放行',
+      freshVerdict === 'true',
+      compact(await readTextBounded(picker.getByTestId('savant-verdict'))),
+    )
+
+    const poisonReport = await reportSeatState(storytellerPage, {
+      seat: KLUTZ_SEAT,
+      dimensionLabel: '中毒',
+      value: 'Poisoned',
+      reason: '批次取证：挂起期间账变了（R-0057-C 提交时刻校验）',
+    })
+    check('挂起期间账变（行 9）：说书人上报 3 号中毒被受理（账真的变了）', poisonReport.kind === 'Accepted', poisonReport.raw)
+
+    // 上报会切走操作台的选中席位：重新填一遍两个槽位（前端手上的**快照真值**仍是旧的——正是本行要证的点）。
+    await fillSlots()
+    await screenshot(storytellerPage, 'retention-05-savant-stale-snapshot')
+    const staleRejected = await runCommand(storytellerPage, '账变后提交', () =>
+      picker.getByTestId('savant-submit').click(),
+    )
+    check(
+      '挂起期间账变（行 9）：提交时按当时的账重算——快照里的一真一假已成两条都为真，服务端拒绝',
+      staleRejected.kind !== 'Accepted' && staleRejected.raw.includes('都为真'),
+      staleRejected.raw.slice(0, 220),
+    )
+  }
 
   // 「互为反面」（奇 / 偶这类同族两条）必然一真一假——前端拿不到互斥组信息，因此照常放行；
   // 服务端在提交时按当时的账拒绝。这一段把"界面不预拦、平台兜得住"的现状钉在证据里（票据「残余」第 4 条）。
@@ -425,7 +519,7 @@ async function driveSavantPickers(savantPage, witchPage) {
       rejected.kind !== 'Accepted' && rejected.raw.includes('互为反面'),
       rejected.raw.slice(0, 200),
     )
-    await screenshot(storytellerPage, 'retention-05-savant-mirror-rejected')
+    await screenshot(storytellerPage, 'retention-06-savant-mirror-rejected')
   }
 
   await picker.getByTestId('savant-slot-2').getByRole('button', { name: '第二条' }).click()
@@ -443,7 +537,7 @@ async function driveSavantPickers(savantPage, witchPage) {
     slotFirst === trueOptions[0].value && slotSecond === independent.value,
     `${slotFirst} | ${slotSecond}`,
   )
-  await screenshot(storytellerPage, 'retention-06-savant-legal-combination')
+  await screenshot(storytellerPage, 'retention-07-savant-legal-combination')
 
   const settled = await runCommand(storytellerPage, '博学者按候选结清', () =>
     picker.getByTestId('savant-submit').click(),
@@ -459,7 +553,7 @@ async function driveSavantPickers(savantPage, witchPage) {
     infoCount === '2' && infoText.includes('博学者') && !infoText.includes('fact:') && !infoText.includes('True'),
     infoText.slice(0, 220),
   )
-  await screenshot(savantPage, 'retention-07-savant-two-informations')
+  await screenshot(savantPage, 'retention-08-savant-two-informations')
 
   const entryGone = await waitForCount(entry, 0, 30_000)
   check('结清后入口整块撤下（今天已经要过，不重复开口）', entryGone, `入口数=${await entry.count()}`)
@@ -479,7 +573,6 @@ async function driveFirstNight(page, witchPage, demonSeat) {
   const witchRequest = witchPage.locator('[data-testid="player-request-panel"]')
   let cursedFirstNight = false
   let idleConfirmed = false
-  let stalls = 0
   const deadline = Date.now() + 180_000
 
   while (Date.now() < deadline) {
@@ -493,9 +586,14 @@ async function driveFirstNight(page, witchPage, demonSeat) {
       continue
     }
 
-    if ((await readAttributeBounded(witchRequest, 'data-request-state')) === 'pending') {
+    const witchState = await readAttributeBounded(witchRequest, 'data-request-state')
+    if (witchState === 'pending') {
       if (!cursedFirstNight) {
-        check(`女巫（${WITCH_SEAT} 号）首夜照常被唤醒（她是「每个夜晚」的爪牙）`, true, '收到请求')
+        check(
+          `女巫（${WITCH_SEAT} 号）首夜照常被唤醒（她是「每个夜晚」的爪牙）`,
+          witchState === 'pending',
+          `data-request-state=${witchState}`,
+        )
         await answerSeatRequest(witchPage, KLUTZ_SEAT)
         cursedFirstNight = true
       }
@@ -526,31 +624,12 @@ async function driveFirstNight(page, witchPage, demonSeat) {
       continue
     }
 
-    const advanced = await advanceIfIdle(page, '首夜推进')
+    const advanced = await waitForSlotProgress(page)
     if (advanced.kind === 'Completed') {
       break
     }
 
-    if (advanced.kind === 'Blocked') {
-      await sleep(250)
-      continue
-    }
-
-    if (advanced.kind === 'Accepted') {
-      stalls = 0
-      // 强推之后留一个窗口：玩家的请求可能刚发出、说书人视图还没渲染出「卡点」，
-      // 紧接着再推就会把它按 Override 了结（这一族能力全靠玩家在设备上作答）。
-      await sleep(350)
-      continue
-    }
-
-    stalls += 1
-    if (stalls > 8) {
-      check('首夜能一路推进到计划走完', false, `连续 ${stalls} 次推进未被受理：${advanced.raw}`)
-      break
-    }
-
-    await sleep(300)
+    await sleep(200)
   }
 
   check('首夜计划走完（女巫之外全是空槽）', await planCompleted(page), `计划走完=${await planCompleted(page)}`)
@@ -565,7 +644,6 @@ async function driveSecondNight(page, witchPage, savantPage, jugglerPage, demonS
   let demonKilledWitch = false
   let sideChosen = false
   let jugglerCountGiven = false
-  let stalls = 0
   let lastTrace = ''
   const deadline = Date.now() + 300_000
 
@@ -591,7 +669,7 @@ async function driveSecondNight(page, witchPage, savantPage, jugglerPage, demonS
           decision.options.some((option) => option.includes(String(ORACLE_SEAT))) && decision.options.some((option) => option.includes(String(SAVANT_SEAT))),
           decision.options.join(' | '),
         )
-        await screenshot(page, 'retention-08-vigormortis-side-decision')
+        await screenshot(page, 'retention-09-vigormortis-side-decision')
         const outcome = await runCommand(page, '选定中毒侧（逆时针）', () =>
           page.getByTestId('console-decision').locator('.options button', { hasText: '逆时针' }).click(),
         )
@@ -616,7 +694,7 @@ async function driveSecondNight(page, witchPage, savantPage, jugglerPage, demonS
           decision.context.includes('结算时刻'),
           decision.context.slice(0, 220),
         )
-        await screenshot(page, 'retention-09-juggler-night-decision')
+        await screenshot(page, 'retention-10-juggler-night-decision')
       }
 
       const outcome = await settleFreeDecision(page, String(EXPECTED_CORRECT))
@@ -640,9 +718,14 @@ async function driveSecondNight(page, witchPage, savantPage, jugglerPage, demonS
       continue
     }
 
-    if ((await readAttributeBounded(witchRequest, 'data-request-state')) === 'pending') {
+    const witchState = await readAttributeBounded(witchRequest, 'data-request-state')
+    if (witchState === 'pending') {
       if (!cursedKlutz) {
-        check(`女巫（${WITCH_SEAT} 号）在第 2 夜被唤醒（每夜能力照常行动）`, true, '收到请求')
+        check(
+          `女巫（${WITCH_SEAT} 号）在第 2 夜被唤醒（每夜能力照常行动）`,
+          witchState === 'pending',
+          `data-request-state=${witchState}`,
+        )
         await answerSeatRequest(witchPage, KLUTZ_SEAT)
         cursedKlutz = true
       }
@@ -675,32 +758,12 @@ async function driveSecondNight(page, witchPage, savantPage, jugglerPage, demonS
       continue
     }
 
-    const advanced = await advanceIfIdle(page, '第 2 夜推进')
+    const advanced = await waitForSlotProgress(page)
     if (advanced.kind === 'Completed') {
       break
     }
 
-    if (advanced.kind === 'Blocked') {
-      await sleep(250)
-      continue
-    }
-
-    if (advanced.kind === 'Accepted') {
-      stalls = 0
-      // 强推之后留一个窗口：玩家的请求可能刚发出、说书人视图还没渲染出「卡点」，
-      // 紧接着再推就会把它按 Override 了结（这一族能力全靠玩家在设备上作答）。
-      await sleep(350)
-      continue
-    }
-
-    // 非受理也非"已走完"：给几次机会，连续卡住就收手（避免把失败拖成 5 分钟白等）。
-    stalls += 1
-    if (stalls > 5) {
-      check('第 2 夜能一路推进到计划走完', false, `连续 ${stalls} 次推进未被受理：${advanced.raw}`)
-      break
-    }
-
-    await sleep(300)
+    await sleep(200)
   }
 
   check(
@@ -720,7 +783,7 @@ async function driveSecondNight(page, witchPage, savantPage, jugglerPage, demonS
     poisonLedger.includes('中毒'),
     poisonLedger.slice(0, 220) || '（状态账里没有该席位行）',
   )
-  await screenshot(page, 'retention-10-dead-minion-retained')
+  await screenshot(page, 'retention-11-dead-minion-retained')
 
   const jugglerInfo = await waitForAttribute(jugglerPage.getByTestId('player-information'), 'data-information-count', '1', 30_000)
   const jugglerText = compact(await readTextBounded(jugglerPage.getByTestId('player-information')))
@@ -735,7 +798,7 @@ async function driveSecondNight(page, witchPage, savantPage, jugglerPage, demonS
     (await informationCount(savantPage)) === 2,
     `data-information-count=${await informationCount(savantPage)}`,
   )
-  await screenshot(jugglerPage, 'retention-11-juggler-night-count-player')
+  await screenshot(jugglerPage, 'retention-12-juggler-night-count-player')
 
   const unexpected = unhandled.filter((context) => !(context.includes('神谕者') || context.includes('oracle')))
   check(
@@ -752,12 +815,13 @@ async function driveThirdNight(page, witchPage, savantPage, demonSeat) {
   let deadMinionWoken = false
   let idleConfirmed = false
   let demonActed = false
-  let stalls = 0
   const deadline = Date.now() + 300_000
 
   while (Date.now() < deadline) {
     const decision = await readDecisionPanel(page)
     if (decision.context.includes('杂耍艺人')) {
+      // 第 2 天没有猜测 → 本夜不该唤醒他（空选项 + Skip，R-0057-B）。真出现就如实结清并判红。
+      check('第 3 夜：昨天（第 2 天）没有公开猜测，杂耍艺人不再被唤醒', false, decision.context.slice(0, 160))
       await settleFreeDecision(page, String(EXPECTED_CORRECT))
       continue
     }
@@ -779,7 +843,7 @@ async function driveThirdNight(page, witchPage, savantPage, demonSeat) {
           life === 'Dead',
           `data-life=${life}`,
         )
-        await screenshot(witchPage, 'retention-12-dead-witch-woken')
+        await screenshot(witchPage, 'retention-13-dead-witch-woken')
         await answerSeatRequest(witchPage, KLUTZ_SEAT)
         deadMinionWoken = true
       }
@@ -810,31 +874,12 @@ async function driveThirdNight(page, witchPage, savantPage, demonSeat) {
       continue
     }
 
-    const advanced = await advanceIfIdle(page, '第 3 夜推进')
+    const advanced = await waitForSlotProgress(page)
     if (advanced.kind === 'Completed') {
       break
     }
 
-    if (advanced.kind === 'Blocked') {
-      await sleep(250)
-      continue
-    }
-
-    if (advanced.kind === 'Accepted') {
-      stalls = 0
-      // 强推之后留一个窗口：玩家的请求可能刚发出、说书人视图还没渲染出「卡点」，
-      // 紧接着再推就会把它按 Override 了结（这一族能力全靠玩家在设备上作答）。
-      await sleep(350)
-      continue
-    }
-
-    stalls += 1
-    if (stalls > 5) {
-      check('第 3 夜能一路推进到计划走完', false, `连续 ${stalls} 次推进未被受理：${advanced.raw}`)
-      break
-    }
-
-    await sleep(300)
+    await sleep(200)
   }
 
   check('保留能力的死亡爪牙确实在自己的行动格上被唤醒', deadMinionWoken, `唤醒=${deadMinionWoken}`)
@@ -878,6 +923,26 @@ async function readDecisionPanel(page) {
   return { context, options }
 }
 
+/** 说书人上报座位状态：先点选该席的牌（操作台按席位就近），再只报本次观测到的维度。 */
+async function reportSeatState(page, report) {
+  await page.locator(`[data-testid="grimoire-seat"][data-seat="${report.seat}"]`).click()
+  const panel = page.locator('[data-testid="seat-console"]')
+  await panel.waitFor({ state: 'visible', timeout: 10_000 })
+
+  const checkboxes = panel.locator('.dimensions input[type=checkbox]')
+  for (let index = 0; index < (await checkboxes.count()); index += 1) {
+    await checkboxes.nth(index).uncheck().catch(() => {})
+  }
+
+  const dimension = panel.locator('.dimensions label', { hasText: report.dimensionLabel })
+  await dimension.locator('input[type=checkbox]').check()
+  await dimension.locator('select').selectOption(report.value)
+  await panel.getByPlaceholder('变化原因（必填，会随事件流记录）').fill(report.reason)
+  return runCommand(page, `上报-${report.dimensionLabel}`, () =>
+    page.getByRole('button', { name: '上报', exact: true }).click(),
+  )
+}
+
 /** 说书人按自由决定结清当前裁定点（无候选的信息类：数字 / 内容由他说书）。 */
 async function settleFreeDecision(page, content) {
   await page.getByPlaceholder('自由决定的内容（可为空）').fill(content)
@@ -885,33 +950,56 @@ async function settleFreeDecision(page, content) {
 }
 
 /**
- * 推进一步——但只在"真的没有待处理项"时推：
- * 挂起请求会被强推按 Override 了结（越权），裁定点会被推过去；因此推之前连查两次（中间留一个
- * 视图刷新窗口），把"请求已经发出、视图还没渲染"的竞态挡在外面。
+ * 等槽位自己往前走——**本装置不强推**。
+ *
+ * 依据：槽位按配额自行推进是产品行为（空槽照样走配额）；而"强推当前槽位"（D-0014）作用于
+ * **服务端此刻的当前槽位**，不是装置做决定时看到的那个——装置决定推走第 7 槽、点击生效前
+ * 第 7 槽已自行走完，这一推就落到刚进入的第 8 槽（角色行动格）上，把它按 Override 了结。
+ * 实测两次因此把女巫的请求推没了（装置随后整夜看不到那条请求 → 假红）。
+ *
+ * 所以这里只**等**：挂起请求 / 裁定点 / 角色行动格都交给它自己走，空槽按配额走完
+ * （迭代档 0.3s/槽、取证档 2s/槽）。
  */
-async function advanceIfIdle(page, label) {
-  if (await pendingRequestVisible(page)) {
-    return { kind: 'Blocked', raw: '有挂起请求' }
+async function waitForSlotProgress(page) {
+  const blocked = async () => {
+    if (await pendingRequestVisible(page)) {
+      return '有挂起请求'
+    }
+
+    if ((await readDecisionPanel(page)).context.length > 0) {
+      return '有裁定点'
+    }
+
+    return null
   }
 
-  if ((await readDecisionPanel(page)).context.length > 0) {
-    return { kind: 'Blocked', raw: '有裁定点' }
+  const first = await blocked()
+  if (first !== null) {
+    return { kind: 'Blocked', raw: first }
   }
 
-  await sleep(350)
-  if (await pendingRequestVisible(page)) {
-    return { kind: 'Blocked', raw: '刚出现挂起请求' }
-  }
-
-  if ((await readDecisionPanel(page)).context.length > 0) {
-    return { kind: 'Blocked', raw: '刚出现裁定点' }
-  }
-
-  if (await planCompleted(page)) {
+  const slot = await slotState(page)
+  if (slot === 'Completed') {
     return { kind: 'Completed', raw: '本计划已走完' }
   }
 
-  return forceAdvanceSlot(page, label)
+  await sleep(400)
+  const second = await blocked()
+  if (second !== null) {
+    return { kind: 'Blocked', raw: `刚出现：${second}` }
+  }
+
+  return { kind: 'Waiting', raw: `等槽位按配额推进（${slot ?? '空槽'}）` }
+}
+
+/** "当前步骤"面板给出的槽位状态：`Completed`（本计划已走完）/ `ActorSlot`（这一格是角色行动）/ null（空槽）。 */
+async function slotState(page) {
+  const digest = await panelText(page, '当前步骤')
+  if (digest.includes('本计划已走完')) {
+    return 'Completed'
+  }
+
+  return /行动者\s*\d+\s*号/.test(digest) ? 'ActorSlot' : null
 }
 
 /** 点「开夜」直到被受理（上一阶段靠节拍 / 强推走完）。 */
@@ -984,8 +1072,8 @@ async function nightTrace(page, witchPage, demonSeat) {
     'data-request-state',
   )
   const demonRequests = demonSeat.messages.filter((message) => message.method === 'ReceiveOperationRequest').length
-  return `槽位=${slots === null ? '?' : `${slots.index + 1}/${slots.total}`} 卡点=${pending} `
-    + `裁定点=${decision.context.slice(0, 16) || '无'} 女巫=${witchState ?? 'null'} 恶魔请求=${demonRequests}`
+  return `槽位=${slots === null ? '?' : `${slots.index + 1}/${slots.total}`} 格=${(await slotState(page)) ?? '空'} `
+    + `卡点=${pending} 裁定点=${decision.context.slice(0, 16) || '无'} 女巫=${witchState ?? 'null'} 恶魔请求=${demonRequests}`
 }
 
 /** 阶段卡住时的现场读数：槽位计数 / 当前步骤 / 卡点 / 裁定点。 */
@@ -1028,13 +1116,6 @@ async function pendingRequestVisible(page) {
 /** 当前步骤面板是否显示"本计划已走完"。 */
 async function planCompleted(page) {
   return (await panelText(page, '当前步骤')).includes('本计划已走完')
-}
-
-/** 说书人兜底：强推当前槽位（D-0014）；每次带原因（会随事件流记录）。 */
-async function forceAdvanceSlot(page, label) {
-  const box = page.locator('section', { hasText: '兜底与推进' })
-  await box.locator('input[placeholder^="原因"]').fill(`批次取证：${label}`)
-  return runCommand(page, label, () => box.getByRole('button', { name: '强推当前槽位' }).click())
 }
 
 /** 展开「数据与审计」下钻面板（幂等）：状态账 / 效果链 / 当前步骤都在里面。 */
