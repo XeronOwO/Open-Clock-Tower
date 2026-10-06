@@ -1312,8 +1312,57 @@ Chromium 把资源加载失败写进 console，被算成"重启窗口内的非�
 = 真实用法里"换设备登录同一账号回来"那条路），并补三条新判据：全新部署空大厅、旧协议直调失败、
 不声明桌标识的连接被拒。
 
-**未在本批判的**：部署后真机验收（`verify-live-open-table.mjs` 已按新口径改写，但**要等下一次部署**
-才有读数）；席位票据要不要整个退场（本批只在界面主路径上撤下它，见票据残余）；手机端布局。
+**未在本批判的**：部署后真机验收（`verify-live-open-table.mjs` 已按新口径改写，**E49 部署后补上读数**：
+判定 21 项全过）；席位票据要不要整个退场（本批只在界面主路径上撤下它，见票据残余）；手机端布局。
+
+## 批次 E49（2026-10-06，部署与真机验收：旧库升级缺陷修复 + 入场重做的部署形态读数）
+
+**本批票据**：`done/entrance-redesign.md`（E48 欠的那条真机读数）与 `done/usability-acceptance-device.md`；
+另有一个**没有票据的缺陷**同批修掉（部署前核对真机库时咬出，见下）。
+
+**本批取证构成**：
+
+| 取证 | 命令 | 结果 |
+|---|---|---|
+| **部署后真机验收**（E48 欠的读数，本批主证据） | `node tools/verify-live-open-table.mjs --base-url http://<部署地址>/clocktower/` | **全部通过（判定 21 项 · 0 失败）**，6 张截图，14.3s |
+| 升级回归用例（先红后绿） | `dotnet test tests/OpenClockTower.Integration.Tests --filter FullyQualifiedName~LegacyDatabaseUpgradeTests` | **先红**：`CreateTable` 抛服务端异常（`NOT NULL constraint failed`）+ 升级后比新库多一列；**后绿**：2 / 2 通过 |
+| 真机升级实测 | 停服 → 覆盖安装 → 起服 → `sqlite3 -readonly <库> ".schema Games"` + 启动日志 | 补列见日志 `旧库补列（升级兼容）：Games.CreatedByAccountId`、删列见 `旧库删列（退场凭据）：Games.StorytellerTicket`；旧桌那一行原样保留；`healthz` = `{"status":"ok","seatCount":7}` |
+| 门禁（冻结版，提交 `1d4d35b`） | `dotnet build` / `dotnet test OpenClockTower.slnx` / `dotnet format` | 0 警告 0 错误 · **1305 通过 / 0 失败**（比 E48 多 2 条新用例）· format 退出 0 |
+
+**部署前核对咬出的缺陷（本批修掉，提交 `1d4d35b`）**：E48 之后唯一没验证过的面就是"部署形态"，
+所以动手前先**只读**核对了真机（旧库结构 + 数据规模）。核对读出两件事：
+
+1. 库里只有 **1 个账号 + 一张空的 `default` 桌**（0 事件 / 0 快照 / 0 席位绑定，无人在玩）——
+   升级无数据风险，但也意味着**这条升级路径以前从没被走过**；
+2. `Games.StorytellerTicket TEXT NOT NULL` 还在（**无默认值**）。本版不再映射它，于是升级上来的库会
+   **"老桌读得出、新桌开不了"**：开桌的 INSERT 被 SQLite 拒掉
+   （`NOT NULL constraint failed: Games.StorytellerTicket`），而界面上只表现为"开桌失败"。
+
+按工作流先让失败可见（`LegacyDatabaseUpgradeTests` 两条：`CreateTable` 被真宿主拒 + 升级后的列形态 ≠ 新库），
+再把启动守卫从"只补列"扩成"**缺列补上、退场列清掉**"（`ALTER TABLE ... DROP COLUMN` 在 SQLite 上是原地操作，
+不动别列数据、也不动原来那一桌；顺带把退场的凭据从磁盘上抹掉）。D-0027 那条残余的口径同步改成"由守卫清掉"，
+`deploy.md` §7 / §9 与 `GameSetupEntity` 的说明跟着改。
+
+**本批判出**（21 项，一次运行）：部署前缀下首页与两个入口打得开 → 全新随机账号（`e2e-open-*`，不在运维名单里）
+注册成功、**一次性恢复码当场可见**、服务端给出"能开桌"能力位 → 开桌拿到桌标识且出现在「我主持的桌」
+（**回执里没有任何凭据**）→ 未登录的玩家面**只有登录卡**（桌列表 0 / 席位按钮 0）、同一浏览器切过去看得到这一桌
+（会话跨面，`0 / 7`）→ 从「我主持的桌」进主持台（魔典可见、席位数 7 与开桌一致）→ 一键配板覆盖 7 席
+（`fang-gu, evil-twin, klutz, seamstress, sage, clockmaker, oracle`）+ 提交分配被受理 → 开夜被受理且槽位
+0 → 1 → **刷新页面后用同一账号重新登录、点一下接回这张桌**（魔典可见、席位仍 7）→ 全过程零未预期控制台错误。
+
+**部署形态下的两条路由红线（一次性探针，不入装置）**：真部署上打开三个地址读顶栏"当前位置"——
+空地址 → **主持一局**（登录卡 1 / 首页入口 0）· 旧的 `#player` → **加入一桌** · `#/home` → **首页**（两个入口都在）。
+两条红线在真 nginx + 真前缀 + 真构建下都兜得住；装置级断言与这条判据的归属见
+`todo/frontend-path-routing.md`（那一票要做的是导航点击拦截，与本条不冲突）。
+
+**部署与收尾（真机操作，本轮做的）**：`node tools/deploy-prepare.mjs --app-dir <APP_DIR> --prefix /clocktower/ --port 5080 --seats 7`
+→ 上传 → 停服 → 清 `wwwroot/assets/*` → 解压 → `chmod -R u=rwX,go=rX` + `chmod u+x` → 起服。
+装置跑完后按它打印的 SQL 清掉测试账号与测试桌，并按 `deploy.md` §7 清掉旧版遗留的空 `default` 桌
+（**删前已把整库备份到 `<备份路径>`**，这份备份留给需求方决定何时删）。
+清完真机读数：`Games` 0 · `Users` 1（原有的 `<运维账号>`）· `Events` 0 · `Snapshots` 0 · `SeatBindings` 0 · `Receipts` 0。
+
+**未在本批判的**：手机端与 7 席满座（沿用既有残余）；说书人端的锁桌 / 移人仍只有后端、界面无入口；
+席位票据要不要正式退场（`todo/seat-ticket-entrance.md`，需需求方拍板）；开桌无配额、无空闲桌回收。
 
 ## 间歇性失败记录（不进批次，可复现时才升级为缺陷）
 
