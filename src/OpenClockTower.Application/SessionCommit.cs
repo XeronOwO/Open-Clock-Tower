@@ -289,7 +289,7 @@ internal static class SessionCommit
                 pending.Id.Value,
                 pending.Addressee.Value,
                 OperationRequestVoidReason.GameEnded,
-                voided.Void.Note);
+                LogText.Clamp(voided.Void.Note));
         }
 
         // 与挂起请求同族的第二个挂起：等待说书人的裁定点。结束之后它同样再也不会被回答
@@ -346,7 +346,7 @@ internal static class SessionCommit
                 gameId,
                 slotId.Value,
                 block.Reason,
-                unblocked.Reason);
+                LogText.Clamp(unblocked.Reason));
         }
 
         var ended = new GameEndedEvent
@@ -393,7 +393,7 @@ internal static class SessionCommit
         logger.LogInformation(
             "重复投递按回执重放：game={GameId} key={Key} command={Command} 序号={First}..{Last} clientSequence={ClientSequence}",
             gameId,
-            receipt.IdempotencyKey,
+            LogText.Clamp(receipt.IdempotencyKey),
             envelope.Command.GetType().Name,
             receipt.FirstSequence,
             receipt.LastSequence,

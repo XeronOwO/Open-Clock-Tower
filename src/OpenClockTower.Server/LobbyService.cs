@@ -1,5 +1,7 @@
+using Microsoft.Extensions.Options;
 using OpenClockTower.Application;
 using OpenClockTower.Contracts;
+using OpenClockTower.Kernel;
 
 namespace OpenClockTower.Server;
 
@@ -40,6 +42,7 @@ public sealed class LobbyService
     private readonly ISeatBindingStore _bindings;
     private readonly GameRegistry _registry;
     private readonly TableCreationPolicy _tableCreation;
+    private readonly TableQuotaOptions _quota;
     private readonly ILogger<LobbyService> _logger;
 
     /// <summary>构造大厅服务。</summary>
@@ -48,12 +51,14 @@ public sealed class LobbyService
         ISeatBindingStore bindings,
         GameRegistry registry,
         TableCreationPolicy tableCreation,
+        IOptions<TableQuotaOptions> quota,
         ILogger<LobbyService> logger)
     {
         _catalog = catalog;
         _bindings = bindings;
         _registry = registry;
         _tableCreation = tableCreation;
+        _quota = quota.Value;
         _logger = logger;
     }
 
@@ -115,6 +120,7 @@ public sealed class LobbyService
         Account? account,
         string? name,
         int seatCount,
+        CallerContext caller,
         CancellationToken cancellationToken)
     {
         if (!_tableCreation.CanCreate(account))
@@ -138,9 +144,20 @@ public sealed class LobbyService
             return Fail("invalid_name", $"桌名最多 {MaxNameLength} 个字符");
         }
 
+        if (TextNormalization.ContainsRejectedControlCharacter(trimmed))
+        {
+            return Fail("invalid_name", "桌名不能包含控制字符");
+        }
+
         if (seatCount < MinSeatCount || seatCount > MaxSeatCount)
         {
             return Fail("invalid_seat_count", $"席位数必须在 {MinSeatCount}–{MaxSeatCount} 之间");
+        }
+
+        var quota = await CheckQuotaAsync(account!, trimmed, cancellationToken);
+        if (quota is not null)
+        {
+            return quota;
         }
 
         for (var attempt = 0; attempt < 5; attempt++)
@@ -157,12 +174,15 @@ public sealed class LobbyService
             await _registry.GetOrCreateAsync(gameId, cancellationToken);
 
             _logger.LogInformation(
-                "已开桌：game={GameId} 桌名={Name} 席位={SeatCount} 开桌人={Username}（含账号 {AccountId}，他因此成为这一桌的说书人）",
+                "已开桌：game={GameId} 桌名={Name} 席位={SeatCount} 开桌人={Username} 账号={AccountId}"
+                + "（他因此成为这一桌的说书人）连接={ConnectionId} 客户端={Client}",
                 gameId.Value,
-                trimmed.Length == 0 ? "(未命名)" : trimmed,
+                LogText.Clamp(trimmed.Length == 0 ? "(未命名)" : trimmed),
                 seatCount,
                 account.Username,
-                account.Id.Value);
+                account.Id.Value,
+                caller.ConnectionId,
+                caller.Client);
 
             return new LobbyCreateResultDto
             {
@@ -179,28 +199,104 @@ public sealed class LobbyService
     }
 
     /// <summary>
+    /// 开桌前的配额判定（M4 / G-A5-5）：单账号额度 + 全局额度，**两个都判**。
+    /// </summary>
+    /// <param name="account">开桌者（已过授权闸）。</param>
+    /// <param name="name">本次要开的桌名（日志用；空 = 未命名）。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>超配额时的拒绝结果；都在额度内时返回 null。</returns>
+    /// <remarks>
+    /// <para>
+    /// 数的是**会话目录里在册的桌**（首版不回收，见 <see cref="TableQuotaOptions"/>）：
+    /// 一次性列出目录即可同时得到"全局几张"与"这个账号几张"，不需要第二份计数事实
+    /// （"状态属于所有者"——目录才是所有者）。
+    /// </para>
+    /// <para>
+    /// **并发下允许超出 1–2 张**：判定与写入之间没有锁，两个并发请求可能都看到"还差一张"。
+    /// 这是有意的取舍：为一张桌的精度给建桌路径加全局锁，代价大于收益（与 D-0032 的近似计数同一条口径）。
+    /// </para>
+    /// </remarks>
+    private async Task<LobbyCreateResultDto?> CheckQuotaAsync(
+        Account account,
+        string name,
+        CancellationToken cancellationToken)
+    {
+        var setups = await _catalog.ListAsync(cancellationToken);
+
+        if (setups.Count >= _quota.MaxTablesGlobal)
+        {
+            _logger.LogWarning(
+                "开桌被拒（全局桌数配额）：account={AccountId} username={Username} 在册桌数={Tables} 上限={Limit} 桌名={Name}",
+                account.Id.Value,
+                account.Username,
+                setups.Count,
+                _quota.MaxTablesGlobal,
+                LogText.Clamp(name.Length == 0 ? "(未命名)" : name));
+
+            return Fail(
+                "table_quota_server",
+                $"本服在册的桌已达上限（{_quota.MaxTablesGlobal} 张）：请联系运维清理不再使用的桌后再开");
+        }
+
+        var mine = setups.Count(setup => setup.CreatedByAccountId == account.Id);
+        if (mine >= _quota.MaxTablesPerAccount)
+        {
+            _logger.LogWarning(
+                "开桌被拒（单账号桌数配额）：account={AccountId} username={Username} 本人桌数={Tables} 上限={Limit} 桌名={Name}",
+                account.Id.Value,
+                account.Username,
+                mine,
+                _quota.MaxTablesPerAccount,
+                LogText.Clamp(name.Length == 0 ? "(未命名)" : name));
+
+            return Fail(
+                "table_quota_account",
+                $"你名下已经有 {mine} 张在册的桌（每人最多 {_quota.MaxTablesPerAccount} 张）："
+                    + "本版不自动回收旧桌，请联系运维清理后再开");
+        }
+
+        return null;
+    }
+
+    /// <summary>
     /// 改桌名 / 锁桌（说书人）。锁桌后**不再接受新的入座**，已在座的玩家不受影响。
     /// </summary>
     /// <param name="gameId">哪一桌。</param>
     /// <param name="name">新桌名；null = 不改名。</param>
     /// <param name="isLocked">新的锁定状态；null = 不改。</param>
+    /// <param name="caller">发起这次调用的客户端地址与连接（审计用）。</param>
     /// <param name="cancellationToken">取消令牌。</param>
     /// <remarks>
+    /// <para>
     /// 元数据进会话目录（不进事件流）：它不影响任何规则判定，也不该出现在复盘里（D-0015）。
+    /// </para>
+    /// <para>
+    /// **审计带操作者**（M4 / G-A5-10）：锁桌与改桌名只有这一桌的开桌账号做得了，所以"谁下的手"
+    /// 就是会话目录里的 <c>CreatedByAccountId</c>；日志同时写连接与客户端地址，出事能追到来源。
+    /// </para>
     /// </remarks>
     public async Task UpdateLobbyAsync(
         GameId gameId,
         string? name,
         bool? isLocked,
+        CallerContext caller,
         CancellationToken cancellationToken)
     {
         var setup = await _catalog.FindAsync(gameId, cancellationToken)
             ?? throw new InvalidOperationException($"这一桌不存在：{gameId.Value}");
 
         var trimmed = name?.Trim();
-        if (trimmed is not null && trimmed.Length > MaxNameLength)
+        if (trimmed is not null)
         {
-            throw new InvalidOperationException($"桌名最多 {MaxNameLength} 个字符");
+            if (trimmed.Length > MaxNameLength)
+            {
+                throw new InvalidOperationException($"桌名最多 {MaxNameLength} 个字符");
+            }
+
+            if (TextNormalization.ContainsRejectedControlCharacter(trimmed))
+            {
+                throw new InvalidOperationException("桌名不能包含控制字符");
+            }
         }
 
         var nextName = trimmed ?? setup.Name;
@@ -212,10 +308,13 @@ public sealed class LobbyService
 
         await _catalog.UpdateLobbyAsync(gameId, nextName, nextLocked, cancellationToken);
         _logger.LogInformation(
-            "桌元数据已更新：game={GameId} 桌名={Name} 锁定={Locked}",
+            "桌元数据已更新：game={GameId} 桌名={Name} 锁定={Locked} 操作者账号={AccountId} 连接={ConnectionId} 客户端={Client}",
             gameId.Value,
-            nextName.Length == 0 ? "(未命名)" : nextName,
-            nextLocked);
+            LogText.Clamp(nextName.Length == 0 ? "(未命名)" : nextName),
+            nextLocked,
+            setup.CreatedByAccountId?.Value,
+            caller.ConnectionId,
+            caller.Client);
     }
 
     /// <summary>这一桌是否已开局（已产生过夜晚或白天）。</summary>

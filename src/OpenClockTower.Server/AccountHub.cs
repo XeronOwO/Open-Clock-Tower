@@ -28,6 +28,7 @@ public sealed class AccountHub : Hub
     private readonly AccountSessionRegistry _sessions;
     private readonly AccountRevocationService _revocation;
     private readonly AccountAttemptLimiter _limiter;
+    private readonly RegistrationPolicy _registration;
     private readonly GameRegistry _games;
     private readonly NotificationDispatcher _dispatcher;
     private readonly LobbyService _lobby;
@@ -51,6 +52,7 @@ public sealed class AccountHub : Hub
         AccountSessionRegistry sessions,
         AccountRevocationService revocation,
         AccountAttemptLimiter limiter,
+        RegistrationPolicy registration,
         GameRegistry games,
         NotificationDispatcher dispatcher,
         LobbyService lobby,
@@ -61,6 +63,7 @@ public sealed class AccountHub : Hub
         _sessions = sessions;
         _revocation = revocation;
         _limiter = limiter;
+        _registration = registration;
         _games = games;
         _dispatcher = dispatcher;
         _lobby = lobby;
@@ -109,17 +112,14 @@ public sealed class AccountHub : Hub
             };
         }
 
-        var result = await _lobby.CreateAsync(account, name, seatCount, Context.ConnectionAborted);
-        if (result.Ok)
-        {
-            _logger.LogInformation(
-                "已开桌：connection={ConnectionId} game={GameId} 开桌人={Username}",
-                Context.ConnectionId,
-                result.GameId,
-                account.Username);
-        }
-
-        return result;
+        // 开桌的审计只有一条（M4 / G-A5-10）：**由 LobbyService 记**（它知道桌名与席位，
+        // 这里再记一遍就成了"同一件事两条日志"，对不上时看不出哪条是真的）；来源由 CallerContext 带过去。
+        return await _lobby.CreateAsync(
+            account,
+            name,
+            seatCount,
+            CallerContext.Of(Context.GetHttpContext(), Context.ConnectionId),
+            Context.ConnectionAborted);
     }
 
     /// <summary>账号会话 → 账号（无效时返回 null；调用方给出中性拒绝）。</summary>
@@ -134,9 +134,22 @@ public sealed class AccountHub : Hub
     }
 
     /// <summary>注册（D-0021）：成功后**同时登录**，返回账号会话与一次性恢复码。</summary>
-    /// <remarks>注册的额度**每次调用都消耗**（成功与失败都算），且不因成功而清空——那正是要限制的东西（D-0032）。</remarks>
+    /// <remarks>
+    /// 注册有三道闸，全部**先于慢哈希**：① 部署开关（关掉自助注册时直接拒绝）② 每来源额度
+    /// ③ 全局额度（换 IP 的分布式注册只有它拦得住）。注册的额度**每次调用都消耗**（成功与失败都算），
+    /// 且不因成功而清空——那正是要限制的东西（D-0032 / D-0033）。
+    /// </remarks>
     public async Task<AccountDto> Register(string username, string displayName, string password)
     {
+        if (!_registration.AllowsSelfRegistration)
+        {
+            _logger.LogWarning(
+                "注册被拒（本服已关闭自助注册）：connection={ConnectionId} 客户端={Client}",
+                Context.ConnectionId,
+                Client);
+            return RegistrationClosed();
+        }
+
         var decision = _limiter.Check(ThrottleAction.Register, Client, username: null);
         if (!decision.Allowed)
         {
@@ -234,8 +247,9 @@ public sealed class AccountHub : Hub
         if (account is null)
         {
             _logger.LogWarning(
-                "会话恢复被拒（无效或已过期）：connection={ConnectionId} 会话指纹={Fingerprint}",
+                "会话恢复被拒（无效或已过期）：connection={ConnectionId} 客户端={Client} 会话指纹={Fingerprint}",
                 Context.ConnectionId,
+                Client,
                 AccountSessionCredential.FingerprintOf(accountSession));
             return InvalidSession();
         }
@@ -259,7 +273,7 @@ public sealed class AccountHub : Hub
     /// </remarks>
     public Task<AccountDto> Logout(string accountSession)
     {
-        var revoked = _revocation.RevokeSession(accountSession);
+        var revoked = _revocation.RevokeSession(accountSession, CallerContext.Of(Context.GetHttpContext(), Context.ConnectionId));
         _logger.LogInformation(
             "登出：connection={ConnectionId} 已撤销={Revoked} 会话指纹={Fingerprint}",
             Context.ConnectionId,
@@ -279,8 +293,9 @@ public sealed class AccountHub : Hub
         if (!_sessions.TryResolve(accountSession, out var accountId))
         {
             _logger.LogWarning(
-                "改玩家名被拒（会话无效）：connection={ConnectionId} 会话指纹={Fingerprint}",
+                "改玩家名被拒（会话无效）：connection={ConnectionId} 客户端={Client} 会话指纹={Fingerprint}",
                 Context.ConnectionId,
+                Client,
                 AccountSessionCredential.FingerprintOf(accountSession));
             return InvalidSession();
         }
@@ -289,10 +304,11 @@ public sealed class AccountHub : Hub
         if (!outcome.Accepted || outcome.Account is null)
         {
             _logger.LogInformation(
-                "改玩家名被拒：account={AccountId} code={Code} 原因={Message}",
+                "改玩家名被拒：account={AccountId} code={Code} 原因={Message} 客户端={Client}",
                 accountId,
                 outcome.Code,
-                outcome.Message);
+                outcome.Message,
+                Client);
             return Reject(outcome);
         }
 
@@ -312,10 +328,11 @@ public sealed class AccountHub : Hub
         }
 
         _logger.LogInformation(
-            "玩家名已更新：account={AccountId} 新玩家名={DisplayName} 已同步的桌数={Tables}",
+            "玩家名已更新：account={AccountId} 新玩家名={DisplayName} 已同步的桌数={Tables} 客户端={Client}",
             accountId,
             outcome.Account.DisplayName,
-            updated);
+            updated,
+            Client);
         return Accept(outcome.Account, accountSession: null, recoveryCode: null);
     }
 
@@ -355,7 +372,7 @@ public sealed class AccountHub : Hub
         }
 
         _limiter.RecordSuccess(ThrottleAction.ResetPassword, Client, usernameKey);
-        var revoked = _revocation.RevokeAllForAccount(outcome.Account.Id);
+        var revoked = _revocation.RevokeAllForAccount(outcome.Account.Id, CallerContext.Of(Context.GetHttpContext(), Context.ConnectionId));
         var session = _sessions.Issue(outcome.Account.Id);
         _logger.LogInformation(
             "口令已重置：account={AccountId} username={Username} 客户端={Client} 已撤销旧会话={Revoked} 已踢旧连接并重新登录",
@@ -392,6 +409,14 @@ public sealed class AccountHub : Hub
         Ok = false,
         Code = "invalid_session",
         Message = "账号会话无效或已过期，请重新登录",
+    };
+
+    /// <summary>自助注册被部署开关关掉：中性文案，不透露"本服有没有账号"这类信息。</summary>
+    private static AccountDto RegistrationClosed() => new()
+    {
+        Ok = false,
+        Code = "registration_closed",
+        Message = "本服当前不开放自助注册，请联系运维",
     };
 
     private AccountDto Accept(Account account, string? accountSession, string? recoveryCode) => new()

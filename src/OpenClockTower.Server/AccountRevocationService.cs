@@ -38,44 +38,50 @@ public sealed class AccountRevocationService
     }
 
     /// <summary>登出：撤一条账号会话，并踢掉由它建立的全部在线连接；返回是否真的撤到了一条会话。</summary>
+    /// <param name="accountSession">要撤的账号会话凭据（无效即幂等返回 false）。</param>
+    /// <param name="caller">来源地址与连接（M4 / G-A5-10：登出也要能回答"谁从哪来登出的"）。</param>
     /// <remarks>
     /// 顺序有意为之：**先撤会话**（此后任何入口都不再认它，也不会再签发新连接），再撤连接。
     /// 反过来会留下一个窗口：连接被踢、会话还在，玩家可以立刻用同一串凭据重新入座。
     /// </remarks>
-    public bool RevokeSession(string? accountSession)
+    public bool RevokeSession(string? accountSession, CallerContext caller)
     {
         if (!_sessions.TryResolveSession(accountSession, out var session))
         {
             // 幂等：重复登出不该报错（客户端也可能重试）。
             _logger.LogInformation(
-                "登出未撤销任何会话（无效或已失效）：会话指纹={Fingerprint}",
-                AccountSessionCredential.FingerprintOf(accountSession));
+                "登出未撤销任何会话（无效或已失效）：会话指纹={Fingerprint} 连接={ConnectionId} 客户端={Client}",
+                AccountSessionCredential.FingerprintOf(accountSession),
+                caller.ConnectionId,
+                caller.Client);
             return false;
         }
 
         var revoked = _sessions.Revoke(session);
         var connections = _connections.RevokeSession(session);
         _logger.LogInformation(
-            "已登出：account={AccountId} 会话={Session} 已撤销会话={Revoked} 已踢连接数={Connections} 连接={ConnectionIds}",
+            "已登出：account={AccountId} 会话={Session} 已撤销会话={Revoked} 已踢连接数={Connections} 连接={ConnectionIds} 客户端={Client}",
             session.Account.Value,
             session,
             revoked,
             connections.Count,
-            string.Join(",", connections));
+            string.Join(",", connections),
+            caller.Client);
         return revoked;
     }
 
     /// <summary>口令重置（账号级失效）：撤该账号全部会话，并踢掉它们建立的全部在线连接；返回撤销的会话条数。</summary>
-    public int RevokeAllForAccount(AccountId accountId)
+    public int RevokeAllForAccount(AccountId accountId, CallerContext caller)
     {
         var sessions = _sessions.RevokeAllForAccount(accountId);
         var connections = _connections.RevokeAccount(accountId);
         _logger.LogInformation(
-            "已撤销账号全部会话：account={AccountId} 已撤销会话={Sessions} 已踢连接数={Connections} 连接={ConnectionIds}",
+            "已撤销账号全部会话：account={AccountId} 已撤销会话={Sessions} 已踢连接数={Connections} 连接={ConnectionIds} 客户端={Client}",
             accountId.Value,
             sessions,
             connections.Count,
-            string.Join(",", connections));
+            string.Join(",", connections),
+            caller.Client);
         return sessions;
     }
 }

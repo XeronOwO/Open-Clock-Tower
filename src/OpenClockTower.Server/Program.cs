@@ -16,6 +16,13 @@ var transportLimits = builder.Configuration
 var throttleOptions = builder.Configuration
     .GetSection(ThrottleOptions.SectionName)
     .Get<ThrottleOptions>() ?? new ThrottleOptions();
+// 动作频率与桌数配额（M4 / G-A5-5 · G-A5-8）：同样显式取值、可配、启动可见（依赖 D-0033）。
+var actionThrottleOptions = builder.Configuration
+    .GetSection(ActionThrottleOptions.SectionName)
+    .Get<ActionThrottleOptions>() ?? new ActionThrottleOptions();
+var tableQuotaOptions = builder.Configuration
+    .GetSection(TableQuotaOptions.SectionName)
+    .Get<TableQuotaOptions>() ?? new TableQuotaOptions();
 
 builder.Services.Configure<GameServerOptions>(
     builder.Configuration.GetSection(GameServerOptions.SectionName));
@@ -23,6 +30,10 @@ builder.Services.Configure<TransportLimitsOptions>(
     builder.Configuration.GetSection(TransportLimitsOptions.SectionName));
 builder.Services.Configure<ThrottleOptions>(
     builder.Configuration.GetSection(ThrottleOptions.SectionName));
+builder.Services.Configure<ActionThrottleOptions>(
+    builder.Configuration.GetSection(ActionThrottleOptions.SectionName));
+builder.Services.Configure<TableQuotaOptions>(
+    builder.Configuration.GetSection(TableQuotaOptions.SectionName));
 
 // 传输面上限（M3 / G-A3-4）：**显式取值**，不吃框架默认（30 MB 请求体 / 无上限连接 / 30 秒请求头超时）。
 builder.WebHost.ConfigureKestrel(kestrel =>
@@ -71,6 +82,10 @@ builder.Services.AddSingleton(provider => new TableCreationPolicy(
     serverOptions,
     provider.GetRequiredService<AdminDirectory>(),
     provider.GetRequiredService<ILogger<TableCreationPolicy>>()));
+// 自助注册开关（M4 / G-A5-2）：关掉之后没有任何开新账号的入口，策略对象在启动时打告警说明这一点。
+builder.Services.AddSingleton(provider => new RegistrationPolicy(
+    serverOptions,
+    provider.GetRequiredService<ILogger<RegistrationPolicy>>()));
 // 大厅用例（D-0025）：列桌 / 开桌。
 builder.Services.AddSingleton<LobbyService>();
 // 规则层的角色契约：提示目录与结算目录指向同一批实现（NightActions），常驻效果来源单列。
@@ -94,13 +109,16 @@ builder.Services.AddSingleton<ConnectionRegistry>();
 builder.Services.AddSingleton<AccountRevocationService>();
 // 账号入口限速（M4 / G-A1-1）：进程内计数，重启即清零；键与阈值见 ThrottleOptions 与 D-0032。
 builder.Services.AddSingleton<AccountAttemptLimiter>();
+// 动作准入（M4 / G-A5-6 · G-A5-8）：入座与写文本的窗口额度；口径见 ActionThrottleOptions 与 D-0033。
+builder.Services.AddSingleton<ActionThrottle>();
 builder.Services.AddSingleton<HubActorResolver>();
 builder.Services.AddSingleton<NotificationDispatcher>();
 // 连接 ↔ 桌的绑定（多桌 D-0024）：单例——SignalR 的 Hub 每次调用新建实例，字段记不住东西。
 // 桌标识只来自连接的 `?gameId=`（D-0027 删掉了"缺省回落默认桌"那条路）。
 builder.Services.AddSingleton(provider => new HubGameScope(
     provider.GetRequiredService<GameRegistry>(),
-    provider.GetRequiredService<NotificationDispatcher>()));
+    provider.GetRequiredService<NotificationDispatcher>(),
+    provider.GetRequiredService<ActionThrottle>()));
 // 加入入口（玩家与说书人两侧；自己解析所在桌，单例、无状态协作者）。
 builder.Services.AddSingleton(provider => new HubJoinScope(
     provider.GetRequiredService<IGameCatalog>(),
@@ -109,6 +127,7 @@ builder.Services.AddSingleton(provider => new HubJoinScope(
     provider.GetRequiredService<ConnectionRegistry>(),
     provider.GetRequiredService<AccountSessionRegistry>(),
     provider.GetRequiredService<NotificationDispatcher>(),
+    provider.GetRequiredService<ActionThrottle>(),
     provider.GetRequiredService<ILogger<GameHub>>()));
 // 桌务（锁桌 / 解除席位绑定）：单例、无状态协作者。
 builder.Services.AddSingleton(provider => new HubTableAdmin(
@@ -158,6 +177,21 @@ app.Logger.LogInformation(
     serverOptions.TrustedProxies.Length == 0 ? "回环（默认）" : string.Join(",", serverOptions.TrustedProxies),
     throttleOptions.LoginFailuresPerUsername,
     throttleOptions.WindowSeconds);
+
+// 滥用与风控的启动读数（M4 / D-0033）：配额与频率都只活在配置里，出事第一眼要能看到生效值是什么。
+app.Logger.LogInformation(
+    "风控面：自助注册={SelfRegistration} · 注册额度=每来源{RegisterPerClient}次/全局{RegisterGlobal}次每{Window}s · "
+    + "在册桌上限=每账号{PerAccount}张/全局{Global}张 · 入座额度=每桌{JoinPerGame}次每{ActionWindow}s · 写文本额度=每身份{Actor}次每{ActionWindow}s",
+    serverOptions.AllowSelfRegistration ? "开" : "关（没有任何开新账号的入口）",
+    throttleOptions.RegisterCallsPerClient,
+    throttleOptions.RegisterCallsGlobal,
+    throttleOptions.WindowSeconds,
+    tableQuotaOptions.MaxTablesPerAccount,
+    tableQuotaOptions.MaxTablesGlobal,
+    actionThrottleOptions.JoinCallsPerClientAndGame,
+    actionThrottleOptions.WindowSeconds,
+    actionThrottleOptions.WriteTextCallsPerActor,
+    actionThrottleOptions.WindowSeconds);
 
 // 部署形态：前端构建产物随发布带上（见 csproj 的 wwwroot 接线），由宿主直接发页面，
 // 因此页面与 /hub 同源——不需要 CORS，也不需要另起静态站点。开发期仍可继续用 web/ 的 Vite 服务器。

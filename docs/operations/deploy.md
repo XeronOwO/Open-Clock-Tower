@@ -102,6 +102,15 @@ Environment=GameServer__SlotQuotaSeconds=10
 # Environment=GameServer__Throttle__LoginFailuresPerUsername=5         # 默认 5 次
 # Environment=GameServer__Throttle__LoginFailuresPerClient=20          # 默认 20 次（跨登录名；NAT 后面的集体额度）
 # Environment=GameServer__Throttle__RegisterCallsPerClient=10          # 默认 10 次（每次调用都算、成功不清零）
+# Environment=GameServer__Throttle__RegisterCallsGlobal=30             # 默认 30 次（**整个部署**的注册额度；换 IP 刷注册只有它拦得住）
+# 滥用与风控（M4 / D-0033）：
+# Environment=GameServer__AllowSelfRegistration=false                  # 默认 true；**关掉之后没有任何入口能开新账号**（首版没有邀请码与管理台）
+# Environment=GameServer__TableQuota__MaxTablesPerAccount=12           # 默认 12 张（单个账号名下**在册**的桌；首版不回收，所以这是硬上限）
+# Environment=GameServer__TableQuota__MaxTablesGlobal=64               # 默认 64 张（整个部署在册的桌；到顶后谁都开不出新桌，清理见 §9.4）
+# Environment=GameServer__ActionThrottle__WindowSeconds=300            # 默认 5 分钟
+# Environment=GameServer__ActionThrottle__JoinCallsPerClientAndGame=60 # 默认 60 次（同一来源在同一桌的入座 / 重连）
+# Environment=GameServer__ActionThrottle__JoinCallsPerClient=120       # 默认 120 次（同一来源跨桌）
+# Environment=GameServer__ActionThrottle__WriteTextCallsPerActor=120   # 默认 120 次（注记 / 说明 / 原因，按来源 × 桌 × 身份）
 # 反代不在同一台机器 / 在容器里时，**必须**写出它的地址或网段，否则 X-Forwarded-* 一律不认（真实 IP 会退化成代理地址）：
 # Environment=GameServer__TrustedProxies=172.18.0.0/16                 # 地址或 CIDR，逗号分隔；写错宿主启动即失败
 
@@ -114,10 +123,11 @@ sudo systemctl daemon-reload && sudo systemctl enable --now clocktower
 systemctl is-active clocktower && journalctl -u clocktower -n 20 --no-pager
 ```
 
-启动时会打印一行读数（上限、可信代理、限速阈值），出问题时先看它——**配置真的生效了没有，看这一行**：
+启动时会打印两行读数（传输上限 / 可信代理 / 账号限速；风控配额与频率），出问题时先看它们——**配置真的生效了没有，看这两行**：
 
 ```
 传输面：请求体≤262144B · SignalR消息≤65536B · 连接≤512 · 请求头超时=15s · 可信代理=回环（默认） · 登录限速=5次/300s
+风控面：自助注册=开 · 注册额度=每来源10次/全局30次每300s · 在册桌上限=每账号12张/全局64张 · 入座额度=每桌60次每300s · 写文本额度=每身份120次每300s
 ```
 
 启动日志里会打印**说书人票据**与**各席位票据**（见 §5），把它记下来。
@@ -328,6 +338,28 @@ systemctl start clocktower
 | 登录提示"尝试过于频繁，请 N 秒后再试" | 入口限速生效了（D-0032）：同一来源 + 同一登录名的失败额度用尽。阈值见 §3 的 `GameServer__Throttle__*` |
 | 请求返 `413` | 请求体超限：应用侧 256 KB / 反代 1 MB（§3 / §4），看 `Server` 头判是哪一层拒的 |
 | 请求返 `429` | 反代限流：`limit_req`（速率）或 `limit_conn`（并发连接），见 §4 |
+| 提示"尝试过于频繁，请 N 秒后再试" | 入口 / 动作限速生效了（D-0032 / D-0033）：登录失败、注册额度、入座次数或写文本次数用尽。阈值见 §3 的 `GameServer__Throttle__*` 与 `GameServer__ActionThrottle__*` |
+| 提示"本服当前不开放自助注册" | `GameServer__AllowSelfRegistration=false`（§3）：要开新账号就把它改回 true 并重启 |
+| 提示"本服在册的桌已达上限" | 全局桌数到顶（§9.4）：清掉不再使用的桌，或调 `GameServer__TableQuota__MaxTablesGlobal` |
+| 提示"你名下已经有 N 张在册的桌" | 单账号桌数到顶（§9.4）：清掉旧桌，或调 `GameServer__TableQuota__MaxTablesPerAccount` |
+
+### 9.4 清理不再使用的桌（首版没有关桌功能）
+
+在册桌数是**有上限的**（默认单账号 12 张 / 全局 64 张，见 D-0033），而首版**不回收空闲桌**：
+上限一到，谁都开不出新桌。清理就是**从库里删掉那些桌的行**，操作前先停服务
+（开着的桌活在宿主内存里，不停服务就删会被写回来）：
+
+```bash
+sudo systemctl stop clocktower
+# 先看一眼有哪些桌（桌名与开桌账号一眼能认出来）
+sqlite3 <APP_DIR>/data/oct.db "SELECT g.GameId, g.Name, u.Username FROM Games g LEFT JOIN Users u ON u.Id = g.CreatedByAccountId;"
+# 确认 GameId 之后逐个删（<ID> 换成上面查到的那一个）：
+sqlite3 <APP_DIR>/data/oct.db "DELETE FROM SeatBindings WHERE GameId='<ID>'; DELETE FROM Events WHERE GameId='<ID>'; DELETE FROM Snapshots WHERE GameId='<ID>'; DELETE FROM Receipts WHERE GameId='<ID>'; DELETE FROM Games WHERE GameId='<ID>';"
+sudo systemctl start clocktower
+```
+
+删桌会**一并删掉那一局的全部事件与席位绑定**（复盘也就没了）——只删确定不要的。
+空闲桌回收（按时间自动归档）排在 M5；在那之前上面这套就是运营路径。
 
 ## 9. 已知限制（不藏）
 
@@ -336,14 +368,18 @@ systemctl start clocktower
    审计口径：这条对应 `G-A3-1`（Critical），**在 TLS 落地前一直算未清零**，不许当成"已经加固过了"。
 2. **单进程多桌**（D-0024）：一个宿主按 `GameId` 维护多张桌，共享账号与连接设施；同时开几桌不需要多开进程。
    代价是 SQLite 单写者——多桌同时写入会排队（小圈子 2–5 桌可接受）。
-3. **自助开桌没有配额**：默认谁都能开桌（D-0026），当前没有桌数上限、也没有空闲桌自动回收。
-   公开部署请配 `GameServer__AllowPlayerTables=false` 收紧，并定期清理不开的桌。
+3. **开桌有配额、但没有回收**：默认谁都能开桌（D-0026），配额是单账号 12 张 / 全局 64 张（D-0033，可配）；
+   首版**不自动回收空闲桌**，到顶后需要人工清理（§9.4）。公开部署怕被刷桌时仍建议配
+   `GameServer__AllowPlayerTables=false` 收紧到运维名单。
 4. **表结构变更需换新库**：当前用 EF 的 `EnsureCreated`，缺表时启动会显式失败并提示换新库，不会静默丢数据。
    唯一的例外是启动守卫对 `Games` 表的**原地列对账**（缺列补上、退场列清掉），所以"票据时代"的旧库能直接升上来。
-5. **限速只在进程内存里**（D-0032）：重启即清零；多实例部署时**每实例各算一份**（首版明确不做多实例）。
-   同一 NAT 后面的所有人共用"每 5 分钟 20 次登录失败"的额度——这是防爆破与不误伤之间的取舍，可用
-   `GameServer__Throttle__*` 调。
-6. **限速不覆盖界面动作**：开桌 / 入座 / 重复加入仍无配额（审计 `G-A5-2` / `G-A5-5` / `G-A5-6`，排在 M4）。
+5. **所有配额与限速都只在进程内存里**（D-0032 / D-0033）：重启即清零（**重启也会清掉攻击者的计数**）；
+   多实例部署时**每实例各算一份**（首版明确不做多实例）。同一 NAT 后面的所有人共用额度
+   （登录失败 20 次 / 注册 10 次 / 入座 60 次每 5 分钟）——这是防滥用与不误伤之间的取舍，可用
+   `GameServer__Throttle__*` 与 `GameServer__ActionThrottle__*` 调。
+6. **界面动作的限速在服务端生效、界面本身没有节流**：连点按钮会看到服务端的拒绝文案
+   （"…请 N 秒后再试"），够用但不优雅；界面的按钮节流排在 M5 的体验收口。
+   另：**重连包仍是每次全量重建**（G-A5-6 的缓存半边留 M5）——频率闸只堵住"循环调用"。
 7. **反代上限与应用上限要人肉保持一致**（§4 的 `client_max_body_size 1m` 对应用侧 256 KB）：
    门禁只保证两边都有显式值，数值本身不一致时不会变红。
 

@@ -294,6 +294,13 @@ public sealed class GameSession
     {
         try
         {
+            // 文本闸先于一切（M4 / G-A5-8）：超长 / 含控制字符的客户端文本不许进事件流，更不许进日志；
+            // 放在回执查询之前——幂等键本身也在这道闸里，而它会直接进数据库主键。
+            if (CommandTextGate.Check(envelope) is { } textRejection)
+            {
+                return Reject(envelope, textRejection);
+            }
+
             var receipt = await _store.FindReceiptAsync(GameId, envelope.IdempotencyKey, cancellationToken);
             var setup = await EnsureSetupAsync(cancellationToken);
             var decision = CommandGatePipeline.Evaluate(envelope, _machine, receipt, setup, _trackers.AnnotationLedger);
@@ -421,7 +428,7 @@ public sealed class GameSession
                 GameId,
                 envelope.Actor.Kind,
                 envelope.Command.GetType().Name,
-                envelope.IdempotencyKey);
+                LogText.Clamp(envelope.IdempotencyKey));
 
             return new CommandResult
             {
@@ -460,7 +467,7 @@ public sealed class GameSession
             _logger.LogWarning(
                 "房间已按事件日志重建：game={GameId} reason={Reason} 内存一致={MachineEquivalent} 快照一致={SnapshotEquivalent} 账一致={LedgerEquivalent} 事件数={EventCount} 序号={Sequence}",
                 GameId,
-                rebuild.Reason,
+                LogText.Clamp(rebuild.Reason),
                 outcome.MachineEquivalent,
                 outcome.SnapshotEquivalent,
                 outcome.LedgerEquivalent,
@@ -495,9 +502,9 @@ public sealed class GameSession
                 exception,
                 "房间重建失败（显式报错，不静默继续）：game={GameId} reason={Reason} 健康位降级={Degraded} 原因={HealthReason}",
                 GameId,
-                rebuild.Reason,
+                LogText.Clamp(rebuild.Reason),
                 _health.IsDegraded,
-                _health.Reason);
+                LogText.Clamp(_health.Reason));
 
             return new CommandResult
             {
@@ -551,6 +558,8 @@ public sealed class GameSession
 
     private CommandResult Reject(CommandEnvelope envelope, CommandRejection rejection)
     {
+        // 拒绝文案里**可能嵌着客户端原文**（"未知的夜晚顺序口径：{原样}"、"选项不在合法集合里：{原样}"）：
+        // 进日志前一律过 LogText.Clamp（M4 / G-A5-10），否则换行能把一行日志伪造成两行。
         _logger.LogWarning(
             "命令被拒绝：game={GameId} gate={Gate} code={Code} actor={ActorKind} seat={Seat} command={Command} 说明={Message}",
             GameId,
@@ -559,7 +568,7 @@ public sealed class GameSession
             envelope.Actor.Kind,
             envelope.Actor.Seat,
             envelope.Command.GetType().Name,
-            rejection.Message);
+            LogText.Clamp(rejection.Message));
 
         return new CommandResult
         {

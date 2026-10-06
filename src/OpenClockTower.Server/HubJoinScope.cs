@@ -27,6 +27,7 @@ public sealed class HubJoinScope
     private readonly ConnectionRegistry _registry;
     private readonly AccountSessionRegistry _sessions;
     private readonly NotificationDispatcher _dispatcher;
+    private readonly ActionThrottle _throttle;
     private readonly ILogger<GameHub> _logger;
 
     /// <summary>构造入口。</summary>
@@ -37,6 +38,7 @@ public sealed class HubJoinScope
         ConnectionRegistry registry,
         AccountSessionRegistry sessions,
         NotificationDispatcher dispatcher,
+        ActionThrottle throttle,
         ILogger<GameHub> logger)
     {
         _catalog = catalog;
@@ -45,6 +47,7 @@ public sealed class HubJoinScope
         _registry = registry;
         _sessions = sessions;
         _dispatcher = dispatcher;
+        _throttle = throttle;
         _logger = logger;
     }
 
@@ -86,6 +89,7 @@ public sealed class HubJoinScope
         long lastSequence)
     {
         var game = await _scope.GameAsync(httpContext, connectionId, aborted);
+        _throttle.AdmitJoin(game.GameId, CallerContext.Of(httpContext, connectionId));
         var outcome = await _join.JoinBySeatAsync(game, accountSession, seat, lastSequence, connectionId, aborted);
         return await CompleteJoinAsync(caller, game, outcome, aborted);
     }
@@ -113,6 +117,7 @@ public sealed class HubJoinScope
         }
 
         var game = await _scope.GameAsync(httpContext, connectionId, aborted);
+        _throttle.AdmitJoin(game.GameId, CallerContext.Of(httpContext, connectionId));
         var flow = new HubJoinFlow(_catalog, game, _registry, _logger, connectionId, aborted);
         return await flow.JoinStorytellerAsync(session);
     }
@@ -127,6 +132,7 @@ public sealed class HubJoinScope
         long lastSequence)
     {
         var game = await _scope.GameAsync(httpContext, connectionId, aborted);
+        _throttle.AdmitJoin(game.GameId, CallerContext.Of(httpContext, connectionId));
         var outcome = await _join.JoinAsync(game, ticket, accountSession, lastSequence, connectionId, aborted);
         return await CompleteJoinAsync(caller, game, outcome, aborted);
     }

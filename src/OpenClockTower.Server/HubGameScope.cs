@@ -26,6 +26,7 @@ public sealed class HubGameScope
 {
     private readonly GameRegistry _games;
     private readonly NotificationDispatcher _dispatcher;
+    private readonly ActionThrottle _throttle;
     private readonly Dictionary<string, GameInstance> _gamesByConnection = new(StringComparer.Ordinal);
     private readonly Dictionary<string, HubCommandExecutor> _executorsByConnection = new(StringComparer.Ordinal);
     private readonly object _gate = new();
@@ -33,10 +34,12 @@ public sealed class HubGameScope
     /// <summary>构造绑定。</summary>
     /// <param name="games">局注册表。</param>
     /// <param name="dispatcher">推送分发（执行器要用）。</param>
-    internal HubGameScope(GameRegistry games, NotificationDispatcher dispatcher)
+    /// <param name="throttle">动作准入（执行器要用：写文本的频率额度）。</param>
+    internal HubGameScope(GameRegistry games, NotificationDispatcher dispatcher, ActionThrottle throttle)
     {
         _games = games;
         _dispatcher = dispatcher;
+        _throttle = throttle;
     }
 
     /// <summary>取这条连接所属的桌；首次调用时按查询串解析并记住。</summary>
@@ -108,7 +111,11 @@ public sealed class HubGameScope
         CancellationToken cancellationToken)
     {
         var game = await GameAsync(httpContext, connectionId, cancellationToken);
-        var executor = new HubCommandExecutor(game, _dispatcher);
+        var executor = new HubCommandExecutor(
+            game,
+            _dispatcher,
+            _throttle,
+            CallerContext.Of(httpContext, connectionId));
 
         lock (_gate)
         {

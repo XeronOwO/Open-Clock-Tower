@@ -336,14 +336,21 @@ internal sealed class GameCommandFactory
             ? parsed
             : (OperationRequestVoidReason)(-1);
 
-    /// <summary>参数层拒绝：同一个拒绝对外只抛 <see cref="HubException"/>，对内存审计（连接 / 方法 / 原因）。</summary>
+    /// <summary>
+    /// 参数层拒绝：同一个拒绝对外只抛 <see cref="HubException"/>，对内存审计（连接 / 方法 / 原因）。
+    /// </summary>
+    /// <remarks>
+    /// M4 / G-A5-10：这里的 <paramref name="reason"/> 常常**整段嵌着客户端原文**
+    /// （"未知的{label}：{raw}"），所以进日志前必须过 <see cref="LogText.Clamp"/>——
+    /// 逐字符转义 + 截断，换行伪造不出第二行日志，超长串也灌不爆日志。
+    /// </remarks>
     private HubException Reject(string reason)
     {
         _logger.LogWarning(
             "命令被拒绝（参数）：connection={ConnectionId} 方法={Method} 原因={Reason}",
             _connectionId,
             _method,
-            reason);
+            LogText.Clamp(reason));
         return new HubException(reason);
     }
 }

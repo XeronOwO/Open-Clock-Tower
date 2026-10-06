@@ -475,7 +475,7 @@ public sealed class GameHub : Hub<IGameClient>
     public async Task<bool> ReleaseSeatBinding(string credential, int seat)
     {
         _ = ResolveStorytellerActor(credential);
-        return await _tableAdmin.ReleaseBindingAsync(await GameAsync(), new SeatId(seat), Context.ConnectionAborted);
+        return await _tableAdmin.ReleaseBindingAsync(await GameAsync(), new SeatId(seat), CallerContext.Of(Context.GetHttpContext(), Context.ConnectionId), Context.ConnectionAborted);
     }
 
     /// <summary>
@@ -488,7 +488,7 @@ public sealed class GameHub : Hub<IGameClient>
     public async Task<bool> SetTableLock(string credential, bool isLocked)
     {
         _ = ResolveStorytellerActor(credential);
-        return await _tableAdmin.SetLockAsync(await GameAsync(), isLocked, Context.ConnectionAborted);
+        return await _tableAdmin.SetLockAsync(await GameAsync(), isLocked, CallerContext.Of(Context.GetHttpContext(), Context.ConnectionId), Context.ConnectionAborted);
     }
 
     /// <summary>

@@ -31,20 +31,32 @@ public sealed class HubTableAdmin
     }
 
     /// <summary>锁桌 / 解锁：锁定后不再接受新的自助入座，已在座的玩家不受影响（D-0025）。</summary>
-    public async Task<bool> SetLockAsync(GameInstance game, bool isLocked, CancellationToken cancellationToken)
+    /// <param name="game">哪一桌。</param>
+    /// <param name="isLocked">新的锁定状态。</param>
+    /// <param name="caller">发起这次调用的客户端地址与连接（审计要能回答"谁从哪来锁的桌"，M4 / G-A5-10）。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    public async Task<bool> SetLockAsync(
+        GameInstance game,
+        bool isLocked,
+        CallerContext caller,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(game);
 
-        await _lobby.UpdateLobbyAsync(game.GameId, name: null, isLocked, cancellationToken);
+        await _lobby.UpdateLobbyAsync(game.GameId, name: null, isLocked, caller, cancellationToken);
         return isLocked;
     }
 
     /// <summary>解除席位绑定（D-0021 误认领兜底）：清掉「席位 ↔ 账号」并把新名字推给本桌。</summary>
-    public async Task<bool> ReleaseBindingAsync(GameInstance game, SeatId seat, CancellationToken cancellationToken)
+    public async Task<bool> ReleaseBindingAsync(
+        GameInstance game,
+        SeatId seat,
+        CallerContext caller,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(game);
 
-        var released = await _join.ReleaseBindingAsync(game, seat, cancellationToken);
+        var released = await _join.ReleaseBindingAsync(game, seat, caller, cancellationToken);
         if (released)
         {
             // 只有真的解除了才推送：没动用不着惊动全桌。

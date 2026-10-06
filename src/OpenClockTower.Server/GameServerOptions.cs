@@ -46,6 +46,22 @@ public sealed class GameServerOptions
     public bool AllowPlayerTables { get; set; } = true;
 
     /// <summary>
+    /// 是否允许**自助注册**（M4 / G-A5-2，默认允许）。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 公开部署被批量注册刷库时配 <c>GameServer__AllowSelfRegistration=false</c> 关掉：
+    /// 注册入口给"本服当前不开放注册"的中性拒绝，**既有账号的登录不受影响**，
+    /// 而且拒绝发生在慢哈希之前（一次注册要烧两次 PBKDF2）。
+    /// </para>
+    /// <para>
+    /// **关掉 = 再也开不出新账号**：首版没有邀请码、也没有运维建号入口（策略对象会打告警说明这一点）。
+    /// 它适合"人就这些、先把门焊死"的部署；要招新人就把它开回来。
+    /// </para>
+    /// </remarks>
+    public bool AllowSelfRegistration { get; set; } = true;
+
+    /// <summary>
     /// **可信反向代理**的地址或网段清单（M3 / G-A3-3）：<c>X-Forwarded-For</c> / <c>X-Forwarded-Proto</c>
     /// 只从这些来源采信。
     /// </summary>

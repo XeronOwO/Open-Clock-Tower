@@ -438,7 +438,7 @@ public static class CommandGatePipeline
             // 改 / 删必须先存在（已删除的标识不再接受）。
             AddSeatAnnotationCommand add => AnnotationGate.CheckAdd(add, setup, annotations),
             UpdateSeatAnnotationCommand update =>
-                AnnotationGate.CheckTarget(update.Id, annotations) ?? AnnotationGate.CheckText(update.Text),
+                AnnotationGate.CheckUpdate(update.Id, update.Text, annotations),
             RemoveSeatAnnotationCommand remove => AnnotationGate.CheckTarget(remove.Id, annotations),
 
             // 旅行者加入 / 离场（D1）：形状检查在这里；"能不能加入 / 离场"读状态账，在内核侧判。

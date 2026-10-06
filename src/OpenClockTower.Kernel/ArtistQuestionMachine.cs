@@ -17,9 +17,6 @@ namespace OpenClockTower.Kernel;
 /// </remarks>
 internal static class ArtistQuestionMachine
 {
-    /// <summary>提问文本上限：防止把整段对话塞进事件流（超限显式拒绝）。</summary>
-    internal const int MaxQuestionLength = 200;
-
     /// <summary>
     /// 结清用的稳定裁定点标识：同一白天内固定（同一时刻最多一条进行中问题，不会混淆历史）。
     /// </summary>
@@ -100,12 +97,12 @@ internal static class ArtistQuestionMachine
             return Reject(state, "artist.question_empty", "问题不能为空");
         }
 
-        if (question.Length > MaxQuestionLength)
+        if (question.Length > ArtistQuestionText.MaxLength)
         {
             return Reject(
                 state,
                 "artist.question_too_long",
-                $"问题太长（上限 {MaxQuestionLength} 个字符）：请精简后重问");
+                $"问题太长（上限 {ArtistQuestionText.MaxLength} 个字符）：请精简后重问");
         }
 
         // 输入卫生：问题是单行自由文本，控制字符（换行 / 制表 / 其他不可见）一律拒绝

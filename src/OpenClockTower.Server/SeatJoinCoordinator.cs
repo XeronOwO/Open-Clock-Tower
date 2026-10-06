@@ -208,21 +208,36 @@ public sealed class SeatJoinCoordinator
     /// <remarks>
     /// 从 <see cref="GameHub"/> 拆出（单文件 600 行门禁）：与加入 / 认领同属"身份 ↔ 席位"的编排；
     /// 推送仍由 Hub 完成（本类不碰 SignalR）。不是游戏命令、不产生事件：绑定是会话信息。
+    /// **审计带桌、操作者与来源**（M4 / G-A5-10）：这条日志原先既没有 game 也没有人，
+    /// 出事时无法回答"谁把谁的席位解除了"。
     /// </remarks>
-    public async Task<bool> ReleaseBindingAsync(GameInstance game, SeatId seat, CancellationToken cancellationToken)
+    public async Task<bool> ReleaseBindingAsync(
+        GameInstance game,
+        SeatId seat,
+        CallerContext caller,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(game);
 
         var setup = await _catalog.FindAsync(game.GameId, cancellationToken);
         if (setup is null)
         {
-            _logger.LogWarning("解除绑定被拒（会话）：原因=本局还没有会话信息");
+            _logger.LogWarning(
+                "解除绑定被拒（会话）：game={GameId} seat={Seat} 原因=本局还没有会话信息 客户端={Client}",
+                game.GameId.Value,
+                seat,
+                caller.Client);
             throw new HubException("本局还没有会话信息");
         }
 
         if (!setup.Seats.Any(item => item.Seat == seat))
         {
-            _logger.LogWarning("解除绑定被拒（席位不在名单）：seat={Seat}", seat);
+            _logger.LogWarning(
+                "解除绑定被拒（席位不在名单）：game={GameId} seat={Seat} 席位={Capacity} 客户端={Client}",
+                game.GameId.Value,
+                seat,
+                setup.Seats.Count,
+                caller.Client);
             throw new HubException("席位不在本局名单里");
         }
 
@@ -232,7 +247,15 @@ public sealed class SeatJoinCoordinator
             game.SeatNames.Remove(seat);
         }
 
-        _logger.LogInformation("解除席位绑定：seat={Seat} 已解除={Released}", seat, released);
+        _logger.LogInformation(
+            "解除席位绑定：game={GameId} seat={Seat} 已解除={Released} 操作者账号={AccountId} 连接={ConnectionId} 客户端={Client}",
+            game.GameId.Value,
+            seat,
+            released,
+            setup.CreatedByAccountId?.Value,
+            caller.ConnectionId,
+            caller.Client);
+
         return released;
     }
 

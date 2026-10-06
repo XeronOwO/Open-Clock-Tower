@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using Microsoft.Extensions.Options;
 using OpenClockTower.Application;
 
@@ -9,26 +8,28 @@ namespace OpenClockTower.Server;
 /// </summary>
 /// <remarks>
 /// <para>
-/// 键是"客户端地址 + 登录名"两个桶，取更严的那个（口径见 <see cref="ThrottleOptions"/> 与 D-0032）。
+/// 键是"客户端地址 + 登录名"两个桶，取更严的那个（口径见 <see cref="ThrottleOptions"/> 与 D-0032）；
+/// 注册另加一个**全局桶**（M4 第一刀，G-A5-2）：单来源的额度拦不住"换 IP 分布式注册"，
+/// 全局额度是那条路的兜底。
+/// </para>
+/// <para>
 /// 失败才计数、成功即清窗口，所以正常用户打错两次不会被拖慢；而每一次失败尝试都要跑满一次
 /// PBKDF2（单次 ~55 ms），它的放大效应正是这条要拦的东西——拒绝发生在哈希之前。
 /// </para>
 /// <para>
-/// 状态只活在进程内存里：重启即清零（与账号会话同一条口径，D-0029）。
-/// 多实例部署时它是**每实例一份**的——本项目首版明确不做多实例（见根 AGENTS.md「首版明确不做」），
-/// 真要做时这一层要换成共享存储，而不是假装它是全局的。
-/// </para>
-/// <para>
-/// 内存有界：桶数超过 <see cref="ThrottleOptions.MaxTrackedBuckets"/> 先清过期桶，
-/// 仍满则不再为新键建桶（既有键继续计数）——随机登录名的洪水打不爆内存。
+/// 计数本身在 <see cref="WindowedCounters"/>（有界、近似、进程内）；本类只负责"哪些入口、
+/// 哪些键、多少额度、什么时候清零"这套口径。
 /// </para>
 /// </remarks>
 public sealed class AccountAttemptLimiter
 {
+    /// <summary>全局注册桶的键（日志与测试按它检索）。</summary>
+    private const string GlobalRegisterKey = "register:global";
+
     private readonly ThrottleOptions _options;
     private readonly IClock _clock;
     private readonly ILogger<AccountAttemptLimiter> _logger;
-    private readonly ConcurrentDictionary<string, Bucket> _buckets = new(StringComparer.Ordinal);
+    private readonly WindowedCounters _counters;
 
     /// <summary>构造限速器。</summary>
     public AccountAttemptLimiter(
@@ -39,13 +40,14 @@ public sealed class AccountAttemptLimiter
         _options = options.Value;
         _clock = clock;
         _logger = logger;
+        _counters = new WindowedCounters(
+            TimeSpan.FromSeconds(_options.WindowSeconds),
+            _options.MaxTrackedBuckets,
+            logger);
     }
 
     /// <summary>当前跟踪的计数桶数量（测试与运维读数）。</summary>
-    public int TrackedBuckets => _buckets.Count;
-
-    /// <summary>窗口时长。</summary>
-    private TimeSpan Window => TimeSpan.FromSeconds(_options.WindowSeconds);
+    public int TrackedBuckets => _counters.TrackedKeys;
 
     /// <summary>这一次尝试放不放行（只读，不改计数）。</summary>
     public ThrottleDecision Check(ThrottleAction action, string client, string? username)
@@ -56,19 +58,13 @@ public sealed class AccountAttemptLimiter
 
         foreach (var key in KeysOf(action, client, username))
         {
-            if (!_buckets.TryGetValue(key.Id, out var bucket))
-            {
-                continue;
-            }
-
-            var elapsed = now - bucket.WindowStart;
-            if (elapsed >= Window || bucket.Count < key.Limit)
+            if (_counters.Count(key.Id, now) < key.Limit)
             {
                 continue;
             }
 
             allowed = false;
-            longestRemaining = Math.Max(longestRemaining, (Window - elapsed).TotalSeconds);
+            longestRemaining = Math.Max(longestRemaining, _counters.RemainingSeconds(key.Id, now));
         }
 
         return allowed ? ThrottleDecision.Allow : ThrottleDecision.Deny(longestRemaining);
@@ -80,7 +76,7 @@ public sealed class AccountAttemptLimiter
         var now = _clock.UtcNow;
         foreach (var key in KeysOf(action, client, username))
         {
-            Increment(key, now);
+            _counters.Increment(key.Id, now);
         }
     }
 
@@ -99,7 +95,7 @@ public sealed class AccountAttemptLimiter
 
         foreach (var key in KeysOf(action, client, username))
         {
-            _buckets.TryRemove(key.Id, out _);
+            _counters.Reset(key.Id);
         }
     }
 
@@ -114,6 +110,10 @@ public sealed class AccountAttemptLimiter
         ThrottleAction.Register =>
         [
             new BucketKey($"register:client|{client}", _options.RegisterCallsPerClient),
+
+            // 全局桶（G-A5-2）：单来源额度挡不住换 IP 的分布式注册，这一条是兜底。
+            // 键不带来源——它按定义就是"整个部署"的额度（多实例部署时每实例一份，见 D-0033 代价）。
+            new BucketKey(GlobalRegisterKey, _options.RegisterCallsGlobal),
         ],
         ThrottleAction.ResetPassword =>
         [
@@ -121,62 +121,6 @@ public sealed class AccountAttemptLimiter
         ],
         _ => [],
     };
-
-    /// <summary>把某个桶的计数推进一格；窗口已过则重新开窗。</summary>
-    private void Increment(BucketKey key, DateTimeOffset now)
-    {
-        if (_buckets.TryGetValue(key.Id, out var existing))
-        {
-            _buckets[key.Id] = Advance(existing, now);
-            return;
-        }
-
-        if (_buckets.Count >= _options.MaxTrackedBuckets)
-        {
-            Prune(now);
-            if (_buckets.Count >= _options.MaxTrackedBuckets)
-            {
-                // 到顶了：新键不建桶。同一客户端那个桶（只有一个键、必然还在）仍然是兜底。
-                _logger.LogDebug(
-                    "限速桶已达上限 {Limit}：新键 {BucketKey} 不再单独计数",
-                    _options.MaxTrackedBuckets,
-                    key.Id);
-                return;
-            }
-        }
-
-        _buckets.AddOrUpdate(key.Id, _ => new Bucket(1, now), (_, current) => Advance(current, now));
-    }
-
-    private Bucket Advance(Bucket bucket, DateTimeOffset now)
-    {
-        var elapsed = now - bucket.WindowStart;
-        return elapsed >= Window ? new Bucket(1, now) : bucket with { Count = bucket.Count + 1 };
-    }
-
-    /// <summary>清掉所有过期桶。</summary>
-    private void Prune(DateTimeOffset now)
-    {
-        var removed = 0;
-        foreach (var pair in _buckets)
-        {
-            if (now - pair.Value.WindowStart >= Window && _buckets.TryRemove(pair.Key, out _))
-            {
-                removed++;
-            }
-        }
-
-        if (removed > 0)
-        {
-            _logger.LogDebug(
-                "限速桶清理：移除 {Removed} 个过期桶，剩余 {Remaining}",
-                removed,
-                _buckets.Count);
-        }
-    }
-
-    /// <summary>一个计数桶：窗口起点 + 窗口内的次数。</summary>
-    private sealed record Bucket(int Count, DateTimeOffset WindowStart);
 
     /// <summary>一个受额度约束的键。</summary>
     private readonly record struct BucketKey(string Id, int Limit);

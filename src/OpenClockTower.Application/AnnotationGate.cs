@@ -43,6 +43,36 @@ internal static class AnnotationGate
             : null;
 
     /// <summary>
+    /// 改注记（D-0019）：目标必须存在、文本必须合规，而且**文本不能与现状相同**。
+    /// </summary>
+    /// <remarks>
+    /// M4 / G-A5-8 ②：审计实测"每席 5 条"只挡新增——循环调 <c>Update</c> 能把**同一条注记**
+    /// 改出无上限的事件行（每条命令都落一个事件）。同样的文本改回去没有任何信息量，
+    /// 所以按无变化拒绝：既堵住那条膨胀路径，也不让复盘里出现一串看不出差别的步骤。
+    /// </remarks>
+    public static CommandRejection? CheckUpdate(
+        SeatAnnotationId id,
+        string? text,
+        SeatAnnotationLedger annotations)
+    {
+        if (CheckTarget(id, annotations) is { } missing)
+        {
+            return missing;
+        }
+
+        if (CheckText(text) is { } invalid)
+        {
+            return invalid;
+        }
+
+        return SeatAnnotationText.TryNormalize(text, out var normalized, out _)
+            && annotations.Find(id) is { } existing
+            && string.Equals(existing.Text, normalized, StringComparison.Ordinal)
+                ? Reject("legality.annotation_unchanged", "注记内容没有变化：请改文本或改用途", "legality")
+                : null;
+    }
+
+    /// <summary>
     /// 注记文本的合法性（D-0019）：归一化后非空、不超长、不含控制字符。
     /// 归一化本身在分派时做（同一把尺子 <see cref="SeatAnnotationText.TryNormalize"/>）。
     /// </summary>

@@ -1648,6 +1648,61 @@ SignalR 消息吃默认的 32 KB、连接数无上限、`proxy_read_timeout 3600
 
 **本批票据**：`in-progress/web-hardening-programme.md`（**M3 第一刀完成**；票继续挂 in-progress 做 M4 与 M5–M6）。
 
+## 批次 E56（2026-10-06，M4 第一刀：配额、文本与审计 G-A5-2 / G-A5-5 / G-A5-6 / G-A5-8 / G-A5-10）
+
+**本批票据**：`in-progress/web-hardening-programme.md` 的 **M4 第一刀**——审计差距
+**G-A5-2**（注册零限制，**Critical**）· **G-A5-5**（开桌无配额，**Critical**，配额半边）·
+**G-A5-6**（重复加入读全量事件流，High，频率半边）· **G-A5-8**（自由文本长度与频率，High）·
+**G-A5-10**（审计日志的身份与来源，High）。口径登记在 `docs/decisions/active.md` **D-0033**。
+
+**这一批解决什么**：审计对 A5 维度的结论是"**一层风控都没有**"——匿名可无限注册（每次烧两次 PBKDF2）、
+一次注册就能反复开桌、`note` / `reason` / 幂等键连长度都没有、客户端可控的无界字符串会原样进日志
+（换行能伪造日志行）。这一批把这四条最短的滥用路径封住，并把"事后查得到人"补齐。
+
+**本批取证构成**：
+
+| 取证 | 命令 | 结果 |
+|---|---|---|
+| **风控装置（本批新增，第 22 个）** | `node tools/verify-abuse-guard.mjs --base-url http://<主机>/clocktower/ …` | 部署实例 **24 项全绿**（分 5 个窗口跑，见下）：**text 8** · **registration 5** · **tables 3** · **frequency 5** · **closed 3**。探活那两条在单段运行时按"前置段"记 SKIP，不假绿 |
+| **真机读数①：拒绝真的发生在慢哈希之前** | `--only registration --verify-register-quota --register-quota 2`（配额临时调小） | 前 2 次注册成功（最慢 **183 ms**，含两次 PBKDF2），第 3 次 `too_many_attempts` 且耗时 **16 ms** ⇒ 量级差 11 倍，"先判后算"是可测读数 |
+| **真机读数②：开桌配额与写文本频率** | `--only tables --verify-table-quota --table-quota 1` · `--only frequency --verify-write-text-quota --write-text-quota 3` | 第 2 张桌 `table_quota_account`（文案："你名下已经有 1 张在册的桌（每人最多 1 张）：本版不自动回收旧桌，请联系运维清理后再开"）· 第 4 次写文本被 Hub 拒绝（"写文本（注记 / 说明 / 原因）每个窗口最多 3 次；请 300 秒后再试"） |
+| **真机读数③：文本四态与注记空转** | `--only text --verify-text-limits` | 合法文本 Accepted · 换行 / 制表 Accepted（可折叠空白）· 201 字 `legality.text_too_long` · `\u0000` `legality.text_control_chars` · 65 字符幂等键 `legality.idempotency_key_too_long` · 同文本更新 `legality.annotation_unchanged` |
+| **真机读数④：关掉自助注册** | 临时 `GameServer__AllowSelfRegistration=false` → `--only closed --expect-registration-closed --login-probe <探针账号>` | 注册 `registration_closed`（"本服当前不开放自助注册，请联系运维"）· **既有账号照常登录 `ok=true`** |
+| **真机读数⑤：审计日志的身份与来源（SSH 取）** | 目标机 `journalctl -u clocktower`（`--since` 定窗 + `grep -F` 定行） | ① **注入**：维度值 `活着\n[Warning] 伪造日志行` → 日志是 `原因=未知的生死：活着\n[Warning] 伪造日志行`（**转义形态、单行**，没有伪造出第二行）；② **开桌**：`已开桌：game=… 桌名=… 席位=5 开桌人=<探针账号> 账号=<id>（他因此成为这一桌的说书人）连接=<id> 客户端=<真实来源地址>`；③ **注册**：`账号已注册并登录：account=… username=… connection=… 客户端=… 会话指纹=<12 位>`；④ **限速**：`注册被限速：connection=… 客户端=… 建议重试=300s`；⑤ 命令闸拒绝逐条带 `game / gate / code / actor / command / 说明` |
+| **集成用例（真宿主 + 真 SignalR）** | `dotnet test tests/OpenClockTower.Integration.Tests --filter "…AbuseGuardHostTests|…CommandTextGateTests|…ActionThrottleTests|…WindowedCountersTests"` | **26 条全绿**：注册全局额度（换来源也绕不过，且既有账号登录不受牵连）· 关掉注册后老账号照常登录 · 单账号 / 全局两种开桌配额 · 文本四态与豁免字段照常通行 · 注记空转 · 写文本频率（按身份分桶）· 日志注入单行 · 锁桌与登出审计带操作者与来源；另有纯逻辑用例（窗口过期 / 有界 / 按桌与按身份分桶） |
+| **门禁（新增）** | `dotnet test tests/OpenClockTower.NormativeGates.Tests --filter FullyQualifiedName~CommandTextFieldGateTests` | **3 条全绿**：命令上每个 string 字段必须在文本登记表里表态 · 登记表每行都点得到实处 · 豁免必须带理由 |
+| **先红后绿（8 处，逐处真的改坏源码后复跑再还原）** | 同上两个测试工程 | ① 短路开桌配额判定 → **红 2 条**；② 短路自助注册开关 → **红 1 条**；③ 全局注册桶额度放大 1000 倍 → **红 1 条**；④ 摘掉 `GameSession` 里的文本闸 → **红 1 条**；⑤ 短路 `HubCommandExecutor` 的动作准入 → **红 1 条**；⑥ 去掉 `GameCommandFactory.Reject` 的 `LogText.Clamp` → **红 1 条**；⑦ 去掉注记空转判定 → **红 1 条**；⑧ 给 `StartDayCommand` 临时加一个未登记的 string 字段 → **门禁红 1 条并点名** `StartDayCommand.ProbeNote（既没有长度上限、也没写明豁免理由）`。八处还原后复跑**回到全绿** |
+| **装置首跑咬出的两处**（都在本批内修掉） | `verify-abuse-guard.mjs` 首跑 | ① 配额段与文本段**共用同一来源的注册额度**：跑完注册额度段后，后面的段注册不出探针账号（表现为一串"前提不成立"的红）⇒ 改成**每段显式开启 + 一次运行只验一项**，并把 Hub 异常收成读数而不是崩溃；② 本地验"文本段"时把部署额度调到 3，文本段自己的写入被限速打断 ⇒ 装置改为 `invokeSafe`（HubException 记成读数），报告的失败明细里直接给服务端原文 |
+| 三条门禁（冻结版） | `dotnet build` / `dotnet test OpenClockTower.slnx` / `dotnet format` | 构建 **0 警告 0 错误** · **1384 项全绿**（门禁 32 / 内核 501 / 规则 494 / 集成 357）· format 就地通过（本批改了 `tests/`，三条按规矩全跑） |
+
+**部署记录（2026-10-06，真机）**：`node tools/deploy-prepare.mjs --app-dir <APP_DIR> --prefix /clocktower/ --port 5080 --seats 7`
+产出 **48.62 MB** 自包含包 → 上传 → 清点并清空 `wwwroot/assets`（2 → 0）→ 解包 → `chmod` → 重启。
+启动读数即本批口径：`风控面：自助注册=开 · 注册额度=每来源10次/全局30次每300s · 在册桌上限=每账号12张/全局64张 ·
+入座额度=每桌60次每300s · 写文本额度=每身份120次每300s`。
+
+**额度类段落的窗口编排**（装置默认不跑它们：它们要**把额度用尽**，按默认值跑会留下 10 个账号 / 12 张桌）：
+临时在目标机放一个 systemd drop-in（`/etc/systemd/system/clocktower.service.d/zz-verify.conf`，三行 `Environment=`）
+把 `RegisterCallsPerClient=2` / `MaxTablesPerAccount=1` / `WriteTextCallsPerActor=3` 调小 → `daemon-reload` + 重启 →
+逐项跑装置（**每一项之间重启**：重启同时清掉内存里的计数桶）→ 撤 drop-in → 重启 → 复核启动读数回到默认值。
+自助注册那一段另用一个 drop-in（`AllowSelfRegistration=false`），跑完即撤。
+
+**收尾清理**：本批在目标库留下 5 个探针账号（`abuse-*`）与 3 张探针桌，按装置打印的 SQL **逐个显式删除**
+（先列清单 → 按 Id / GameId 显式删 → 回看）：`Users / Games / Events / Receipts / SeatBindings` 匹配数**全部为 0**，
+服务重启后站点 200；两个 drop-in 与 `service.d` 目录已删、`daemon-reload` 已跑；
+目标机 `/tmp` 的安装包已删；本机 `artifacts/deploy`（48.62 MB 包 + publish 目录）与 `%TEMP%` 的本批日志已在收尾时删除；
+MSBuild 复用节点已关。
+
+**残余与边界（本批明确不做）**：
+① **空闲桌回收（M5）**——在册桌数上限因此是**硬顶**，全局到顶后需要运维从 `Games` 表删行（部署文档 §9.4）；
+② **重连包的缓存 / 增量（M5）**——本批只把"循环调用"这条路用频率闸堵住，单次入座仍是全量读；
+③ **日志轮转与结构化 JSON（M5 / G-A7）**——现在是一行一事件、字段齐全但不是机器可解析格式；
+④ `ListTables` 的 N+1 与"桌数一多心跳自己是负载"（M5，有 64 张硬顶兜着）；
+⑤ **GUI 动作限速只覆盖到服务端入口**：界面上的开桌 / 入座按钮没有节流，玩家连点会看到服务端的拒绝文案（够用但不优雅）；
+⑥ 探针账号名与日志里的真实来源地址按红线**不落纸面**，批次记录里一律占位符形态；
+⑦ 本批**未做**渗透测试与并发压测（审计页 §5 的"没覆盖"清单不变）。
+
+**本批票据**：`in-progress/web-hardening-programme.md`（**M4 第一刀完成**；票继续挂 in-progress 做 M4 剩余与 M5–M6）。
+
 ## 相关阅读
 
 - 验收规程：`docs/acceptance/AGENTS.md`
