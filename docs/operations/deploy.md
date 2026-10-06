@@ -84,6 +84,11 @@ Environment=ASPNETCORE_URLS=http://127.0.0.1:<PORT>
 Environment=GameServer__DatabasePath=<APP_DIR>/data/oct.db
 Environment=GameServer__SeatCount=<SEATS>
 Environment=GameServer__SlotQuotaSeconds=10
+# 谁能开桌（D-0026）：不配 = 放开，任何登录账号都能开一桌自己主持（小圈子自用）。
+# 公开部署怕被刷桌时改成 false，此时只有 GameServer__AdminUsernames 里的运维身份能开
+# ——**两行要一起放开**：只改上面那行不配名单，就没有任何账号能开新桌了（启动日志会告警）。
+# Environment=GameServer__AllowPlayerTables=false
+# Environment=GameServer__AdminUsernames=<运维登录名>[,<再来一个>]   # 逗号分隔或索引式都认
 
 [Install]
 WantedBy=multi-user.target
@@ -142,10 +147,23 @@ server {
 sudo nginx -t && sudo systemctl reload nginx
 ```
 
-## 5. 票据（身份凭据，等同密码）
+## 5. 入口与票据
 
-- 说书人票据在**首次建局时生成**，之后固定不变：`journalctl -u clocktower | grep 票据`
-- 说书人入口 `<PREFIX>`；玩家入口 `<PREFIX>#player`，各用各的**席位票据**
+三个入口（同一个页面，靠地址里的 hash 分面）：
+
+| 入口 | 地址 | 干什么 |
+|---|---|---|
+| 首页 | `<PREFIX>#/home` | 看有哪些桌在开，挑一个入口 |
+| 玩家端 | `<PREFIX>#/play`（旧写法 `#player` 仍可用） | 注册 / 登录，选空席位入座 |
+| 说书人端 | `<PREFIX>#/storyteller`（**空 hash 也是它**） | 主持一局：开桌、配板、走夜晚 |
+
+**说书人票据**（主机凭据，等同密码）：
+
+- **默认桌的票据**在首次建局时生成，之后固定不变：`journalctl -u clocktower | grep 票据`
+- **别人自己开的桌**不需要你去发票据：谁开桌，平台就把那一桌的票据回给谁，他直接进主持台。
+  这也是说书人的口径——**说书人是玩这一局的角色，不是系统权限**，所以默认谁都能开一桌（D-0026）；
+  要收紧就按 §3 配 `GameServer__AllowPlayerTables=false`。
+- 席位票据仍然可用（邀请朋友 / 换设备兜底），但玩家注册登录后可以自己选空席位，不需要它。
 - 票据是明文凭据：**走 HTTP 时链路上的人可以看到**。长期开建议加 HTTPS（§8）
 
 ## 6. 备份与恢复
@@ -192,9 +210,12 @@ journalctl -u clocktower -n 20 --no-pager     # 确认起来了、库还是原�
 ## 9. 已知限制（不藏）
 
 1. **走 HTTP 时票据与口令明文传输**：适合小圈子短时开；长期开请在同机 nginx 上加证书（`listen 443 ssl` + `X-Forwarded-Proto` 已透传）。
-2. **单局单进程**：一个宿主服务一局（`GameId=default`）；同时开两桌要另起进程、另给端口与库文件。
-3. **表结构变更需换新库**：当前用 EF 的 `EnsureCreated`，缺表时启动会显式失败并提示换新库，不会静默丢数据。
-4. **登录无失败限流**：暴力尝试只有日志记录。
+2. **单进程多桌**（D-0024）：一个宿主按 `GameId` 维护多张桌，共享账号与连接设施；同时开几桌不需要多开进程。
+   代价是 SQLite 单写者——多桌同时写入会排队（小圈子 2–5 桌可接受）。
+3. **自助开桌没有配额**：默认谁都能开桌（D-0026），当前没有桌数上限、也没有空闲桌自动回收。
+   公开部署请配 `GameServer__AllowPlayerTables=false` 收紧，并定期清理不开的桌。
+4. **表结构变更需换新库**：当前用 EF 的 `EnsureCreated`，缺表时启动会显式失败并提示换新库，不会静默丢数据。
+5. **登录无失败限流**：暴力尝试只有日志记录。
 
 ## 依据
 
