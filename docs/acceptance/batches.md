@@ -1562,6 +1562,45 @@ Chromium 把资源加载失败写进 console，被算成"重启窗口内的非�
 
 **本批票据**：`in-progress/web-hardening-programme.md`（第 2 步 **M2 第一刀完成**，票继续挂 in-progress 做 M2 其余条目与 M3–M6）。
 
+## 批次 E54（2026-10-06，M2 第二刀：授权面表驱动 G-A4-6）
+
+**本批票据**：`in-progress/web-hardening-programme.md` 的 **M2 第二刀**（审计差距 **G-A4-6**，Medium，M2 收尾项）。
+
+**这一批解决什么**：矩阵里 **23 个说书人命令**（含 `PunishExecution` / `PitHagCasualty` / `ResolveDeferredDeath` /
+`ReportSeatState` / `RebuildRoom` 这些能直接杀人、改角色、改写派生状态的）此前**只有正面用例**——
+"玩家调它会被拒"只是代码今天恰好写对了，**改坏不会有任何人发现**（审计 G-A4-6 的原文）。
+这一批把 `docs/security/authorization-matrix.md` 的矩阵变成**一张可执行的表**，并给它配一条覆盖面门禁：
+**新增 Hub 方法不在这里表态，测试就跑不过**。
+
+**本批取证构成**（先红后绿；真宿主 + 真 SignalR + 真 SQLite）：
+
+| 取证 | 命令 | 结果 |
+|---|---|---|
+| 授权面扫描（本批主证据） | `dotnet test tests/OpenClockTower.Integration.Tests --filter FullyQualifiedName~AuthorizationSurfaceHostTests` | **4 条全绿**、耗时 2 s：玩家席位连接扫 41 行 · 说书人连接扫 41 行 · 匿名连接（伪造凭据）扫 41 行 · 矩阵覆盖 `GameHub` 全部 45 个客户端可调方法 |
+| **先红证明（4 处，逐处真的改坏源码后复跑，再还原）** | 同上 | ① 放宽说书人闸（`PunishExecutionCommand` 放开 `Player`）→ **玩家扫描红**：`PunishExecution：期望 identity.storyteller_only，实际 legality.seat_unknown`；② 放宽玩家闸（`NominateCommand` 放开 `Storyteller`）→ **说书人扫描红**：`Nominate：期望 identity.player_only，实际 phase.not_open_day`；③ 删掉 `SetTableLock` 的凭据闸 → **玩家 + 匿名两条同时红**（`实际「没有被身份闸拒（query）」`）；④ 给 `GameHub` 加一个不表态的方法 → **覆盖门禁红**并点名 `ProbeSurfaceGate`。四处还原后复跑**回到全绿**（工作树只剩新增的测试文件） |
+| 三条门禁（冻结版） | `dotnet build` / `dotnet test OpenClockTower.slnx` / `dotnet format` | 见提交信息正文的读数（本批改了 `tests/`，三条按规矩全跑） |
+
+**为什么断言只落在"身份"这一维**：被允许的身份只要求"**没被**身份闸拒"——它之后被阶段 / 合法性闸拒是正常的，
+那不是这一维的事。这样每个方法都不必构造"能成功"的局面，表也就不会随玩法改动腐烂；
+代价是它**不**证明命令能成功（那是各角色自己的验收矩阵，`docs/acceptance/AGENTS.md` §4）。
+表里参数的取值一律"合法性必然不成立"（不存在的席位 / 请求 / 裁定点），既证明被允许的身份**过了身份闸**，
+又不会真的改动夹具状态——只有 `ForceAdvance` / `TakeOver` / `RebuildRoom` / `SetTableLock` 这几条
+说书人正面路径会真的动一下，动的是本页自己的一次性夹具宿主，不影响任何其他用例。
+
+**顺带纠正的一处审计读数**：原文记作"`GameHub` 41 个公开方法"，反射点数是 **45 个客户端可调方法
++ 1 个框架回调 `OnDisconnectedAsync`**（其中 41 个走四道闸、4 个走 Hub 内显式说书人闸）。
+矩阵页 §0 与 §3 读数 6 已就地更正。
+
+**残余与边界（本批明确不做）**：
+① `AccountHub` 的 8 个方法**不在**该扫描面内（大厅 / 账号入口的身份面由 `AccountHostTests` /
+`LobbyHostTests` / `SessionRevocationHostTests` 覆盖）；
+② "身份闸先于回执短路"这条**顺序**仍没有用例锁住（**G-A4-1**，Low）；
+③ 本批只覆盖**身份**一维：跨桌 `gameId`（**G-A4-3** / **G-A4-4**）、锁桌语义（**G-A4-2**）、
+凭据重放与并发越权都另行；
+④ 本批是**纯测试增量**（`src/` 未改一行），**未部署**：部署实例仍跑 E51 的产物。
+
+**本批票据**：`in-progress/web-hardening-programme.md`（第 2 步 **M2 第二刀完成**，票继续挂 in-progress 做 M2 其余条目与 M3–M6）。
+
 ## 相关阅读
 
 - 验收规程：`docs/acceptance/AGENTS.md`
