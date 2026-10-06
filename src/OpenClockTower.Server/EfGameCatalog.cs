@@ -59,4 +59,24 @@ public sealed class EfGameCatalog : IGameCatalog
 
         await db.SaveChangesAsync(cancellationToken);
     }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<GameSetup>> ListAsync(CancellationToken cancellationToken)
+    {
+        await using var db = await _factory.CreateDbContextAsync(cancellationToken);
+        var rows = await db.Games
+            .AsNoTracking()
+            .OrderBy(item => item.GameId)
+            .ToListAsync(cancellationToken);
+
+        return
+        [
+            .. rows.Select(row => new GameSetup
+            {
+                GameId = new GameId(row.GameId),
+                Seats = JsonSerializer.Deserialize<SeatTicket[]>(row.SeatsJson, Options) ?? [],
+                StorytellerTicket = row.StorytellerTicket,
+            }),
+        ];
+    }
 }

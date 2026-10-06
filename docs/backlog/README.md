@@ -60,7 +60,11 @@ todo/  →  in-progress/  →  review/  →  done/
 
 ### Todo
 
+- [前端导航：首页、身份切换与页面互链](todo/frontend-navigation.md) — **High** — 前端没有导航：`App.vue` 只有 18 行的二选一开关（带 `#player` 进玩家端、其余全是说书人端），切身份只能手改地址栏；没有首页、各面互相孤立。要做首页 + 顶栏 + 两端互链 + 可分享的地址结构，并保留旧 `#player` 链接
+
 ### In progress
+
+- [多桌并行 + 账号即入场凭据](in-progress/multi-table-and-account-entry.md) — **High** — 现状一进程一桌（`GameId` 是注入单例、`Games` 一行），且入座必须先拿到说书人发的席位票据（账号只能"认领"，不能进门）。决策 D-0024（单进程多局）/ D-0025（账号即凭据、只有管理员能开桌）；**地基已落地**：`GameInstance` + `GameRegistry` + 隔离用例 5 条全绿；宿主接线与大厅、自助入座待做
 
 ### Review
 
