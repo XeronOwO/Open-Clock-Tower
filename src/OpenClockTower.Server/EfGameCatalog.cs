@@ -4,7 +4,7 @@ using OpenClockTower.Application;
 
 namespace OpenClockTower.Server;
 
-/// <summary>EF Core + SQLite 实现的会话票据目录。</summary>
+/// <summary>EF Core + SQLite 实现的会话票据目录（多桌：每桌一行，D-0024）。</summary>
 public sealed class EfGameCatalog : IGameCatalog
 {
     private static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.Web);
@@ -21,18 +21,8 @@ public sealed class EfGameCatalog : IGameCatalog
         var row = await db.Games
             .AsNoTracking()
             .FirstOrDefaultAsync(item => item.GameId == gameId.Value, cancellationToken);
-        if (row is null)
-        {
-            return null;
-        }
 
-        var seats = JsonSerializer.Deserialize<SeatTicket[]>(row.SeatsJson, Options) ?? [];
-        return new GameSetup
-        {
-            GameId = gameId,
-            Seats = seats,
-            StorytellerTicket = row.StorytellerTicket,
-        };
+        return row is null ? null : ToSetup(row);
     }
 
     /// <inheritdoc />
@@ -49,12 +39,16 @@ public sealed class EfGameCatalog : IGameCatalog
                 GameId = setup.GameId.Value,
                 SeatsJson = seatsJson,
                 StorytellerTicket = setup.StorytellerTicket,
+                Name = setup.Name,
+                IsLocked = setup.IsLocked,
             });
         }
         else
         {
             row.SeatsJson = seatsJson;
             row.StorytellerTicket = setup.StorytellerTicket;
+            row.Name = setup.Name;
+            row.IsLocked = setup.IsLocked;
         }
 
         await db.SaveChangesAsync(cancellationToken);
@@ -69,14 +63,35 @@ public sealed class EfGameCatalog : IGameCatalog
             .OrderBy(item => item.GameId)
             .ToListAsync(cancellationToken);
 
-        return
-        [
-            .. rows.Select(row => new GameSetup
-            {
-                GameId = new GameId(row.GameId),
-                Seats = JsonSerializer.Deserialize<SeatTicket[]>(row.SeatsJson, Options) ?? [],
-                StorytellerTicket = row.StorytellerTicket,
-            }),
-        ];
+        return [.. rows.Select(ToSetup)];
     }
+
+    /// <inheritdoc />
+    public async Task UpdateLobbyAsync(
+        GameId gameId,
+        string name,
+        bool isLocked,
+        CancellationToken cancellationToken)
+    {
+        await using var db = await _factory.CreateDbContextAsync(cancellationToken);
+        var row = await db.Games.FirstOrDefaultAsync(item => item.GameId == gameId.Value, cancellationToken);
+        if (row is null)
+        {
+            // 未知的桌不该被这条更新凭空造出来：那是建桌用例的职责。
+            throw new InvalidOperationException($"更新桌元数据失败：桌不存在 game={gameId.Value}");
+        }
+
+        row.Name = name;
+        row.IsLocked = isLocked;
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    private static GameSetup ToSetup(GameSetupEntity row) => new()
+    {
+        GameId = new GameId(row.GameId),
+        Seats = JsonSerializer.Deserialize<SeatTicket[]>(row.SeatsJson, Options) ?? [],
+        StorytellerTicket = row.StorytellerTicket,
+        Name = row.Name,
+        IsLocked = row.IsLocked,
+    };
 }

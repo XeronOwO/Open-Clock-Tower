@@ -146,16 +146,17 @@ public sealed class GameRegistry
 
         foreach (var setup in setups)
         {
+            // 单桌装载失败不影响其余桌：记下来，继续装载。
+            // （恢复失败本身不会抛到这里——见 CreateAsync 的注释，它返回降级态实例。）
             try
             {
                 await GetOrCreateAsync(setup.GameId, cancellationToken);
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
-                // 单桌恢复失败不影响其余桌：记下来，继续装载。
                 _logger.LogError(
                     exception,
-                    "装载桌失败（该桌将以降级态存在，可在界面里显式重建）：game={GameId}",
+                    "装载桌失败（该桌不可用）：game={GameId}",
                     setup.GameId.Value);
             }
         }
@@ -176,7 +177,21 @@ public sealed class GameRegistry
             seatNames,
             _loggerFactory.CreateLogger<GameSession>());
 
-        await session.RestoreAsync(cancellationToken);
+        // 恢复失败**不抛出**：GameSession 已经把自己置为降级态并保留了序号连续性，
+        // 说书人可在界面里显式重建。若在这里抛出，Lazy 会把异常缓存下来，
+        // 这一桌此后永远拿不到实例——"降级"就变成了"装载失败"（实测踩过，见票据）。
+        try
+        {
+            await session.RestoreAsync(cancellationToken);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            _logger.LogCritical(
+                exception,
+                "桌恢复失败，以降级态装载（等显式重建）：game={GameId}",
+                gameId.Value);
+        }
+
         await seatNames.ReloadAsync(gameId, _bindings, _accounts, cancellationToken);
 
         var replay = new ReplayQueryService(

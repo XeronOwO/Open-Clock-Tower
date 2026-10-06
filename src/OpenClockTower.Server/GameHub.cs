@@ -23,45 +23,50 @@ namespace OpenClockTower.Server;
 public sealed class GameHub : Hub<IGameClient>
 {
     private readonly IGameCatalog _catalog;
-    private readonly GameId _gameId;
-    private readonly GameSession _session;
-    private readonly ReplayQueryService _replay;
+    private readonly HubGameScope _scope;
     private readonly ConnectionRegistry _registry;
     private readonly HubActorResolver _actors;
     private readonly NotificationDispatcher _dispatcher;
     private readonly SeatJoinCoordinator _join;
     private readonly SeatBindingService _bindings;
-    private readonly SeatNameDirectory _seatNames;
-    private readonly HubCommandExecutor _executor;
     private readonly ILogger<GameHub> _logger;
 
     /// <summary>构造 Hub。</summary>
+    /// <param name="catalog">会话目录（说书人加入流程要用）。</param>
+    /// <param name="scope">连接 ↔ 桌的绑定（多桌：解析本连接在哪一桌，D-0024）。</param>
+    /// <param name="registry">连接登记表。</param>
+    /// <param name="actors">身份解析（凭据 → 操作者）。</param>
+    /// <param name="dispatcher">推送分发。</param>
+    /// <param name="join">加入 / 认领编排。</param>
+    /// <param name="bindings">席位绑定服务。</param>
+    /// <param name="logger">日志。</param>
     public GameHub(
         IGameCatalog catalog,
-        GameId gameId,
-        GameSession session,
-        ReplayQueryService replay,
+        HubGameScope scope,
         ConnectionRegistry registry,
         HubActorResolver actors,
         NotificationDispatcher dispatcher,
         SeatJoinCoordinator join,
         SeatBindingService bindings,
-        SeatNameDirectory seatNames,
         ILogger<GameHub> logger)
     {
         _catalog = catalog;
-        _gameId = gameId;
-        _session = session;
-        _replay = replay;
+        _scope = scope;
         _registry = registry;
         _actors = actors;
         _dispatcher = dispatcher;
         _join = join;
         _bindings = bindings;
-        _seatNames = seatNames;
-        _executor = new HubCommandExecutor(session, dispatcher);
         _logger = logger;
     }
+
+    /// <summary>本连接所属的桌（解析规则与缓存都在 <see cref="HubGameScope"/>）。</summary>
+    private Task<GameInstance> GameAsync() =>
+        _scope.GameAsync(Context.GetHttpContext(), Context.ConnectionId, Context.ConnectionAborted);
+
+    /// <summary>本连接的命令执行器（绑定到本连接所在的桌）。</summary>
+    private Task<HubCommandExecutor> CommandsAsync() =>
+        _scope.CommandsAsync(Context.GetHttpContext(), Context.ConnectionId, Context.ConnectionAborted);
 
     /// <summary>玩家加入 / 重连（只凭票据的路径，D-0012）：签发连接凭据、返回重连包并**重投**未响应请求。</summary>
     public Task<SeatJoinDto> JoinSeat(string ticket, long lastSequence) =>
@@ -79,7 +84,9 @@ public sealed class GameHub : Hub<IGameClient>
 
     private async Task<SeatJoinDto> JoinSeatCoreAsync(string ticket, string? accountSession, long lastSequence)
     {
+        var game = await GameAsync();
         var outcome = await _join.JoinAsync(
+            game,
             ticket,
             accountSession,
             lastSequence,
@@ -94,8 +101,8 @@ public sealed class GameHub : Hub<IGameClient>
 
         if (outcome.Claimed)
         {
-            // 新认领：其他在线席位要立刻看到新名字（本人这份重连包里已经带上了）。
-            await _dispatcher.PushSeatNamesChangedAsync(Context.ConnectionAborted);
+            // 新认领：同桌其他在线席位要立刻看到新名字（本人这份重连包里已经带上了）。
+            await _dispatcher.PushSeatNamesChangedAsync(game, Context.ConnectionAborted);
         }
 
         return new SeatJoinDto
@@ -109,7 +116,8 @@ public sealed class GameHub : Hub<IGameClient>
     /// 说书人加入：票据定位身份，签发连接凭据（同局同一时刻只保留一条有效说书人连接）。
     /// </summary>
     /// <remarks>流程本体在 <see cref="HubJoinFlow"/>（单文件 600 行门禁）；这里只把当前连接接上。</remarks>
-    public Task<StorytellerJoinDto> JoinStoryteller(string ticket) => JoinFlow.JoinStorytellerAsync(ticket);
+    public async Task<StorytellerJoinDto> JoinStoryteller(string ticket) =>
+        await (await JoinFlowAsync()).JoinStorytellerAsync(ticket);
 
     /// <summary>玩家提交响应。</summary>
     public Task<CommandResultDto> SubmitResponse(
@@ -463,10 +471,11 @@ public sealed class GameHub : Hub<IGameClient>
     public async Task<bool> ReleaseSeatBinding(string credential, int seat)
     {
         _ = ResolveStorytellerActor(credential);
-        var released = await _join.ReleaseBindingAsync(new SeatId(seat), Context.ConnectionAborted);
+        var game = await GameAsync();
+        var released = await _join.ReleaseBindingAsync(game, new SeatId(seat), Context.ConnectionAborted);
         if (released)
         {
-            await _dispatcher.PushSeatNamesChangedAsync(Context.ConnectionAborted);
+            await _dispatcher.PushSeatNamesChangedAsync(game, Context.ConnectionAborted);
         }
 
         return released;
@@ -483,15 +492,15 @@ public sealed class GameHub : Hub<IGameClient>
     public async Task<SetupProposalDto> ProposeSetup(string credential, string? seed, int? nonTravellerCount)
     {
         _ = ResolveStorytellerActor(credential);
-        var result = await _session.ProposeSetupAsync(seed, nonTravellerCount, Context.ConnectionAborted);
+        var result = await (await GameAsync()).Session.ProposeSetupAsync(seed, nonTravellerCount, Context.ConnectionAborted);
         return ProjectionMapper.ToDto(result);
     }
 
     /// <summary>说书人查询当前视图（变更时同时会推送，客户端不需要轮询）。</summary>
-    public StorytellerViewDto GetStorytellerView(string credential)
+    public async Task<StorytellerViewDto> GetStorytellerView(string credential)
     {
         _ = ResolveStorytellerActor(credential);
-        return ProjectionMapper.ToDto(_session.GetStorytellerView());
+        return ProjectionMapper.ToDto((await GameAsync()).Session.GetStorytellerView());
     }
 
     /// <summary>
@@ -506,7 +515,7 @@ public sealed class GameHub : Hub<IGameClient>
         var actor = ResolveActor(credential);
         try
         {
-            var replay = await _replay.ReadAsync(
+            var replay = await (await GameAsync()).Replay.ReadAsync(
                 actor,
                 afterSequence,
                 pageSize,
@@ -529,6 +538,8 @@ public sealed class GameHub : Hub<IGameClient>
     public override async Task OnDisconnectedAsync(Exception? exception)
     {
         _registry.Remove(Context.ConnectionId);
+        // 绑定是按连接记的：断线时一并忘掉，避免长跑进程里字典无限增长（多桌 D-0024）。
+        _scope.Forget(Context.ConnectionId);
         _logger.LogInformation(
             "连接已断开：connection={ConnectionId} 异常={Exception}",
             Context.ConnectionId,
@@ -540,16 +551,25 @@ public sealed class GameHub : Hub<IGameClient>
     /// 执行一条命令（执行机制在 <see cref="HubCommandExecutor"/>，单文件 600 行门禁）；
     /// 这里只把当前连接的取消令牌接上。
     /// </summary>
-    private Task<CommandResultDto> ExecuteAsync(
+    private async Task<CommandResultDto> ExecuteAsync(
         Actor actor,
         GameCommand command,
         string idempotencyKey,
-        long clientSequence = 0) =>
-        _executor.ExecuteAsync(actor, command, idempotencyKey, clientSequence, Context.ConnectionAborted);
+        long clientSequence = 0)
+    {
+        var executor = await CommandsAsync();
+        return await executor.ExecuteAsync(actor, command, idempotencyKey, clientSequence, Context.ConnectionAborted);
+    }
 
-    /// <summary>本次调用的说书人加入流程（连接 id 与取消令牌属于本次调用）。</summary>
-    private HubJoinFlow JoinFlow =>
-        new(_catalog, _gameId, _session, _registry, _logger, Context.ConnectionId, Context.ConnectionAborted);
+    /// <summary>本次调用的说书人加入流程（连接 id、取消令牌与所在桌都属于本次调用）。</summary>
+    private async Task<HubJoinFlow> JoinFlowAsync() =>
+        new(
+            _catalog,
+            await GameAsync(),
+            _registry,
+            _logger,
+            Context.ConnectionId,
+            Context.ConnectionAborted);
 
     /// <summary>
     /// 凭据 → 身份（唯一的身份来源；D-0012：客户端声明一律不认）。

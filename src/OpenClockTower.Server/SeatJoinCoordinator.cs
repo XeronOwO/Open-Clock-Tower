@@ -22,53 +22,53 @@ namespace OpenClockTower.Server;
 public sealed class SeatJoinCoordinator
 {
     private readonly IGameCatalog _catalog;
-    private readonly GameId _gameId;
-    private readonly GameSession _session;
     private readonly ConnectionRegistry _registry;
     private readonly SeatBindingService _bindings;
     private readonly AccountService _accounts;
     private readonly AccountSessionRegistry _sessions;
-    private readonly SeatNameDirectory _seatNames;
     private readonly ILogger<SeatJoinCoordinator> _logger;
 
     /// <summary>构造加入编排。</summary>
+    /// <remarks>
+    /// 多桌（D-0024）：本类**不再持有"当前是哪一局"**——会话、标识与席位名读模型都由调用方
+    /// 按次传入（<see cref="GameInstance"/>）。持有单例会让"拿甲桌票据进乙桌"成立，
+    /// 也会把两桌的玩家名混在一份读模型里。
+    /// </remarks>
     public SeatJoinCoordinator(
         IGameCatalog catalog,
-        GameId gameId,
-        GameSession session,
         ConnectionRegistry registry,
         SeatBindingService bindings,
         AccountService accounts,
         AccountSessionRegistry sessions,
-        SeatNameDirectory seatNames,
         ILogger<SeatJoinCoordinator> logger)
     {
         _catalog = catalog;
-        _gameId = gameId;
-        _session = session;
         _registry = registry;
         _bindings = bindings;
         _accounts = accounts;
         _sessions = sessions;
-        _seatNames = seatNames;
         _logger = logger;
     }
 
     /// <summary>执行一次加入：定位席位、按需认领、签发凭据并取回重连包。</summary>
+    /// <param name="game">本次加入落在哪一桌（多桌，D-0024）。</param>
     public async Task<SeatJoinOutcome> JoinAsync(
+        GameInstance game,
         string ticket,
         string? accountSession,
         long lastSequence,
         string connectionId,
         CancellationToken cancellationToken)
     {
-        var setup = await LoadSetupAsync(connectionId, cancellationToken);
-        var accountId = ResolveAccountSession(accountSession, connectionId);
-        var seat = await ResolveSeatAsync(setup, ticket, accountId, connectionId, cancellationToken);
-        var claimed = accountId is { } claimedBy
-            && await ClaimSeatAsync(seat, claimedBy, connectionId, cancellationToken);
+        ArgumentNullException.ThrowIfNull(game);
 
-        var credential = _registry.IssueForSeat(seat, connectionId);
+        var setup = await LoadSetupAsync(game, connectionId, cancellationToken);
+        var accountId = ResolveAccountSession(accountSession, connectionId);
+        var seat = await ResolveSeatAsync(game, setup, ticket, accountId, connectionId, cancellationToken);
+        var claimed = accountId is { } claimedBy
+            && await ClaimSeatAsync(game, seat, claimedBy, connectionId, cancellationToken);
+
+        var credential = _registry.IssueForSeat(game.GameId, seat, connectionId);
         _logger.LogInformation(
             "已签发连接凭据：seat={Seat} connection={ConnectionId} 指纹={Fingerprint}（重连需重新出示票据）",
             seat,
@@ -77,7 +77,7 @@ public sealed class SeatJoinCoordinator
 
         try
         {
-            var bundle = await _session.GetReconnectBundleAsync(seat, lastSequence, cancellationToken);
+            var bundle = await game.Session.GetReconnectBundleAsync(seat, lastSequence, cancellationToken);
             _logger.LogInformation(
                 "玩家已加入：seat={Seat} connection={ConnectionId} 快照序号={Sequence} 本地已知={KnownSequence} 重投请求={Redelivered} 账号={AccountId}",
                 seat,
@@ -116,9 +116,11 @@ public sealed class SeatJoinCoordinator
     /// 从 <see cref="GameHub"/> 拆出（单文件 600 行门禁）：与加入 / 认领同属"身份 ↔ 席位"的编排；
     /// 推送仍由 Hub 完成（本类不碰 SignalR）。不是游戏命令、不产生事件：绑定是会话信息。
     /// </remarks>
-    public async Task<bool> ReleaseBindingAsync(SeatId seat, CancellationToken cancellationToken)
+    public async Task<bool> ReleaseBindingAsync(GameInstance game, SeatId seat, CancellationToken cancellationToken)
     {
-        var setup = await _catalog.FindAsync(_gameId, cancellationToken);
+        ArgumentNullException.ThrowIfNull(game);
+
+        var setup = await _catalog.FindAsync(game.GameId, cancellationToken);
         if (setup is null)
         {
             _logger.LogWarning("解除绑定被拒（会话）：原因=本局还没有会话信息");
@@ -131,19 +133,22 @@ public sealed class SeatJoinCoordinator
             throw new HubException("席位不在本局名单里");
         }
 
-        var released = await _bindings.ReleaseAsync(_gameId, seat, cancellationToken);
+        var released = await _bindings.ReleaseAsync(game.GameId, seat, cancellationToken);
         if (released)
         {
-            _seatNames.Remove(seat);
+            game.SeatNames.Remove(seat);
         }
 
         _logger.LogInformation("解除席位绑定：seat={Seat} 已解除={Released}", seat, released);
         return released;
     }
 
-    private async Task<GameSetup> LoadSetupAsync(string connectionId, CancellationToken cancellationToken)
+    private async Task<GameSetup> LoadSetupAsync(
+        GameInstance game,
+        string connectionId,
+        CancellationToken cancellationToken)
     {
-        var setup = await _catalog.FindAsync(_gameId, cancellationToken);
+        var setup = await _catalog.FindAsync(game.GameId, cancellationToken);
         if (setup is null)
         {
             _logger.LogWarning(
@@ -180,12 +185,15 @@ public sealed class SeatJoinCoordinator
 
     /// <summary>定位席位：票据优先；没有票据时按账号绑定解出（认领之后的"只凭账号重连"路径）。</summary>
     private async Task<SeatId> ResolveSeatAsync(
+        GameInstance game,
         GameSetup setup,
         string? ticket,
         AccountId? accountId,
         string connectionId,
         CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(game);
+
         if (!string.IsNullOrEmpty(ticket))
         {
             var seatTicket = setup.Seats.FirstOrDefault(
@@ -201,7 +209,7 @@ public sealed class SeatJoinCoordinator
 
         if (accountId is { } account)
         {
-            var binding = await _bindings.ResolveSeatAsync(_gameId, account, cancellationToken);
+            var binding = await _bindings.ResolveSeatAsync(game.GameId, account, cancellationToken);
             if (binding is not null)
             {
                 return binding.Seat;
@@ -220,15 +228,18 @@ public sealed class SeatJoinCoordinator
 
     /// <summary>认领席位并更新席位名读模型；返回 true = 本次**新建**了绑定（需要推送新名字）。</summary>
     private async Task<bool> ClaimSeatAsync(
+        GameInstance game,
         SeatId seat,
         AccountId accountId,
         string connectionId,
         CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(game);
+
         var account = await _accounts.FindAsync(accountId, cancellationToken)
             ?? throw new HubException("账号会话无效或已过期，请重新登录（D-0021）");
 
-        var claim = await _bindings.ClaimAsync(_gameId, seat, accountId, cancellationToken);
+        var claim = await _bindings.ClaimAsync(game.GameId, seat, accountId, cancellationToken);
         if (!claim.Accepted)
         {
             _logger.LogWarning(
@@ -241,7 +252,7 @@ public sealed class SeatJoinCoordinator
             throw new HubException(claim.Message);
         }
 
-        _seatNames.Set(seat, accountId, account.DisplayName);
+        game.SeatNames.Set(seat, accountId, account.DisplayName);
         if (claim.Created)
         {
             _logger.LogInformation(

@@ -15,15 +15,14 @@ namespace OpenClockTower.Server;
 /// 可以整段搬出 Hub——拆分的直接原因是单文件 600 行门禁（Hub 的命令面本身不能再瘦）。
 /// </para>
 /// <para>
-/// 一次调用构造一次：连接 id 与取消令牌都属于**本次调用**，不做成单例（D-0012：
-/// 凭据与连接一一对应，串了连接等于串了身份）。
+/// 一次调用构造一次：连接 id、取消令牌与**落在哪一桌**都属于本次调用，不做成单例
+/// （D-0012：凭据与连接一一对应，串了连接等于串了身份；D-0024：串了桌等于串了局）。
 /// </para>
 /// </remarks>
 internal sealed class HubJoinFlow
 {
     private readonly IGameCatalog _catalog;
-    private readonly GameId _gameId;
-    private readonly GameSession _session;
+    private readonly GameInstance _game;
     private readonly ConnectionRegistry _registry;
     private readonly ILogger _logger;
     private readonly string _connectionId;
@@ -31,16 +30,14 @@ internal sealed class HubJoinFlow
 
     internal HubJoinFlow(
         IGameCatalog catalog,
-        GameId gameId,
-        GameSession session,
+        GameInstance game,
         ConnectionRegistry registry,
         ILogger logger,
         string connectionId,
         CancellationToken abort)
     {
         _catalog = catalog;
-        _gameId = gameId;
-        _session = session;
+        _game = game;
         _registry = registry;
         _logger = logger;
         _connectionId = connectionId;
@@ -57,13 +54,13 @@ internal sealed class HubJoinFlow
             throw new HubException("说书人票据无效");
         }
 
-        var credential = _registry.IssueForStoryteller(_connectionId);
+        var credential = _registry.IssueForStoryteller(_game.GameId, _connectionId);
         _logger.LogInformation(
             "已签发说书人连接凭据：connection={ConnectionId} 指纹={Fingerprint}（旧说书人连接已作废）",
             _connectionId,
             ConnectionCredential.FingerprintOf(credential.Value));
 
-        var view = ProjectionMapper.ToDto(_session.GetStorytellerView());
+        var view = ProjectionMapper.ToDto(_game.Session.GetStorytellerView());
         _logger.LogInformation(
             "说书人已加入：connection={ConnectionId} 序号={Sequence} 挂起={Held}",
             _connectionId,
@@ -80,7 +77,7 @@ internal sealed class HubJoinFlow
     /// <summary>本局会话信息；还没有会话时显式拒绝（说书人票据就存在它里面）。</summary>
     private async Task<GameSetup> LoadSetupAsync()
     {
-        var setup = await _catalog.FindAsync(_gameId, _abort);
+        var setup = await _catalog.FindAsync(_game.GameId, _abort);
         if (setup is null)
         {
             _logger.LogWarning(

@@ -21,21 +21,25 @@ public sealed class AccountHub : Hub
 {
     private readonly AccountService _accounts;
     private readonly AccountSessionRegistry _sessions;
-    private readonly SeatNameDirectory _seatNames;
+    private readonly GameRegistry _games;
     private readonly NotificationDispatcher _dispatcher;
     private readonly ILogger<AccountHub> _logger;
 
     /// <summary>构造账号 Hub。</summary>
+    /// <remarks>
+    /// 多桌（D-0024）：改名要同步到**该账号所在的每一桌**，所以这里拿注册表逐桌更新，
+    /// 而不是拿一份进程级的席位名读模型（那份已随单例一起删除）。
+    /// </remarks>
     public AccountHub(
         AccountService accounts,
         AccountSessionRegistry sessions,
-        SeatNameDirectory seatNames,
+        GameRegistry games,
         NotificationDispatcher dispatcher,
         ILogger<AccountHub> logger)
     {
         _accounts = accounts;
         _sessions = sessions;
-        _seatNames = seatNames;
+        _games = games;
         _dispatcher = dispatcher;
         _logger = logger;
     }
@@ -127,12 +131,26 @@ public sealed class AccountHub : Hub
             return Reject(outcome);
         }
 
-        _seatNames.Rename(accountId, outcome.Account.DisplayName);
-        await _dispatcher.PushSeatNamesChangedAsync(Context.ConnectionAborted);
+        // 名字是"读时解析"（D-0021）：逐桌更新该账号的席位名，并把变更推给**那些桌**。
+        var updated = 0;
+        foreach (var gameId in _games.GameIds)
+        {
+            var game = await _games.FindAsync(gameId, Context.ConnectionAborted);
+            if (game is null)
+            {
+                continue;
+            }
+
+            game.SeatNames.Rename(accountId, outcome.Account.DisplayName);
+            await _dispatcher.PushSeatNamesChangedAsync(game, Context.ConnectionAborted);
+            updated++;
+        }
+
         _logger.LogInformation(
-            "玩家名已更新：account={AccountId} 新玩家名={DisplayName} 推送=全桌+说书人",
+            "玩家名已更新：account={AccountId} 新玩家名={DisplayName} 已同步的桌数={Tables}",
             accountId,
-            outcome.Account.DisplayName);
+            outcome.Account.DisplayName,
+            updated);
         return Accept(outcome.Account, accountSession: null, recoveryCode: null);
     }
 

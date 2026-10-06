@@ -75,8 +75,26 @@ public sealed class TestServerHost : IAsyncDisposable
     /// <summary>宿主服务容器。</summary>
     public IServiceProvider Services => _factory.Services;
 
+    /// <summary>局注册表（多桌用例要按标识取具体某一桌，D-0024）。</summary>
+    public GameRegistry GameRegistry => _factory.Services.GetRequiredService<GameRegistry>();
+
+    /// <summary>
+    /// 默认桌的实例束（多桌，D-0024）。
+    /// </summary>
+    /// <remarks>
+    /// 会话与席位名读模型都不是进程级单例了——它们每局一份、由 <see cref="GameRegistry"/> 持有。
+    /// 测试要拿"当前这一局"必须走注册表，否则会拿到一个**从未被恢复**的实例
+    /// （重启类用例会以"状态丢了"的形式红）。
+    /// </remarks>
+    public GameInstance Game =>
+        _factory.Services.GetRequiredService<GameRegistry>()
+            .FindAsync(GameId, CancellationToken.None)
+            .GetAwaiter()
+            .GetResult()
+        ?? throw new InvalidOperationException("测试宿主没有装载默认桌：启动引导未完成？");
+
     /// <summary>本局编排器（测试用来从宿主侧开阶段）。</summary>
-    public GameSession Session => _factory.Services.GetRequiredService<GameSession>();
+    public GameSession Session => Game.Session;
 
     /// <summary>事件存储（测试用来读事件与审计）。</summary>
     public IGameStore Store => _factory.Services.GetRequiredService<IGameStore>();
@@ -216,6 +234,42 @@ public sealed class TestServerHost : IAsyncDisposable
         return connection;
     }
 
+    /// <summary>
+    /// 连到**指定的桌**并以说书人身份加入（多桌，D-0024）。
+    /// </summary>
+    /// <remarks>
+    /// 桌通过连接串的 <c>?gameId=</c> 声明——与浏览器端同一机制，所以这条用例测的是真实链路，
+    /// 而不是测试专用的旁路。
+    /// </remarks>
+    public async Task<GameClient> ConnectStorytellerToTableAsync(
+        GameId gameId,
+        Action<StorytellerViewDto>? onViewChanged = null)
+    {
+        var setup = await _factory.Services.GetRequiredService<IGameCatalog>()
+            .FindAsync(gameId, CancellationToken.None)
+            ?? throw new InvalidOperationException($"要连接的桌不存在：{gameId.Value}");
+
+        var connection = CreateConnection($"/hub/game?gameId={Uri.EscapeDataString(gameId.Value)}");
+        if (onViewChanged is not null)
+        {
+            connection.On<StorytellerViewDto>("ReceiveStorytellerViewChanged", onViewChanged);
+        }
+
+        await connection.StartAsync();
+        var joined = await connection.InvokeAsync<StorytellerJoinDto>("JoinStoryteller", setup.StorytellerTicket);
+        _connections.Add(connection);
+        return new GameClient(connection, joined.Credential);
+    }
+
+    /// <summary>新建一张桌（写会话目录 + 让注册表装载它）；返回它的会话信息。</summary>
+    public async Task<GameSetup> RegisterTableAsync(GameId gameId, int seatCount)
+    {
+        var setup = GameSetupFactory.Create(gameId, seatCount);
+        await _factory.Services.GetRequiredService<IGameCatalog>().SaveAsync(setup, CancellationToken.None);
+        await _factory.Services.GetRequiredService<GameRegistry>().GetOrCreateAsync(gameId, CancellationToken.None);
+        return setup;
+    }
+
     /// <summary>以宿主身份执行命令，并像 Server 一样把通知推出去（开阶段等宿主动作）。</summary>
     public async Task<CommandResult> ExecuteHostCommandAsync(
         GameCommand command,
@@ -230,7 +284,7 @@ public sealed class TestServerHost : IAsyncDisposable
                 IdempotencyKey = idempotencyKey,
             },
             cancellationToken);
-        await _factory.Services.GetRequiredService<NotificationDispatcher>().DispatchAsync(result, cancellationToken);
+        await _factory.Services.GetRequiredService<NotificationDispatcher>().DispatchAsync(Game, result, cancellationToken);
         return result;
     }
 
@@ -248,7 +302,7 @@ public sealed class TestServerHost : IAsyncDisposable
                 IdempotencyKey = idempotencyKey,
             },
             cancellationToken);
-        await _factory.Services.GetRequiredService<NotificationDispatcher>().DispatchAsync(result, cancellationToken);
+        await _factory.Services.GetRequiredService<NotificationDispatcher>().DispatchAsync(Game, result, cancellationToken);
         return result;
     }
 
@@ -345,6 +399,12 @@ public sealed class TestServerHost : IAsyncDisposable
             DeleteIfExists(_databasePath + "-shm");
         }
     }
+
+    /// <summary>宿主基地址（测试要自建"连到指定桌"的连接时用）。</summary>
+    public Uri ServerBaseAddress => _factory.Server.BaseAddress;
+
+    /// <summary>宿主的 HTTP 处理器（测试自建连接时挂上它，请求才走内存管线）。</summary>
+    public HttpMessageHandler ServerHandler() => _factory.Server.CreateHandler();
 
     private HubConnection CreateConnection(string path = "/hub/game") =>
         new HubConnectionBuilder()

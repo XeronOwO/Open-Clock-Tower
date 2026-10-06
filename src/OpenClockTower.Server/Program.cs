@@ -29,40 +29,39 @@ builder.Services.AddSingleton<ISeatBindingStore, EfSeatBindingStore>();
 builder.Services.AddSingleton<AccountService>();
 builder.Services.AddSingleton<SeatBindingService>();
 builder.Services.AddSingleton<AccountSessionRegistry>();
-// 席位名读模型（D-0021）：姓名是会话信息，由启动装载 + 认领 / 改名 / 解除更新，视图投影只读快照。
-builder.Services.AddSingleton<SeatNameDirectory>();
 // 规则层的角色契约：提示目录与结算目录指向同一批实现（NightActions），常驻效果来源单列。
 builder.Services.AddSingleton<IAbilityResolutionCatalog>(NightActions.Resolutions);
 builder.Services.AddSingleton<IReadOnlyList<IStandingEffectSource>>(NightActions.StandingEffects);
-builder.Services.AddSingleton(provider => new GameSession(
-    provider.GetRequiredService<GameId>(),
+// 多桌（D-0024）：局注册表是"一局"这一层的**组合根**——按 GameId 造出会话 + 席位名读模型 + 复盘读侧
+// 并各自从事件流恢复。会话与读模型**不再是进程级单例**：它们每局一份，由 GameHub 按连接解析、
+// 由启动引导装载全部在册的桌。
+builder.Services.AddSingleton(provider => new GameRegistry(
     provider.GetRequiredService<IGameStore>(),
     provider.GetRequiredService<IGameCatalog>(),
+    provider.GetRequiredService<ISeatBindingStore>(),
+    provider.GetRequiredService<IAccountStore>(),
     provider.GetRequiredService<IAbilityResolutionCatalog>(),
     provider.GetRequiredService<IReadOnlyList<IStandingEffectSource>>(),
     provider.GetRequiredService<IClock>(),
     provider.GetRequiredService<PacingOptions>(),
-    provider.GetRequiredService<SeatNameDirectory>(),
-    provider.GetRequiredService<ILogger<GameSession>>()));
-// 复盘读侧（D-0020 / R-0043）：只读事件流 + 可见性闸，不依赖宿主内存态，因此独立于 GameSession 注册。
-builder.Services.AddSingleton(provider => new ReplayQueryService(
-    provider.GetRequiredService<GameId>(),
-    provider.GetRequiredService<IGameStore>(),
-    provider.GetRequiredService<SeatNameDirectory>(),
-    provider.GetRequiredService<ILogger<ReplayQueryService>>()));
+    provider.GetRequiredService<ILoggerFactory>(),
+    provider.GetRequiredService<GameId>()));
 builder.Services.AddSingleton<ConnectionRegistry>();
 builder.Services.AddSingleton<HubActorResolver>();
 builder.Services.AddSingleton<NotificationDispatcher>();
+// 连接 ↔ 桌的绑定（多桌 D-0024）：单例——SignalR 的 Hub 每次调用新建实例，字段记不住东西。
+builder.Services.AddSingleton(provider => new HubGameScope(
+    provider.GetRequiredService<GameRegistry>(),
+    provider.GetRequiredService<GameId>(),
+    provider.GetRequiredService<NotificationDispatcher>()));
 // 加入 / 认领的席位定位与凭据签发（D-0021）：从 GameHub 拆出（单文件 600 行门禁）。
+// 多桌（D-0024）：本类不持有"当前是哪一局"，局面由调用方按次传入，所以这里没有 GameId / GameSession 依赖。
 builder.Services.AddSingleton(provider => new SeatJoinCoordinator(
     provider.GetRequiredService<IGameCatalog>(),
-    provider.GetRequiredService<GameId>(),
-    provider.GetRequiredService<GameSession>(),
     provider.GetRequiredService<ConnectionRegistry>(),
     provider.GetRequiredService<SeatBindingService>(),
     provider.GetRequiredService<AccountService>(),
     provider.GetRequiredService<AccountSessionRegistry>(),
-    provider.GetRequiredService<SeatNameDirectory>(),
     provider.GetRequiredService<ILogger<SeatJoinCoordinator>>()));
 builder.Services.AddHostedService<GameBootstrapHostedService>();
 builder.Services.AddHostedService<StepPacerHostedService>();

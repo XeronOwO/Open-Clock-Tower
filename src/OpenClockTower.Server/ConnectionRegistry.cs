@@ -5,7 +5,7 @@ using OpenClockTower.Kernel;
 namespace OpenClockTower.Server;
 
 /// <summary>
-/// 连接会话目录：席位 / 说书人 → 当前连接，以及每条连接签发的**连接级凭据**（D-0012 §4.1）。
+/// 连接会话目录：**（桌, 席位）/ （桌, 说书人）** → 当前连接，以及每条连接签发的连接级凭据（D-0012 §4.1）。
 /// </summary>
 /// <remarks>
 /// <para>
@@ -14,32 +14,42 @@ namespace OpenClockTower.Server;
 /// 两条都有效的凭据（复核发现，2026-10-02）。
 /// </para>
 /// <para>
-/// 重连语义：同一席位的新连接替换旧连接（说书人同一时刻只允许一条有效连接），
-/// **旧连接的凭据立即作废**——即使旧连接的 TCP 还没断，它也不能再发任何命令。
-/// 凭据身份与推送路由必须一致：<see cref="Validate"/> 会核对"该席位当前确实指向这条连接"，
-/// 防止同一连接换席位留下的陈旧映射变成"零凭据也能收私有推送"的路由后门。
+/// **多桌（D-0024）**：席位与说书人都按桌分区。这不是可选的细节——甲桌的 1 号与乙桌的 1 号
+/// 是两张不同的席位，用全局 <see cref="SeatId"/> 作键会让两桌的路由互相覆盖：
+/// 甲桌的裁定会推到乙桌坐在同一席位号的人手上。连接的所属桌在签发凭据时确定，
+/// 之后 <see cref="Validate"/> 一并返回它，于是"这条连接在哪一桌"只有一处事实。
+/// </para>
+/// <para>
+/// 重连语义（每桌各自成立）：同一席位的新连接替换旧连接、说书人同一时刻只允许一条有效连接，
+/// **旧连接的凭据立即作废**。凭据身份与推送路由必须一致：<see cref="Validate"/> 会核对
+/// "该桌该席位当前确实指向这条连接"，防止陈旧映射变成"零凭据也能收私有推送"的路由后门。
 /// </para>
 /// </remarks>
 public sealed class ConnectionRegistry
 {
     private readonly object _gate = new();
-    private readonly ConcurrentDictionary<SeatId, string> _seats = new();
-    private readonly ConcurrentDictionary<string, SeatId> _connectionSeats = new();
-    private readonly ConcurrentDictionary<string, string> _storytellers = new();
+    private readonly ConcurrentDictionary<(GameId Game, SeatId Seat), string> _seats = new();
     private readonly ConcurrentDictionary<string, ConnectionCredentialRecord> _credentials = new();
+    private readonly ConcurrentDictionary<string, GameId> _connectionGames = new();
 
-    /// <summary>当前已绑定的全部席位。</summary>
-    public IReadOnlyCollection<SeatId> Seats => _seats.Keys.ToArray();
+    /// <summary>某一桌当前已绑定的全部席位。</summary>
+    public IReadOnlyCollection<SeatId> SeatsOf(GameId game) =>
+        [.. _seats.Keys.Where(key => key.Game == game).Select(key => key.Seat).OrderBy(seat => seat.Value)];
 
-    /// <summary>当前已绑定的说书人连接。</summary>
-    public IReadOnlyCollection<string> StorytellerConnections => _storytellers.Keys.ToArray();
+    /// <summary>某一桌当前已绑定的说书人连接。</summary>
+    public IReadOnlyCollection<string> StorytellerConnectionsOf(GameId game) =>
+        [.. _credentials
+            .Where(pair => pair.Value.Kind == ActorKind.Storyteller
+                && _connectionGames.TryGetValue(pair.Key, out var gameId)
+                && gameId == game)
+            .Select(pair => pair.Key)];
 
-    /// <summary>玩家加入 / 重连：为这条连接签发凭据；同席旧连接与同连接旧凭据立即作废。</summary>
-    public ConnectionCredential IssueForSeat(SeatId seat, string connectionId)
+    /// <summary>玩家加入 / 重连：为这条连接签发凭据；同桌同席旧连接与同连接旧凭据立即作废。</summary>
+    public ConnectionCredential IssueForSeat(GameId game, SeatId seat, string connectionId)
     {
         lock (_gate)
         {
-            if (_seats.TryGetValue(seat, out var previous)
+            if (_seats.TryGetValue((game, seat), out var previous)
                 && !string.Equals(previous, connectionId, StringComparison.Ordinal))
             {
                 Revoke(previous);
@@ -48,42 +58,42 @@ public sealed class ConnectionRegistry
             Revoke(connectionId);
 
             var credential = ConnectionCredential.CreateNew();
-            _seats[seat] = connectionId;
-            _connectionSeats[connectionId] = seat;
+            _seats[(game, seat)] = connectionId;
+            _connectionGames[connectionId] = game;
             _credentials[connectionId] = ConnectionCredentialRecord.ForSeat(credential, seat);
             return credential;
         }
     }
 
-    /// <summary>说书人加入 / 重连：为这条连接签发凭据；其余说书人连接立即作废。</summary>
-    public ConnectionCredential IssueForStoryteller(string connectionId)
+    /// <summary>说书人加入 / 重连：为这条连接签发凭据；**本桌**其余说书人连接立即作废。</summary>
+    /// <remarks>作废范围严格限定在本桌：甲桌换说书人不能把乙桌的说书人踢下线。</remarks>
+    public ConnectionCredential IssueForStoryteller(GameId game, string connectionId)
     {
         lock (_gate)
         {
-            foreach (var existing in _storytellers.Keys.ToArray())
+            foreach (var existing in StorytellerConnectionsOf(game))
             {
-                _storytellers.TryRemove(existing, out _);
                 Revoke(existing);
             }
 
             Revoke(connectionId);
 
             var credential = ConnectionCredential.CreateNew();
-            _storytellers[connectionId] = connectionId;
+            _connectionGames[connectionId] = game;
             _credentials[connectionId] = ConnectionCredentialRecord.ForStoryteller(credential);
             return credential;
         }
     }
 
     /// <summary>
-    /// 校验凭据属于**当前这条连接**、且身份与席位路由一致：不通过的原因（缺凭据 / 不匹配 / 路由分叉）
-    /// 供审计使用。
+    /// 校验凭据属于**当前这条连接**、且身份与席位路由一致；通过时一并给出这条连接在哪一桌。
     /// </summary>
     public CredentialValidation Validate(ConnectionCredential credential, string connectionId)
     {
         lock (_gate)
         {
-            if (!_credentials.TryGetValue(connectionId, out var record))
+            if (!_credentials.TryGetValue(connectionId, out var record)
+                || !_connectionGames.TryGetValue(connectionId, out var game))
             {
                 return CredentialValidation.Reject("这条连接没有有效凭据：请先用票据加入");
             }
@@ -95,20 +105,20 @@ public sealed class ConnectionRegistry
 
             if (record.Kind == ActorKind.Player
                 && (record.Seat is not { } seat
-                    || !_seats.TryGetValue(seat, out var routed)
+                    || !_seats.TryGetValue((game, seat), out var routed)
                     || !string.Equals(routed, connectionId, StringComparison.Ordinal)))
             {
                 return CredentialValidation.Reject("凭据身份与当前席位绑定不一致：请重新用票据加入");
             }
 
-            return CredentialValidation.Accept(record.Kind, record.Seat);
+            return CredentialValidation.Accept(record.Kind, record.Seat, game);
         }
     }
 
-    /// <summary>取席位的当前连接。</summary>
-    public bool TryGetSeatConnection(SeatId seat, out string connectionId)
+    /// <summary>取**某一桌**某个席位的当前连接。</summary>
+    public bool TryGetSeatConnection(GameId game, SeatId seat, out string connectionId)
     {
-        if (_seats.TryGetValue(seat, out var found))
+        if (_seats.TryGetValue((game, seat), out var found))
         {
             connectionId = found;
             return true;
@@ -127,11 +137,11 @@ public sealed class ConnectionRegistry
         }
     }
 
-    /// <summary>作废一条连接的全部身份痕迹（凭据 + 席位绑定 + 说书人绑定）。调用方必须持有 <c>_gate</c>。</summary>
+    /// <summary>作废一条连接的全部身份痕迹（凭据 + 席位绑定 + 所属桌）。调用方必须持有 <c>_gate</c>。</summary>
     private void Revoke(string connectionId)
     {
         _credentials.TryRemove(connectionId, out _);
-        _connectionSeats.TryRemove(connectionId, out _);
+        _connectionGames.TryRemove(connectionId, out _);
 
         // 清理所有"指向这条连接"的前向席位映射：既有它自己的席位，也有"同一连接换席位"留下的陈旧项。
         foreach (var pair in _seats
@@ -140,7 +150,5 @@ public sealed class ConnectionRegistry
         {
             _seats.TryRemove(pair.Key, out _);
         }
-
-        _storytellers.TryRemove(connectionId, out _);
     }
 }

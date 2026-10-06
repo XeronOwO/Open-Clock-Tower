@@ -1,3 +1,4 @@
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using OpenClockTower.Application;
@@ -5,28 +6,28 @@ using OpenClockTower.Application;
 namespace OpenClockTower.Server;
 
 /// <summary>
-/// 启动引导：建库 → 恢复事件流 → 播种会话票据。
+/// 启动引导：建库 → 结构守卫（账号表 / 后加的列）→ 保证默认桌在册 → 装载**所有**桌。
 /// </summary>
 /// <remarks>
 /// <para>
-/// 夜晚计划**不在引导阶段自动构建**：真实的《梦殒春宵》夜晚顺序表在 <c>OpenClockTower.Rules</c>，
-/// 按它建表需要角色分配与角色行动契约，属结算引擎（docs/backlog/in-progress/settlement-engine.md）。
-/// 在那之前，开阶段是宿主 / 说书人的显式动作——引导阶段不伪造计划。
+/// 多桌（D-0024）之后，"恢复"不再是对一个进程级会话调用一次，而是由 <see cref="GameRegistry"/>
+/// 把库里每一桌都装起来；本服务负责建库、结构守卫，以及保证默认桌（<see cref="GameServerOptions.GameId"/>）
+/// 仍然在册——它是升级前就存在的那一桌，不能因为改造而"消失"。
 /// </para>
 /// <para>
-/// 恢复失败时**不自动继续**：记录 Critical 并停在空状态，等说书人 / 宿主显式重建或开新阶段
-/// （D-0014 能力 3：重建失败显式报错、不静默继续）。
+/// 夜晚计划**不在引导阶段自动构建**：真实顺序表在 <c>OpenClockTower.Rules</c>，
+/// 按它建表需要角色分配与角色行动契约。在那之前，开阶段是宿主 / 说书人的显式动作。
+/// </para>
+/// <para>
+/// 单桌装载失败**不阻断启动**：失败的那一桌自带降级位（room health），说书人可在界面里显式重建，
+/// 一格坏桌不该让别的桌开不了（多桌的可用性要求）。
 /// </para>
 /// </remarks>
 public sealed class GameBootstrapHostedService : IHostedService
 {
     private readonly IDbContextFactory<GameDbContext> _dbFactory;
     private readonly IGameCatalog _catalog;
-    private readonly GameId _gameId;
-    private readonly GameSession _session;
-    private readonly SeatNameDirectory _seatNames;
-    private readonly ISeatBindingStore _bindingStore;
-    private readonly IAccountStore _accountStore;
+    private readonly GameRegistry _registry;
     private readonly GameServerOptions _options;
     private readonly ILogger<GameBootstrapHostedService> _logger;
 
@@ -34,21 +35,13 @@ public sealed class GameBootstrapHostedService : IHostedService
     public GameBootstrapHostedService(
         IDbContextFactory<GameDbContext> dbFactory,
         IGameCatalog catalog,
-        GameId gameId,
-        GameSession session,
-        SeatNameDirectory seatNames,
-        ISeatBindingStore bindingStore,
-        IAccountStore accountStore,
+        GameRegistry registry,
         IOptions<GameServerOptions> options,
         ILogger<GameBootstrapHostedService> logger)
     {
         _dbFactory = dbFactory;
         _catalog = catalog;
-        _gameId = gameId;
-        _session = session;
-        _seatNames = seatNames;
-        _bindingStore = bindingStore;
-        _accountStore = accountStore;
+        _registry = registry;
         _options = options.Value;
         _logger = logger;
     }
@@ -56,49 +49,35 @@ public sealed class GameBootstrapHostedService : IHostedService
     /// <inheritdoc />
     public async Task StartAsync(CancellationToken cancellationToken)
     {
+        var defaultGameId = new GameId(_options.GameId);
+
         await using (var db = await _dbFactory.CreateDbContextAsync(cancellationToken))
         {
             await db.Database.EnsureCreatedAsync(cancellationToken);
             await EnsureAccountSchemaAsync(db, cancellationToken);
+            await EnsureGameColumnsAsync(db, cancellationToken);
         }
 
-        var restored = true;
-        try
-        {
-            await _session.RestoreAsync(cancellationToken);
-        }
-        catch (Exception exception) when (exception is not OperationCanceledException)
-        {
-            restored = false;
-            _logger.LogCritical(
-                exception,
-                "事件流 / 快照恢复失败：房间停在空状态，等待显式重建或开新阶段（禁止静默继续）");
-        }
-
-        var setup = await _catalog.FindAsync(_gameId, cancellationToken);
+        var setup = await _catalog.FindAsync(defaultGameId, cancellationToken);
         if (setup is null)
         {
-            setup = GameSetupFactory.Create(_gameId, _options.SeatCount);
+            setup = GameSetupFactory.Create(defaultGameId, _options.SeatCount);
             await _catalog.SaveAsync(setup, cancellationToken);
             _logger.LogWarning(
-                "已创建单局（会话票据仍是占位实现）：game={GameId} 席位={SeatCount} 说书人票据={StorytellerTicket} 票据={Tickets}",
-                _gameId,
+                "已创建默认桌（升级前的那一桌）：game={GameId} 席位={SeatCount} 说书人票据={StorytellerTicket} 票据={Tickets}",
+                defaultGameId.Value,
                 setup.Seats.Count,
                 setup.StorytellerTicket,
                 string.Join(",", setup.Seats.Select(seat => $"{seat.Seat.Value}:{seat.Ticket}")));
         }
 
-        await _seatNames.ReloadAsync(_gameId, _bindingStore, _accountStore, cancellationToken);
-        _logger.LogInformation(
-            "席位名读模型已装载（D-0021：会话信息，随认领 / 改名 / 解除更新）：game={GameId} 带名席位={Count}",
-            _gameId,
-            _seatNames.Snapshot().Count);
+        // 装载库里全部在册的桌（多桌并行）。
+        await _registry.InitializeAsync(cancellationToken);
 
-        if (restored && _session.GetStorytellerView().Phase is null)
-        {
-            _logger.LogInformation(
-                "未自动开启夜晚阶段：等待宿主 / 说书人显式开阶段（顺序表数据在 OpenClockTower.Rules，建表属结算引擎）");
-        }
+        _logger.LogInformation(
+            "在册的桌：数量={Count} 标识={Ids}",
+            _registry.GameIds.Count,
+            string.Join(",", _registry.GameIds.Select(id => id.Value)));
     }
 
     /// <inheritdoc />
@@ -106,7 +85,7 @@ public sealed class GameBootstrapHostedService : IHostedService
 
     /// <summary>
     /// 账号表守卫（D-0021）：现库用 <c>EnsureCreated</c>，不会给已存在的库补表；
-    /// 缺表时**显式失败**并提示换新库 / 新建对局——不做在线迁移、不静默继续。
+    /// 缺表时**显式失败**并提示换新库——不做在线迁移、不静默继续。
     /// </summary>
     private async Task EnsureAccountSchemaAsync(GameDbContext db, CancellationToken cancellationToken)
     {
@@ -119,8 +98,75 @@ public sealed class GameBootstrapHostedService : IHostedService
         {
             _logger.LogCritical(
                 exception,
-                "旧库缺少账号 / 席位绑定表：本版不做在线迁移，请换新库或新建对局（D-0021）");
+                "旧库缺少账号 / 席位绑定表：本版不做在线迁移，请换新库（D-0021）");
             throw;
+        }
+    }
+
+    /// <summary>
+    /// 会话表的**加列守卫**：大厅元数据给 <c>Games</c> 增了列，而 <c>EnsureCreated</c> 只建不改。
+    /// 缺列时补上（SQLite 的 <c>ADD COLUMN</c> 是原地操作、不动既有数据），
+    /// 于是**升级不会让你打不开原来那一桌**。
+    /// </summary>
+    /// <remarks>
+    /// 这是本版唯一的 DDL 例外，且只做"加列"：删列 / 改类型 / 加约束仍主张换新库。
+    /// 换掉 SQLite provider 时，这里要一并换成正式迁移（D-0004 允许换 provider）。
+    /// </remarks>
+    private async Task EnsureGameColumnsAsync(GameDbContext db, CancellationToken cancellationToken)
+    {
+        var existing = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var connection = (SqliteConnection)db.Database.GetDbConnection();
+        var opened = connection.State != System.Data.ConnectionState.Open;
+        if (opened)
+        {
+            await connection.OpenAsync(cancellationToken);
+        }
+
+        try
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText = "PRAGMA table_info(Games);";
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                existing.Add(reader.GetString(1));
+            }
+        }
+        finally
+        {
+            if (opened)
+            {
+                await connection.CloseAsync();
+            }
+        }
+
+        // 每项：列名 + 追加语句（NOT NULL 在 SQLite 上必须带默认值才被接受）。
+        (string Column, string Sql)[] required =
+        [
+            ("Name", "ALTER TABLE Games ADD COLUMN Name TEXT NOT NULL DEFAULT '';"),
+            ("IsLocked", "ALTER TABLE Games ADD COLUMN IsLocked INTEGER NOT NULL DEFAULT 0;"),
+        ];
+
+        foreach (var (column, sql) in required)
+        {
+            if (existing.Contains(column))
+            {
+                continue;
+            }
+
+            try
+            {
+                await db.Database.ExecuteSqlRawAsync(sql, cancellationToken);
+                _logger.LogWarning("旧库补列（升级兼容）：Games.{Column}", column);
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                _logger.LogCritical(
+                    exception,
+                    "补列失败：Games.{Column}——库结构与本版不匹配，请换新库",
+                    column);
+                throw;
+            }
         }
     }
 }

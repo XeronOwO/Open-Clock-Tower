@@ -19,13 +19,15 @@ namespace OpenClockTower.Server;
 /// </remarks>
 internal sealed class HubCommandExecutor
 {
-    private readonly GameSession _session;
+    private readonly GameInstance _game;
     private readonly NotificationDispatcher _dispatcher;
 
-    /// <summary>构造执行器。</summary>
-    internal HubCommandExecutor(GameSession session, NotificationDispatcher dispatcher)
+    /// <summary>构造执行器（绑定到某一桌：会话与推送范围都不能跨桌）。</summary>
+    internal HubCommandExecutor(GameInstance game, NotificationDispatcher dispatcher)
     {
-        _session = session;
+        ArgumentNullException.ThrowIfNull(game);
+
+        _game = game;
         _dispatcher = dispatcher;
     }
 
@@ -42,7 +44,7 @@ internal sealed class HubCommandExecutor
         long clientSequence,
         CancellationToken cancellationToken)
     {
-        var result = await _session.ExecuteAsync(
+        var result = await _game.Session.ExecuteAsync(
             new CommandEnvelope
             {
                 Command = command,
@@ -52,7 +54,7 @@ internal sealed class HubCommandExecutor
             },
             cancellationToken);
 
-        await _dispatcher.DispatchAsync(result, cancellationToken);
+        await _dispatcher.DispatchAsync(_game, result, cancellationToken);
         return ProjectionMapper.ToDto(result);
     }
 }
