@@ -61,7 +61,7 @@ todo/  →  in-progress/  →  review/  →  done/
 ### Todo
 
 - [入场重做：账号是唯一身份证，票据退回兜底](todo/entrance-redesign.md) — **High** — "界面到处硬塞" + "说书人票据是什么" + "切个面又要重登一次"三条其实是同一个域：账号是唯一入口、票据退兜底、说书人凭账号看到"我主持的桌"
-- [可用性验收装置：证明"一个没用过的人能自己走通"](todo/usability-acceptance-device.md) — **High** — 19 个装置都在测"规则对不对"，没有一条测"新用户知不知道该点哪"，所以界面再烂也全绿；这条装置**交付时就该是红的**
+- [可用性验收装置：证明"一个没用过的人能自己走通"](todo/usability-acceptance-device.md) — **High** — 其余 19 个装置都在测"规则对不对 / 功能通不通"，没有一条测"新用户知不知道该点哪"，所以界面再烂也全绿；装置 `tools/verify-entrance-usability.mjs` **已交付并跑出红读数**（判定 27 项 · 红 13 项），转绿由入场重做那张票负责
 - [前端路由改用正常路径](todo/frontend-path-routing.md) — Medium — 地址从 `#/play` 变成 `play`；服务端回退早已就绪，旧井号链接靠重定向兜住，16 个装置一个字都不用改
 
 ### In progress
