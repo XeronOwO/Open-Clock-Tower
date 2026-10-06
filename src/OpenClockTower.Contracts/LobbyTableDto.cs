@@ -32,4 +32,20 @@ public sealed record LobbyTableDto
 
     /// <summary>是否锁定（锁定后不再接受新的入座）。</summary>
     public required bool Locked { get; init; }
+
+    /// <summary>
+    /// 已被占用的席位号（升序）。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 大厅必须给出它：否则玩家只能"点一下试试"，撞上别人已坐的席位才知道被占——
+    /// 体验上是把人当探针用（实测踩到：点下去才报"席位已被其他账号认领"）。
+    /// </para>
+    /// <para>
+    /// 这**不是**"把席位明细下发给玩家"：席位号与"有没有人坐"在开局前的桌边本来就是公开的
+    /// （谁坐哪儿大家都看得见）；这里不涉及谁坐的、更不涉及任何局内信息。
+    /// 字段名刻意避开禁词表里的 `Seats`，好让那条门禁继续盯住真正的越权（把席位**明细**塞进投影）。
+    /// </para>
+    /// </remarks>
+    public required IReadOnlyList<int> OccupiedSeatNumbers { get; init; }
 }

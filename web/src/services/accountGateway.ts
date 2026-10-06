@@ -27,6 +27,8 @@ export interface LobbyTable {
   takenSeatCount: number
   started: boolean
   locked: boolean
+  /** 已被占用的席位号：界面据此把座位按钮置灰，玩家不必"点一下试试"。 */
+  occupiedSeatNumbers: number[]
 }
 
 /** 建桌结果；`storytellerTicket` 是秘密（成为该桌说书人的凭据），只随事件流转。 */
@@ -59,6 +61,11 @@ export function normalizeLobbyTables(raw: unknown): LobbyTable[] {
 
     const number = (key: string): number => (typeof value[key] === 'number' ? (value[key] as number) : 0)
     const flag = (key: string): boolean => value[key] === true
+    const rawOccupied = value['occupiedSeatNumbers']
+    const occupiedSeatNumbers = Array.isArray(rawOccupied)
+      ? rawOccupied.filter((seat): seat is number => typeof seat === 'number' && Number.isInteger(seat))
+      : []
+
     tables.push({
       gameId,
       name: typeof value['name'] === 'string' ? value['name'] : '',
@@ -66,6 +73,7 @@ export function normalizeLobbyTables(raw: unknown): LobbyTable[] {
       takenSeatCount: number('takenSeatCount'),
       started: flag('started'),
       locked: flag('locked'),
+      occupiedSeatNumbers,
     })
   }
 

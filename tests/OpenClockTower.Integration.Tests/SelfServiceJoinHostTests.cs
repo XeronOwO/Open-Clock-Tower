@@ -174,6 +174,27 @@ public sealed class SelfServiceJoinHostTests
     }
 
     [Fact]
+    public async Task Lobby_ReportsOccupiedSeats_SoPlayersNeedNotProbe()
+    {
+        await using var host = new TestServerHost(seatCount: 5);
+        await host.RegisterTableAsync(TableA, seatCount: 5);
+        var alice = await RegisterAsync(host, "alice", "爱丽丝");
+
+        await using (var aliceConnection = await ConnectTableAsync(host, TableA))
+        {
+            await aliceConnection.InvokeAsync<SeatJoinDto>("JoinTable", alice, 3, 0L);
+        }
+
+        await using var account = await ConnectAccountAsync(host);
+        var tables = await account.InvokeAsync<IReadOnlyList<LobbyTableDto>>("ListTables");
+        var table = Assert.Single(tables, item => item.GameId == TableA.Value);
+
+        // 大厅必须如实给出"哪些席位被占"——否则玩家只能点一下试试，撞上才知道被占（实测踩到）。
+        Assert.Equal(1, table.TakenSeatCount);
+        Assert.Equal([3], table.OccupiedSeatNumbers);
+    }
+
+    [Fact]
     public async Task LockedTable_RejectsNewJoin_ButKeepsExistingPlayers()
     {
         await using var host = new TestServerHost(seatCount: 5);

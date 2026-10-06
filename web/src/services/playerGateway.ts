@@ -408,8 +408,23 @@ export class PlayerGateway {
     return this.joinSeat(this.ticket, this.accountSession)
   }
 
+  /**
+   * 停止连接。
+   *
+   * 不只 `await connection.stop()`：SignalR 在 stop 返回后到"底层连接真正关闭"之间有一个短窗口，
+   * 窗口里再次 `start()` 会报
+   * `Failed to start the HttpConnection before stop() was called`（实测踩到：换桌重建连接时）。
+   * 所以这里等到状态确实变成 Disconnected 才返回——调用方接着建新连接就不会踩上。
+   */
   async stop(): Promise<void> {
     await this.connection.stop()
+
+    // 有界等待：正常情况下一两拍就到位；万一没到位也不把界面卡死。
+    const deadline = Date.now() + 2000
+    while (this.connection.state !== HubConnectionState.Disconnected && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 20))
+    }
+
     this.callbacks.onState('disconnected')
   }
 

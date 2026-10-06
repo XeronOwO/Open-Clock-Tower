@@ -103,14 +103,30 @@ async function takeSeat(table: LobbyTable, seat: number): Promise<void> {
   lobbyBusy.value = true
   lobbyNotice.value = ''
   try {
-    // 连接必须指向那一桌：先结束旧网关（它连的是别的桌），再按桌建新的。
-    await gateway?.stop()
+    // 换桌 = 换连接：先让旧网关**停干净**再建新的（`stop()` 会等到状态真的 Disconnected）。
+    // 顺序很要紧：若先建新连接，旧连接的关闭还在进行中，SignalR 会报
+    // "Failed to start the HttpConnection before stop() was called"（实测踩到）。
+    const previous = gateway
     gateway = null
+    if (previous !== null) {
+      await previous.stop()
+    }
+
     ticket.value = ''
     clientSequence = 0
     selectedTable.value = table
-    await ensureGateway().joinTable(seat, session)
-    lobbyNotice.value = `已坐在 ${table.name.length > 0 ? table.name : table.gameId} 的 ${seat} 号席位`
+
+    const current = ensureGateway()
+    try {
+      await current.joinTable(seat, session)
+      lobbyNotice.value = `已坐在 ${table.name.length > 0 ? table.name : table.gameId} 的 ${seat} 号席位`
+    } catch (error) {
+      // 入座失败：把半成品网关丢掉，免得界面留着一个连上了却没入座的连接。
+      gateway = null
+      await current.stop()
+      throw error
+    }
+
     // 人数变了：刷新列表，别让大厅停在旧数字上。
     await loadTables()
   } catch (error) {
@@ -582,8 +598,9 @@ onBeforeUnmount(() => {
                 :key="seat"
                 type="button"
                 class="seat"
-                :disabled="lobbyBusy || table.locked || table.started"
+                :disabled="lobbyBusy || table.locked || table.started || table.occupiedSeatNumbers.includes(seat)"
                 :data-seat="`${table.gameId}-${seat}`"
+                :title="table.occupiedSeatNumbers.includes(seat) ? '这个席位已经有人了' : `坐 ${seat} 号席`"
                 @click="takeSeat(table, seat)"
               >
                 {{ seat }}

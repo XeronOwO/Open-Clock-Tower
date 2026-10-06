@@ -76,6 +76,8 @@ public sealed class LobbyService
                 TakenSeatCount = bindings.Count,
                 Started = started,
                 Locked = setup.IsLocked,
+                // 已占席位号：前端据此把按钮置灰，玩家不必"点一下试试"才知道被占。
+                OccupiedSeatNumbers = [.. bindings.Select(binding => binding.Seat.Value).OrderBy(value => value)],
             });
         }
 
