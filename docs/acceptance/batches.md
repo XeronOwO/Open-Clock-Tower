@@ -1277,12 +1277,19 @@ D-0026 的三处口径在它自己的段落上标了收窄）。
 
 | 取证 | 命令 | 结果 |
 |---|---|---|
-| 主装置（迭代档） | `node tools/verify-storyteller-panel.mjs` | **全部通过（判定 289 项 · 2 项取证档专属跳过）** |
-| **入场可用性验收**（E47 交付的那一个，本批主证据） | `node tools/verify-entrance-usability.mjs` | **全部通过（判定 27 项 · 0 失败）**，16.6s；入座路径 7 步（阈值 7） |
-| 账号与玩家名 | `node tools/verify-accounts.mjs` | **全部通过（判定 36 项）** |
-| 女巫链路 | `node tools/verify-witch.mjs` | **全部通过（28 项）** |
-| 集骨者重获白天能力（含**中途到场旅行者凭邀请码入座**） | `node tools/verify-bone-collector-juggler.mjs` | **全部通过（52 项）** |
-| 门禁（冻结版） | `dotnet build` / `dotnet test OpenClockTower.slnx` / `dotnet format` / `npm run gate` | 0 警告 0 错误 · **1305 通过 / 0 失败** · format 退出 0 · web 217 项 + typecheck / build 全绿 |
+| 主装置（**取证档**） | `node tools/verify-storyteller-panel.mjs --quota 2 --screenshots-all` | **全部通过（判定 310 项 · 0 失败）**，54 张截图，164.9s |
+| **入场可用性验收**（E47 交付的那一个，本批主证据） | `node tools/verify-entrance-usability.mjs --screenshots-all` | **全部通过（判定 27 项 · 0 失败）**，4 张截图，11.6s；入座路径 7 步（阈值 7） |
+| 账号与玩家名 | `node tools/verify-accounts.mjs`（迭代档） | **全部通过（判定 36 项）** |
+| 女巫链路 | `node tools/verify-witch.mjs`（迭代档） | **全部通过（28 项）** |
+| 集骨者重获白天能力（含**中途到场旅行者凭邀请码入座**） | `node tools/verify-bone-collector-juggler.mjs`（迭代档） | **全部通过（52 项）** |
+| 门禁（冻结版） | `dotnet build` / `dotnet test OpenClockTower.slnx` / `dotnet format` / `npm run gate` | 0 警告 0 错误 · **1303 通过 / 0 失败** · format 退出 0 · web 217 项 + typecheck / build 全绿 |
+
+**取证档当场咬出的一条装置缺陷（同批修掉）**：主装置第一次取证档跑出 **309 通过 / 1 失败**，红的是
+"没有未预期的控制台错误"——`Dreamer.png`（**外链**百科角色图）返回 `ERR_CONTENT_LENGTH_MISMATCH`，
+Chromium 把资源加载失败写进 console，被算成"重启窗口内的非预期错误"。而 D-0007 / R-0006 明确
+**容忍外链图失败**（只降级成文字 + 色环），`devices.md` §3 也这么写着——即判据本身过宽，
+让第三方主机的抖动来决定装置的红绿。修法：三个切片都容忍"外链图加载失败"这一类，
+**但单独计数并打印**（`外链图加载失败=N`），绝不静默吞掉。修完同版取证档 **310 项全过**。
 
 **本批判出**（逐条对应票据的验收项，读数见 `done/entrance-redesign.md` 的「验收读数」表）：
 未登录时三个面都只剩一张登录卡；换设备只登录同一账号就能回到「我主持的桌」并进主持台；
