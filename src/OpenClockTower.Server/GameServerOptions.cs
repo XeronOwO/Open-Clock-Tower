@@ -44,4 +44,21 @@ public sealed class GameServerOptions
     /// 此时退回"只有 <see cref="AdminUsernames"/> 里的运维身份能开"。
     /// </remarks>
     public bool AllowPlayerTables { get; set; } = true;
+
+    /// <summary>
+    /// **可信反向代理**的地址或网段清单（M3 / G-A3-3）：<c>X-Forwarded-For</c> / <c>X-Forwarded-Proto</c>
+    /// 只从这些来源采信。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 留空 = 只信回环，也就是本项目的标准形态（nginx 与宿主同机，见 <c>docs/operations/deploy.md</c>）。
+    /// 反代在别的机器或容器里时，必须在这里写出它的地址（<c>10.0.0.5</c>）或网段（<c>172.18.0.0/16</c>），
+    /// **不写就不认**——否则任何人都能靠伪造一个头把自己伪装成别人。
+    /// </para>
+    /// <para>
+    /// 写错（拼错的 IP / 非法网段）会让宿主启动失败，这是有意的：真实 IP 一失效，
+    /// 按 IP 的限速就退化成"所有请求同一个桶"，那种故障在运行期几乎看不出来。
+    /// </para>
+    /// </remarks>
+    public string[] TrustedProxies { get; set; } = [];
 }

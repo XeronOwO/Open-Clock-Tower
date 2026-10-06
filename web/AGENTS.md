@@ -44,7 +44,7 @@ cd web && npm install && npm run dev     # http://localhost:5273
 
 ## 3.1 验收批次取证（说书人 + 玩家多客户端）
 
-装置清单（二十个装置 / 夹具 / 档位 / 分段 / 退出码）在 `docs/acceptance/devices.md`；本页只留入口与外部耦合。
+装置清单（二十一个装置 / 夹具 / 档位 / 分段 / 退出码）在 `docs/acceptance/devices.md`；本页只留入口与外部耦合。
 
 ```bash
 node tools/verify-storyteller-panel.mjs        # 主装置：退出码 0 = 全部断言通过

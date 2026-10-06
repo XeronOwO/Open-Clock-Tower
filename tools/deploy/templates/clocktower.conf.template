@@ -8,10 +8,34 @@ map $http_upgrade $clocktower_connection_upgrade {
     ''      close;
 }
 
+# ---- 反代侧的上限（M3 / G-A3-4 · G-A5-7）----
+# 应用自己也有同类上限（GameServer__Transport__*，见 docs/operations/deploy.md §3），两层都要：
+# 应用不假设一定有反代，反代挡住的是"进应用之前"的那一段（慢连接、连接洪水）。
+# 桶按客户端地址计，状态放共享内存（10m ≈ 16 万条），与具体站点无关所以声明在 server 外面。
+limit_req_zone $binary_remote_addr zone=clocktower_req:10m rate=30r/s;
+limit_conn_zone $binary_remote_addr zone=clocktower_conn:10m;
+
 server {
     listen 80;
     listen [::]:80;
     server_name _;
+
+    # 不白送指纹：默认响应头会带 Server: nginx/<版本>。
+    server_tokens off;
+
+    # 请求体上限：应用侧是 256 KB，这里留一层余量。本服务没有上传，1 MB 足够；超了在反代就 413。
+    client_max_body_size 1m;
+    # 慢连接（slowloris）：读请求头 / 读请求体 / 写响应三个方向都要有超时，默认的 60s 太长。
+    client_header_timeout 15s;
+    client_body_timeout 15s;
+    send_timeout 30s;
+
+    # 请求速率与并发：burst 让"一次页面加载打十几个静态资源"不被误伤；
+    # 并发按"7 席 × 2 条连接（账号 + 对局）"的量级留一倍余量，同一 NAT 后面几台设备也够。
+    limit_req zone=clocktower_req burst=100 nodelay;
+    limit_req_status 429;
+    limit_conn clocktower_conn 32;
+    limit_conn_status 429;
 
     # BEGIN root-path-only
     # 少了末尾斜杠会与前缀 location 不匹配，于是"前缀本身"404；这条只服务子路径部署。
@@ -21,20 +45,66 @@ server {
     }
     # END root-path-only
 
+    # SignalR 长连接（/hub/…）：对局期间不能被中途掐断，所以这一段的读超时按整局给。
+    # 这一段必须比下面的站点前缀更长——nginx 按最长前缀匹配，与书写顺序无关。
+    location {{LOCATION}}hub/ {
+        # 这里写死的 `/hub/` 对两种部署都对：location 已经把前缀吃掉了，
+        # 剩下的部分（game/negotiate）接到 /hub/ 后面即可（子路径与根路径结果相同）。
+        proxy_pass http://127.0.0.1:{{PORT}}/hub/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        # 真实客户端地址：应用按"只信回环"采信它（GameServer__TrustedProxies 留空即可）。
+        # 用 $proxy_add_x_forwarded_for 而不是 $remote_addr：客户端可能自带一个伪造的 X-Forwarded-For，
+        # 这个变量把真实地址**追加在最后**，应用只取最后一段（ForwardLimit = 1），伪造的前缀一律丢弃。
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $clocktower_connection_upgrade;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+        proxy_buffering off;
+    }
+
+    # 页面与静态资源：短超时（60s 足够），慢连接挂不住。
     location {{LOCATION}} {
-        # 子路径部署时末尾的 `/` 是"去掉前缀"的关键：<前缀>/hub/game → /hub/game；
-        # 根路径部署时为空（写成 `/` 会变成 //hub/game）。
         proxy_pass http://127.0.0.1:{{PORT}}{{PROXY_TAIL}};
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection $clocktower_connection_upgrade;
-        # 对局中长连接不能被中途掐断
-        proxy_read_timeout 3600s;
-        proxy_send_timeout 3600s;
-        proxy_buffering off;
+        proxy_connect_timeout 5s;
+        proxy_read_timeout 60s;
+        proxy_send_timeout 60s;
     }
+
+    # 安全响应头**不在这里写**：它们由应用统一发（含内容安全策略、Referrer-Policy、Permissions-Policy、
+    # X-Content-Type-Options、X-Frame-Options 与静态资源的 Cache-Control）。两处都写必然漂移，
+    # 而且分不出"少了哪一个、是谁少的"。HSTS 例外——它只在 HTTPS 响应上有意义，由应用按协议自行决定。
 }
+
+# ---- 上 HTTPS（给陌生人部署的路径；仓库默认形态是"同机 nginx + 明文"，见部署文档 §9）----
+# 证书拿到之后要动两处：
+#   ① 本文件的 listen 80 那段只留跳转；② 另起一个 443 server，location 块原样搬过去。
+# 应用侧只监听 127.0.0.1，X-Forwarded-Proto 已透传，因此它会自动按 HTTPS 处理
+# （HSTS 与"跳转后的正确地址"都依赖这个头）。
+#
+# server {
+#     listen 443 ssl;
+#     listen [::]:443 ssl;
+#     http2 on;
+#     server_name <你的域名>;
+#     ssl_certificate     /etc/letsencrypt/live/<你的域名>/fullchain.pem;
+#     ssl_certificate_key /etc/letsencrypt/live/<你的域名>/privkey.pem;
+#     ssl_protocols TLSv1.2 TLSv1.3;
+#     # …把上面的 location 块整段搬过来（含 limit_req / limit_conn）…
+# }
+#
+# server {
+#     listen 80;
+#     listen [::]:80;
+#     server_name <你的域名>;
+#     location /.well-known/acme-challenge/ { root <ACME挑战目录>; }  # 续期用（certbot 的默认 webroot 就是它）
+#     location / { return 301 https://$host$request_uri; }
+# }

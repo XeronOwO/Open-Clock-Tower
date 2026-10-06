@@ -60,6 +60,11 @@ public sealed class TestServerHost : IAsyncDisposable
             builder.UseSetting("GameServer:SlotQuotaSeconds", slotQuotaSeconds.ToString(CultureInfo.InvariantCulture));
             builder.UseSetting("GameServer:SeatCount", seatCount.ToString(CultureInfo.InvariantCulture));
             builder.UseSetting("GameServer:PacerIntervalMilliseconds", "50");
+            // 夹具会把注册与登录调用很多次，而限速的键在 TestServer 下是"未知地址"这一个桶
+            // （连接是内存里的，没有对端 IP）。**限速本身由 AccountThrottleHostTests 用生产值单独判**，
+            // 这里只是不让夹具的正常往返被它误伤。
+            builder.UseSetting("GameServer:Throttle:RegisterCallsPerClient", "1000");
+            builder.UseSetting("GameServer:Throttle:LoginFailuresPerClient", "1000");
             builder.ConfigureLogging(logging => logging.AddProvider(new CollectingLoggerProvider(Logs)));
         });
 

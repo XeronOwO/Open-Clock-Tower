@@ -16,12 +16,18 @@ namespace OpenClockTower.Server;
 /// 秘密纪律：口令与恢复码只进结果、绝不进日志；日志只写账号标识、登录名与凭据短指纹。
 /// 账号会话是 bearer 凭据——谁出示谁就是这个账号，前端只存内存、不落盘（D-0012 §4.1）。
 /// </para>
+/// <para>
+/// 限速（M4 / G-A1-1）：注册 / 登录 / 重置三个入口**先过 <see cref="AccountAttemptLimiter"/> 再做别的**，
+/// 拒绝发生在慢哈希之前——每次失败尝试都要跑满一次 PBKDF2，不限速就是一台免费的 CPU 放大器。
+/// 键是"客户端地址 + 登录名"，客户端地址来自 <see cref="ClientAddress"/>（反代头已在管线最前面归一）。
+/// </para>
 /// </remarks>
 public sealed class AccountHub : Hub
 {
     private readonly AccountService _accounts;
     private readonly AccountSessionRegistry _sessions;
     private readonly AccountRevocationService _revocation;
+    private readonly AccountAttemptLimiter _limiter;
     private readonly GameRegistry _games;
     private readonly NotificationDispatcher _dispatcher;
     private readonly LobbyService _lobby;
@@ -44,6 +50,7 @@ public sealed class AccountHub : Hub
         AccountService accounts,
         AccountSessionRegistry sessions,
         AccountRevocationService revocation,
+        AccountAttemptLimiter limiter,
         GameRegistry games,
         NotificationDispatcher dispatcher,
         LobbyService lobby,
@@ -53,12 +60,16 @@ public sealed class AccountHub : Hub
         _accounts = accounts;
         _sessions = sessions;
         _revocation = revocation;
+        _limiter = limiter;
         _games = games;
         _dispatcher = dispatcher;
         _lobby = lobby;
         _tableCreation = tableCreation;
         _logger = logger;
     }
+
+    /// <summary>这条连接的真实客户端地址（反代后面也能拿到真地址，见 <see cref="ClientAddress"/>）。</summary>
+    private string Client => ClientAddress.Of(Context.GetHttpContext());
 
     /// <summary>
     /// 列出在开的桌（D-0025）：玩家挑桌用，登录即可看；带 <c>CreatedByMe</c> 供说书人面挑出"我的桌"。
@@ -123,14 +134,28 @@ public sealed class AccountHub : Hub
     }
 
     /// <summary>注册（D-0021）：成功后**同时登录**，返回账号会话与一次性恢复码。</summary>
+    /// <remarks>注册的额度**每次调用都消耗**（成功与失败都算），且不因成功而清空——那正是要限制的东西（D-0032）。</remarks>
     public async Task<AccountDto> Register(string username, string displayName, string password)
     {
+        var decision = _limiter.Check(ThrottleAction.Register, Client, username: null);
+        if (!decision.Allowed)
+        {
+            _logger.LogWarning(
+                "注册被限速：connection={ConnectionId} 客户端={Client} 建议重试={RetryAfterSeconds}s",
+                Context.ConnectionId,
+                Client,
+                decision.RetryAfterSeconds);
+            return Throttled(decision);
+        }
+
+        _limiter.RecordAttempt(ThrottleAction.Register, Client, username: null);
         var outcome = await _accounts.RegisterAsync(username, displayName, password, Context.ConnectionAborted);
         if (!outcome.Accepted || outcome.Account is null)
         {
             _logger.LogInformation(
-                "注册被拒：connection={ConnectionId} code={Code} 原因={Message}",
+                "注册被拒：connection={ConnectionId} 客户端={Client} code={Code} 原因={Message}",
                 Context.ConnectionId,
+                Client,
                 outcome.Code,
                 outcome.Message);
             return Reject(outcome);
@@ -138,33 +163,53 @@ public sealed class AccountHub : Hub
 
         var session = _sessions.Issue(outcome.Account.Id);
         _logger.LogInformation(
-            "账号已注册并登录：account={AccountId} username={Username} connection={ConnectionId} 会话指纹={Fingerprint}",
+            "账号已注册并登录：account={AccountId} username={Username} connection={ConnectionId} 客户端={Client} 会话指纹={Fingerprint}",
             outcome.Account.Id,
             outcome.Account.Username,
             Context.ConnectionId,
+            Client,
             AccountSessionCredential.FingerprintOf(session.Value));
         return Accept(outcome.Account, session.Value, outcome.RecoveryCode);
     }
 
     /// <summary>登录：签发账号会话；失败一律中性文案（不暴露登录名是否存在）。</summary>
+    /// <remarks>失败才计数，成功即清窗口：正常用户打错两次不会被拖慢（M4 / G-A1-1）。</remarks>
     public async Task<AccountDto> Login(string username, string password)
     {
+        var usernameKey = UsernameKeyOf(username);
+        var decision = _limiter.Check(ThrottleAction.Login, Client, usernameKey);
+        if (!decision.Allowed)
+        {
+            _logger.LogWarning(
+                "登录被限速：connection={ConnectionId} 客户端={Client} 登录名={UsernameKey} 建议重试={RetryAfterSeconds}s",
+                Context.ConnectionId,
+                Client,
+                usernameKey,
+                decision.RetryAfterSeconds);
+            return Throttled(decision);
+        }
+
         var outcome = await _accounts.AuthenticateAsync(username, password, Context.ConnectionAborted);
         if (!outcome.Accepted || outcome.Account is null)
         {
+            _limiter.RecordAttempt(ThrottleAction.Login, Client, usernameKey);
             _logger.LogWarning(
-                "登录被拒：connection={ConnectionId} code={Code}",
+                "登录被拒：connection={ConnectionId} 客户端={Client} 登录名={UsernameKey} code={Code}",
                 Context.ConnectionId,
+                Client,
+                usernameKey,
                 outcome.Code);
             return Reject(outcome);
         }
 
+        _limiter.RecordSuccess(ThrottleAction.Login, Client, usernameKey);
         var session = _sessions.Issue(outcome.Account.Id);
         _logger.LogInformation(
-            "已登录：account={AccountId} username={Username} connection={ConnectionId} 会话指纹={Fingerprint}",
+            "已登录：account={AccountId} username={Username} connection={ConnectionId} 客户端={Client} 会话指纹={Fingerprint}",
             outcome.Account.Id,
             outcome.Account.Username,
             Context.ConnectionId,
+            Client,
             AccountSessionCredential.FingerprintOf(session.Value));
         return Accept(outcome.Account, session.Value, recoveryCode: null);
     }
@@ -283,25 +328,57 @@ public sealed class AccountHub : Hub
     /// </remarks>
     public async Task<AccountDto> ResetPassword(string username, string recoveryCode, string newPassword)
     {
+        var usernameKey = UsernameKeyOf(username);
+        var decision = _limiter.Check(ThrottleAction.ResetPassword, Client, usernameKey);
+        if (!decision.Allowed)
+        {
+            _logger.LogWarning(
+                "口令重置被限速：connection={ConnectionId} 客户端={Client} 登录名={UsernameKey} 建议重试={RetryAfterSeconds}s",
+                Context.ConnectionId,
+                Client,
+                usernameKey,
+                decision.RetryAfterSeconds);
+            return Throttled(decision);
+        }
+
         var outcome = await _accounts.ResetPasswordAsync(username, recoveryCode, newPassword, Context.ConnectionAborted);
         if (!outcome.Accepted || outcome.Account is null)
         {
+            _limiter.RecordAttempt(ThrottleAction.ResetPassword, Client, usernameKey);
             _logger.LogWarning(
-                "口令重置被拒：connection={ConnectionId} code={Code}",
+                "口令重置被拒：connection={ConnectionId} 客户端={Client} 登录名={UsernameKey} code={Code}",
                 Context.ConnectionId,
+                Client,
+                usernameKey,
                 outcome.Code);
             return Reject(outcome);
         }
 
+        _limiter.RecordSuccess(ThrottleAction.ResetPassword, Client, usernameKey);
         var revoked = _revocation.RevokeAllForAccount(outcome.Account.Id);
         var session = _sessions.Issue(outcome.Account.Id);
         _logger.LogInformation(
-            "口令已重置：account={AccountId} username={Username} 已撤销旧会话={Revoked} 已踢旧连接并重新登录",
+            "口令已重置：account={AccountId} username={Username} 客户端={Client} 已撤销旧会话={Revoked} 已踢旧连接并重新登录",
             outcome.Account.Id,
             outcome.Account.Username,
+            Client,
             revoked);
         return Accept(outcome.Account, session.Value, outcome.RecoveryCode);
     }
+
+    /// <summary>限速用的登录名键：能归一就用归一后的（有界、大小写同一把尺），不能归一就用空串（只按客户端计数）。</summary>
+    private static string UsernameKeyOf(string? username) =>
+        UsernameText.TryNormalize(username, out var normalized, out _)
+            ? UsernameText.ComparisonKeyOf(normalized)
+            : string.Empty;
+
+    /// <summary>限速拒绝：专用结果码 + 人话（多久之后再试），不是异常——前端要能平静地展示它。</summary>
+    private static AccountDto Throttled(ThrottleDecision decision) => new()
+    {
+        Ok = false,
+        Code = "too_many_attempts",
+        Message = $"尝试过于频繁，请 {decision.RetryAfterSeconds} 秒后再试",
+    };
 
     private static AccountDto Reject(AccountOutcome outcome) => new()
     {

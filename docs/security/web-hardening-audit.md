@@ -1,7 +1,10 @@
 # 公网就绪审计：能跑与敢放公网之间差什么
 
 - **状态**：第 1 步（只读审计）**已完成**，2026-10-06。差距清单是第 2 步（M2–M6）的输入，不是"以后再说"的备忘。
-  **修复进度（滚动）**：第 2 步已开工——**G-A2-1（撤销覆盖面，Critical）已修**、**G-A4-6（授权面反方向用例）已修**，见各条目的修复记录；
+  **修复进度（滚动）**：第 2 步已开工——**G-A2-1（撤销覆盖面，Critical）已修**、**G-A4-6（授权面反方向用例）已修**、
+  **G-A1-1（三个账号入口零限速，Critical）已修**、**M3 非 TLS 半批已修**（G-A3-2 安全响应头 · G-A3-3 反代真实 IP ·
+  G-A3-4 上限与超时 · G-A5-7 连接上限 · G-A3-6 的缓存口径），见各条目的修复记录；
+  **G-A3-1（全站明文 HTTP，Critical）按需求方 2026-10-06 的决定挂起**（私有白名单部署；产品路径仍写在部署文档里）；
   本页的条数统计与严重度汇总仍是 **2026-10-06 的基线读数**，不随修复回填，"已修"逐条打在 §2 的条目上。
 - **被审版本**：`main` @ `b78273d`（工作树干净；审计全程只读，未改任何产品代码。原文记的号是 `8b6912a`——2026-10-06 清历史去掉机器指纹时整段被重写，**内容未变，只改了提交号**，旧号已失效）。
 - **一句话结论**：**核心玩法与凭据链是扎实的**（口令加盐慢哈希、凭据只存哈希、固定时间比较、逐命令服务端鉴权、投影隔离有正反用例），
@@ -71,6 +74,12 @@ M4 滥用与风控 · M5 数据层与运维 · M6 开源与合规。
 - **影响**：口令爆破不受限（单连接约 18 次/秒，并发连接线性放大；无锁定、无退避）；同时是**CPU 放大攻击**——每次失败尝试都烧一次慢哈希，攻击者用很低成本就能把服务端 CPU 打满，正常玩家进不来。注册与恢复码重置同样零限速（见 G-A1-4）。
 - **修法**：`AddRateLimiter` 按"IP + 登录名"做固定窗口 + 失败计数渐进延迟/锁定；反代层加 `limit_req` 作第二道（M3）；限速口径写进决策记录。
 - **怎么验证修好了**：一条**会红**的用例——连续失败 N 次后第 N+1 次被拒（429 或专用错误码），且正确口令不受影响、不误伤同 IP 的其他账号。
+- **修复记录（M3 非 TLS 半批，2026-10-06，口径见 D-0032）**：
+  - **落地**：新 `src/OpenClockTower.Server/AccountAttemptLimiter.cs`（进程内、有界、注入时钟）+ 三个入口接线（`AccountHub` 的 `Register` / `Login` / `ResetPassword`，**拒绝发生在慢哈希之前**）；客户端地址走 `ClientAddress`（反代头已在管线最前面归一，见 G-A3-3）。
+  - **按"来源 + 登录名"两个桶**：登录 5 次 / 5 分钟（同一来源同一登录名）与 20 次 / 5 分钟（同一来源跨登录名）；注册 10 次 / 5 分钟（**每次调用都算、成功不清零**）；重置失败 5 次 / 5 分钟。拒绝结果码 `too_many_attempts` + "请 N 秒后再试"。
+  - **反代兜底**：nginx 模板加 `limit_req 30r/s burst=100` 与 `limit_conn 32`（**注意**：登录发生在 WebSocket 帧里，反代 `limit_req` 拦的是"建立连接"的速率，拦不到交易内的登录尝试——所以应用侧这一层不是可选项）。
+  - **先红后绿**：`AccountThrottleHostTests`（真 Hub 链路）与 `AccountAttemptLimiterTests`（注入时钟，窗口过期当场判）共 12 条；把 `Login` 里的限速判定去掉后**红 2 条**（第 6 次未被拒、跨登录名未被拦），还原即绿。
+  - **没做的**：渐进延迟（现在到阈值直接拒）· 按账号锁定（**有意不做**：那会让任何人都能锁死别人的账号，D-0032 代价 2）· 状态不持久（每实例一份，首版不做多实例）。
 
 #### G-A1-2 口令哈希迭代数 21 万，只有当前口径的三分之一；且没有门禁锁住这个参数（合并原 G-A1-3）｜**High**｜M2
 - **现状证据**：`src/OpenClockTower.Application/Pbkdf2PasswordHasher.cs` 的 `private const int Iterations = 210_000;`（`git log` 显示该数字自落地起从未变过）；`Verify` 从哈希串里读迭代数后直接 `Rfc2898DeriveBytes.Pbkdf2(...)`——**能验旧串，但全代码没有任何把旧串按新参数重新哈希的路径**，`IPasswordHasher` 也没有 `NeedsUpgrade` 这类第三态，所以"升参数"只做了一半。
@@ -191,23 +200,44 @@ M4 滥用与风控 · M5 数据层与运维 · M6 开源与合规。
 - **影响**：无 CSP ⇒ 一旦有注入点，`sessionStorage` 里的会话凭据可被脚本读走（D-0029 已登记的欠账，缓解正落在这里）；无 `X-Content-Type-Options` ⇒ MIME 嗅探；无 `Referrer-Policy` ⇒ 外链泄漏路径；无 `X-Frame-Options`/`frame-ancestors` ⇒ 可被嵌套（点击劫持）。`Server: nginx/1.26.3` 还顺带暴露版本。
 - **修法**：反代统一加头（`add_header ... always`），CSP 先以 `default-src 'self'` 起步并处理前端内联样式；同时 `server_tokens off`。
 - **怎么验证修好了**：真机 `curl -I` 逐头读数齐全；CSP 生效后页面功能不回归（装置全绿）。
+- **修复记录（M3 非 TLS 半批，2026-10-06，口径见 D-0031）**：
+  - **落地**：新 `src/OpenClockTower.Server/ResponseHeadersMiddleware.cs` 是**唯一出口**——`X-Content-Type-Options: nosniff` · `Referrer-Policy: no-referrer` · `Permissions-Policy`（关掉摄像头 / 麦克风 / 定位 / 支付 / USB 等）· `X-Frame-Options: DENY` · `Content-Security-Policy`；**反代模板不写 `add_header`**（对"修法"的修正：两处都写必然漂移，而且出问题看不出是谁少的）。
+  - **CSP 逐条**：`default-src` / `script-src` / `style-src` / `font-src` 均为 `'self'`，`object-src 'none'`、`base-uri 'none'`、`frame-ancestors 'none'`、`form-action 'self'`；`img-src` 放行百科角色图主机（D-0007 热链，**漏了它牌面就静默变空白**）；`connect-src` 在 `'self'` 之外**显式列出本站的 `ws://` / `wss://`**（部分浏览器不把 `'self'` 解析到 ws，见 D-0031 依据）。
+  - **HSTS 的如实行为**：由 `UseHsts` 发，只在 HTTPS 响应上出现，`max-age=30 天`、不 `includeSubDomains`、不 `preload`。本实例是明文部署 ⇒ **真机读数里没有 HSTS 是预期结果**，不是漏做；TLS 本体（G-A3-1）按需求方决定挂起。
+  - **先红后绿**：`TransportHardeningHostTests` 8 条 + `ClientAddressHostTests` 里 2 条涉及响应头；逐项改坏源码复跑——摘掉 `X-Content-Type-Options` → 红 2 条 · 去掉 CSP 的 ws/wss → 红 1 条 · 去掉 `UseHsts` → 红 2 条（含可信代理声明 https 那条），还原即绿。
+  - **没做的**：G-A3-6 的 SRI（见该条）· `X-XSS-Protection` 类已被淘汰的头（**有意不加**，CSP 才是当代表达）。
 
 #### G-A3-3 反代真实 IP 未被处理：nginx 传了，宿主没人读，日志里没有客户端 IP｜**High**｜M3
 - **现状证据**：nginx 片段设了 `X-Real-IP` 与 `X-Forwarded-For`；但全仓检索 `UseForwardedHeaders` / `RemoteIpAddress` **零命中**（与 A5 的结论一致）。
 - **影响**：**所有基于 IP 的限速、封禁、审计都不可能做**（G-A1-1 的前置条件）；出事时无法回答"是谁在打"。
 - **修法**：`UseForwardedHeaders`（限定可信代理）+ 日志中间件记录真实 IP；口径写进部署文档（反代必须设这两个头）。
 - **怎么验证修好了**：真机日志里能看到真实客户端 IP 的读数；限速按 IP 生效的用例。
+- **修复记录（M3 非 TLS 半批，2026-10-06，口径见 D-0031）**：
+  - **落地**：`src/OpenClockTower.Server/ForwardedHeaderPolicy.cs`——只信 `X-Forwarded-For` / `X-Forwarded-Proto` 两个头、**只信最近的一跳**（`ForwardLimit = 1`：客户端自带的伪造前缀一律丢弃，取 nginx 用 `$proxy_add_x_forwarded_for` 追加在末尾的那一段）、可信来源默认**只有回环**（同机 nginx 就是本项目的标准形态），别的机器 / 容器要显式配 `GameServer__TrustedProxies`（地址或 CIDR）；**名单写错直接让宿主起不来**——真实 IP 静默失效会让限速退化成"所有请求同一个桶"，那种故障运行期看不出来。
+  - **读法唯一**：`src/OpenClockTower.Server/ClientAddress.cs` 是日志与限速共用的取值口；`RequestLoggingMiddleware` 每条请求记一行（方法 / 路径 / 状态 / 耗时 / **客户端地址**，且**只记路径不记查询串**——SignalR 把连接令牌放在长连接请求的 `?id=` 上）。
+  - **先红后绿**：`ClientAddressHostTests` 7 条；把可信来源放宽成 `0.0.0.0/0`（模拟"信任所有代理"这个经典错误）→ **红 2 条**（不可信来源伪造的地址与协议都被采信），还原即绿。
+  - **一条实测教训**：第一次试图用 `KnownProxies.Add(IPAddress.Any)` 来"信任所有人"，测试**没有变红**——`KnownProxies` 是精确匹配，`0.0.0.0` 不等于任何对端地址。真正会出事的是 `KnownIPNetworks` 里放一条覆盖全网的网段；这条差异记在这里，免得下次又用错方式"证明"。
+  - **真机读数**：见批次记录 E55（部署实例上带伪造前缀请求 → 日志里是真实来源地址，不是伪造值）。
 
 #### G-A3-4 没有限流、没有超时口径、没有请求体上限（合并原 G-A5-9 / G-A5-11 的传输侧）｜**High**｜M3
 - **现状证据**：`Program.cs` 全文无 `AddRateLimiter` / `ConfigureKestrel` / `RequestSizeLimit`；`AddSignalR()` 无 options（`MaximumReceiveMessageSize` 取默认 32 KB）；Kestrel `MaxRequestBodySize` 取默认 30 MB；nginx 无 `limit_req` / `limit_conn`，且 `proxy_read_timeout 3600s` 让慢连接能挂一小时。
 - **影响**：慢连接占满（无 `limit_conn`）、`/negotiate` 可被 30 MB 级请求打、上限值随框架升级静默变化而项目无感知。
 - **修法**：反代加 `limit_req` + `limit_conn`；应用显式写出 SignalR 与 Kestrel 的上限（而不是吃默认值）；把上限值写进部署文档与一条断言配置的门禁。
 - **怎么验证修好了**：超限请求被拒的真机读数；配置文件里有显式值且有门禁守着。
+- **修复记录（M3 非 TLS 半批，2026-10-06，口径见 D-0031）**：
+  - **应用侧显式取值**（`GameServer:Transport:*`，新 `TransportLimitsOptions`）：请求体 **256 KB**（框架默认 30 MB）· SignalR 单帧消息 **64 KB**（默认 32 KB）· 并发连接 **512**（默认无限）· 请求头超时 **15 s**（默认 30 s）· 空闲连接超时 **60 s**（默认 130 s）；SignalR 的 `MaximumReceiveMessageSize` / `MaximumParallelInvocationsPerClient` / 心跳 / 客户端超时也一并显式。
+  - **请求体是两道闸**（对"修法"的一处修正）：新 `RequestBodyLimitMiddleware` 按 `Content-Length` **前置拒绝**（413，且响应仍带安全头），Kestrel 的 `MaxRequestBodySize` 作为"真的去读体时"的兜底。只设 Kestrel 是**不够**的：装置首跑就咬出——给 `/hub/account/negotiate` 发 300 KB / 2 MB **都回 200**（协商端点不读体，上限无从生效，带宽白送且日志无痕）。
+  - **反代侧**（模板）：`client_max_body_size 1m` · `client_header_timeout` / `client_body_timeout` 15 s · `send_timeout 30 s` · `limit_req 30r/s burst=100 nodelay` · `limit_conn 32`（按"7 席 × 2 条连接"量级留一倍余量）；**`proxy_read_timeout 3600s` 只留给 `/hub/` 长连接**，页面与静态资源 60 s——原来整站 3600 s，正是本条点名的"慢连接能挂一小时"。
+  - **先红后绿**：`TransportHardeningHostTests` 9 条（含"超限帧让服务端关连接并留下日志"与"上限是显式值而不是框架默认"）；把 `MaximumReceiveMessageSize` 改成 `null` → **红 2 条**；门禁 `TransportHardeningGateTests` 3 条，从模板里删掉 `limit_req zone=` → **红 1 条**（点名缺哪一条）。
+  - **真机读数**：见批次 E55（应用侧 413 与反代侧 413 分别是谁拒的，装置 `tools/verify-transport-hardening.mjs` 会打印层）。
 
 #### G-A3-6 无 SRI、部署模板零加固项、缓存口径缺｜**Low**｜M3
 - **现状证据**：`index.html` 只有 `crossorigin`，**没有 `integrity`**；静态资源响应无 `Cache-Control`（只有 `ETag`/`Last-Modified`）；模板里没有任何加固注释可循。
 - **修法**：给打包产物接 SRI（构建期生成 `integrity`）；定静态资源缓存口径（带哈希的资源可以长缓存）。
 - **怎么验证修好了**：产物 HTML 里 `integrity` 与 `Cache-Control` 各有一条读数。
+- **部分修复记录（M3 非 TLS 半批，2026-10-06）**：
+  - **缓存口径已落地**：`/assets/**`（Vite 内容哈希产物）`public, max-age=31536000, immutable`；页面外壳 / 接口 / 回退路由一律 `no-cache`（外壳被缓存住就会出现"新版本发布了、浏览器还在引旧哈希资源"的白屏）。集成用例钉住四种路径的取值，真机装置另有一条读数。
+  - **SRI 仍未做（有意推迟）**：产物与页面**同源**、`script-src 'self'` 已锁死外源脚本，SRI 防的是"CDN 被投毒"这类场景，而本站没有 CDN；接入它要动前端构建链（新增插件、产物哈希变更、`index.html` 生成方式），收益与改动量不成比例。**保持 Open**，留待真有第三方托管资源时再做——不许因为"低优先"就假装它做了。
 
 ### A4 授权与越权
 
@@ -245,6 +275,8 @@ M4 滥用与风控 · M5 数据层与运维 · M6 开源与合规。
 
 #### G-A4-5 授权面动作零限速｜**已合并进 G-A1-1**｜M4
 - 注册 / 登录 / 开桌 / 入座 / 重复加入全部没有次数约束，证据与读数见 G-A1-1 与 G-A5-2 / G-A5-5 / G-A5-6。
+- **进度（M3 非 TLS 半批，2026-10-06）**：三个**账号入口**（注册 / 登录 / 重置）已限速（见 G-A1-1 修复记录）；
+  **界面动作**（开桌 / 入座 / 重复加入）仍在 M4，与本条一并处理。
 
 #### G-A4-6 23 个说书人命令只有正面用例，没有"玩家调用被拒"的反方向用例｜**Medium**｜M2｜**已修（M2 第二刀，2026-10-06）**
 - **现状证据**：矩阵逐行核对后，含 `PunishExecution` / `PitHagCasualty` / `ResolveDeferredDeath` / `ReportSeatState` / `RebuildRoom`（能直接杀人、改角色）在内的 23 个命令**没有一条会红的用例**锁住"玩家不能调"；默认分支今天是对的，但改坏不会有人发现。
@@ -296,6 +328,11 @@ M4 滥用与风控 · M5 数据层与运维 · M6 开源与合规。
 - **影响**：慢速连接耗尽（slowloris 类）+ 匿名可开的 WS 连接，配合零限速即成廉价 DoS。
 - **修法**：三处各定上限（至少反代 `limit_conn` 与 Kestrel 连接上限）。
 - **怎么验证修好了**：超限连接被拒的真机读数。
+- **部分修复记录（M3 非 TLS 半批，2026-10-06，口径见 D-0031）**：
+  - **Kestrel**：`MaxConcurrentConnections = 512`（显式，配置 `GameServer:Transport:MaxConcurrentConnections`）——进程级兜底，拦"无限堆连接"。
+  - **反代**：模板加 `limit_conn_zone` + `limit_conn 32`（按客户端地址，7 席 × 2 条连接的量级留一倍余量），超限回 429。
+  - **SignalR 侧**：显式 `MaximumParallelInvocationsPerClient = 1`、心跳 15 s、客户端超时 30 s、单帧 64 KB。
+  - **仍缺**（留 M4，与 G-A5-2 / G-A5-5 同批）：**按账号 / 按桌的连接配额**（现在一个账号能开多少条连接、多少张桌仍无约束）与"匿名协商"的专门配额。
 
 #### G-A5-8 自由文本：长度只覆盖一半，**频率一个都没有**（票据 M4 的措辞需要更正）｜**High**｜M4
 - **现状证据**：**有长度上限**的是登录名 24 / 玩家名 24 / 口令 8–128 / 桌名 24 / 席位注记 120 且每席 5 条 / 艺术家提问 200（都有 `TryNormalize` 与单测）；**完全没有长度与频率约束**的是 12 个命令里的 `note` / `reason` 与 `IdempotencyKey`——一路透传到落库与日志，`CommandGatePipeline` 对这些字段零判定。另有两条口径要更正：① 席位注记的"每席 5 条"**只挡新增**，`AnnotationCommandDispatch.Update` 对同文本更新也照样产事件 ⇒ 循环 Update 可写无上限事件行；② `tools/check-bounded-text.mjs` 与 `tools/lib/bounded-text.mjs` **不是文本长度门禁**——它守的是"装置里 Playwright 轮询/守卫式读取必须有界"（防 `innerText` 默认等 30 秒），项目里**没有**任何自由文本长度门禁脚本。
@@ -588,7 +625,9 @@ M4 滥用与风控 · M5 数据层与运维 · M6 开源与合规。
 ## 3 严重度汇总与里程碑归属
 
 > **修复进度（滚动更新）**：**G-A2-1 已修**（M2 第一刀，2026-10-06，见该条目的修复记录）；
-> **G-A4-6 已修**（M2 第二刀，2026-10-06，见该条目的修复记录）。
+> **G-A4-6 已修**（M2 第二刀，2026-10-06，见该条目的修复记录）；
+> **G-A1-1 / G-A3-2 / G-A3-3 / G-A3-4 / G-A5-7 已修、G-A3-6 部分修复**（M3 非 TLS 半批，2026-10-06，见各条目的修复记录）；
+> **G-A3-1（Critical）挂起**（需求方决定，本实例不做 TLS），因此"对外发布"那道门继续关着。
 > 本节条数是**审计当天**的基线读数，**不随修复回填**——"已修"逐条打在 §2 的条目上，
 > 免得出现"基线数字随修复漂移、事后谁也说不清当初是多少"。
 

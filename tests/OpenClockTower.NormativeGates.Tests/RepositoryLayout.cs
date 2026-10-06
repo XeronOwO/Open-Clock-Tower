@@ -25,6 +25,9 @@ internal static class RepositoryLayout
     [
         ".cs", ".csproj", ".props", ".targets", ".slnx", ".md", ".json",
         ".yml", ".yaml", ".ps1", ".sh", ".editorconfig", ".gitignore", ".gitattributes",
+        // 部署模板也是随包发给陌生人的文本（2026-10-06 补：它此前不在扫描范围内，
+        // 于是"模板里写死了某台机器的路径"这件事门禁看不见——模板与文档一样要按同一把尺子扫）。
+        ".template",
     ];
 
     private static readonly string[] FileNameOnlyTextFiles =

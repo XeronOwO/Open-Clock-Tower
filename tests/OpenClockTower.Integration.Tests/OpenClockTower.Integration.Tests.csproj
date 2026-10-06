@@ -9,6 +9,14 @@
     <PackageReference Include="xunit.runner.visualstudio" />
   </ItemGroup>
 
+  <!--
+    传输面用例（M3）需要直接构造框架的转发头选项（Microsoft.AspNetCore.HttpOverrides）与
+    ConfigureTestServices；Mvc.Testing 带过来的框架引用到不了那里，所以显式引一次。
+  -->
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
   <ItemGroup>
     <Using Include="Xunit" />
   </ItemGroup>

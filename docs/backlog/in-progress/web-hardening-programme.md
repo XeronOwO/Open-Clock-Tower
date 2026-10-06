@@ -1,7 +1,8 @@
 # 上线就绪两步走：先审计差距，再按里程碑把安全底座补齐
 
 - Status: In progress（**第 1 步审计 2026-10-06 完成**：78 条差距见 `docs/security/web-hardening-audit.md`；
-  第 2 步 M1 已完成，接着做 M2 授权与越权）
+  第 2 步已完成 **M1 会话与登录态** · **M2 两刀**（撤销覆盖面、授权面表驱动）· **M3 第一刀（不依赖 TLS 的一半）**；
+  **TLS 本体按需求方决定挂起**，接着做 **M4 滥用与风控**）
 - Priority: **High**
 - Depends on: 无（**第 1 步审计只读**；第 2 步里 **M1 不依赖审计**，可立即开工）
 
@@ -205,6 +206,27 @@
 
 **本里程碑的差距**：**G-A3-1（全站明文 HTTP，Critical）** · G-A3-2（六个安全响应头）· G-A3-3（反代真实 IP）· G-A3-4（限流、超时、请求体上限）· G-A3-6（SRI 与缓存口径）· G-A2-9（`Resume` 凭据轮换：上 Cookie 方案时重估，D-0029 选项 D）· G-A5-7（连接数上限，与 M4 同批）。
 
+#### M3 第一刀 · 不依赖 TLS 的一半（G-A3-2 · G-A3-3 · G-A3-4 · G-A5-7 · G-A3-6 缓存）**已完成**（2026-10-06）
+
+需求方 2026-10-06 决定**本实例不启用 TLS**（私有白名单部署；理由与实测见 `AGENTS.local.md`），
+所以这一刀只做"与证书无关"的那半边；**`G-A3-1` 保持未清零**，"对外发布"那道门继续关着。
+
+| # | 做了什么 | 判据与证据 |
+|---|---|---|
+| 1 | **安全响应头在应用侧落地**（`ResponseHeadersMiddleware`，唯一出口）：`X-Content-Type-Options` · `Referrer-Policy` · `Permissions-Policy` · `X-Frame-Options` · `Content-Security-Policy`；HSTS 由框架中间件只在 HTTPS 响应上加头 | `TransportHardeningHostTests` 8 条 + 真机装置 12 项；先红后绿：摘掉 XCTO → 红 2 条、去掉 CSP 的 ws/wss → 红 1 条、去掉 `UseHsts` → 红 2 条 |
+| 2 | **CSP 逐条钉住**：`default/script/style/font-src 'self'` · `object-src 'none'` · `base-uri 'none'` · `frame-ancestors 'none'` · `form-action 'self'`；`img-src` 放行百科热链图（D-0007）；`connect-src` 在 `'self'` 之外**显式列本站 `ws://` / `wss://`**（部分浏览器不把 `'self'` 解析到 ws） | 同上 + 真机用真浏览器跑 `verify-live-open-table.mjs`（CSP 过严会静默弄坏页面，必须有浏览器判据） |
+| 3 | **反代真实 IP**（`ForwardedHeaderPolicy` + `ClientAddress` + 请求日志）：只信 `X-Forwarded-For` / `X-Forwarded-Proto`、**只取最近一跳**、可信来源默认只有回环、别的机器要显式配 `GameServer__TrustedProxies`；名单写错**启动即失败** | `ClientAddressHostTests` 7 条（可信采信 / 不可信忽略 / 伪造前缀丢弃 / 协议头 / 名单校验）；先红后绿：可信来源放宽成 `0.0.0.0/0` → 红 2 条 |
+| 4 | **上限显式化**：请求体 256 KB（**两道闸**：按 `Content-Length` 前置 413 + Kestrel 兜底）· SignalR 消息 64 KB · 连接 512 · 请求头超时 15 s · 空闲超时 60 s；全部可配并写进部署文档 | `TransportHardeningHostTests` 9 条（含超限帧让服务端关连接并留日志）；装置首跑咬出"协商端点不读体 ⇒ 只设 Kestrel 拦不住 2 MB"这一条 |
+| 5 | **反代模板加固**：`server_tokens off` · `client_max_body_size 1m` · `limit_req 30r/s burst=100` · `limit_conn 32` · 三个超时；`proxy_read_timeout 3600s` **只留给 `/hub/`**（原来整站一小时） | 门禁 `TransportHardeningGateTests` 3 条（删掉 `limit_req zone=` → 点名变红）；真机 `nginx -t` + 装置读 413/429 |
+| 6 | **缓存口径**（G-A3-6 的一半）：`/assets/**` 长缓存 + immutable、页面外壳与接口 `no-cache` | 集成用例四种路径逐个断言 + 真机装置 3 项 |
+| 7 | **顺带做掉 G-A1-1（Critical，M4 条目）**：账号三个入口限速（口径 D-0032）——它是"按 IP 限速"的直接受益者，而真实 IP 正是本刀第 3 项 | `AccountThrottleHostTests` 5 条 + `AccountAttemptLimiterTests` 7 条；先红后绿：摘掉 `Login` 的限速判定 → 红 2 条 |
+
+**这一刀之后**：真机 `curl -I` 能读到六个头里的五个（HSTS 明文不发，符合预期）· 超限请求被拒 ·
+登录爆破在阈值处停住并留下带真实 IP 的审计 · 页面与对局在 CSP 下功能不回归。
+**没做的**：**TLS 本体（G-A3-1，Critical）**挂起 · **SRI**（G-A3-6 的另一半，理由见审计条目）·
+`Secure` / `SameSite` 这条**不适用**（M1 选了 `sessionStorage`，没有 Cookie）· 按账号 / 按桌的连接配额（G-A5-7 的 M4 半）·
+界面动作限速（G-A5-2 / G-A5-5 / G-A5-6）· `G-A2-9`（`Resume` 凭据轮换，等 Cookie 方案再估）。
+
 ### M4 · 滥用与风控
 
 登录失败限速 / 渐进延迟 / 锁定；注册滥用（批量注册）与开桌配额；自由文本长度与**频率**上限
@@ -214,7 +236,8 @@
 （**审计补充**：现在"事件齐、身份与来源缺"——没有登录名、没有 IP、锁桌无操作者，且有客户端可控的无界字符串进日志）。
 **验收**：限速有一条会红的用例（连续失败 N 次后被拒）；审计日志有一次真机读数。
 
-**本里程碑的差距**：**G-A1-1（登录/注册/重置零限速，Critical）** · **G-A5-2（注册零限制，Critical）** · **G-A5-5（开桌无配额、桌数无上限、不回收，Critical）** · G-A1-4（恢复码）· G-A1-7（弱口令）· G-A5-6（重复加入读全量事件流）· G-A5-7（连接数上限）· G-A5-8（自由文本长度与频率）· G-A5-10（审计日志的身份与来源 + 日志注入/膨胀）。
+**本里程碑的差距**：~~**G-A1-1（登录/注册/重置零限速，Critical）**~~ **已于 M3 第一刀修掉（2026-10-06，D-0032）** ·
+**G-A5-2（注册零限制，Critical）** · **G-A5-5（开桌无配额、桌数无上限、不回收，Critical）** · G-A1-4（恢复码）· G-A1-7（弱口令）· G-A5-6（重复加入读全量事件流）· G-A5-7（连接数上限，反代与 Kestrel 半已随 M3 落地、**按账号 / 按桌的配额仍缺**）· G-A5-8（自由文本长度与频率）· G-A5-10（审计日志的身份与来源 + 日志注入/膨胀；**登录失败已带登录名与真实 IP，其余事件仍缺**）。
 
 ### M5 · 数据层与运维
 

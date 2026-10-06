@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using OpenClockTower.Application;
 using OpenClockTower.Kernel;
@@ -8,9 +9,43 @@ var builder = WebApplication.CreateBuilder(args);
 var serverOptions = builder.Configuration
     .GetSection(GameServerOptions.SectionName)
     .Get<GameServerOptions>() ?? new GameServerOptions();
+// 传输面上限与账号限速（M3 / G-A3-4 · G-A1-1）：取值显式、可配、在启动日志里可见（依赖 D-0031 / D-0032）。
+var transportLimits = builder.Configuration
+    .GetSection(TransportLimitsOptions.SectionName)
+    .Get<TransportLimitsOptions>() ?? new TransportLimitsOptions();
+var throttleOptions = builder.Configuration
+    .GetSection(ThrottleOptions.SectionName)
+    .Get<ThrottleOptions>() ?? new ThrottleOptions();
 
 builder.Services.Configure<GameServerOptions>(
     builder.Configuration.GetSection(GameServerOptions.SectionName));
+builder.Services.Configure<TransportLimitsOptions>(
+    builder.Configuration.GetSection(TransportLimitsOptions.SectionName));
+builder.Services.Configure<ThrottleOptions>(
+    builder.Configuration.GetSection(ThrottleOptions.SectionName));
+
+// 传输面上限（M3 / G-A3-4）：**显式取值**，不吃框架默认（30 MB 请求体 / 无上限连接 / 30 秒请求头超时）。
+builder.WebHost.ConfigureKestrel(kestrel =>
+{
+    kestrel.Limits.MaxRequestBodySize = transportLimits.MaxRequestBodyBytes;
+    kestrel.Limits.MaxConcurrentConnections = transportLimits.MaxConcurrentConnections;
+    kestrel.Limits.RequestHeadersTimeout = TimeSpan.FromSeconds(transportLimits.RequestHeadersTimeoutSeconds);
+    kestrel.Limits.KeepAliveTimeout = TimeSpan.FromSeconds(transportLimits.KeepAliveTimeoutSeconds);
+});
+
+// HSTS（M3 / G-A3-2）：框架中间件只在 **HTTPS 响应**上加这个头，明文实例上发了也等于没发（浏览器按规范忽略）。
+// 不 includeSubDomains、不 preload：别人的部署可能把本站挂在某个子域上，一条 HSTS 不该管到它的兄弟域。
+builder.Services.AddHsts(options =>
+{
+    options.MaxAge = TimeSpan.FromDays(30);
+    options.IncludeSubDomains = false;
+    options.Preload = false;
+});
+
+// 反代真实 IP（M3 / G-A3-3）：只信回环 + 配置里的可信代理；名单写错在启动时抛，不静默降级。
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+    ForwardedHeaderPolicy.Apply(options, serverOptions.TrustedProxies));
+
 builder.Services.AddSingleton(new PacingOptions
 {
     SlotQuota = TimeSpan.FromSeconds(serverOptions.SlotQuotaSeconds),
@@ -57,6 +92,8 @@ builder.Services.AddSingleton(provider => new GameRegistry(
 builder.Services.AddSingleton<ConnectionRegistry>();
 // 撤销编排（M2 / G-A2-1）：撤账号会话与撤"由它授权的在线连接"必须同批——登出 / 口令重置只走它。
 builder.Services.AddSingleton<AccountRevocationService>();
+// 账号入口限速（M4 / G-A1-1）：进程内计数，重启即清零；键与阈值见 ThrottleOptions 与 D-0032。
+builder.Services.AddSingleton<AccountAttemptLimiter>();
 builder.Services.AddSingleton<HubActorResolver>();
 builder.Services.AddSingleton<NotificationDispatcher>();
 // 连接 ↔ 桌的绑定（多桌 D-0024）：单例——SignalR 的 Hub 每次调用新建实例，字段记不住东西。
@@ -90,9 +127,38 @@ builder.Services.AddSingleton(provider => new SeatJoinCoordinator(
     provider.GetRequiredService<ILogger<SeatJoinCoordinator>>()));
 builder.Services.AddHostedService<GameBootstrapHostedService>();
 builder.Services.AddHostedService<StepPacerHostedService>();
-builder.Services.AddSignalR();
+// SignalR 的上限也**显式写出**（M3 / G-A3-4）：默认 32 KB 消息会随框架版本变，项目对此无感知。
+builder.Services.AddSignalR(options =>
+{
+    options.MaximumReceiveMessageSize = transportLimits.MaxSignalRMessageBytes;
+    options.MaximumParallelInvocationsPerClient = 1;
+    options.KeepAliveInterval = TimeSpan.FromSeconds(15);
+    options.ClientTimeoutInterval = TimeSpan.FromSeconds(30);
+    options.EnableDetailedErrors = false;
+});
 
 var app = builder.Build();
+
+// 传输面接线顺序**就是安全性**：先按可信代理归一真实地址（后面所有日志、限速都依赖它），
+// 再发响应头（安全头 + 缓存口径），然后按声明长度拦超限请求体，最后才轮到页面与端点。
+app.UseForwardedHeaders();
+app.UseHsts();
+app.UseMiddleware<ResponseHeadersMiddleware>();
+app.UseMiddleware<RequestBodyLimitMiddleware>();
+app.UseMiddleware<RequestLoggingMiddleware>();
+
+// 启动读数：这些值只活在配置里，出了问题首先要能一眼看到实际生效的是什么。
+app.Logger.LogInformation(
+    "传输面：请求体≤{MaxRequestBodyBytes}B · SignalR消息≤{MaxSignalRMessageBytes}B · 连接≤{MaxConnections} · "
+    + "请求头超时={HeadersTimeout}s · 可信代理={TrustedProxies} · 登录限速={LoginFailuresPerUsername}次/{Window}s",
+    transportLimits.MaxRequestBodyBytes,
+    transportLimits.MaxSignalRMessageBytes,
+    transportLimits.MaxConcurrentConnections,
+    transportLimits.RequestHeadersTimeoutSeconds,
+    serverOptions.TrustedProxies.Length == 0 ? "回环（默认）" : string.Join(",", serverOptions.TrustedProxies),
+    throttleOptions.LoginFailuresPerUsername,
+    throttleOptions.WindowSeconds);
+
 // 部署形态：前端构建产物随发布带上（见 csproj 的 wwwroot 接线），由宿主直接发页面，
 // 因此页面与 /hub 同源——不需要 CORS，也不需要另起静态站点。开发期仍可继续用 web/ 的 Vite 服务器。
 app.UseDefaultFiles();

@@ -90,6 +90,21 @@ Environment=GameServer__SlotQuotaSeconds=10
 # Environment=GameServer__AllowPlayerTables=false
 # Environment=GameServer__AdminUsernames=<运维登录名>[,<再来一个>]   # 逗号分隔或索引式都认
 
+# 传输面与风控（M3 / D-0031 / D-0032）：**都有默认值，不配也能跑**；列在这里是因为它们是可以调的旋钮。
+# 传输面上限（应用侧；反代侧还有一层同类上限，见 §4）：
+# Environment=GameServer__Transport__MaxRequestBodyBytes=262144        # 默认 256 KB（框架默认 30 MB）
+# Environment=GameServer__Transport__MaxSignalRMessageBytes=65536      # 默认 64 KB（框架默认 32 KB）
+# Environment=GameServer__Transport__MaxConcurrentConnections=512      # 默认 512（框架默认不限）
+# Environment=GameServer__Transport__RequestHeadersTimeoutSeconds=15   # 默认 15 s（框架默认 30 s）
+# Environment=GameServer__Transport__KeepAliveTimeoutSeconds=60        # 默认 60 s（框架默认 130 s）
+# 账号入口限速（同一来源 + 同一登录名 的失败计数）：
+# Environment=GameServer__Throttle__WindowSeconds=300                  # 默认 5 分钟
+# Environment=GameServer__Throttle__LoginFailuresPerUsername=5         # 默认 5 次
+# Environment=GameServer__Throttle__LoginFailuresPerClient=20          # 默认 20 次（跨登录名；NAT 后面的集体额度）
+# Environment=GameServer__Throttle__RegisterCallsPerClient=10          # 默认 10 次（每次调用都算、成功不清零）
+# 反代不在同一台机器 / 在容器里时，**必须**写出它的地址或网段，否则 X-Forwarded-* 一律不认（真实 IP 会退化成代理地址）：
+# Environment=GameServer__TrustedProxies=172.18.0.0/16                 # 地址或 CIDR，逗号分隔；写错宿主启动即失败
+
 [Install]
 WantedBy=multi-user.target
 ```
@@ -99,11 +114,19 @@ sudo systemctl daemon-reload && sudo systemctl enable --now clocktower
 systemctl is-active clocktower && journalctl -u clocktower -n 20 --no-pager
 ```
 
+启动时会打印一行读数（上限、可信代理、限速阈值），出问题时先看它——**配置真的生效了没有，看这一行**：
+
+```
+传输面：请求体≤262144B · SignalR消息≤65536B · 连接≤512 · 请求头超时=15s · 可信代理=回环（默认） · 登录限速=5次/300s
+```
+
 启动日志里会打印**说书人票据**与**各席位票据**（见 §5），把它记下来。
 
 ## 4. nginx
 
-子路径挂载（`<PREFIX>` 为 `/clocktower/` 时）：
+**推荐直接用生成的配置**：`node tools/deploy-prepare.mjs --app-dir <APP_DIR> --prefix <前缀> --port <端口>` 会产出
+`artifacts/deploy/clocktower.conf`（前缀 / 端口 / 长连接头 / 上限 / 超时都已填好），把它放到
+`/etc/nginx/conf.d/` 即可。下面这段是同一份配置的**说明版**（手写时至少要有的东西）：
 
 ```nginx
 # 长连接需要：有 Upgrade 头就透传 upgrade，否则 close（缺了这两行 SignalR 会连不上）
@@ -112,39 +135,110 @@ map $http_upgrade $connection_upgrade {
     ''      close;
 }
 
+# 上限与限流的状态桶（按客户端地址；声明在 server 外面）
+limit_req_zone $binary_remote_addr zone=clocktower_req:10m rate=30r/s;
+limit_conn_zone $binary_remote_addr zone=clocktower_conn:10m;
+
 server {
     listen 80;
     server_name <你的域名或IP>;
+    server_tokens off;                 # 不白送 nginx 版本号
+    client_max_body_size 1m;           # 应用侧是 256 KB，这里留一层余量
+    client_header_timeout 15s;
+    client_body_timeout 15s;
+    send_timeout 30s;
+    limit_req zone=clocktower_req burst=100 nodelay;
+    limit_req_status 429;
+    limit_conn clocktower_conn 32;     # 7 席 × 2 条连接（账号 + 对局）的量级留一倍余量
+    limit_conn_status 429;
 
     # 少了末尾斜杠会与下面的 location 前缀不匹配，于是 /clocktower 本身 404
     location = /clocktower {
         return 301 /clocktower/;
     }
 
+    # SignalR 长连接：只有这一段需要"整局不被掐断"的读超时
+    location /clocktower/hub/ {
+        proxy_pass http://127.0.0.1:<PORT>/hub/;   # location 已吃掉前缀，这里写死 /hub/ 对两种部署都对
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        # 用 $proxy_add_x_forwarded_for（追加在末尾），应用只取最后一段——客户端自带的伪造值会被丢掉
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+        proxy_buffering off;
+    }
+
     location /clocktower/ {
-        # 末尾的 `/` 是"去掉 /clocktower 前缀"的关键：/clocktower/hub/game → /hub/game
         proxy_pass http://127.0.0.1:<PORT>/;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection $connection_upgrade;
-        proxy_read_timeout 3600s;   # 对局中长连接不能中途被切断
-        proxy_send_timeout 3600s;
-        proxy_buffering off;
+        proxy_connect_timeout 5s;
+        proxy_read_timeout 60s;        # 页面与静态资源不需要一小时
+        proxy_send_timeout 60s;
     }
 }
 ```
 
+**安全响应头不要在 nginx 里加**：`Strict-Transport-Security`（仅 HTTPS 时）/ `Content-Security-Policy` /
+`X-Content-Type-Options` / `Referrer-Policy` / `Permissions-Policy` / `X-Frame-Options` 与静态资源的
+`Cache-Control` 全部由应用统一发（`ResponseHeadersMiddleware`）。两处都写必然漂移，而且出问题时
+看不出"少了哪一个、是谁少的"。HSTS 由应用按请求协议自行决定：HTTPS 上发、明文上不发。
+
 想挂在**站点根**（`<PREFIX>` = `/`）时，把 `location /clocktower/` 改成 `location /`、
-`proxy_pass` 保持 `http://127.0.0.1:<PORT>;`（**末尾不要斜杠**，此时无需去前缀），并删掉那条 301。
+`location /clocktower/hub/` 改成 `location /hub/`、`proxy_pass` 保持 `http://127.0.0.1:<PORT>;`
+（**末尾不要斜杠**，此时无需去前缀），并删掉那条 301。
 
 改完执行：
 
 ```bash
 sudo nginx -t && sudo systemctl reload nginx
+```
+
+### 4.1 上 HTTPS（给"别人的部署"用的路径）
+
+本仓库的默认形态是同机 nginx + 明文（§9 第 1 条写清了代价）。要对外发布就换成 HTTPS，两处改动：
+
+```bash
+# 1) 证书（自己的域名 + Let's Encrypt；http-01 需要 80 端口对外开放）
+sudo certbot --nginx -d <你的域名>
+```
+
+```nginx
+# 2) 把 §4 的 server 拆成两个：443 带证书，80 只做跳转（location 块整段搬过去，限流一起搬）
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
+    server_name <你的域名>;
+    ssl_certificate     /etc/letsencrypt/live/<你的域名>/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/<你的域名>/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    # …§4 的 location 块…（含 limit_req / limit_conn / server_tokens off）
+}
+
+server {
+    listen 80;
+    server_name <你的域名>;
+    location /.well-known/acme-challenge/ { root <ACME挑战目录>; }   # 续期用（certbot 的默认 webroot 就是它）
+    location / { return 301 https://$host$request_uri; }
+}
+```
+
+上完以后**不需要**在 nginx 加任何安全响应头：`X-Forwarded-Proto` 已透传，应用会按 HTTPS 处理，
+HSTS 自动出现在响应里（`max-age=30 天`，不带 `includeSubDomains`）。复核办法：
+
+```bash
+curl -I http://<域名>/<前缀>/      # 期望 301 到 https
+curl -I https://<域名>/<前缀>/     # 期望 200，且带 strict-transport-security / content-security-policy 等
+node tools/verify-transport-hardening.mjs --base-url https://<域名>/<前缀>/
 ```
 
 ## 5. 入口与账号
@@ -231,17 +325,27 @@ systemctl start clocktower
 | 加入后收不到推送 | nginx 的 `Upgrade` / `Connection` 两条头（§4） |
 | 502 | 宿主没起来：`journalctl -u clocktower -n 50` |
 | `plan.seat_unassigned` | 席位数量不匹配：`GameServer__SeatCount` 要 ≥ 实际入座人数 |
+| 登录提示"尝试过于频繁，请 N 秒后再试" | 入口限速生效了（D-0032）：同一来源 + 同一登录名的失败额度用尽。阈值见 §3 的 `GameServer__Throttle__*` |
+| 请求返 `413` | 请求体超限：应用侧 256 KB / 反代 1 MB（§3 / §4），看 `Server` 头判是哪一层拒的 |
+| 请求返 `429` | 反代限流：`limit_req`（速率）或 `limit_conn`（并发连接），见 §4 |
 
 ## 9. 已知限制（不藏）
 
-1. **走 HTTP 时票据与口令明文传输**：适合小圈子短时开；长期开请在同机 nginx 上加证书（`listen 443 ssl` + `X-Forwarded-Proto` 已透传）。
+1. **走 HTTP 时口令与会话凭据明文传输**：链路上能拿到可直接冒充的身份材料，适合私有网络 / 白名单内的短时使用。
+   对外发布**必须先上 HTTPS**（§4.1 有完整步骤）；上了之后 HSTS 与其余安全头会自动生效，不需要改 nginx 的头。
+   审计口径：这条对应 `G-A3-1`（Critical），**在 TLS 落地前一直算未清零**，不许当成"已经加固过了"。
 2. **单进程多桌**（D-0024）：一个宿主按 `GameId` 维护多张桌，共享账号与连接设施；同时开几桌不需要多开进程。
    代价是 SQLite 单写者——多桌同时写入会排队（小圈子 2–5 桌可接受）。
 3. **自助开桌没有配额**：默认谁都能开桌（D-0026），当前没有桌数上限、也没有空闲桌自动回收。
    公开部署请配 `GameServer__AllowPlayerTables=false` 收紧，并定期清理不开的桌。
 4. **表结构变更需换新库**：当前用 EF 的 `EnsureCreated`，缺表时启动会显式失败并提示换新库，不会静默丢数据。
    唯一的例外是启动守卫对 `Games` 表的**原地列对账**（缺列补上、退场列清掉），所以"票据时代"的旧库能直接升上来。
-5. **登录无失败限流**：暴力尝试只有日志记录。
+5. **限速只在进程内存里**（D-0032）：重启即清零；多实例部署时**每实例各算一份**（首版明确不做多实例）。
+   同一 NAT 后面的所有人共用"每 5 分钟 20 次登录失败"的额度——这是防爆破与不误伤之间的取舍，可用
+   `GameServer__Throttle__*` 调。
+6. **限速不覆盖界面动作**：开桌 / 入座 / 重复加入仍无配额（审计 `G-A5-2` / `G-A5-5` / `G-A5-6`，排在 M4）。
+7. **反代上限与应用上限要人肉保持一致**（§4 的 `client_max_body_size 1m` 对应用侧 256 KB）：
+   门禁只保证两边都有显式值，数值本身不一致时不会变红。
 
 ## 依据
 

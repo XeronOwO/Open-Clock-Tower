@@ -1601,6 +1601,53 @@ Chromium 把资源加载失败写进 console，被算成"重启窗口内的非�
 
 **本批票据**：`in-progress/web-hardening-programme.md`（第 2 步 **M2 第二刀完成**，票继续挂 in-progress 做 M2 其余条目与 M3–M6）。
 
+## 批次 E55（2026-10-06，M3 第一刀：传输面加固 + 账号入口限速 G-A1-1）
+
+**本批票据**：`in-progress/web-hardening-programme.md` 的 **M3 第一刀（不依赖 TLS 的一半）**——
+审计差距 **G-A3-2**（零安全响应头，High）· **G-A3-3**（反代真实 IP，High）· **G-A3-4**（限流 / 超时 / 请求体上限，High）·
+**G-A5-7**（连接数上限，High）· **G-A3-6 的缓存半边**（Low）；**顺带做掉 M4 的 G-A1-1**（账号入口零限速，**Critical**）。
+**TLS 本体（G-A3-1，Critical）按需求方 2026-10-06 的决定挂起**：本实例是私有白名单部署，树证书不可行；
+"别人的部署"那条 HTTPS 路径照旧写在部署文档 §4.1 与反代模板的注释块里。
+
+**这一批解决什么**：审计在真机上读过一组难看的数——六个安全响应头**一个都没有**、请求体吃框架默认的 30 MB、
+SignalR 消息吃默认的 32 KB、连接数无上限、`proxy_read_timeout 3600s` 让慢连接能挂一小时、
+**12 次失败登录全部受理且无延迟增长**（每次都在服务端烧满一次 PBKDF2）。
+这一批把传输面与账号入口这两块从"能跑"推到"有显式口径、有会红的判据、有真机读数"。
+
+**本批取证构成**：
+
+| 取证 | 命令 | 结果 |
+|---|---|---|
+| **传输面装置（本批新增，第 21 个）** | `node tools/verify-transport-hardening.mjs --base-url http://<主机>/clocktower/` | 部署实例 **23 项全绿 · 0.9 s**（本机直跑宿主时为 22 项，反代那一层记 SKIP 不假绿）：五个响应头逐条 · CSP 含百科图与本站 ws/wss · `Server` 无版本号 · 缓存两类口径 · 300 KB 应用侧 413 · 2 MB **反代侧** 413 · 限速第 6 次被拒且换登录名不受牵连 |
+| **集成用例（真宿主 + 真 SignalR）** | `dotnet test tests/OpenClockTower.Integration.Tests --filter "FullyQualifiedName~TransportHardeningHostTests|FullyQualifiedName~ClientAddressHostTests|FullyQualifiedName~AccountThrottleHostTests|FullyQualifiedName~AccountAttemptLimiterTests"` | **28 条全绿**：响应头 / CSP 逐项 / 缓存四路径 / HSTS 只在 HTTPS / 上限是显式值 / 超限帧让服务端关连接并留日志 / 转发头可信与不可信两侧 / 伪造前缀被丢 / 限速窗口与两个桶 |
+| **先红后绿（8 处，逐处真的改坏源码后复跑，再还原）** | 同上 + 门禁项目 | ① 摘掉 `X-Content-Type-Options` → **红 2 条**；② 去掉 CSP 的 ws/wss → **红 1 条**；③ 缓存策略两支对调 → **红 2 条**；④ 去掉 `UseHsts` → **红 2 条**；⑤ 可信来源放宽成 `0.0.0.0/0` → **红 2 条**；⑥ `MaximumReceiveMessageSize = null` → **红 2 条**；⑦ 摘掉 `Login` 的限速判定 → **红 2 条**；⑧ 从反代模板删掉 `limit_req zone=` → **门禁红 1 条**（点名缺哪一条）。八处还原后复跑**回到全绿** |
+| **一处"红得不对"的自我纠正** | 同上 | 第一次试图用 `KnownProxies.Add(IPAddress.Any)` 模拟"信任所有代理"——**测试没红**：`KnownProxies` 是精确匹配，`0.0.0.0` 不等于任何对端地址。真正会出事的是 `KnownIPNetworks` 里的覆盖型网段；换成 `0.0.0.0/0` 后如期红 2 条。这条差异记进了审计条目与装置注释 |
+| **装置咬出的真实缺陷（1 处）** | `verify-transport-hardening.mjs` 首跑 | `300 KB` 与 `2 MB` 打到 `/hub/account/negotiate` **都回 200**：只设 Kestrel 的 `MaxRequestBodySize` 拦不住"不读体"的端点（上限在读取时才生效）。据此补了按 `Content-Length` 前置拒绝的 `RequestBodyLimitMiddleware`，并把集成用例与门禁一起补上 |
+| **真机读数（经 nginx）** | `curl -sI http://127.0.0.1/clocktower/`（在目标机上）+ 装置 | `Server: nginx`（**无版本号**）· `Cache-Control: no-cache`（页面外壳）· `X-Content-Type-Options` / `Referrer-Policy` / `Permissions-Policy` / `X-Frame-Options` / CSP 逐条在场 · 产物 `public, max-age=31536000, immutable` · **明文实例上无 HSTS（预期，见 D-0031 口径 2）** |
+| **真机真实 IP + 反伪造** | 从本机发 `curl -H "X-Forwarded-For: 192.0.2.99, 198.51.100.7" -H "X-Real-IP: 192.0.2.99"` 后读目标机 `journalctl` | 日志写的是**真实对端地址**（读数里是一个真实公网地址，按红线不落纸面，只记"不是 127.0.0.1、也不是伪造值"），**两个伪造值一个都没进日志**；同一批请求在日志里带方法 / 路径 / 状态 / 耗时，且**不含查询串**（SignalR 的连接令牌在 `?id=` 上） |
+| **真浏览器（CSP 不回归）** | `node tools/verify-live-open-table.mjs --base-url http://<主机>/clocktower/` | **25 项全绿 · 15.5 s**：注册 → 开桌 → 主持台 → 配板 → 开夜 → 刷新接回 → 首页身份；其中一条专门判"全过程没有未预期的控制台错误 → 零错误"（CSP 违反会以控制台错误形式暴露） |
+| **门禁（新增）** | `dotnet test tests/OpenClockTower.NormativeGates.Tests --filter FullyQualifiedName~TransportHardeningGateTests` | **3 条全绿**：模板必须带 `server_tokens off` / `limit_req` / `limit_conn` / `client_max_body_size` / 三个超时 / 指向应用侧配置的说明；模板**不得**出现 `add_header`（响应头只有应用一个出口）；长超时**只**出现在 `/hub/` 那一段 |
+| 三条门禁（冻结版） | `dotnet build` / `dotnet test OpenClockTower.slnx` / `dotnet format` | 构建 **0 警告 0 错误** · **1355 项全绿**（门禁 29 / 内核 501 / 规则 494 / 集成 331）· format 就地通过（本批改了 `tests/`，三条按规矩全跑） |
+
+**部署记录（2026-10-06 23:24，真机）**：`node tools/deploy-prepare.mjs --app-dir <APP_DIR> --prefix /clocktower/ --port 5080 --seats 7`
+产出 **48.6 MB** 自包含包 → 上传 → 备份旧 nginx 片段 → 解包（先清 `wwwroot/assets/*`）→ `chmod` →
+`nginx -t` 通过（一条既有的 `conflicting server name "_"` 警告，与本次无关）→ `systemctl reload nginx` → `systemctl restart clocktower`。
+启动日志第一行读数即为本批口径：`传输面：请求体≤262144B · SignalR消息≤65536B · 连接≤512 · 请求头超时=15s · 可信代理=回环（默认） · 登录限速=5次/300s`。
+
+**收尾清理**：真机装置留下的 1 个测试账号 + 1 张测试桌按装置打印的 SQL 删除（复核 `Users` / `Games` 匹配数均为 **0**）·
+目标机 `/tmp` 里的安装包与配置副本已删 · **保留了旧 nginx 片段的备份** `clocktower.conf.pre-m3-20261006`（部署者确认稳定后可删）·
+本机 `artifacts/deploy`（48.6 MB 包 + publish 目录）与宿主临时库 / 日志已在收尾时删除。
+
+**残余与边界（本批明确不做）**：
+① **TLS 本体（G-A3-1，Critical）挂起**——"对外发布"那道门继续关着，明文链路上仍传全部身份材料（审计页 §G-A3-1 的 9 项清点不变）；
+② **SRI 未做**（G-A3-6 的另一半，理由见审计条目：同源 + `script-src 'self'` 下收益与改动量不成比例，保持 Open）；
+③ **按账号 / 按桌的连接配额**（G-A5-7 的 M4 半）与**界面动作限速**（G-A5-2 / G-A5-5 / G-A5-6）仍在 M4；
+④ 限速状态只在进程内存（重启归零、多实例各算一份，D-0032 代价 3）；
+⑤ `Secure` / `SameSite` 这条**不适用**（M1 选了 `sessionStorage`，全站没有 Cookie）；
+⑥ 本批**未做**渗透测试与并发压测（审计页 §5 的"没覆盖"清单不变）。
+
+**本批票据**：`in-progress/web-hardening-programme.md`（**M3 第一刀完成**；票继续挂 in-progress 做 M4 与 M5–M6）。
+
 ## 相关阅读
 
 - 验收规程：`docs/acceptance/AGENTS.md`
