@@ -68,9 +68,97 @@ public sealed class SeatJoinCoordinator
         var claimed = accountId is { } claimedBy
             && await ClaimSeatAsync(game, seat, claimedBy, connectionId, cancellationToken);
 
+        return await CompleteJoinAsync(game, seat, accountId, claimed, lastSequence, connectionId, cancellationToken);
+    }
+
+    /// <summary>
+    /// **自助入座**（D-0025）：凭账号选一个空席位坐下，不需要任何票据。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 三条前置判定，缺一不可：桌未锁定、席位号在本桌范围内、席位未被**别人**占用。
+    /// 第三条按账号判定——自己选自己已经坐着的席位是"回到座位"，不是抢占。
+    /// </para>
+    /// <para>
+    /// 说书人票据仍然存在，但它只用于**成为说书人**；玩家这一侧从此不需要等发票据。
+    /// </para>
+    /// </remarks>
+    /// <param name="game">要坐下的那一桌。</param>
+    /// <param name="accountSession">账号会话（必须；游客仍走票据路径）。</param>
+    /// <param name="seat">要坐的席位号。</param>
+    /// <param name="lastSequence">客户端已见序号（重连补齐用）。</param>
+    /// <param name="connectionId">连接标识。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    public async Task<SeatJoinOutcome> JoinBySeatAsync(
+        GameInstance game,
+        string accountSession,
+        int seat,
+        long lastSequence,
+        string connectionId,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(game);
+
+        var setup = await LoadSetupAsync(game, connectionId, cancellationToken);
+        var accountId = ResolveAccountSession(accountSession, connectionId)
+            ?? throw new HubException("自助入座需要先登录账号");
+
+        var seatId = new SeatId(seat);
+        if (!setup.Seats.Any(item => item.Seat == seatId))
+        {
+            _logger.LogWarning(
+                "自助入座被拒（席位越界）：game={GameId} seat={Seat} 本桌席位={Capacity}",
+                game.GameId.Value,
+                seat,
+                setup.Seats.Count);
+            throw new HubException($"这一桌没有 {seat} 号席位（共 {setup.Seats.Count} 席）");
+        }
+
+        // 锁桌只挡**新的**入座：已经坐在这张椅子上的人（含断线回来）不受影响——
+        // 否则"锁桌"会变成"把在座玩家挡在门外"，那不是它的语义（D-0025）。
+        if (setup.IsLocked)
+        {
+            var binding = await _bindings.ResolveSeatAsync(game.GameId, accountId, cancellationToken);
+            if (binding?.Seat != seatId)
+            {
+                _logger.LogWarning(
+                    "自助入座被拒（桌已锁定）：game={GameId} seat={Seat} account={AccountId} connection={ConnectionId}",
+                    game.GameId.Value,
+                    seat,
+                    accountId.Value,
+                    connectionId);
+                throw new HubException("这一桌已经锁定，暂时不能再入座");
+            }
+        }
+
+        // 占用判定交给认领服务：它同时覆盖"席位被别人占了"与"这个账号已经坐在别处"，
+        // 并落到存储的唯一索引上——这里不另写一份判据（两份判据必然分叉）。
+        var claimed = await ClaimSeatAsync(game, seatId, accountId, connectionId, cancellationToken);
+
+        _logger.LogInformation(
+            "玩家自助入座：game={GameId} seat={Seat} account={AccountId} 新建认领={Claimed}",
+            game.GameId.Value,
+            seat,
+            accountId.Value,
+            claimed);
+
+        return await CompleteJoinAsync(game, seatId, accountId, claimed, lastSequence, connectionId, cancellationToken);
+    }
+
+    /// <summary>两条加入路径的共同后半段：签发凭据 + 取重连包。</summary>
+    private async Task<SeatJoinOutcome> CompleteJoinAsync(
+        GameInstance game,
+        SeatId seat,
+        AccountId? accountId,
+        bool claimed,
+        long lastSequence,
+        string connectionId,
+        CancellationToken cancellationToken)
+    {
         var credential = _registry.IssueForSeat(game.GameId, seat, connectionId);
         _logger.LogInformation(
-            "已签发连接凭据：seat={Seat} connection={ConnectionId} 指纹={Fingerprint}（重连需重新出示票据）",
+            "已签发连接凭据：game={GameId} seat={Seat} connection={ConnectionId} 指纹={Fingerprint}（重连需重新出示凭据）",
+            game.GameId.Value,
             seat,
             connectionId,
             ConnectionCredential.FingerprintOf(credential.Value));
@@ -79,7 +167,8 @@ public sealed class SeatJoinCoordinator
         {
             var bundle = await game.Session.GetReconnectBundleAsync(seat, lastSequence, cancellationToken);
             _logger.LogInformation(
-                "玩家已加入：seat={Seat} connection={ConnectionId} 快照序号={Sequence} 本地已知={KnownSequence} 重投请求={Redelivered} 账号={AccountId}",
+                "玩家已加入：game={GameId} seat={Seat} connection={ConnectionId} 快照序号={Sequence} 本地已知={KnownSequence} 重投请求={Redelivered} 账号={AccountId}",
+                game.GameId.Value,
                 seat,
                 connectionId,
                 bundle.Sequence,
@@ -102,7 +191,8 @@ public sealed class SeatJoinCoordinator
             // 对玩家只说中性原因——"数据丢了"属于说书人视图（票据 room-health-degradation-flag 的边界）。
             _logger.LogError(
                 exception,
-                "玩家加入失败：房间事件流不可读（等说书人显式重建）：seat={Seat} connection={ConnectionId}",
+                "玩家加入失败：房间事件流不可读（等说书人显式重建）：game={GameId} seat={Seat} connection={ConnectionId}",
+                game.GameId.Value,
                 seat,
                 connectionId);
             throw new HubException("加入暂时失败，请稍后重试或联系说书人");

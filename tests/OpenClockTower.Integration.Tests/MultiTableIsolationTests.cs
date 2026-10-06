@@ -143,6 +143,12 @@ public sealed class MultiTableIsolationTests
 
         public Task<IReadOnlyList<GameSetup>> ListAsync(CancellationToken cancellationToken) =>
             Task.FromResult(setups);
+
+        public Task UpdateLobbyAsync(
+            GameId gameId,
+            string name,
+            bool isLocked,
+            CancellationToken cancellationToken) => Task.CompletedTask;
     }
 
     private sealed class EmptyGameStore : IGameStore

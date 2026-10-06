@@ -149,6 +149,46 @@ public sealed class LobbyService
         return Fail("id_conflict", "开桌失败，请重试");
     }
 
+    /// <summary>
+    /// 改桌名 / 锁桌（说书人）。锁桌后**不再接受新的入座**，已在座的玩家不受影响。
+    /// </summary>
+    /// <param name="gameId">哪一桌。</param>
+    /// <param name="name">新桌名；null = 不改名。</param>
+    /// <param name="isLocked">新的锁定状态；null = 不改。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <remarks>
+    /// 元数据进会话目录（不进事件流）：它不影响任何规则判定，也不该出现在复盘里（D-0015）。
+    /// </remarks>
+    public async Task UpdateLobbyAsync(
+        GameId gameId,
+        string? name,
+        bool? isLocked,
+        CancellationToken cancellationToken)
+    {
+        var setup = await _catalog.FindAsync(gameId, cancellationToken)
+            ?? throw new InvalidOperationException($"这一桌不存在：{gameId.Value}");
+
+        var trimmed = name?.Trim();
+        if (trimmed is not null && trimmed.Length > MaxNameLength)
+        {
+            throw new InvalidOperationException($"桌名最多 {MaxNameLength} 个字符");
+        }
+
+        var nextName = trimmed ?? setup.Name;
+        var nextLocked = isLocked ?? setup.IsLocked;
+        if (nextName == setup.Name && nextLocked == setup.IsLocked)
+        {
+            return;
+        }
+
+        await _catalog.UpdateLobbyAsync(gameId, nextName, nextLocked, cancellationToken);
+        _logger.LogInformation(
+            "桌元数据已更新：game={GameId} 桌名={Name} 锁定={Locked}",
+            gameId.Value,
+            nextName.Length == 0 ? "(未命名)" : nextName,
+            nextLocked);
+    }
+
     /// <summary>这一桌是否已开局（已产生过夜晚或白天）。</summary>
     /// <remarks>
     /// 从注册表里**已装载**的会话问；未装载的桌按"未开局"处理——大厅列表不应该为了显示一个标记

@@ -3063,13 +3063,20 @@ async function waitForLocatorContains(locator, needle, timeoutMs) {
   return text
 }
 
-/** 宿主日志里"玩家已加入"的行（serverLog 是 stdout 块，先拼回文本再按行过滤）。 */
+/**
+ * 宿主日志里"玩家已加入"的行（serverLog 是 stdout 块，先拼回文本再按行过滤）。
+ *
+ * 判据刻意**不假设字段顺序**：多桌之后这条日志前面多了 `game=…`，
+ * 写死 `玩家已加入：seat=` 会当场失配（实测踩过：4 条重连断言全红，且报的是"未等到日志"）。
+ * 这里只要求"是本席的加入行"，字段顺序与新增字段都不影响。
+ */
 function seatJoinLogLines(seat) {
+  const seatField = new RegExp(`(?:^|\\s)seat=${seat}(?:\\s|$)`)
   return serverLog
     .join('')
     .split(/\r?\n/)
     .map((line) => line.trim())
-    .filter((line) => line.includes(`玩家已加入：seat=${seat} `))
+    .filter((line) => line.includes('玩家已加入：') && seatField.test(line))
 }
 
 /** 等该席第 `afterCount` 条之后的下一条"玩家已加入"日志（重连的输入在服务端日志里可核对）。 */

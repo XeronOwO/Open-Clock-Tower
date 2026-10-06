@@ -16,4 +16,16 @@ public interface IGameCatalog
     /// 多桌（D-0024）：宿主启动时据此恢复**每一桌**，大厅列表也据此告诉玩家"现在有哪些桌"。
     /// </remarks>
     Task<IReadOnlyList<GameSetup>> ListAsync(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// 设置桌名与锁定状态（大厅元数据；不影响游戏内状态）。
+    /// </summary>
+    /// <remarks>
+    /// 未知的桌**显式失败**，不凭空造一桌——建桌是另一个用例的职责（D-0025）。
+    /// </remarks>
+    Task UpdateLobbyAsync(
+        GameId gameId,
+        string name,
+        bool isLocked,
+        CancellationToken cancellationToken);
 }

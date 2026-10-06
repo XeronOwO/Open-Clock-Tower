@@ -58,6 +58,20 @@ builder.Services.AddSingleton(provider => new HubGameScope(
     provider.GetRequiredService<GameRegistry>(),
     provider.GetRequiredService<GameId>(),
     provider.GetRequiredService<NotificationDispatcher>()));
+// 加入入口（玩家与说书人两侧；自己解析所在桌，单例、无状态协作者）。
+builder.Services.AddSingleton(provider => new HubJoinScope(
+    provider.GetRequiredService<IGameCatalog>(),
+    provider.GetRequiredService<HubGameScope>(),
+    provider.GetRequiredService<SeatJoinCoordinator>(),
+    provider.GetRequiredService<ConnectionRegistry>(),
+    provider.GetRequiredService<NotificationDispatcher>(),
+    provider.GetRequiredService<ILogger<GameHub>>()));
+// 桌务（锁桌 / 解除席位绑定）：单例、无状态协作者。
+builder.Services.AddSingleton(provider => new HubTableAdmin(
+    provider.GetRequiredService<LobbyService>(),
+    provider.GetRequiredService<SeatJoinCoordinator>(),
+    provider.GetRequiredService<NotificationDispatcher>()));
+
 // 加入 / 认领的席位定位与凭据签发（D-0021）：从 GameHub 拆出（单文件 600 行门禁）。
 // 多桌（D-0024）：本类不持有"当前是哪一局"，局面由调用方按次传入，所以这里没有 GameId / GameSession 依赖。
 builder.Services.AddSingleton(provider => new SeatJoinCoordinator(

@@ -22,41 +22,33 @@ namespace OpenClockTower.Server;
 /// </remarks>
 public sealed class GameHub : Hub<IGameClient>
 {
-    private readonly IGameCatalog _catalog;
     private readonly HubGameScope _scope;
+    private readonly HubJoinScope _joinScope;
+    private readonly HubTableAdmin _tableAdmin;
     private readonly ConnectionRegistry _registry;
     private readonly HubActorResolver _actors;
-    private readonly NotificationDispatcher _dispatcher;
-    private readonly SeatJoinCoordinator _join;
-    private readonly SeatBindingService _bindings;
     private readonly ILogger<GameHub> _logger;
 
     /// <summary>构造 Hub。</summary>
-    /// <param name="catalog">会话目录（说书人加入流程要用）。</param>
     /// <param name="scope">连接 ↔ 桌的绑定（多桌：解析本连接在哪一桌，D-0024）。</param>
+    /// <param name="joinScope">加入入口（玩家与说书人两侧；自己解析所在桌）。</param>
+    /// <param name="tableAdmin">桌务（锁桌 / 解除席位绑定）。</param>
     /// <param name="registry">连接登记表。</param>
     /// <param name="actors">身份解析（凭据 → 操作者）。</param>
-    /// <param name="dispatcher">推送分发。</param>
-    /// <param name="join">加入 / 认领编排。</param>
-    /// <param name="bindings">席位绑定服务。</param>
     /// <param name="logger">日志。</param>
     public GameHub(
-        IGameCatalog catalog,
         HubGameScope scope,
+        HubJoinScope joinScope,
+        HubTableAdmin tableAdmin,
         ConnectionRegistry registry,
         HubActorResolver actors,
-        NotificationDispatcher dispatcher,
-        SeatJoinCoordinator join,
-        SeatBindingService bindings,
         ILogger<GameHub> logger)
     {
-        _catalog = catalog;
         _scope = scope;
+        _joinScope = joinScope;
+        _tableAdmin = tableAdmin;
         _registry = registry;
         _actors = actors;
-        _dispatcher = dispatcher;
-        _join = join;
-        _bindings = bindings;
         _logger = logger;
     }
 
@@ -70,7 +62,13 @@ public sealed class GameHub : Hub<IGameClient>
 
     /// <summary>玩家加入 / 重连（只凭票据的路径，D-0012）：签发连接凭据、返回重连包并**重投**未响应请求。</summary>
     public Task<SeatJoinDto> JoinSeat(string ticket, long lastSequence) =>
-        JoinSeatCoreAsync(ticket, accountSession: null, lastSequence);
+        _joinScope.JoinSeatAsync(
+            Clients.Caller,
+            Context.GetHttpContext(),
+            Context.ConnectionId,
+            Context.ConnectionAborted,
+            ticket,
+            lastSequence);
 
     /// <summary>
     /// 玩家加入 / 重连（带账号会话，D-0021）：票据认领 / 只凭账号回到已认领席位。
@@ -80,44 +78,45 @@ public sealed class GameHub : Hub<IGameClient>
     /// 它与 <see cref="JoinSeat"/> 走同一份实现，只有"是否带账号会话"不同。
     /// </remarks>
     public Task<SeatJoinDto> JoinSeatWithAccount(string ticket, string? accountSession, long lastSequence) =>
-        JoinSeatCoreAsync(ticket, accountSession, lastSequence);
-
-    private async Task<SeatJoinDto> JoinSeatCoreAsync(string ticket, string? accountSession, long lastSequence)
-    {
-        var game = await GameAsync();
-        var outcome = await _join.JoinAsync(
-            game,
+        _joinScope.JoinSeatWithAccountAsync(
+            Clients.Caller,
+            Context.GetHttpContext(),
+            Context.ConnectionId,
+            Context.ConnectionAborted,
             ticket,
             accountSession,
-            lastSequence,
+            lastSequence);
+
+    /// <summary>
+    /// 玩家**自助入座**（D-0025）：登录后选一个空席位坐下，**不需要任何票据**。
+    /// </summary>
+    /// <remarks>
+    /// 桌由本连接的 <c>?gameId=</c> 决定（与其余命令同源）。说书人票据仍然存在，
+    /// 但它只用于"成为说书人"；玩家这一侧从此不必等发票据。
+    /// </remarks>
+    /// <param name="accountSession">账号会话（必须；游客仍走票据路径）。</param>
+    /// <param name="seat">要坐的席位号。</param>
+    /// <param name="lastSequence">客户端已见序号（重连补齐用）。</param>
+    public Task<SeatJoinDto> JoinTable(string accountSession, int seat, long lastSequence) =>
+        _joinScope.JoinTableAsync(
+            Clients.Caller,
+            Context.GetHttpContext(),
             Context.ConnectionId,
-            Context.ConnectionAborted);
-
-        if (outcome.Bundle.View.PendingRequest is { } pending)
-        {
-            // 重投的请求状态属于这份快照：序号取快照序号，客户端合并时与快照同源。
-            await Clients.Caller.ReceiveOperationRequest(ProjectionMapper.ToDto(pending, outcome.Bundle.View.Sequence));
-        }
-
-        if (outcome.Claimed)
-        {
-            // 新认领：同桌其他在线席位要立刻看到新名字（本人这份重连包里已经带上了）。
-            await _dispatcher.PushSeatNamesChangedAsync(game, Context.ConnectionAborted);
-        }
-
-        return new SeatJoinDto
-        {
-            Credential = outcome.Credential.Value,
-            Bundle = ProjectionMapper.ToDto(outcome.Bundle),
-        };
-    }
+            Context.ConnectionAborted,
+            accountSession,
+            seat,
+            lastSequence);
 
     /// <summary>
     /// 说书人加入：票据定位身份，签发连接凭据（同局同一时刻只保留一条有效说书人连接）。
     /// </summary>
-    /// <remarks>流程本体在 <see cref="HubJoinFlow"/>（单文件 600 行门禁）；这里只把当前连接接上。</remarks>
-    public async Task<StorytellerJoinDto> JoinStoryteller(string ticket) =>
-        await (await JoinFlowAsync()).JoinStorytellerAsync(ticket);
+    /// <remarks>流程本体在 <see cref="HubJoinScope" /> / <see cref="HubJoinFlow" />（单文件 600 行门禁）。</remarks>
+    public Task<StorytellerJoinDto> JoinStoryteller(string ticket) =>
+        _joinScope.JoinStorytellerAsync(
+            Context.GetHttpContext(),
+            Context.ConnectionId,
+            Context.ConnectionAborted,
+            ticket);
 
     /// <summary>玩家提交响应。</summary>
     public Task<CommandResultDto> SubmitResponse(
@@ -471,18 +470,24 @@ public sealed class GameHub : Hub<IGameClient>
     public async Task<bool> ReleaseSeatBinding(string credential, int seat)
     {
         _ = ResolveStorytellerActor(credential);
-        var game = await GameAsync();
-        var released = await _join.ReleaseBindingAsync(game, new SeatId(seat), Context.ConnectionAborted);
-        if (released)
-        {
-            await _dispatcher.PushSeatNamesChangedAsync(game, Context.ConnectionAborted);
-        }
-
-        return released;
+        return await _tableAdmin.ReleaseBindingAsync(await GameAsync(), new SeatId(seat), Context.ConnectionAborted);
     }
 
     /// <summary>
-    /// 说书人查询开局配板建议（只读、不落账）：按官方分布表 + 在场角色的设置调整生成建议。
+    /// 锁桌 / 解锁（说书人，D-0025）：锁定后不再接受新的自助入座，已在座的玩家不受影响。
+    /// </summary>
+    /// <remarks>
+    /// 需要它的理由很直接：玩家能自己进桌之后，说书人必须能在开局前把人挡在门外。
+    /// 权限沿用既有的说书人凭据闸——**本桌**的说书人只能锁本桌。
+    /// </remarks>
+    public async Task<bool> SetTableLock(string credential, bool isLocked)
+    {
+        _ = ResolveStorytellerActor(credential);
+        return await _tableAdmin.SetLockAsync(await GameAsync(), isLocked, Context.ConnectionAborted);
+    }
+
+    /// <summary>
+    /// 查询开局配板建议（只读、不落账）：按官方分布表 + 在场角色的设置调整生成建议。
     /// 随机只作显式输入——种子可由客户端传入、缺省由服务端生成并回传（R-0041 / R-0042）。
     /// </summary>
     /// <param name="nonTravellerCount">
@@ -560,16 +565,6 @@ public sealed class GameHub : Hub<IGameClient>
         var executor = await CommandsAsync();
         return await executor.ExecuteAsync(actor, command, idempotencyKey, clientSequence, Context.ConnectionAborted);
     }
-
-    /// <summary>本次调用的说书人加入流程（连接 id、取消令牌与所在桌都属于本次调用）。</summary>
-    private async Task<HubJoinFlow> JoinFlowAsync() =>
-        new(
-            _catalog,
-            await GameAsync(),
-            _registry,
-            _logger,
-            Context.ConnectionId,
-            Context.ConnectionAborted);
 
     /// <summary>
     /// 凭据 → 身份（唯一的身份来源；D-0012：客户端声明一律不认）。
