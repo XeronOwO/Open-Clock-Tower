@@ -1,4 +1,4 @@
-#Requires -Version 7.0
+﻿#Requires -Version 7.0
 <#
 .SYNOPSIS
     抓取印刷规则书的逐字提取文本，写入 references/rulebook/（gitignored）并重建索引。

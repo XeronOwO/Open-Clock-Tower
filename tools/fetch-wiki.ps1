@@ -1,4 +1,4 @@
-#Requires -Version 7.0
+﻿#Requires -Version 7.0
 <#
 .SYNOPSIS
     Fetch the Clocktower Wiki pages this project cites as rule sources, and rebuild the
