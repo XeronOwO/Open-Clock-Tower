@@ -15,8 +15,8 @@ export interface AccountProfile {
   username: string
   displayName: string
   accountSession: string
-  /** 是不是管理员（D-0025：只有管理员能开桌）。只用于决定显不显示"开桌"入口，不是权限。 */
-  isAdmin: boolean
+  /** 这个账号现在能不能开桌（D-0026）。只用于决定给不给"开桌"入口，不是权限。 */
+  canCreateTable: boolean
 }
 
 /** 大厅里的一桌（D-0025）：挑桌用的公开信息，不含票据与席位归属。 */
@@ -120,7 +120,7 @@ export function normalizeAccount(raw: unknown): AccountDto | null {
       typeof value['recoveryCode'] === 'string' && value['recoveryCode'].length > 0
         ? value['recoveryCode']
         : null,
-    isAdmin: value['isAdmin'] === true,
+    canCreateTable: value['canCreateTable'] === true,
   }
 }
 
@@ -197,7 +197,7 @@ export class AccountGateway {
     return normalizeLobbyTables(await this.invokeRaw('ListTables'))
   }
 
-  /** 开一张新桌（只有管理员；服务端会拒，这里只负责把结果如实回给界面）。 */
+  /** 开一张新桌（D-0026：登录即可；服务端按部署开关判定，被拒时如实回给界面）。 */
   async createTable(name: string, seatCount: number): Promise<LobbyCreateResult> {
     const session = this.requireSession()
     const raw = await this.invokeRaw('CreateTable', session, name, seatCount)
@@ -234,7 +234,7 @@ export class AccountGateway {
       username: result.username,
       displayName: result.displayName,
       accountSession: result.accountSession,
-      isAdmin: result.isAdmin === true,
+      canCreateTable: result.canCreateTable === true,
     }
   }
 

@@ -59,10 +59,11 @@ async function syncSeatCount(): Promise<void> {
 const ticket = ref('')
 
 /**
- * 开桌（D-0025：**只有管理员**能开）。
+ * 开桌（D-0026：**登录即可**，开完自己就是这一桌的说书人）。
  *
  * 说书人拿到票据的路径此前只有"服务器建好那一桌、从日志里抄票据"——多桌之后这条路径不够用了：
  * 一桌一份票据，必须有界面能开新桌并把票据交给开桌的人。
+ * 这条路径也是"说书人是玩这一局的角色、不是系统权限"的落点：默认任何登录账号都能开。
  */
 const lobbyName = ref('')
 const lobbySeats = ref(7)
@@ -72,6 +73,12 @@ const newTable = ref<LobbyCreateResult | null>(null)
 const lobbyProfile = ref<AccountProfile | null>(null)
 const lobbyRecoveryCode = ref('')
 let accountForLobby: AccountGateway | null = null
+
+/**
+ * 现在能不能开桌：先要登录（开桌要记在某个账号头上），再看服务端给的能力位
+ * （部署方可以关掉自助开桌，此时只有运维能开——D-0026）。
+ */
+const canOpenTable = computed(() => lobbyProfile.value !== null && lobbyProfile.value.canCreateTable)
 
 function ensureLobbyAccount(): AccountGateway {
   accountForLobby ??= new AccountGateway()
@@ -108,9 +115,9 @@ async function registerForLobby(username: string, displayName: string, password:
 
     lobbyProfile.value = ensureLobbyAccount().profile
     lobbyRecoveryCode.value = result.recoveryCode ?? ''
-    lobbyNotice.value = result.isAdmin
-      ? '已注册并登录（你是管理员，可以开桌）'
-      : '已注册并登录；但你不是管理员，开桌会被拒（需要运维把你加进名单）'
+    lobbyNotice.value = result.canCreateTable
+      ? '已注册并登录：可以开一桌自己主持'
+      : '已注册并登录；本服当前不开放自助开桌（要开桌请联系运维）'
   } catch (error) {
     lobbyNotice.value = `注册失败：${error instanceof Error ? error.message : String(error)}`
   } finally {
@@ -128,7 +135,11 @@ async function loginForLobby(username: string, password: string): Promise<void> 
     }
 
     lobbyProfile.value = ensureLobbyAccount().profile
-    lobbyNotice.value = result.isAdmin ? '已登录（管理员）' : '已登录；但你不是管理员，开桌会被拒'
+    // 恢复码是**上一个账号**的一次性秘密：换账号时不清就会留在页面上（秘密卫生，照 PlayerPanel 的口径）。
+    lobbyRecoveryCode.value = ''
+    lobbyNotice.value = result.canCreateTable
+      ? '已登录：可以开一桌自己主持'
+      : '已登录；本服当前不开放自助开桌（要开桌请联系运维）'
   } catch (error) {
     lobbyNotice.value = `登录失败：${error instanceof Error ? error.message : String(error)}`
   } finally {
@@ -141,6 +152,8 @@ async function logoutForLobby(): Promise<void> {
   try {
     await ensureLobbyAccount().logout()
     lobbyProfile.value = null
+    // 登出即清掉一次性恢复码：它属于刚登出的那个账号，不该留在屏幕上给下一个人看。
+    lobbyRecoveryCode.value = ''
     lobbyNotice.value = '已登出'
   } finally {
     lobbyBusy.value = false
@@ -198,7 +211,18 @@ async function openTable(): Promise<void> {
     }
 
     newTable.value = result
-    lobbyNotice.value = `已开桌：${result.gameId}（${result.seatCount} 席）`
+    if (result.storytellerTicket !== null) {
+      // 开桌者就是这一桌的说书人：票据直接填进上面的输入框，省掉"抄一串再粘回来"这一步。
+      // 落盘发生在点「加入」时（`join()` 里写 TicketStore），所以这句提示不提前说"已存好"。
+      ticket.value = `${result.gameId}:${result.storytellerTicket}`
+      lobbyNotice.value =
+        `已开桌：${result.gameId}（${result.seatCount} 席）。票据已填进上面的输入框——` +
+        '点「加入」即进主持台，票据会在那时记到本机。'
+      return
+    }
+
+    // 没拿到票据 = 开得出桌却主持不了（协议不该这样），明说而不是让人对着空输入框发呆。
+    lobbyNotice.value = `已开桌：${result.gameId}，但服务端没有返回说书人票据——请联系运维。`
   } catch (error) {
     lobbyNotice.value = `开桌失败：${error instanceof Error ? error.message : String(error)}`
   } finally {
@@ -388,23 +412,23 @@ onBeforeUnmount(() => {
     <section class="login panel" v-if="!connected">
       <h1>说书人上帝视角</h1>
       <p class="hint">
-        说书人票据由服务端在引导时生成（数据库 <span class="mono">Games.StorytellerTicket</span>
-        或启动日志）。票据就是身份：本面板只是说书人端，玩家请用
-        <span class="mono">#player</span> 入口。
+        说书人票据是主持一桌的凭据：开一桌新的会直接把票据给你；默认桌的票据由服务端在引导时生成
+        （数据库 <span class="mono">Games.StorytellerTicket</span> 或启动日志）。
+        本面板只是说书人端，玩家请用 <span class="mono">#player</span> 入口。
       </p>
       <div class="row">
-        <input v-model="ticket" placeholder="说书人票据" spellcheck="false" @keyup.enter="join()" />
+        <input v-model="ticket" placeholder="说书人票据" spellcheck="false" data-testid="storyteller-ticket" @keyup.enter="join()" />
         <button type="button" class="primary" :disabled="joining" @click="join()">加入</button>
       </div>
 
-      <!-- 开桌（D-0025）：只有管理员能开；开完把这一桌的票据交回给开桌的人。 -->
+      <!-- 开桌（D-0026）：登录即可，开完自己就是这一桌的说书人；部署方可以关掉自助开桌。 -->
       <details class="lobby-open" data-testid="storyteller-open-table">
-        <summary>开一桌新的（管理员）</summary>
+        <summary>开一桌新的（自己主持）</summary>
         <AccountPanel
           :profile="lobbyProfile"
           :busy="lobbyBusy"
           :notice="lobbyNotice"
-          recovery-code=""
+          :recovery-code="lobbyRecoveryCode"
           @register="registerForLobby"
           @login="loginForLobby"
           @logout="logoutForLobby"
@@ -412,14 +436,35 @@ onBeforeUnmount(() => {
           @reset="resetForLobby"
         />
         <div class="row">
-          <input v-model="lobbyName" placeholder="桌名（可留空）" spellcheck="false" />
-          <input v-model.number="lobbySeats" type="number" min="1" max="20" class="seats-input" />
-          <button type="button" :disabled="lobbyBusy" @click="openTable()">开桌</button>
+          <input v-model="lobbyName" placeholder="桌名（可留空）" spellcheck="false" data-testid="open-table-name" />
+          <input
+            v-model.number="lobbySeats"
+            type="number"
+            min="1"
+            max="20"
+            class="seats-input"
+            data-testid="open-table-seats"
+          />
+          <button
+            type="button"
+            :disabled="lobbyBusy || !canOpenTable"
+            data-testid="open-table-submit"
+            @click="openTable()"
+          >
+            开桌
+          </button>
         </div>
-        <p v-if="lobbyNotice.length > 0" class="hint">{{ lobbyNotice }}</p>
+        <p v-if="!canOpenTable" class="hint" data-testid="open-table-blocked">
+          {{
+            lobbyProfile === null
+              ? '开桌要先登录：这一桌会记在你名下，票据也只回给你。'
+              : '本服当前不开放自助开桌，请联系运维开桌。'
+          }}
+        </p>
+        <p v-if="lobbyNotice.length > 0" class="hint" data-testid="open-table-notice">{{ lobbyNotice }}</p>
         <p v-if="newTable !== null && newTable.storytellerTicket !== null" class="hint">
-          这一桌是 <strong>{{ newTable.gameId }}</strong>。下面这串是它的说书人票据（**只显示这一次**，请自己存好）——
-          直接填到上面的输入框里即可进入主持台：
+          这一桌是 <strong>{{ newTable.gameId }}</strong>。下面这串是它的说书人票据
+          （点「加入」后记到本机；换设备要重新开一桌或另找运维）——直接填到上面的输入框里即可进入主持台：
           <span class="mono" data-testid="new-table-ticket">{{
             `${newTable.gameId}:${newTable.storytellerTicket}`
           }}</span>

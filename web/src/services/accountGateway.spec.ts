@@ -70,8 +70,8 @@ describe('账号回执归一化（不可信输入）', () => {
       displayName: '',
       accountSession: null,
       recoveryCode: null,
-      // 服务端没说是不是管理员 → 一律当"不是"（不猜权限；D-0025 的判定在服务端）。
-      isAdmin: false,
+      // 服务端没说能不能开桌 → 一律当"不能"（不猜能力；D-0026 的判定在服务端）。
+      canCreateTable: false,
     })
   })
 })
@@ -94,8 +94,22 @@ describe('账号网关接线与秘密纪律', () => {
       username: 'alice',
       displayName: '爱丽丝',
       accountSession: 'session-1',
-      isAdmin: false,
+      canCreateTable: false,
     })
+  })
+
+  it('开桌能力随回执采纳：服务端说能开就记成能开，没说就记成不能', async () => {
+    const fake = new FakeConnection()
+    fake.response = account({ canCreateTable: true })
+    const gateway = gatewayWith(fake)
+
+    await gateway.login('alice', 'password-123')
+    expect(gateway.profile?.canCreateTable).toBe(true)
+
+    // 同一份回执把字段去掉（老服务端 / 部署方关掉了自助开桌）→ 不能开。
+    fake.response = account()
+    await gateway.login('alice', 'password-123')
+    expect(gateway.profile?.canCreateTable).toBe(false)
   })
 
   it('登录失败不改状态：不留下任何资料', async () => {

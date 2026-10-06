@@ -80,7 +80,10 @@ onBeforeUnmount(() => {
           </span>
         </li>
       </ul>
-      <p v-else class="hint">还没有开桌。请管理员开一桌，或用说书人票据进入主持台。</p>
+      <p v-else class="hint">
+        还没有开桌。进「我是说书人」登录后可以自己开一桌（开完你就是这一桌的说书人），
+        也可以直接用说书人票据进入主持台。
+      </p>
       <p class="hint">
         要坐下请去 <a :href="PLAY_LINK">玩家端</a>；从那里可以直接选席位。
       </p>
