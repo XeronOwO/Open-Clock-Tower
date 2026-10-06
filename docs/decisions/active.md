@@ -636,8 +636,13 @@
     界面与授权，也才需要重新讨论凭据形态。
   - **席位票据（`Games.SeatsJson`）本条不动**：它绑在"游客还能不能入座"这个产品问题上（D-0021 保留了
     游客路径），本票只把它从界面主路径撤下来。
-  - **老库里的 `Games.StorytellerTicket` 列不删**（SQLite 删列要重建表）：本版不再读它，
-    也没有任何代码路径能凭它进主持台；下次换库自然消失。
+  - **老库里的 `Games.StorytellerTicket` 列改由启动守卫清掉**（2026-10-06 修订，部署前真机核对时发现）：
+    原打算"留着不读、下次换库自然消失"，但那一列是 `NOT NULL` 且**没有默认值**——本版不再映射它，
+    于是**开新桌的 INSERT 会被 SQLite 当场拒掉**（真机库实测：`NOT NULL constraint failed: Games.StorytellerTicket`），
+    表现成最难查的那种半截升级："原来那一桌读得出，新桌开不了"。`ALTER TABLE ... DROP COLUMN`
+    在 SQLite ≥ 3.35 是原地操作（不必重建表、不动别列数据），所以升级路径改为**启动时删掉它**：
+    老库与新库同形态，退场的凭据也不再留在磁盘上。判据见
+    `tests/OpenClockTower.Integration.Tests/LegacyDatabaseUpgradeTests.cs`（真机库结构 + 真宿主 + 真开桌）。
 - **对外表达**：开桌回执不再有票据字段；大厅列表带 `CreatedByMe`（服务端算好"这张桌是不是你开的"，
   前端不自己拼事实）；说书人入台是 `JoinStorytellerWithAccount(accountSession)`，只认开桌账号。
 

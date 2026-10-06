@@ -6,7 +6,7 @@ using OpenClockTower.Application;
 namespace OpenClockTower.Server;
 
 /// <summary>
-/// 启动引导：建库 → 结构守卫（账号表 / 后加的列）→ 装载**所有**桌。
+/// 启动引导：建库 → 结构守卫（账号表 / 会话表的列对账）→ 装载**所有**桌。
 /// </summary>
 /// <remarks>
 /// <para>
@@ -32,6 +32,12 @@ public sealed class GameBootstrapHostedService : IHostedService
     private readonly GameRegistry _registry;
     private readonly ILogger<GameBootstrapHostedService> _logger;
 
+    /// <summary>说书人票据时代的列（D-0027 起不再映射；老库里那一列由结构守卫清掉）。</summary>
+    private const string RetiredTicketColumn = "StorytellerTicket";
+
+    /// <summary>清掉退场列：<c>NOT NULL</c> 且无默认值的列会让新行的 INSERT 直接被拒。</summary>
+    private const string DropRetiredTicketColumnSql = "ALTER TABLE Games DROP COLUMN StorytellerTicket;";
+
     /// <summary>构造引导服务。</summary>
     public GameBootstrapHostedService(
         IDbContextFactory<GameDbContext> dbFactory,
@@ -50,7 +56,7 @@ public sealed class GameBootstrapHostedService : IHostedService
         {
             await db.Database.EnsureCreatedAsync(cancellationToken);
             await EnsureAccountSchemaAsync(db, cancellationToken);
-            await EnsureGameColumnsAsync(db, cancellationToken);
+            await EnsureGameSchemaAsync(db, cancellationToken);
         }
 
         // 装载库里全部在册的桌（多桌并行）。库是空的就什么都不装——等第一桌被开出来。
@@ -86,41 +92,22 @@ public sealed class GameBootstrapHostedService : IHostedService
     }
 
     /// <summary>
-    /// 会话表的**加列守卫**：大厅元数据给 <c>Games</c> 增了列，而 <c>EnsureCreated</c> 只建不改。
-    /// 缺列时补上（SQLite 的 <c>ADD COLUMN</c> 是原地操作、不动既有数据），
-    /// 于是**升级不会让你打不开原来那一桌**。
+    /// 会话表的结构守卫：**缺列补上、退场列清掉**——<c>EnsureCreated</c> 只建不改，
+    /// 老库不会自己长成新形态。
     /// </summary>
     /// <remarks>
-    /// 这是本版唯一的 DDL 例外，且只做"加列"：删列 / 改类型 / 加约束仍主张换新库。
+    /// <para>
+    /// 两种动作都是原地操作（SQLite 的 <c>ADD COLUMN</c> / <c>DROP COLUMN</c>），不碰别列的数据，
+    /// 于是**升级既不会让你打不开原来那一桌，也不会让你开不了新桌**。
+    /// </para>
+    /// <para>
+    /// 这是本版唯一的 DDL 例外，且只做这两类：改类型 / 加约束 / 重建表仍主张换新库。
     /// 换掉 SQLite provider 时，这里要一并换成正式迁移（D-0004 允许换 provider）。
+    /// </para>
     /// </remarks>
-    private async Task EnsureGameColumnsAsync(GameDbContext db, CancellationToken cancellationToken)
+    private async Task EnsureGameSchemaAsync(GameDbContext db, CancellationToken cancellationToken)
     {
-        var existing = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var connection = (SqliteConnection)db.Database.GetDbConnection();
-        var opened = connection.State != System.Data.ConnectionState.Open;
-        if (opened)
-        {
-            await connection.OpenAsync(cancellationToken);
-        }
-
-        try
-        {
-            await using var command = connection.CreateCommand();
-            command.CommandText = "PRAGMA table_info(Games);";
-            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-            while (await reader.ReadAsync(cancellationToken))
-            {
-                existing.Add(reader.GetString(1));
-            }
-        }
-        finally
-        {
-            if (opened)
-            {
-                await connection.CloseAsync();
-            }
-        }
+        var existing = await ReadGameColumnsAsync(db, cancellationToken);
 
         // 每项：列名 + 追加语句（NOT NULL 在 SQLite 上必须带默认值才被接受）。
         (string Column, string Sql)[] required =
@@ -153,5 +140,60 @@ public sealed class GameBootstrapHostedService : IHostedService
                 throw;
             }
         }
+
+        // 退场列（D-0027）：说书人票据时代的凭据，本版不再映射它。留着不只是"没用"——
+        // 老库那一列是 **NOT NULL 且没有默认值**，于是**开新桌的 INSERT 会被它当场拒掉**
+        // （实测：NOT NULL constraint failed: Games.StorytellerTicket），
+        // 表现成最难查的那种半截升级："原来那一桌读得出，新桌开不了"。
+        // 删掉它，老库与新库同形态；顺带把退场的凭据从磁盘上抹掉。
+        if (existing.Contains(RetiredTicketColumn))
+        {
+            try
+            {
+                await db.Database.ExecuteSqlRawAsync(DropRetiredTicketColumnSql, cancellationToken);
+                _logger.LogWarning("旧库删列（退场凭据）：Games.{Column}", RetiredTicketColumn);
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                _logger.LogCritical(
+                    exception,
+                    "删列失败：Games.{Column}——库结构与本版不匹配，请换新库",
+                    RetiredTicketColumn);
+                throw;
+            }
+        }
+    }
+
+    /// <summary>读出 <c>Games</c> 现有的列名（对账的依据）。</summary>
+    /// <remarks>连的是上下文自己的连接，用完按原状态归还——开着的不要替调用方关掉。</remarks>
+    private static async Task<HashSet<string>> ReadGameColumnsAsync(GameDbContext db, CancellationToken cancellationToken)
+    {
+        var existing = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var connection = (SqliteConnection)db.Database.GetDbConnection();
+        var opened = connection.State != System.Data.ConnectionState.Open;
+        if (opened)
+        {
+            await connection.OpenAsync(cancellationToken);
+        }
+
+        try
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText = "PRAGMA table_info(Games);";
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                existing.Add(reader.GetString(1));
+            }
+        }
+        finally
+        {
+            if (opened)
+            {
+                await connection.CloseAsync();
+            }
+        }
+
+        return existing;
     }
 }

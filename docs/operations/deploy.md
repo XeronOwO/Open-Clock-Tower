@@ -210,6 +210,12 @@ sqlite3 <APP_DIR>/data/oct.db "DELETE FROM SeatBindings WHERE GameId='default'; 
 systemctl start clocktower
 ```
 
+**旧库里的 `StorytellerTicket` 列会在启动时被清掉**（说书人票据时代的凭据，D-0027）：本版不再映射它，
+而它是 `NOT NULL` 且**没有默认值**——留着会让**开新桌**的写入被 SQLite 拒掉
+（`NOT NULL constraint failed: Games.StorytellerTicket`，在界面上只表现为"开桌失败"）。
+`ALTER TABLE ... DROP COLUMN` 是原地操作，不动别列数据、也不动你原来那一桌；
+启动日志里会有一行 `旧库删列（退场凭据）：Games.StorytellerTicket`。**不需要你做任何事**。
+
 ## 8. 排查
 
 | 现象 | 先看什么 |
@@ -230,6 +236,7 @@ systemctl start clocktower
 3. **自助开桌没有配额**：默认谁都能开桌（D-0026），当前没有桌数上限、也没有空闲桌自动回收。
    公开部署请配 `GameServer__AllowPlayerTables=false` 收紧，并定期清理不开的桌。
 4. **表结构变更需换新库**：当前用 EF 的 `EnsureCreated`，缺表时启动会显式失败并提示换新库，不会静默丢数据。
+   唯一的例外是启动守卫对 `Games` 表的**原地列对账**（缺列补上、退场列清掉），所以"票据时代"的旧库能直接升上来。
 5. **登录无失败限流**：暴力尝试只有日志记录。
 
 ## 依据
