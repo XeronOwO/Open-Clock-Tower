@@ -75,6 +75,18 @@ describe('不可信输入规范化（架构 §4.4）', () => {
     expect(optionDisplayOf(optionOf('seat:x', '坏值原样'), names)).toBe('坏值原样')
   })
 
+  it('只换称呼、不丢语境：服务端预览的后半句（括号注 / 说明）原样保留', () => {
+    const names: SeatDisplayNameDto[] = [{ seat: 3, displayName: '阿丙' }]
+
+    // 集骨者的候选：「已死亡」是玩家做选择的判据，不能被名字替换吃掉。
+    expect(
+      optionDisplayOf(optionOf('seat:3', '3 号玩家（已死亡）：重获其角色能力直到下个黄昏'), names),
+    ).toBe('3 号 · 阿丙（已死亡）：重获其角色能力直到下个黄昏')
+
+    // 预览不是「N 号玩家」开头时退回纯席位口径（不猜、不拼）。
+    expect(optionDisplayOf(optionOf('seat:3', '另一个人'), names)).toBe('3 号 · 阿丙')
+  })
+
   it('两名玩家都有名字时，配对选项同样换成统一席位口径', () => {
     const names: SeatDisplayNameDto[] = [
       { seat: 2, displayName: '小明' },

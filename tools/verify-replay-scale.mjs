@@ -5,10 +5,11 @@
  * 分页 / 懒加载是不是真的按页加载，而不是一次性渲染全部？**
  *
  * 场景（5 席；不跑夜间流程，只用真实命令面把事件流堆到规模）：
- *   1) 起真宿主（独立临时库）+ Node SignalR 说书人客户端；
+ *   1) 起真宿主（独立临时库）→ 夹具账号在账号 Hub 注册并开一桌（D-0027：说书人票据退场、
+ *      宿主不再自动建默认桌，"说书人"就是开这一桌的那个账号）→ Node SignalR 客户端带着账号会话进主持台；
  *   2) `AssignCharacters` 建立真实局面，再用 `ReportSeatState` 交替上报 2 号「中毒 / 健康」，
  *      每条一个唯一幂等键——写进去的是**真实事件流**（`SeatStateChangedEvent`），不是手工插库；
- *   3) 断开 Node 客户端（每席位只保留一条连接：同一票据的浏览器随后才加入）；
+ *   3) 断开 Node 客户端（同一桌同一时刻只保留一条有效说书人连接：同一账号的浏览器随后才加入）；
  *   4) 服务端采样：用说书人凭据把整条复盘分页拉完（500 / 页）核对步骤总数与序号递增，
  *      再对首页 / 中段 / 深页各采样 3 次（每次都会从序号 0 折到最新——服务端投影的真实成本）；
  *   5) 前端采样（真 Vite + 真 Chromium 的说书人端）：开面板首屏耗时 → 第 200→201 步跨页耗时
@@ -16,14 +17,15 @@
  *      严格按 200 / 页增长（懒加载证据）；截图 `replay-scale-01/02`；
  *   6) 耗时断言给的是宽松上限（只拦「一次性渲染全部」这类回归），真正的证据是打印出的采样数字。
  *
- * 前置：Node >= 22.5（node:sqlite）、web/node_modules（playwright + @microsoft/signalr）、Chromium。
+ * 前置：web/node_modules（playwright + @microsoft/signalr）、Chromium；装置**不直读库**
+ * （说书人票据已随 D-0027 退场，席位票据只归"玩家入座"那类装置读）。
  * 用法（在仓库根运行）：
  *   node tools/verify-replay-scale.mjs                               # 迭代档：默认 2600 条状态变化，截图不落盘
  *   node tools/verify-replay-scale.mjs --events 600                  # 小规模迭代（深页断言按规模标红）
  *   node tools/verify-replay-scale.mjs --quota 2 --screenshots-all   # 取证档（一批一次，只对冻结版本）
  *
- * 外部耦合（同 web/AGENTS.md §3.1）：宿主编译产物路径、Games 表的 StorytellerTicket / SeatsJson、
- * Node ≥ 22.5、Playwright + Chromium。
+ * 外部耦合（同 web/AGENTS.md §3.1）：宿主编译产物路径、Playwright + Chromium、账号 Hub 的
+ * `Register` / `CreateTable` 回执形状（D-0027：说书人身份改走账号，故不再耦合 StorytellerTicket）。
  * 退出码：0 = 全部断言通过；1 = 有失败；2 = 环境缺依赖。
  */
 import { spawn } from 'node:child_process'
@@ -32,7 +34,6 @@ import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { DatabaseSync } from 'node:sqlite'
 import { describeProfile, ensureServerArtifacts, extractProfileFlags, resolveProfile } from './lib/verify-profile.mjs'
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -64,13 +65,27 @@ const screenshotsDir = path.resolve(repositoryRoot, 'artifacts', 'web')
 mkdirSync(screenshotsDir, { recursive: true })
 
 const serverUrl = `http://localhost:${options.port}`
+const accountHubUrl = `${serverUrl}/hub/account`
 const viteUrl = `http://localhost:${options.vitePort}`
-const hubUrl = `${serverUrl}/hub/game`
+/** 游戏 Hub 地址：桌标识要开完桌才知道（D-0027：不声明 `?gameId=` 的连接一律被拒），所以是 `let`。 */
+let hubUrl = `${serverUrl}/hub/game`
 
 /** 5 席花名册：够建立真实局面即可，本装置不跑夜间流程。 */
 const ASSIGN = ['vortox', 'clockmaker', 'dreamer', 'mutant', 'klutz']
 /** 被反复上报的席位：交替「中毒 / 健康」，每条命令产出一条 `SeatStateChangedEvent`。 */
 const REPORTER_SEAT = 2
+
+/**
+ * 夹具说书人账号（D-0027）：登录名总长受服务端 `UsernameText.MaxLength` = 24 字符约束，
+ * 所以前缀 `fixture-host-`（13 字符）配一个 ≤ 11 字符的后缀；越界只回 `invalid_username`，
+ * 在装置侧很难查，注册回执不 ok 时这里会连 code / message 一起抛出来。
+ */
+const FIXTURE_HOST = {
+  username: 'fixture-host-replay',
+  displayName: '夹具说书人replay',
+  password: 'fixture-pw-replay',
+  tableName: '复盘规模采样桌',
+}
 
 process.on('exit', () => killChildren())
 
@@ -88,13 +103,32 @@ try {
 }
 
 async function main() {
-  console.log('=== 1/6 构建并启动真宿主（独立临时库，5 席）===')
+  console.log('=== 1/6 构建并启动真宿主（独立临时库，5 席）+ 夹具账号开一桌（D-0027）===')
   await ensureServerArtifacts({ repositoryRoot, buildMode: config.buildMode })
   await startServer()
-  const ticket = readStorytellerTicket(databasePath)
+
+  // 说书人票据已整个退场、宿主也不再自动建默认桌（D-0027）：装置改走真实用法的那条路——
+  // 账号 Hub 注册一个夹具账号（注册即登录）→ 由它开一桌 → 这一桌归它，它就是这一桌的说书人。
+  const accountHub = await connectAccountHub()
+  const host = await registerFixtureHost(accountHub)
+  const created = await accountHub.invoke('CreateTable', host.session, FIXTURE_HOST.tableName, ASSIGN.length)
+  if (created?.ok !== true) {
+    throw new Error(`开桌失败：${created?.code ?? '未知'} ${created?.message ?? ''}`)
+  }
+
+  const gameId = String(created.gameId ?? '')
+  if (gameId.length === 0) {
+    throw new Error('开桌回执没有桌标识（D-0027：说书人面凭桌标识进主持台）')
+  }
+
+  // 账号会话在服务端不绑连接（8 小时到期，见 AccountSessionRegistry），所以这条连接用完即关；
+  // 下面所有游戏连接都必须声明桌标识。
+  await accountHub.stop()
+  hubUrl = `${serverUrl}/hub/game?gameId=${encodeURIComponent(gameId)}`
+  console.log(`  夹具账号 ${host.username} 已开桌：game=${gameId}（${created.seatCount} 席）；游戏 Hub ${hubUrl}`)
 
   console.log(`=== 2/6 真实命令面写入事件流（${options.events} 条状态变化）===`)
-  const storyteller = await connectStoryteller(ticket)
+  const storyteller = await connectStoryteller(host.session)
   check('Node 说书人客户端拿到连接级凭据', typeof storyteller.credential === 'string' && storyteller.credential.length > 0)
   const assigned = await storyteller.connection.invoke(
     'AssignCharacters',
@@ -192,10 +226,8 @@ async function main() {
   const browser = await playwright.chromium.launch()
   const consoleErrors = []
   const page = await newPage(browser, { width: 1600, height: 1100 }, consoleErrors)
-  await page.goto(viteUrl)
-  await page.getByPlaceholder('说书人票据').fill(ticket)
-  await page.getByRole('button', { name: '加入' }).click()
-  await page.locator('[data-testid="grimoire"]').waitFor({ timeout: 30_000 })
+  // 说书人面走**同一个账号**（D-0027）：Node 客户端已断开，这里登录夹具账号 →「我主持的桌」→ 进主持台。
+  await enterHostPanel(page, host, gameId)
   check('说书人真浏览器加入成功（真 Vite + 真宿主）', (await page.locator('[data-testid="grimoire"]').count()) === 1)
   await page.getByTestId('storyteller-replay-open').waitFor({ timeout: 30_000 })
 
@@ -369,10 +401,57 @@ function describeOutcome(outcome) {
   return `${outcome.kind ?? '?'}${outcome.message ? `：${outcome.message}` : ''}`
 }
 
-async function connectStoryteller(ticket) {
+/** 连账号 Hub：注册与开桌都是**账号面**的事（不过游戏命令的四道闸），走这条独立连接。 */
+async function connectAccountHub() {
+  const connection = new signalR.HubConnectionBuilder()
+    .withUrl(accountHubUrl)
+    .configureLogging(signalR.LogLevel.None)
+    .build()
+  await connection.start()
+  return connection
+}
+
+/** 注册夹具账号：注册即登录，回执里带 `accountSession`（D-0021）；不 ok 就当场抛，不带着半个身份往下跑。 */
+async function registerFixtureHost(connection) {
+  const account = await connection.invoke(
+    'Register',
+    FIXTURE_HOST.username,
+    FIXTURE_HOST.displayName,
+    FIXTURE_HOST.password,
+  )
+  if (account?.ok !== true || typeof account.accountSession !== 'string' || account.accountSession.length === 0) {
+    throw new Error(`夹具账号注册失败：${account?.code ?? '未知'} ${account?.message ?? ''}`)
+  }
+
+  return { ...FIXTURE_HOST, session: account.accountSession }
+}
+
+/**
+ * 浏览器侧进主持台（D-0027 的真实用法）：登录**同一个夹具账号** →「我主持的桌」里点「进主持台」。
+ * 界面锚点与 `tools/lib/entrance.mjs` 一致（那边是"注册 + 开桌"一条龙，这里桌已由 Node 侧开好）。
+ */
+async function enterHostPanel(page, host, gameId) {
+  await page.goto(viteUrl)
+  const loginTab = page.getByTestId('account-tab-login')
+  if ((await loginTab.count()) > 0) {
+    await loginTab.click()
+  }
+
+  await page.getByTestId('account-username').fill(host.username)
+  await page.getByTestId('account-password').fill(host.password)
+  await page.getByTestId('account-login').click()
+  await page.getByTestId('account-profile').waitFor({ timeout: 30_000 })
+  const row = page.locator(`[data-my-table="${gameId}"]`)
+  await row.waitFor({ timeout: 30_000 })
+  await row.getByTestId('host-enter').click()
+  await page.locator('[data-testid="grimoire"]').waitFor({ timeout: 30_000 })
+}
+
+/** 说书人客户端（D-0027）：连接声明桌标识，入场出示**账号会话**——只有开这一桌的账号进得来。 */
+async function connectStoryteller(accountSession) {
   const connection = new signalR.HubConnectionBuilder().withUrl(hubUrl).configureLogging(signalR.LogLevel.None).build()
   await connection.start()
-  const joined = await connection.invoke('JoinStoryteller', ticket)
+  const joined = await connection.invoke('JoinStorytellerWithAccount', accountSession)
   return {
     connection,
     credential: joined?.credential,
@@ -465,20 +544,6 @@ async function startVite() {
   children.push(vite)
   await waitForHttp(viteUrl, 'Vite 开发服务器', 60_000)
   return vite
-}
-
-function readStorytellerTicket(databasePathToRead) {
-  const database = new DatabaseSync(databasePathToRead, { readOnly: true })
-  try {
-    const row = database.prepare('SELECT StorytellerTicket FROM Games LIMIT 1').get()
-    if (row === undefined || typeof row.StorytellerTicket !== 'string') {
-      throw new Error('数据库里没有说书人票据')
-    }
-
-    return row.StorytellerTicket
-  } finally {
-    database.close()
-  }
 }
 
 function parseArguments(argv) {

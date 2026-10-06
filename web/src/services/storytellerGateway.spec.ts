@@ -89,7 +89,7 @@ describe('说书人网关接线：视图只进不更旧的那份', () => {
     const gateway = gatewayWith(fake, views)
 
     fake.response = { credential: 'C'.repeat(43), view: { sequence: 9, phase: 'FirstNight' } }
-    await gateway.join('ticket')
+    await gateway.joinWithAccount('account-session')
     fake.receive('ReceiveStorytellerViewChanged', { sequence: 11, phase: 'Day' })
     // 刷新响应比推送旧（响应在飞、推送先到）：不许把面板拉回。
     fake.response = { sequence: 10, phase: 'FirstNight' }
@@ -106,11 +106,33 @@ describe('说书人网关接线：视图只进不更旧的那份', () => {
     const gateway = gatewayWith(fake, views)
 
     fake.response = { credential: 'C'.repeat(43), view: { sequence: 9, phase: 'FirstNight' } }
-    await gateway.join('ticket')
+    await gateway.joinWithAccount('account-session')
     fake.response = { sequence: 12, phase: 'Day' }
     const returned = await gateway.refresh()
 
     expect(views.map((item) => item.sequence)).toEqual([9, 12])
     expect(returned.sequence).toBe(12)
+  })
+
+  it('说书人加入出示的是**账号会话**，且带上了这一桌的标识（D-0027）', async () => {
+    const fake = new FakeConnection()
+    const seen: Array<string | undefined> = []
+    const gateway = new StorytellerGateway(
+      { onView: () => {}, onState: () => {}, onDiagnostic: () => {} },
+      (gameId?: string) => {
+        seen.push(gameId)
+        return fake as unknown as HubConnection
+      },
+      'table-x',
+    )
+
+    fake.response = { credential: 'C'.repeat(43), view: { sequence: 1, phase: 'FirstNight' } }
+    await gateway.joinWithAccount('account-session')
+
+    // 桌标识必须真的传到连接工厂（写成无参箭头会把 gameId 吞掉，连接就落到别处）。
+    expect(seen).toEqual(['table-x'])
+    expect(fake.invocations).toEqual([
+      { method: 'JoinStorytellerWithAccount', args: ['account-session'] },
+    ])
   })
 })

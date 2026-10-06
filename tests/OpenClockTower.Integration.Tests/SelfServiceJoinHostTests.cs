@@ -186,7 +186,8 @@ public sealed class SelfServiceJoinHostTests
         }
 
         await using var account = await ConnectAccountAsync(host);
-        var tables = await account.InvokeAsync<IReadOnlyList<LobbyTableDto>>("ListTables");
+        // 未登录也能看大厅（公开门面）；D-0027 之后这个方法要显式带会话参数，未登录传 null。
+        var tables = await account.InvokeAsync<IReadOnlyList<LobbyTableDto>>("ListTables", null);
         var table = Assert.Single(tables, item => item.GameId == TableA.Value);
 
         // 大厅必须如实给出"哪些席位被占"——否则玩家只能点一下试试，撞上才知道被占（实测踩到）。

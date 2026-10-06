@@ -20,8 +20,20 @@ import {
 } from '@/services/storytellerCommands'
 import { computed, ref } from 'vue'
 
-const props = defineProps<{ view: StorytellerViewDto; sender: CommandSender }>()
+const props = defineProps<{ view: StorytellerViewDto; sender: CommandSender; gameId?: string }>()
 const emit = defineEmits<{ outcome: [CommandOutcome] }>()
+
+/**
+ * 邀请码：**桌标识 + 席位票据**。
+ *
+ * 光有票据，玩家那一面不知道该连哪一桌（桌标识属于连接，多桌 D-0024）；
+ * 说书人把这一串交出去，玩家在「有邀请码？」里粘一次就能入座——中途到场的旅行者走的就是这条路。
+ */
+const inviteCode = computed(() =>
+  props.gameId === undefined || props.gameId.length === 0
+    ? (issued.value?.ticket ?? '')
+    : `${props.gameId}:${issued.value?.ticket ?? ''}`,
+)
 
 /** 首版五名旅行者（术语表 §9 的镜像；提交后由服务端按花名册复核，选错会被显式拒绝）。 */
 const travellers = ROSTER.filter((profile) => profile.type === '旅行者')
@@ -151,8 +163,9 @@ async function remove(): Promise<void> {
     </div>
 
     <p v-if="issued" class="ticket" data-testid="traveller-issued" :data-seat="issued.seat">
-      新席位 <strong>{{ issued.seat }}</strong> 的票据（请立即转交给新到场的玩家；刷新后不再显示）：
-      <span class="mono">{{ issued.ticket }}</span>
+      新席位 <strong>{{ issued.seat }}</strong> 的邀请码（请立即转交给新到场的玩家；刷新后不再显示）——
+      他在「加入一桌」那一面的「有邀请码？」里粘这一串即可：
+      <span class="mono">{{ inviteCode }}</span>
     </p>
 
     <div class="row">

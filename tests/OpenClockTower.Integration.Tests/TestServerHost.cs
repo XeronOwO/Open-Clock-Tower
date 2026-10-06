@@ -32,6 +32,10 @@ public sealed class TestServerHost : IAsyncDisposable
     private readonly string _databasePath;
     private readonly bool _deleteDatabaseOnDispose;
     private readonly List<HubConnection> _connections = [];
+    private readonly Dictionary<GameId, FixtureAccount> _owners = [];
+
+    /// <summary>夹具房主账号的口令（只活在夹具里；重启场景重新签发会话时沿用它）。</summary>
+    private const string FixtureOwnerPassword = "fixture-owner-pw";
 
     /// <summary>启动一个测试宿主。</summary>
     /// <param name="slotQuotaSeconds">槽位配额（秒）。</param>
@@ -59,8 +63,11 @@ public sealed class TestServerHost : IAsyncDisposable
             builder.ConfigureLogging(logging => logging.AddProvider(new CollectingLoggerProvider(Logs)));
         });
 
-        // 触发宿主启动：建库、恢复事件流、播种会话票据
+        // 触发宿主启动：建库、结构守卫、装载在册的桌（D-0027 之后**宿主不再自建任何桌**）。
         _ = _factory.Services;
+
+        // 夹具自己把默认桌开出来，并把它记在一个夹具账号名下——进主持台只认这个账号（D-0027）。
+        RegisterTableAsync(GameId, seatCount).GetAwaiter().GetResult();
 
         // 按需开启测试夹具夜晚：已有阶段（重启恢复等场景）不重开，保持与旧引导行为一致
         if (autoStartTestNight && Session.GetStorytellerView().Phase is null)
@@ -209,21 +216,9 @@ public sealed class TestServerHost : IAsyncDisposable
     public static Task<AccountDto> LoginAccountAsync(HubConnection account, string username, string password) =>
         account.InvokeAsync<AccountDto>("Login", username, password);
 
-    /// <summary>以说书人身份加入；返回带凭据的客户端。</summary>
-    public async Task<GameClient> ConnectStorytellerAsync(Action<StorytellerViewDto>? onViewChanged = null)
-    {
-        var setup = await GetSetupAsync();
-        var connection = CreateConnection();
-        if (onViewChanged is not null)
-        {
-            connection.On<StorytellerViewDto>("ReceiveStorytellerViewChanged", onViewChanged);
-        }
-
-        await connection.StartAsync();
-        var joined = await connection.InvokeAsync<StorytellerJoinDto>("JoinStoryteller", setup.StorytellerTicket);
-        _connections.Add(connection);
-        return new GameClient(connection, joined.Credential);
-    }
+    /// <summary>以说书人身份加入默认桌（房主账号的会话，D-0027）；返回带凭据的客户端。</summary>
+    public Task<GameClient> ConnectStorytellerAsync(Action<StorytellerViewDto>? onViewChanged = null) =>
+        ConnectStorytellerToTableAsync(GameId, onViewChanged);
 
     /// <summary>起一条**没有 Join** 的裸连接：负向用例用它证明"未持票据的连接什么都做不了"。</summary>
     public async Task<HubConnection> ConnectAnonymousAsync()
@@ -235,20 +230,18 @@ public sealed class TestServerHost : IAsyncDisposable
     }
 
     /// <summary>
-    /// 连到**指定的桌**并以说书人身份加入（多桌，D-0024）。
+    /// 连到**指定的桌**并以说书人身份加入：出示**这一桌房主账号**的会话（多桌 D-0024 / 归属 D-0027）。
     /// </summary>
     /// <remarks>
     /// 桌通过连接串的 <c>?gameId=</c> 声明——与浏览器端同一机制，所以这条用例测的是真实链路，
-    /// 而不是测试专用的旁路。
+    /// 而不是测试专用的旁路；身份走的是真实的账号会话（<c>JoinStorytellerWithAccount</c>），
+    /// 也不再需要从库里读任何凭据。
     /// </remarks>
     public async Task<GameClient> ConnectStorytellerToTableAsync(
         GameId gameId,
         Action<StorytellerViewDto>? onViewChanged = null)
     {
-        var setup = await _factory.Services.GetRequiredService<IGameCatalog>()
-            .FindAsync(gameId, CancellationToken.None)
-            ?? throw new InvalidOperationException($"要连接的桌不存在：{gameId.Value}");
-
+        var owner = OwnerOf(gameId);
         var connection = CreateConnection($"/hub/game?gameId={Uri.EscapeDataString(gameId.Value)}");
         if (onViewChanged is not null)
         {
@@ -256,17 +249,92 @@ public sealed class TestServerHost : IAsyncDisposable
         }
 
         await connection.StartAsync();
-        var joined = await connection.InvokeAsync<StorytellerJoinDto>("JoinStoryteller", setup.StorytellerTicket);
+        var joined = await connection.InvokeAsync<StorytellerJoinDto>(
+            "JoinStorytellerWithAccount",
+            owner.AccountSession);
         _connections.Add(connection);
         return new GameClient(connection, joined.Credential);
     }
 
-    /// <summary>新建一张桌（写会话目录 + 让注册表装载它）；返回它的会话信息。</summary>
+    /// <summary>某张桌的房主账号（D-0027：进主持台只认它）。</summary>
+    public FixtureAccount OwnerOf(GameId gameId) =>
+        _owners.TryGetValue(gameId, out var owner)
+            ? owner
+            : throw new InvalidOperationException($"这张桌没有登记房主：{gameId.Value}（先用 RegisterTableAsync 建它）");
+
+    /// <summary>
+    /// 注册一个**夹具账号**：走真实的账号服务（注册即登录），返回它的账号会话。
+    /// </summary>
+    /// <remarks>
+    /// 夹具只借这条路径造身份，不绕过任何产品判定；进主持台仍然要过真实的
+    /// <c>JoinStorytellerWithAccount</c>（房主才进得去）。
+    /// </remarks>
+    public async Task<FixtureAccount> RegisterAccountAsync(string username, string displayName, string password)
+    {
+        var accounts = _factory.Services.GetRequiredService<AccountService>();
+        var sessions = _factory.Services.GetRequiredService<AccountSessionRegistry>();
+
+        var outcome = await accounts.RegisterAsync(username, displayName, password, CancellationToken.None);
+        if (!outcome.Accepted || outcome.Account is null)
+        {
+            throw new InvalidOperationException($"夹具账号注册失败：{outcome.Code} {outcome.Message}");
+        }
+
+        return new FixtureAccount(
+            outcome.Account.Id,
+            outcome.Account.Username,
+            outcome.Account.DisplayName,
+            password,
+            sessions.Issue(outcome.Account.Id).Value);
+    }
+
+    /// <summary>
+    /// 新建一张桌并把它记在一个**夹具账号**名下（D-0027：桌归属开桌账号）。
+    /// </summary>
+    /// <remarks>
+    /// **重启场景**（同一个库、第二个宿主）里这张桌已经在册：那时不重新注册账号
+    /// （登录名会撞车），而是给**原房主**重新签发一条会话——这正好也是真实用法里
+    /// "换台设备登录同一账号回来"的那条路径。
+    /// </remarks>
     public async Task<GameSetup> RegisterTableAsync(GameId gameId, int seatCount)
     {
-        var setup = GameSetupFactory.Create(gameId, seatCount);
+        var catalog = _factory.Services.GetRequiredService<IGameCatalog>();
+        if (await catalog.FindAsync(gameId, CancellationToken.None) is { CreatedByAccountId: { } ownerId } existing)
+        {
+            var accounts = _factory.Services.GetRequiredService<IAccountStore>();
+            var sessions = _factory.Services.GetRequiredService<AccountSessionRegistry>();
+            var account = await accounts.FindByIdAsync(ownerId, CancellationToken.None)
+                ?? throw new InvalidOperationException($"这一桌的房主账号不存在：{ownerId.Value}");
+            _owners[gameId] = new FixtureAccount(
+                account.Id,
+                account.Username,
+                account.DisplayName,
+                FixtureOwnerPassword,
+                sessions.Issue(account.Id).Value);
+            return existing;
+        }
+
+        var owner = await RegisterAccountAsync(
+            $"fixture-owner-{gameId.Value}",
+            $"房主-{gameId.Value}",
+            FixtureOwnerPassword);
+        return await RegisterTableAsync(gameId, seatCount, owner);
+    }
+
+    /// <summary>
+    /// 新建一张桌并把它记在 <paramref name="owner"/> 名下；返回它的会话信息。
+    /// </summary>
+    /// <remarks>
+    /// 直接写会话目录（与开桌用例同一个 <see cref="GameSetupFactory"/> 形状），
+    /// 因为夹具需要**指定桌标识**（真实开桌用例生成随机标识，测试要按标识寻址）。
+    /// 归属仍然如实写在 <see cref="GameSetup.CreatedByAccountId"/> 上，进主持台也仍然过真实判定。
+    /// </remarks>
+    public async Task<GameSetup> RegisterTableAsync(GameId gameId, int seatCount, FixtureAccount owner)
+    {
+        var setup = GameSetupFactory.Create(gameId, seatCount, owner.Id);
         await _factory.Services.GetRequiredService<IGameCatalog>().SaveAsync(setup, CancellationToken.None);
         await _factory.Services.GetRequiredService<GameRegistry>().GetOrCreateAsync(gameId, CancellationToken.None);
+        _owners[gameId] = owner;
         return setup;
     }
 
@@ -412,13 +480,21 @@ public sealed class TestServerHost : IAsyncDisposable
     /// <summary>宿主的 HTTP 处理器（测试自建连接时挂上它，请求才走内存管线）。</summary>
     public HttpMessageHandler ServerHandler() => _factory.Server.CreateHandler();
 
-    private HubConnection CreateConnection(string path = "/hub/game") =>
+    /// <summary>
+    /// 建一条 Hub 连接。默认连到**默认桌**并显式声明 <c>?gameId=</c>——
+    /// D-0027 之后不声明桌标识的连接一律被拒（默认桌回落已删除），夹具也走同一条规则。
+    /// </summary>
+    private HubConnection CreateConnection(string? path = null) =>
         new HubConnectionBuilder()
-            .WithUrl(new Uri(_factory.Server.BaseAddress, path), options =>
-            {
-                options.HttpMessageHandlerFactory = _ => _factory.Server.CreateHandler();
-                options.Transports = HttpTransportType.LongPolling;
-            })
+            .WithUrl(
+                new Uri(
+                    _factory.Server.BaseAddress,
+                    path ?? $"/hub/game?gameId={Uri.EscapeDataString(GameId.Value)}"),
+                options =>
+                {
+                    options.HttpMessageHandlerFactory = _ => _factory.Server.CreateHandler();
+                    options.Transports = HttpTransportType.LongPolling;
+                })
             .Build();
 
     private static void DeleteIfExists(string path)

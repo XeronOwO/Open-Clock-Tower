@@ -28,7 +28,8 @@
  *   node tools/verify-retention-day-info.mjs --port 5415 --vite-port 5295           # 自定端口
  *
  * 外部耦合（换机器先核对 web/AGENTS.md §3.1）：宿主编译产物路径、SQLite 表 Games 的
- * StorytellerTicket / SeatsJson 列形状、SignalR 的 SubmitResponse 四参数签名。
+ * SeatsJson 列形状（席位票据仍直读库；说书人身份已改走账号，见 D-0027）、
+ * SignalR 的 SubmitResponse 四参数签名。
  * 退出码：0 = 全过；1 = 有失败；2 = 环境缺依赖。
  */
 import { spawn } from 'node:child_process'
@@ -37,8 +38,8 @@ import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { DatabaseSync } from 'node:sqlite'
 import { readAttributeBounded, readTextBounded } from './lib/bounded-text.mjs'
+import { openTableAndHost, seatByAccount } from './lib/entrance.mjs'
 import { describeProfile, ensureServerArtifacts, extractProfileFlags, resolveProfile } from './lib/verify-profile.mjs'
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -72,7 +73,8 @@ mkdirSync(screenshotsDir, { recursive: true })
 
 const serverUrl = `http://localhost:${options.port}`
 const viteUrl = `http://localhost:${options.vitePort}`
-const hubUrl = `${serverUrl}/hub/game`
+/** Hub 地址：桌标识在开桌之后才定得下来，所以这里是 `let`（见下面的赋值）。 */
+let hubUrl = `${serverUrl}/hub/game`
 
 /**
  * 六个席位（与 web/src/display/labels.ts 的花名册一致）。
@@ -157,10 +159,7 @@ async function main() {
   console.log(`  宿主产物：${artifacts.artifact}（${artifacts.built ? '本次构建' : '复用'}）`)
   await startServer()
 
-  console.log('=== 2/8 取票据并起 Vite ===')
-  const ticket = readStorytellerTicket(databasePath)
-  const seatTickets = readSeatTickets(databasePath)
-  check('席位票据齐备（6 席）', seatTickets.length === ASSIGN.length, `数据库 ${seatTickets.length} 张`)
+  console.log('=== 2/8 起 Vite ===')
 
   const vite = spawn(
     process.execPath,
@@ -179,23 +178,31 @@ async function main() {
   children.push(vite)
   await waitForHttp(viteUrl, 'Vite 开发服务器', 60_000)
 
-  console.log('=== 3/8 说书人 + 女巫 / 博学者 / 杂耍艺人加入真浏览器；恶魔与神谕者走线级探针 ===')
+  console.log('=== 3/8 说书人开一桌并进主持台（账号身份，D-0027）+ 女巫 / 博学者 / 杂耍艺人入座 ===')
   const browser = await playwright.chromium.launch()
   const consoleErrors = []
   storytellerPage = await newPage(browser, { width: 1600, height: 1100 }, consoleErrors)
-  await storytellerPage.goto(viteUrl)
-  await storytellerPage.getByPlaceholder('说书人票据').fill(ticket)
-  await storytellerPage.getByRole('button', { name: '加入' }).click()
-  await storytellerPage.locator('[data-testid="grimoire"]').waitFor({ timeout: 30_000 })
+  // 说书人：注册夹具账号 → 开一桌 → 进主持台（票据退场后这是唯一路径，也是最贴近真实用法的那条）。
+  const table = await openTableAndHost(storytellerPage, {
+    frontUrl: viteUrl,
+    serverUrl,
+    databasePath,
+    seats: ASSIGN.length,
+    suffix: 'retain',
+  })
+  const seatTickets = table.seatTickets
+  // 桌标识属于连接（D-0027 之后不声明就被拒）：线级探针也连到这一桌。
+  hubUrl = table.hubUrl
+  check('席位票据齐备（6 席）', seatTickets.length === ASSIGN.length, `数据库 ${seatTickets.length} 张`)
   check(
     '说书人加入后看板可见（魔典主视图）',
     (await storytellerPage.locator('[data-testid="grimoire"]').count()) === 1,
   )
   await openDataDrawer(storytellerPage)
 
-  const witchPage = await joinPlayerPage(browser, seatTickets[WITCH_SEAT - 1], WITCH_SEAT, consoleErrors)
-  const savantPage = await joinPlayerPage(browser, seatTickets[SAVANT_SEAT - 1], SAVANT_SEAT, consoleErrors)
-  const jugglerPage = await joinPlayerPage(browser, seatTickets[JUGGLER_SEAT - 1], JUGGLER_SEAT, consoleErrors)
+  const witchPage = await joinPlayerPage(browser, table.gameId, WITCH_SEAT, 'retain-witch', consoleErrors)
+  const savantPage = await joinPlayerPage(browser, table.gameId, SAVANT_SEAT, 'retain-savant', consoleErrors)
+  const jugglerPage = await joinPlayerPage(browser, table.gameId, JUGGLER_SEAT, 'retain-juggler', consoleErrors)
   check(
     `三个玩家席加入玩家端（${WITCH_SEAT} 号女巫 / ${SAVANT_SEAT} 号博学者 / ${JUGGLER_SEAT} 号杂耍艺人）`,
     (await witchPage.locator('[data-testid="player-seat"]').count()) === 1
@@ -312,12 +319,10 @@ async function main() {
   await browser.close()
 }
 
-/** 玩家席加入真浏览器：填票据 → 断言席位徽标。 */
-async function joinPlayerPage(browser, seatTicket, seat, consoleErrors) {
+/** 玩家席加入真浏览器：注册夹具账号 → 从大厅挑空席位（D-0027，不再填票据）→ 断言席位徽标。 */
+async function joinPlayerPage(browser, gameId, seat, suffix, consoleErrors) {
   const page = await newPage(browser, { width: 900, height: 1100 }, consoleErrors)
-  await page.goto(`${viteUrl}/#player`)
-  await page.getByPlaceholder('席位票据').fill(seatTicket.ticket)
-  await page.getByRole('button', { name: '加入' }).click()
+  await seatByAccount(page, { frontUrl: viteUrl, gameId, seat, suffix })
   const badge = await waitForText(page.locator('[data-testid="player-seat"]'), String(seat), 30_000)
   if (!badge.includes(String(seat))) {
     throw new Error(`${seat} 号席位加入失败：${badge}`)
@@ -974,7 +979,7 @@ async function driveThirdNight(page, witchPage, savantPage, demonSeat) {
 /** 点玩家端请求里的某个席位并提交（浏览器席位）。 */
 async function answerSeatRequest(page, seat) {
   await page
-    .locator('[data-testid="player-request-options"] label', { hasText: `${seat} 号玩家` })
+    .locator('[data-testid="player-request-options"] label', { hasText: `${seat} 号` })
     .locator('input[type=radio]')
     .check()
   await page.getByTestId('player-submit').click()
@@ -1431,43 +1436,6 @@ async function startServer() {
   children.push(child)
   await waitForHttp(`${serverUrl}/healthz`, '宿主 /healthz', 90_000)
   return child
-}
-
-function readStorytellerTicket(databasePathToRead) {
-  const database = new DatabaseSync(databasePathToRead, { readOnly: true })
-  try {
-    const row = database.prepare('SELECT StorytellerTicket FROM Games LIMIT 1').get()
-    if (row === undefined || typeof row.StorytellerTicket !== 'string') {
-      throw new Error('数据库里没有说书人票据')
-    }
-
-    return row.StorytellerTicket
-  } finally {
-    database.close()
-  }
-}
-
-/** 读各席位票据：SeatId 是 record struct，Web 序列化形状为 { "value": N }（两种形状都认）。 */
-function readSeatTickets(databasePathToRead) {
-  const database = new DatabaseSync(databasePathToRead, { readOnly: true })
-  try {
-    const row = database.prepare('SELECT SeatsJson FROM Games LIMIT 1').get()
-    if (row === undefined || typeof row.SeatsJson !== 'string') {
-      throw new Error('数据库里没有席位票据（Games.SeatsJson）')
-    }
-
-    const parsed = JSON.parse(row.SeatsJson)
-    if (!Array.isArray(parsed) || parsed.length === 0) {
-      throw new Error('席位票据 JSON 形状不可识别')
-    }
-
-    return parsed
-      .map((item) => ({ seat: seatNumberOf(item?.seat), ticket: String(item?.ticket ?? '') }))
-      .filter((item) => Number.isFinite(item.seat) && item.ticket.length > 0)
-      .sort((left, right) => left.seat - right.seat)
-  } finally {
-    database.close()
-  }
 }
 
 function seatNumberOf(raw) {

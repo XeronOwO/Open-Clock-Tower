@@ -37,8 +37,7 @@ public sealed class InGameSeatsTests
 
     private static GameSetup Setup(params int[] seatNumbers) => new()
     {
-        GameId = new GameId("default"),
-        StorytellerTicket = "storyteller-test",
+        GameId = new GameId("table-test"),
         Seats = [.. seatNumbers.Select(seat => new SeatTicket { Seat = new SeatId(seat), Ticket = $"seat-{seat}-test" })],
     };
 }

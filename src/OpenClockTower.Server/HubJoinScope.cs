@@ -25,6 +25,7 @@ public sealed class HubJoinScope
     private readonly HubGameScope _scope;
     private readonly SeatJoinCoordinator _join;
     private readonly ConnectionRegistry _registry;
+    private readonly AccountSessionRegistry _sessions;
     private readonly NotificationDispatcher _dispatcher;
     private readonly ILogger<GameHub> _logger;
 
@@ -34,6 +35,7 @@ public sealed class HubJoinScope
         HubGameScope scope,
         SeatJoinCoordinator join,
         ConnectionRegistry registry,
+        AccountSessionRegistry sessions,
         NotificationDispatcher dispatcher,
         ILogger<GameHub> logger)
     {
@@ -41,6 +43,7 @@ public sealed class HubJoinScope
         _scope = scope;
         _join = join;
         _registry = registry;
+        _sessions = sessions;
         _dispatcher = dispatcher;
         _logger = logger;
     }
@@ -87,16 +90,31 @@ public sealed class HubJoinScope
         return await CompleteJoinAsync(caller, game, outcome, aborted);
     }
 
-    /// <summary>说书人加入：票据定位身份，签发连接凭据（同局同一时刻只保留一条有效说书人连接）。</summary>
-    public async Task<StorytellerJoinDto> JoinStorytellerAsync(
+    /// <summary>
+    /// 说书人加入（D-0027）：**只认这一桌的开桌账号**，票据已整个退场。
+    /// </summary>
+    /// <remarks>
+    /// 两种拒绝分开：账号会话无效（"请重新登录"）与"这一桌不是你开的"（中性文案，不透露是谁开的）。
+    /// 归属判定在 <see cref="HubJoinFlow"/> 里贴着会话信息做。
+    /// </remarks>
+    public async Task<StorytellerJoinDto> JoinStorytellerWithAccountAsync(
         HttpContext? httpContext,
         string connectionId,
         CancellationToken aborted,
-        string ticket)
+        string accountSession)
     {
+        if (string.IsNullOrEmpty(accountSession) || !_sessions.TryResolve(accountSession, out var accountId))
+        {
+            _logger.LogWarning(
+                "说书人加入被拒（账号会话无效）：connection={ConnectionId} 会话指纹={Fingerprint}",
+                connectionId,
+                AccountSessionCredential.FingerprintOf(accountSession));
+            throw new HubException("账号会话无效或已过期，请重新登录");
+        }
+
         var game = await _scope.GameAsync(httpContext, connectionId, aborted);
         var flow = new HubJoinFlow(_catalog, game, _registry, _logger, connectionId, aborted);
-        return await flow.JoinStorytellerAsync(ticket);
+        return await flow.JoinStorytellerAsync(accountId);
     }
 
     private async Task<SeatJoinDto> JoinSeatCoreAsync(

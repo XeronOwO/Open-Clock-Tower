@@ -7,7 +7,7 @@
  * 没有一条断言在问界面本身是否可走通——所以界面把注册表单塞进开桌折叠区、把桌列表放在登录之前、
  * 让人抄一串 47 个字符的票据，装置照样全绿。
  *
- * 票据 docs/backlog/todo/usability-acceptance-device.md。判据取自"新用户实际会遇到什么"：
+ * 票据 docs/backlog/done/usability-acceptance-device.md。判据取自"新用户实际会遇到什么"：
  *   gate     未登录时页面上只有一张登录卡（不存在桌列表 / 席位按钮 / 票据输入框 / 开桌表单）
  *   plain    入口面上不出现开发者术语（禁词表扫描：文案会改，禁词不会）
  *   host     第一次主持：注册 → 开一桌（前置，给后两段准备一张真桌）
@@ -223,6 +223,7 @@ async function main() {
   const host = await newClient(browser, consoleErrors)
   await host.page.goto(`${frontUrl}/`, { waitUntil: 'domcontentloaded' })
   await revealAccountForm(host.page)
+  await revealRegisterTab(host.page)
   await host.page.getByTestId('account-username').fill(hostAccount.username)
   await host.page.getByTestId('account-display-name').fill(hostAccount.displayName)
   await host.page.getByTestId('account-password').fill(hostAccount.password)
@@ -287,6 +288,10 @@ async function main() {
   await waitForFace(stranger.page, 'nav-player')
   if (await revealAccountForm(stranger.page)) {
     steps.record('展开被折叠起来的登录区')
+  }
+
+  if (await revealRegisterTab(stranger.page)) {
+    steps.record('登录卡上切到「注册」页签')
   }
 
   await steps.fill(stranger.page.getByTestId('account-username'), seatAccount.username, '登录名')
@@ -419,19 +424,41 @@ async function openTable(page) {
   await page.getByTestId('open-table-seats').fill(String(options.seats))
   await page.getByTestId('open-table-submit').click()
 
-  // 受理证据按改造前后两种形态认：今天只有一次性票据回执，改造后是「我主持的桌」里的一行。
-  const evidence = await waitForAnyTestId(page, ['my-tables', 'new-table-ticket'], uiWaitMs)
-  const evidenceText = evidence === null ? '' : compact(evidence.text)
-  if (evidence !== null && evidence.id === 'new-table-ticket') {
-    createdGameId = evidenceText.includes(':') ? evidenceText.slice(0, evidenceText.indexOf(':')) : evidenceText
-  } else if (evidence !== null) {
-    createdGameId = await page
-      .locator('[data-my-table]')
-      .first()
-      .getAttribute('data-my-table')
-      .catch(() => null)
+  // 受理证据按改造前后两种形态认：
+  //   今天 = 一次性票据回执（`new-table-ticket`）；改造后 = 「我主持的桌」里多出来的一行。
+  // 判据必须是**那一行**而不是列表容器——容器在登录后就在，拿它当证据会当场假绿。
+  const deadline = Date.now() + uiWaitMs
+  let evidence = null
+  for (;;) {
+    const row = page.locator('[data-my-table]').first()
+    if ((await row.count().catch(() => 0)) > 0) {
+      evidence = {
+        id: 'my-tables',
+        gameId: await row.getAttribute('data-my-table').catch(() => null),
+        text: compact(await readTextBounded(row)),
+      }
+      break
+    }
+
+    const ticket = page.getByTestId('new-table-ticket')
+    if ((await ticket.count().catch(() => 0)) > 0) {
+      const text = compact(await readTextBounded(ticket))
+      evidence = {
+        id: 'new-table-ticket',
+        gameId: text.includes(':') ? text.slice(0, text.indexOf(':')) : text,
+        text,
+      }
+      break
+    }
+
+    if (Date.now() >= deadline) {
+      break
+    }
+
+    await sleep(150)
   }
 
+  createdGameId = evidence?.gameId ?? null
   check(
     '开桌被受理（有回执，或「我主持的桌」里出现了这一桌）',
     createdGameId !== null && createdGameId.length > 0,
@@ -440,6 +467,25 @@ async function openTable(page) {
   if (createdGameId === null || createdGameId.length === 0) {
     throw new Error('前置未成立：没有开成桌，后面的段无从判起')
   }
+}
+
+/**
+ * 把登录卡切到「注册」页签（目标形态里登录 / 注册是两个页签，默认登录）。
+ * 返回是否真的点了一下——这是用户为注册多付的一步，入座路径要把它数进去。
+ */
+async function revealRegisterTab(page) {
+  if ((await page.getByTestId('account-display-name').count().catch(() => 0)) > 0) {
+    return false
+  }
+
+  const tab = page.getByTestId('account-tab-register')
+  if ((await tab.count().catch(() => 0)) === 0) {
+    return false
+  }
+
+  await tab.click()
+  await waitForCount(page.getByTestId('account-display-name'), 1, uiWaitMs)
+  return true
 }
 
 /** 大厅里定位这一桌：优先按桌标识，退一步按桌名。列表是点开这一面之后异步取的，所以先等它出来。 */

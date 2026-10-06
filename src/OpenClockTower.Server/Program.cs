@@ -16,8 +16,6 @@ builder.Services.AddSingleton(new PacingOptions
     SlotQuota = TimeSpan.FromSeconds(serverOptions.SlotQuotaSeconds),
 });
 builder.Services.AddSingleton<IClock, SystemClock>();
-// GameId 是值对象（record struct），用非泛型重载注册实例
-builder.Services.AddSingleton(typeof(GameId), new GameId(serverOptions.GameId));
 builder.Services.AddDbContextFactory<GameDbContext>(options => options.UseSqlite(
     $"Data Source={Path.Combine(builder.Environment.ContentRootPath, serverOptions.DatabasePath)}"));
 builder.Services.AddSingleton<IGameStore, EfGameStore>();
@@ -55,15 +53,14 @@ builder.Services.AddSingleton(provider => new GameRegistry(
     provider.GetRequiredService<IReadOnlyList<IStandingEffectSource>>(),
     provider.GetRequiredService<IClock>(),
     provider.GetRequiredService<PacingOptions>(),
-    provider.GetRequiredService<ILoggerFactory>(),
-    provider.GetRequiredService<GameId>()));
+    provider.GetRequiredService<ILoggerFactory>()));
 builder.Services.AddSingleton<ConnectionRegistry>();
 builder.Services.AddSingleton<HubActorResolver>();
 builder.Services.AddSingleton<NotificationDispatcher>();
 // 连接 ↔ 桌的绑定（多桌 D-0024）：单例——SignalR 的 Hub 每次调用新建实例，字段记不住东西。
+// 桌标识只来自连接的 `?gameId=`（D-0027 删掉了"缺省回落默认桌"那条路）。
 builder.Services.AddSingleton(provider => new HubGameScope(
     provider.GetRequiredService<GameRegistry>(),
-    provider.GetRequiredService<GameId>(),
     provider.GetRequiredService<NotificationDispatcher>()));
 // 加入入口（玩家与说书人两侧；自己解析所在桌，单例、无状态协作者）。
 builder.Services.AddSingleton(provider => new HubJoinScope(
@@ -71,6 +68,7 @@ builder.Services.AddSingleton(provider => new HubJoinScope(
     provider.GetRequiredService<HubGameScope>(),
     provider.GetRequiredService<SeatJoinCoordinator>(),
     provider.GetRequiredService<ConnectionRegistry>(),
+    provider.GetRequiredService<AccountSessionRegistry>(),
     provider.GetRequiredService<NotificationDispatcher>(),
     provider.GetRequiredService<ILogger<GameHub>>()));
 // 桌务（锁桌 / 解除席位绑定）：单例、无状态协作者。
@@ -102,8 +100,8 @@ app.MapGet(
     () => Results.Ok(new
     {
         status = "ok",
-        game = serverOptions.GameId,
-        // 席位数量是服务端配置（说书人面板据此渲染席位）：前端启动时读它，避免与构建期变量分叉。
+        // 席位数量是服务端配置（开桌表单预填与面板渲染兜底）：前端启动时读它，避免与构建期变量分叉。
+        // 这里**不再有 `game` 字段**：默认桌已随 D-0027 退场，宿主没有"自己那一桌"了。
         seatCount = serverOptions.SeatCount,
     }));
 app.MapHub<GameHub>("/hub/game");

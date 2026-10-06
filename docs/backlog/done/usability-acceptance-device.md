@@ -1,8 +1,14 @@
 # 可用性验收装置：证明"一个没用过的人能自己走通"
 
-- Status: Todo（**装置本体已交付并以红的样子跑过**，见下面「红交付读数」；转绿由 `entrance-redesign.md` 负责）
+- Status: **Done**（装置本体落地；转绿读数见文末「转绿读数」）
 - Priority: **High**（它是上面两张票的判据，也是"界面烂而门禁全绿"这个洞的补丁）
 - Depends on: 无
+
+## 转绿读数（2026-10-06，与 `entrance-redesign.md` 同批）
+
+`node tools/verify-entrance-usability.mjs` → **全部通过（判定 27 项 · 跳过 0）**，退出码 0，整机 16.6s。
+入座路径 **7 步**（切到「加入一桌」→ 登录卡切到「注册」页签 → 登录名 / 玩家名 / 口令 → 注册 → 点空席位），
+正好用满阈值 7——再多的每一步都会被判红。
 
 ## 要解决的问题
 
@@ -88,4 +94,4 @@
 - 验收规程：`docs/acceptance/AGENTS.md`
 - 装置清单与登记方式：`docs/acceptance/devices.md`
 - 真机装置骨架：`tools/verify-live-open-table.mjs`
-- 它要判的那张票：`docs/backlog/todo/entrance-redesign.md`
+- 它要判的那张票：`docs/backlog/done/entrance-redesign.md`

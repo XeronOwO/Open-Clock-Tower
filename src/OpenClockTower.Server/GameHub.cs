@@ -108,15 +108,20 @@ public sealed class GameHub : Hub<IGameClient>
             lastSequence);
 
     /// <summary>
-    /// 说书人加入：票据定位身份，签发连接凭据（同局同一时刻只保留一条有效说书人连接）。
+    /// 说书人加入（D-0027）：**只认这一桌的开桌账号**，签发连接凭据
+    /// （同局同一时刻只保留一条有效说书人连接）。
     /// </summary>
-    /// <remarks>流程本体在 <see cref="HubJoinScope" /> / <see cref="HubJoinFlow" />（单文件 600 行门禁）。</remarks>
-    public Task<StorytellerJoinDto> JoinStoryteller(string ticket) =>
-        _joinScope.JoinStorytellerAsync(
+    /// <remarks>
+    /// 票据已整个退场：进主持台不需要出示任何凭据，只需要"你是开这一桌的那个账号"。
+    /// 流程本体在 <see cref="HubJoinScope" /> / <see cref="HubJoinFlow" />（单文件 600 行门禁）。
+    /// </remarks>
+    /// <param name="accountSession">账号会话（服务端据此判定归属）。</param>
+    public Task<StorytellerJoinDto> JoinStorytellerWithAccount(string accountSession) =>
+        _joinScope.JoinStorytellerWithAccountAsync(
             Context.GetHttpContext(),
             Context.ConnectionId,
             Context.ConnectionAborted,
-            ticket);
+            accountSession);
 
     /// <summary>玩家提交响应。</summary>
     public Task<CommandResultDto> SubmitResponse(

@@ -1,13 +1,18 @@
 /**
  * 账号与局内玩家名装置（E30 / D-0021）—— 第 14 个真机装置。
  *
- * 它回答：**「注册 → 凭票据认领席位 → 同桌看得见玩家名 → 改名即时同步 → 复盘文案用玩家名」这条链路，
+ * 它回答：**「注册 → 认领席位 → 同桌看得见玩家名 → 改名即时同步 → 复盘文案用玩家名」这条链路，
  * 在真界面上一路跑得通吗？**以及它的反面：伪造 / 跨账号 / 二次认领能不能被挡住？
  *
+ * 开场（D-0027：票据已整个退场，说书人身份改由**开桌账号**认定）：说书人 = 注册夹具账号 →
+ * 开一桌（4 席）→ 用这个账号进主持台；席位票据随开桌取（仍直读库的 `Games.SeatsJson`），
+ * 说书人身份不再从库里掏凭据。
+ *
  * 场景（4 席：1 / 2 / 3 是场景席，4 号留给"线级探针"专用，浏览器不坐）：
- *   1) 玩家 A 在账号面板注册 alice / 爱丽丝 → 拿一次性恢复码 → 凭票据认领 1 号；
- *   2) 玩家 B 注册 bob / 鲍勃 → 认领 2 号：两席看到同一份公开席位名映射（「1 号 · 爱丽丝」+「2 号 · 鲍勃」）；
- *   3) 游客 C 不登录、只凭票据坐 3 号：席位标签回退「3 号」，那一行不带任何玩家名；
+ *   1) 玩家 A 在门上注册夹具账号 → 拿一次性恢复码 → 从大厅挑空席位认领 1 号（账号凭据接住，后面还要拿它立负向用例）；
+ *   2) 玩家 B 注册夹具账号 → 认领 2 号：两席看到同一份公开席位名映射（「1 号 · A 的玩家名」+「2 号 · B 的玩家名」）；
+ *   3) 玩家 C 注册夹具账号 → 凭**邀请码**（说书人面板上的「桌标识:席位票据」）坐 3 号：席位票据输入口已随票据退场，
+ *      界面只剩「有邀请码？」这一条；C 有账号，所以席位标签显示玩家名（「3 号」回退只留给没有账号的席位）；
  *   4) A 改名「爱丽丝二世」：断言自己、B 的同桌名单、说书人魔典席位牌三处同步；
  *   5) 说书人上报 1 号死亡 → 复盘步骤文案用「1 号 · 爱丽丝二世」（界面级的"复盘文案不再是席位号"证据）；
  *   6) 负向：伪造账号会话 / 跨账号认领 / 同一账号认领第二席都必须被 Hub 显式拒绝，绝不静默降级成游客；
@@ -40,7 +45,8 @@
  *   · negative · account-panel · onboarding · layout
  *
  * 外部耦合（换机器先核对 web/AGENTS.md §3.1）：宿主编译产物路径、SQLite 表 Games 的
- * StorytellerTicket / SeatsJson 列形状、账号表 Users 与席位绑定表 SeatBindings 的列名。
+ * SeatsJson 列形状（席位票据仍直读库；说书人身份已改走账号，见 D-0027）、
+ * 账号表 Users 与席位绑定表 SeatBindings 的列名。
  * 退出码：0 = 全过；1 = 有失败；2 = 环境缺依赖。
  */
 import { spawn } from 'node:child_process'
@@ -51,6 +57,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { DatabaseSync } from 'node:sqlite'
 import { readAttributeBounded, readTextBounded } from './lib/bounded-text.mjs'
+import { openTableAndHost, returnToSeat, seatByAccount, seatByInviteCode } from './lib/entrance.mjs'
 import { describeProfile, ensureServerArtifacts, extractProfileFlags, resolveProfile } from './lib/verify-profile.mjs'
 import { createChecker, createSectionRunner } from './lib/verify-sections.mjs'
 
@@ -68,10 +75,10 @@ const config = resolveProfile(flags, { quotaSeconds: 0.3 })
 /** 段落清单：顺序即执行顺序，也是用法头里那份清单的唯一事实来源。 */
 const SECTIONS = [
   { id: 'boot', title: '构建并启动真宿主（独立临时库）' },
-  { id: 'tickets', title: '取票据（说书人 + 各席位）并起 Vite' },
-  { id: 'join-a', title: '说书人 + 玩家 A：注册 → 认领 1 号' },
-  { id: 'join-b', title: '玩家 B：注册 → 认领 2 号（公开映射两席一致）' },
-  { id: 'guest', title: '游客 C：不登录只凭票据坐 3 号 + 线级探针入座' },
+  { id: 'tickets', title: '起 Vite（席位票据随开桌之后取）' },
+  { id: 'join-a', title: '说书人开桌进主持台（账号身份）+ 玩家 A：注册 → 从大厅挑席认领 1 号' },
+  { id: 'join-b', title: '玩家 B：注册 → 从大厅挑席认领 2 号（公开映射两席一致）' },
+  { id: 'guest', title: '玩家 C：注册账号 + 凭邀请码坐 3 号（游客票据路径）+ 线级探针入座' },
   { id: 'rename', title: '改名：A 自己 / B 同桌 / 说书人魔典三处同步 + 线级序号取证' },
   { id: 'replay', title: '复盘文案口径：上报 1 号死亡 → 步骤文案与刷新' },
   { id: 'drawer-names', title: '抽屉面姓名口径：状态账 / 最近状态变化 / 开局分配 / 席内注记' },
@@ -129,7 +136,8 @@ mkdirSync(screenshotsDir, { recursive: true })
 
 const serverUrl = `http://localhost:${options.port}`
 const viteUrl = `http://localhost:${options.vitePort}`
-const hubUrl = `${serverUrl}/hub/game`
+/** Hub 地址：桌标识在开桌之后才定得下来，所以这里是 `let`（见下面的赋值）。 */
+let hubUrl = `${serverUrl}/hub/game`
 const accountHubUrl = `${serverUrl}/hub/account`
 
 /** 宿主日志（取证用：席位名推送到底发没发、推给了几个席位，以服务端自己的记录为准）。 */
@@ -142,15 +150,16 @@ const seatNamePushLog = () =>
     .slice(-4)
     .join(' ⏎ ')
 
-/** 四个席位：1 = 账号 A，2 = 账号 B，3 = 游客 C，4 = 线级探针专用（不坐浏览器，避免抢席位）。 */
+/**
+ * 四个席位：1 = 账号 A，2 = 账号 B，3 = 账号 C（凭邀请码走游客票据那条路），
+ * 4 = 线级探针专用（不坐浏览器，避免抢席位）。
+ */
 const SEAT_COUNT = 4
 const SEAT_A = 1
 const SEAT_B = 2
 const SEAT_GUEST = 3
 const SEAT_PROBE = 4
 
-const ALICE = { username: 'alice', displayName: '爱丽丝', password: 'password-123' }
-const BOB = { username: 'bob', displayName: '鲍勃', password: 'password-456' }
 const RENAMED = '爱丽丝二世'
 
 /** 玩家端推送方法（探针订阅用；`ReceivePlayerViewChanged` 是席位名 / 权力位的那条整视图通道）。 */
@@ -197,9 +206,6 @@ async function main() {
   await startServer()
 
   if (!runner.begin('tickets')) return
-  const storytellerTicket = readStorytellerTicket(databasePath)
-  const seatTickets = readSeatTickets(databasePath)
-  check(`席位票据齐备（${SEAT_COUNT} 席）`, seatTickets.length === SEAT_COUNT, `数据库 ${seatTickets.length} 张`)
 
   const vite = spawn(
     process.execPath,
@@ -222,15 +228,28 @@ async function main() {
   browser = await playwright.chromium.launch()
   const consoleErrors = []
   const storytellerPage = await newPage(browser, { width: 1600, height: 1100 }, consoleErrors)
-  await storytellerPage.goto(viteUrl)
-  await storytellerPage.getByPlaceholder('说书人票据').fill(storytellerTicket)
-  await storytellerPage.getByRole('button', { name: '加入' }).click()
-  await storytellerPage.locator('[data-testid="grimoire"]').waitFor({ timeout: 30_000 })
-  check('说书人加入后看板可见（魔典主视图）', (await storytellerPage.locator('[data-testid="grimoire"]').count()) === 1)
+  // 说书人：注册夹具账号 → 开一桌 → 用这个账号进主持台（票据退场后这是唯一路径，也是最贴近真实用法的那条）。
+  const table = await openTableAndHost(storytellerPage, {
+    frontUrl: viteUrl,
+    serverUrl,
+    databasePath,
+    seats: SEAT_COUNT,
+    suffix: 'accounts',
+  })
+  const seatTickets = table.seatTickets
+  // 桌标识属于连接（D-0027 之后不声明就被拒）：线级探针也连到这一桌。
+  hubUrl = table.hubUrl
+  check(`席位票据齐备（${SEAT_COUNT} 席）`, seatTickets.length === SEAT_COUNT, `数据库 ${seatTickets.length} 张`)
+  check('说书人进主持台后看板可见（魔典主视图）', (await storytellerPage.locator('[data-testid="grimoire"]').count()) === 1)
 
   const alicePage = await newPage(browser, { width: 900, height: 1200 }, consoleErrors)
-  await alicePage.goto(`${viteUrl}/#player`)
-  await registerAccount(alicePage, ALICE)
+  // A：门上注册夹具账号 → 从大厅挑空席位认领 1 号（一步之内完成；账号凭据接住，负向段还要用它）。
+  const aliceAccount = await seatByAccount(alicePage, {
+    frontUrl: viteUrl,
+    gameId: table.gameId,
+    seat: SEAT_A,
+    suffix: 'accounts-a',
+  })
   const recoveryText = await waitForLocatorText(alicePage.getByTestId('account-recovery-code'), 30_000)
   const recoveryCode = recoveryCodeOf(recoveryText)
   check(
@@ -239,75 +258,94 @@ async function main() {
     `恢复码长度 ${recoveryCode.length}｜${recoveryText}`,
   )
 
-  await joinSeat(alicePage, seatTickets[SEAT_A - 1].ticket)
   const aliceSeat = await waitForLocatorContains(
     alicePage.getByTestId('player-seat'),
-    `${SEAT_A} 号 · ${ALICE.displayName}`,
+    `${SEAT_A} 号 · ${aliceAccount.displayName}`,
     30_000,
   )
-  check(`A 认领 ${SEAT_A} 号后席位标签为「${SEAT_A} 号 · ${ALICE.displayName}」`, aliceSeat.includes(`${SEAT_A} 号 · ${ALICE.displayName}`), aliceSeat)
-  const aliceRoster = await waitForLocatorContains(rosterItem(alicePage, SEAT_A), ALICE.displayName, 30_000)
-  check(`A 的同桌名单含 ${SEAT_A} 号且带玩家名`, aliceRoster.includes(ALICE.displayName), aliceRoster)
+  check(`A 认领 ${SEAT_A} 号后席位标签为「${SEAT_A} 号 · ${aliceAccount.displayName}」`, aliceSeat.includes(`${SEAT_A} 号 · ${aliceAccount.displayName}`), aliceSeat)
+  const aliceRoster = await waitForLocatorContains(rosterItem(alicePage, SEAT_A), aliceAccount.displayName, 30_000)
+  check(`A 的同桌名单含 ${SEAT_A} 号且带玩家名`, aliceRoster.includes(aliceAccount.displayName), aliceRoster)
   // 截图拍在被断言的那一步（E29 陷阱：先 waitFor 断言元素可见，再拍）。
   await alicePage.getByTestId('player-seat').waitFor({ timeout: 15_000 })
   await screenshot(alicePage, 'accounts-01-player-a')
 
   if (!runner.begin('join-b')) return
   const bobPage = await newPage(browser, { width: 900, height: 1200 }, consoleErrors)
-  await bobPage.goto(`${viteUrl}/#player`)
-  await registerAccount(bobPage, BOB)
-  await joinSeat(bobPage, seatTickets[SEAT_B - 1].ticket)
+  // B：同上——注册夹具账号（凭据接住，负向段要拿它再登录一次）→ 从大厅挑空席位认领 2 号。
+  const bobAccount = await seatByAccount(bobPage, {
+    frontUrl: viteUrl,
+    gameId: table.gameId,
+    seat: SEAT_B,
+    suffix: 'accounts-b',
+  })
   const bobRoster = await waitForLocatorContains(
     bobPage.getByTestId('player-roster'),
-    `${SEAT_B} 号 · ${BOB.displayName}`,
+    `${SEAT_B} 号 · ${bobAccount.displayName}`,
     30_000,
   )
   check(
-    `B 的同桌名单同时含「${SEAT_A} 号 · ${ALICE.displayName}」与「${SEAT_B} 号 · ${BOB.displayName}」（两席看到同一份公开映射）`,
-    bobRoster.includes(`${SEAT_A} 号 · ${ALICE.displayName}`) && bobRoster.includes(`${SEAT_B} 号 · ${BOB.displayName}`),
+    `B 的同桌名单同时含「${SEAT_A} 号 · ${aliceAccount.displayName}」与「${SEAT_B} 号 · ${bobAccount.displayName}」（两席看到同一份公开映射）`,
+    bobRoster.includes(`${SEAT_A} 号 · ${aliceAccount.displayName}`) && bobRoster.includes(`${SEAT_B} 号 · ${bobAccount.displayName}`),
     bobRoster,
   )
   await bobPage.getByTestId('player-roster').waitFor({ timeout: 15_000 })
   await screenshot(bobPage, 'accounts-02-player-b')
 
   if (!runner.begin('guest')) return
-  const guestPage = await newPage(browser, { width: 900, height: 1200 }, consoleErrors)
-  await guestPage.goto(`${viteUrl}/#player`)
-  await joinSeat(guestPage, seatTickets[SEAT_GUEST - 1].ticket)
-  await waitForLocatorContains(guestPage.getByTestId('player-roster'), `${SEAT_B} 号 · ${BOB.displayName}`, 30_000)
-  const guestSeatText = compact(await guestPage.getByTestId('player-seat').innerText())
-  check(`游客 C 的席位标签回退为「${SEAT_GUEST} 号」（无名字）`, guestSeatText === `${SEAT_GUEST} 号`, guestSeatText)
-  // 口径（PlayerPanel.vue 的 roster：有名字的席位 ∪ 自己）：自己那一行即使没有名字也列出来，
-  // 因此这里断言的"无名字"是**这一行不带任何玩家名**（回退口径「N 号（你）」），不是"这一行不出现"。
-  const guestRosterRow = compact(
-    await guestPage
+  const carolPage = await newPage(browser, { width: 900, height: 1200 }, consoleErrors)
+  // C：席位票据输入口已随票据退场，界面上只剩「有邀请码？」这一条（登录之后才看得见），
+  // 所以先注册账号、再凭说书人面板那一串「桌标识:席位票据」入座——D-0025 / D-0027 保留的游客票据路径。
+  const carolAccount = await seatByInviteCode(carolPage, {
+    frontUrl: viteUrl,
+    code: `${table.gameId}:${seatTickets[SEAT_GUEST - 1].ticket}`,
+    suffix: 'accounts-c',
+  })
+  await waitForLocatorContains(carolPage.getByTestId('player-roster'), `${SEAT_B} 号 · ${bobAccount.displayName}`, 30_000)
+  // 口径：认领席位的是**账号**，所以 C 的席位标签是「3 号 · 玩家名」；「3 号」回退只留给没有账号的席位
+  // （游客票据直连，比如本装置第 4 席的线级探针）。回退口径本身由 `seatDisplayOf` 的单元测试覆盖
+  // （`web/src/display/format.spec.ts`：这一席没有名字 → 「N 号」），本装置不再有"没账号的浏览器席位"可断言。
+  const carolSeatText = await waitForLocatorContains(
+    carolPage.getByTestId('player-seat'),
+    `${SEAT_GUEST} 号 · ${carolAccount.displayName}`,
+    30_000,
+  )
+  check(
+    `C 凭邀请码入座后席位标签为「${SEAT_GUEST} 号 · ${carolAccount.displayName}」（有账号即显示玩家名）`,
+    carolSeatText.includes(`${SEAT_GUEST} 号 · ${carolAccount.displayName}`),
+    carolSeatText,
+  )
+  // 同桌名单 = 有名字的席位 ∪ 自己（PlayerPanel.vue 的 roster）：自己那一行是名字 +「（你）」，
+  // 这里断言整行文本，等于同时盯住"有名字"与"不重复列出"两件事。
+  const carolRosterRow = compact(
+    await carolPage
       .locator(`[data-testid="player-roster"] li[data-seat="${SEAT_GUEST}"]`)
       .innerText()
       .catch(() => ''),
   )
   check(
-    `游客 C 的同桌名单里 ${SEAT_GUEST} 号那一行只有回退席位号、没有任何玩家名`,
-    guestRosterRow === `${SEAT_GUEST} 号（你）`,
-    `同桌 ${SEAT_GUEST} 号行「${guestRosterRow}」｜整份名单「${compact(await guestPage.getByTestId('player-roster').innerText())}」`,
+    `C 的同桌名单里 ${SEAT_GUEST} 号那一行是「${SEAT_GUEST} 号 · ${carolAccount.displayName}（你）」`,
+    carolRosterRow === `${SEAT_GUEST} 号 · ${carolAccount.displayName}（你）`,
+    `同桌 ${SEAT_GUEST} 号行「${carolRosterRow}」｜整份名单「${compact(await carolPage.getByTestId('player-roster').innerText())}」`,
   )
   check(
-    `游客 C 的同桌名单里没有第二个 ${SEAT_GUEST} 号（无名字的席位不重复进映射）`,
-    (await guestPage.locator(`[data-testid="player-roster"] li[data-seat="${SEAT_GUEST}"]`).count()) === 1,
-    `li[data-seat="${SEAT_GUEST}"] 条数 ${await guestPage.locator(`[data-testid="player-roster"] li[data-seat="${SEAT_GUEST}"]`).count()}`,
+    `C 的同桌名单里没有第二个 ${SEAT_GUEST} 号（有名席位与「自己」去重，同一席只出现一次）`,
+    (await carolPage.locator(`[data-testid="player-roster"] li[data-seat="${SEAT_GUEST}"]`).count()) === 1,
+    `li[data-seat="${SEAT_GUEST}"] 条数 ${await carolPage.locator(`[data-testid="player-roster"] li[data-seat="${SEAT_GUEST}"]`).count()}`,
   )
   // 诊断区只在有内容时渲染，所以这里必须**非等待**读取：`innerText()` 在元素缺失时会白等满
   // Playwright 默认的 30s 超时（2026-10-04 实测：光是这一处就把本装置从 ~7s 拖到 ~37s，
   // 分段耗时把 guest 段钉在 30.3s 才暴露出来）。缺失 = 没有诊断，不是失败。
-  const diagnosticsBox = guestPage.locator('[data-testid="player-diagnostics"]')
-  const guestDiagnostics =
+  const diagnosticsBox = carolPage.locator('[data-testid="player-diagnostics"]')
+  const carolDiagnostics =
     (await diagnosticsBox.count()) === 0 ? '' : compact(await readTextBounded(diagnosticsBox.first()))
   check(
-    '游客 C 页面不白屏：席位标签在位、诊断区没有「加入失败」',
-    (await guestPage.getByTestId('player-seat').count()) === 1 && !guestDiagnostics.includes('加入失败'),
-    guestDiagnostics || '无诊断',
+    'C 页面不白屏：席位标签在位、诊断区没有「加入失败」',
+    (await carolPage.getByTestId('player-seat').count()) === 1 && !carolDiagnostics.includes('加入失败'),
+    carolDiagnostics || '无诊断',
   )
-  await guestPage.getByTestId('player-seat').waitFor({ timeout: 15_000 })
-  await screenshot(guestPage, 'accounts-03-player-guest-c')
+  await carolPage.getByTestId('player-seat').waitFor({ timeout: 15_000 })
+  await screenshot(carolPage, 'accounts-03-player-guest-c')
 
   // 线级探针：一条真 SignalR 连接坐在**专属的第 4 席**（游客票据），逐条记录推送的序号与载荷。
   // ⚠ 每席位只保留一条连接（ConnectionRegistry.IssueForSeat）：探针若和某个浏览器页抢同一席，两边会互相
@@ -317,7 +355,7 @@ async function main() {
   const probeSnapshotMark = seatProbe.inbox.length
 
   if (!runner.begin('rename')) return
-  await waitForLocatorContains(grimoireSeatName(storytellerPage, SEAT_A), ALICE.displayName, 30_000)
+  await waitForLocatorContains(grimoireSeatName(storytellerPage, SEAT_A), aliceAccount.displayName, 30_000)
   // 账号区登录后默认收成一行摘要（票据 ui-layout-and-onboarding）：先点开「管理账号」再改名。
   await alicePage.getByTestId('account-fold-toggle').click()
   await alicePage.getByTestId('account-rename-input').fill(RENAMED)
@@ -384,18 +422,26 @@ async function main() {
 
   // 机制定位（不是放宽断言）：改名属会话信息、**不推进事件序号**，而玩家端按事件序号合并整视图
   // （web/src/services/playerViewMerge.ts：只有 `sequence > seatNamesSequence` 才采用 seatNames）。
-  // 刷新页面 = 客户端丢掉合并态、重新取一次快照：若这时也拿到新名，说明读模型与推送同源
+  // 客户端丢掉合并态、重新取一次快照：若这时也拿到新名，说明读模型与推送同源
   // （推丢失了也能靠重连补齐；赔付面靠的是服务端读模型，不是那一次推送）。
-  await bobPage.reload()
-  const bobAfterReload = await waitForLocatorContains(
+  // D-0027 之后"刷新回来"= **重新登录 + 点「回到我的座位」**：账号会话只活在内存里（刷新即失效，不落盘，
+  // 也就没有"自动回到席位"这回事），而开局 / 锁桌之后大厅整排置灰、只剩自己那一格点得动——
+  // `returnToSeat` 走的正是这条真实路径，拿到的也是同一份服务端读模型。
+  await returnToSeat(bobPage, {
+    frontUrl: viteUrl,
+    username: bobAccount.username,
+    displayName: bobAccount.displayName,
+    password: bobAccount.password,
+  })
+  const bobBackAtSeat = await waitForLocatorContains(
     bobPage.getByTestId('player-roster'),
     `${SEAT_A} 号 · ${RENAMED}`,
     30_000,
   )
   check(
-    '同源兜底：刷新重取快照后玩家端拿到同一份新名（读模型与推送同源，不依赖那一次推送）',
-    bobAfterReload.includes(`${SEAT_A} 号 · ${RENAMED}`),
-    `刷新后 B 的同桌名单「${bobAfterReload}」`,
+    '同源兜底：重新登录回到座位后重取快照，玩家端拿到同一份新名（读模型与推送同源，不依赖那一次推送）',
+    bobBackAtSeat.includes(`${SEAT_A} 号 · ${RENAMED}`),
+    `回到座位后 B 的同桌名单「${bobBackAtSeat}」`,
   )
 
   await storytellerPage.getByTestId('storyteller-replay-open').click()
@@ -472,7 +518,7 @@ async function main() {
 
   if (!runner.begin('negative')) return
   accountClient = await connectHub(accountHubUrl)
-  const bobLogin = await accountClient.invoke('Login', BOB.username, BOB.password)
+  const bobLogin = await accountClient.invoke('Login', bobAccount.username, bobAccount.password)
   check(
     'B 可再次登录取得新的账号会话（同一账号多会话并存，用于负向取证）',
     bobLogin.ok === true && typeof bobLogin.accountSession === 'string' && bobLogin.accountSession.length > 0,
@@ -500,8 +546,11 @@ async function main() {
     crossAccount.message,
   )
 
+  // "一账号一席"要用**还没有绑定的席位**来试：席位已被别人认领时，认领服务先撞上"席位已被其他账号认领"
+  // （SeatBindingService：先查席位、再查这个账号），那条判据是上一个用例的事。4 号席是线级探针用**游客票据**
+  // 连的（不落绑定），所以它是这里唯一还空着的席位——用它才测得到"同一账号第二席"。
   const secondSeat = await expectRejected(() =>
-    probe.invoke('JoinSeatWithAccount', seatTickets[SEAT_GUEST - 1].ticket, bobLogin.accountSession, 0),
+    probe.invoke('JoinSeatWithAccount', seatTickets[SEAT_PROBE - 1].ticket, bobLogin.accountSession, 0),
   )
   check(
     '同一账号认领第二席被拒（一账号一席）',
@@ -520,10 +569,11 @@ async function main() {
   )
 
   const persisted = readAccountState(databasePath)
+  const expectedUsers = [table.username, aliceAccount.username, bobAccount.username, carolAccount.username].sort()
   check(
-    '绑定是会话信息而非事件：Users 落库两个账号、SeatBindings 只有 1 / 2 号（游客 3 号无绑定）',
-    persisted.users.sort().join(',') === `${ALICE.username},${BOB.username}`
-      && persisted.bindings.join(',') === `${SEAT_A},${SEAT_B}`,
+    '绑定是会话信息而非事件：Users 落库说书人 + A / B / C 四个账号、SeatBindings 只有 1 / 2 / 3 号（说书人不坐席）',
+    persisted.users.join(',') === expectedUsers.join(',')
+      && persisted.bindings.join(',') === `${SEAT_A},${SEAT_B},${SEAT_GUEST}`,
     `Users=${persisted.users.join('|')}｜SeatBindings 席位=${persisted.bindings.join('|')}`,
   )
 
@@ -578,21 +628,6 @@ async function main() {
   await screenshot(storytellerPage, 'accounts-08-layout-storyteller')
 
   check('浏览器控制台没有报错', consoleErrors.length === 0, consoleErrors.slice(0, 3).join(' | '))
-}
-
-/** A / B / C 三张玩家页共用的注册动作：账号面板在未连接时是非紧凑布局。 */
-async function registerAccount(page, account) {
-  await page.getByTestId('account-username').fill(account.username)
-  await page.getByTestId('account-display-name').fill(account.displayName)
-  await page.getByTestId('account-password').fill(account.password)
-  await page.getByTestId('account-register').click()
-  await waitForLocatorContains(page.getByTestId('account-profile'), account.displayName, 30_000)
-}
-
-async function joinSeat(page, ticket) {
-  await page.getByPlaceholder('席位票据').fill(ticket)
-  await page.getByRole('button', { name: '加入' }).click()
-  await page.getByTestId('player-seat').waitFor({ timeout: 30_000 })
 }
 
 function rosterItem(page, seat) {
@@ -651,7 +686,7 @@ function recoveryCodeOf(text) {
   return (index >= 0 ? text.slice(index + 1) : text).replace(/\s+/g, '')
 }
 
-/** 账号 / 席位绑定的落库形状（会话信息；游客不产生绑定）。 */
+/** 账号 / 席位绑定的落库形状（会话信息；绑定只由**认领**产生，游客票据入座不落绑定）。 */
 function readAccountState(databasePathToRead) {
   const database = new DatabaseSync(databasePathToRead, { readOnly: true })
   try {
@@ -815,55 +850,6 @@ async function startServer() {
   children.push(child)
   await waitForHttp(`${serverUrl}/healthz`, '宿主 /healthz', 90_000)
   return child
-}
-
-function readStorytellerTicket(databasePathToRead) {
-  const database = new DatabaseSync(databasePathToRead, { readOnly: true })
-  try {
-    const row = database.prepare('SELECT StorytellerTicket FROM Games LIMIT 1').get()
-    if (row === undefined || typeof row.StorytellerTicket !== 'string') {
-      throw new Error('数据库里没有说书人票据')
-    }
-
-    return row.StorytellerTicket
-  } finally {
-    database.close()
-  }
-}
-
-/** 读各席位票据：SeatId 是 record struct，Web 序列化形状为 { "value": N }（两种形状都认）。 */
-function readSeatTickets(databasePathToRead) {
-  const database = new DatabaseSync(databasePathToRead, { readOnly: true })
-  try {
-    const row = database.prepare('SELECT SeatsJson FROM Games LIMIT 1').get()
-    if (row === undefined || typeof row.SeatsJson !== 'string') {
-      throw new Error('数据库里没有席位票据（Games.SeatsJson）')
-    }
-
-    const parsed = JSON.parse(row.SeatsJson)
-    if (!Array.isArray(parsed) || parsed.length === 0) {
-      throw new Error('席位票据 JSON 形状不可识别')
-    }
-
-    return parsed
-      .map((item) => ({ seat: seatNumberOf(item?.seat), ticket: String(item?.ticket ?? '') }))
-      .filter((item) => Number.isFinite(item.seat) && item.ticket.length > 0)
-      .sort((left, right) => left.seat - right.seat)
-  } finally {
-    database.close()
-  }
-}
-
-function seatNumberOf(raw) {
-  if (typeof raw === 'number') {
-    return raw
-  }
-
-  if (raw !== null && typeof raw === 'object' && typeof raw.value === 'number') {
-    return raw.value
-  }
-
-  return Number.parseInt(String(raw ?? ''), 10)
 }
 
 function parseArguments(argv) {

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * 部署后真机验收装置（D-0026）—— 「登录即可开桌，开完自己主持」的真实部署判据。
+ * 部署后真机验收装置（D-0026 / D-0027）—— 「登录即可开桌，开完自己主持」的真实部署判据。
  *
  * 它回答一个**别处证明不了**的问题：把包真的装到服务器上之后，一个全新普通账号
  * 能不能自己开一桌并主持起来。其它装置都在本机临时库上跑（自包含、可重复），
@@ -9,12 +9,13 @@
  *
  * 覆盖的链路（一段一条判据）：
  *   home      首页在部署前缀下打得开，两个入口都在
- *   register  说书人端开桌区注册一个**全新随机账号** → 服务端给出"能开桌"的能力位
- *   open      开一桌 → 拿到桌标识与说书人票据，票据**自动填进**输入框
- *   lobby     玩家端大厅里能看到这一桌（公开可见），且默认桌还在（多桌并存）
- *   host      点「加入」进主持台：魔典可见、席位数与开桌时一致
+ *   register  说书人面注册一个**全新随机账号** → 服务端给出"能开桌"的能力位
+ *   open      开一桌 → 桌标识拿到手，「我主持的桌」里出现这一桌（**回执里没有凭据**，D-0027）
+ *   lobby     未登录的玩家面只有登录卡；同一浏览器切过去能看到这一桌（账号会话跨面）
+ *   host      从「我主持的桌」点进主持台：魔典可见、席位数与开桌时一致
  *   setup     一键配板覆盖每一席 → 提交分配被受理
  *   night     开夜被受理 → 槽位由 0 前进（说书人真的主持起来了）
+ *   reconnect 刷新页面 → 用同一账号重新登录 → 那张桌还在、点一下接回主持台（桌跟着账号走）
  *
  * 用法（在仓库根运行）：
  *   node tools/verify-live-open-table.mjs --base-url http://<主机>/<前缀>/
@@ -49,13 +50,13 @@ const screenshotsDir = path.join(repositoryRoot, 'artifacts', 'web')
 const SECTIONS = [
   { id: 'probe', title: '探活：目标站点可达（地址 / 前缀写错时以退出码 2 收场）' },
   { id: 'home', title: '首页在部署前缀下打得开（两个入口都在）' },
-  { id: 'register', title: '说书人端：注册一个全新账号 → 服务端给出"能开桌"能力位' },
-  { id: 'open', title: '开一桌：拿到桌标识与说书人票据，票据自动填进输入框' },
-  { id: 'lobby', title: '玩家端大厅看得到这一桌，且默认桌还在（多桌并存）' },
-  { id: 'host', title: '点「加入」进主持台：魔典可见、席位数与开桌一致' },
+  { id: 'register', title: '说书人面：注册一个全新账号 → 服务端给出"能开桌"能力位' },
+  { id: 'open', title: '开一桌：桌标识拿到手，「我主持的桌」里出现这一桌（回执里没有凭据）' },
+  { id: 'lobby', title: '未登录的玩家面只有登录卡；同一浏览器切过去能看到这一桌（会话跨面）' },
+  { id: 'host', title: '点「进主持台」：魔典可见、席位数与开桌一致' },
   { id: 'setup', title: '一键配板 + 提交分配被受理' },
   { id: 'night', title: '开夜被受理 → 槽位由 0 前进（真的主持起来了）' },
-  { id: 'reconnect', title: '刷新页面后凭本机票据自动接回主持台（身份跟着桌走）' },
+  { id: 'reconnect', title: '刷新页面后用同一账号重新登录并接回这张桌（D-0027：桌跟着账号走）' },
 ]
 
 /** 退出码 2 = 参数 / 环境问题（与"断言失败"的 1 分开，部署者一眼能分清该查哪边）。 */
@@ -168,7 +169,7 @@ async function main() {
 
   if (!runner.begin('register')) return
   await openAt(page, `${options.baseUrl}#/storyteller`)
-  await page.getByTestId('storyteller-open-table').locator('summary').click()
+  await revealRegisterTab(page)
   await page.getByTestId('account-username').fill(username)
   await page.getByTestId('account-display-name').fill(displayName)
   await page.getByTestId('account-password').fill(password)
@@ -187,13 +188,10 @@ async function main() {
   // 行为判据，不解析文案：不能开桌时界面上会挂出"被挡住"的提示、按钮也会禁用。
   const blocked = await page.getByTestId('open-table-blocked').count()
   const submitDisabled = await page.getByTestId('open-table-submit').isDisabled()
-  const noticeText = (await page.getByTestId('open-table-notice').count()) > 0
-    ? compact(await readTextBounded(page.getByTestId('open-table-notice')))
-    : ''
   check(
     '服务端给出"这个账号能开桌"的能力位（默认放开自助开桌）',
     blocked === 0 && !submitDisabled,
-    `挡板提示=${blocked}；按钮禁用=${submitDisabled}；提示=${noticeText || '（无）'}`,
+    `挡板提示=${blocked}；按钮禁用=${submitDisabled}`,
   )
 
   if (!runner.begin('open')) return
@@ -201,40 +199,54 @@ async function main() {
   await page.getByTestId('open-table-seats').fill(String(options.seats))
   await page.getByTestId('open-table-submit').click()
 
-  const ticketVisible = await waitForCount(page.getByTestId('new-table-ticket'), 1, options.timeoutMs)
-  const ticket = ticketVisible ? compact(await readTextBounded(page.getByTestId('new-table-ticket'))) : ''
-  check('开桌成功并回给开桌者一张说书人票据', /^[a-z0-9]+:storyteller-[0-9a-f]{32}$/.test(ticket), ticket || '票据没出现')
+  // D-0027：受理证据是「我主持的桌」里多出来的那一行，**不是**一串要被抄下来的凭据。
+  const row = page.locator('[data-my-table]').first()
+  const listedOwn = await waitForCount(row, 1, options.timeoutMs)
+  check('开桌成功：这一桌出现在「我主持的桌」里', listedOwn, listedOwn ? compact(await readTextBounded(row)) : '列表里没有这一桌')
 
-  created.gameId = ticket.includes(':') ? ticket.slice(0, ticket.indexOf(':')) : null
-  const filled = await page.getByTestId('storyteller-ticket').inputValue()
-  check('票据自动填进主持台的输入框（省掉手抄一串）', filled === ticket && ticket.length > 0, `输入框=${filled || '（空）'}`)
+  created.gameId = listedOwn ? await row.getAttribute('data-my-table') : null
+  check(
+    '开桌回执里没有任何凭据（票据已随 D-0027 退场：进主持台只认开桌账号）',
+    (await page.getByTestId('new-table-ticket').count()) === 0 && created.gameId !== null,
+    `票据元素=${await page.getByTestId('new-table-ticket').count()}；桌标识=${created.gameId ?? '（没有）'}`,
+  )
   await screenshot(page, 'open-table')
 
   if (!runner.begin('lobby')) return
-  const lobby = await context.newPage()
-  lobby.on('pageerror', (error) => consoleErrors.push(error.message))
-  await openAt(lobby, `${options.baseUrl}#/play`)
-  const newTableRow = lobby.locator(`[data-table="${created.gameId}"]`)
+  // 未登录的玩家面：只有一张登录卡（D-0027 的第一条判据，在**部署形态**下同样要成立）。
+  const stranger = await context.newPage()
+  stranger.on('pageerror', (error) => consoleErrors.push(error.message))
+  await openAt(stranger, `${options.baseUrl}#/player`)
+  const strangerLobby = await stranger.getByTestId('player-lobby').count()
+  const strangerSeats = await stranger.locator('[data-seat]').count()
+  check(
+    '未登录的玩家面只有登录卡（没有桌列表、没有席位按钮）',
+    strangerLobby === 0 && strangerSeats === 0,
+    `大厅容器=${strangerLobby}；席位按钮=${strangerSeats}`,
+  )
+  await stranger.close()
+
+  // 同一个浏览器切到玩家面：账号会话跨面共享（D-0027），所以大厅里看得到刚开的那一桌。
+  await page.getByTestId('nav-player').click()
+  const newTableRow = page.locator(`[data-table="${created.gameId}"]`)
   const listed = await waitForCount(newTableRow, 1, options.timeoutMs)
   const rowText = listed ? compact(await readTextBounded(newTableRow)) : ''
-  check('玩家端大厅里能看到这张新桌（公开信息，未登录也能看）', listed, rowText || '大厅里没有这一桌')
+  check('同一浏览器切到玩家面（不用再登一次）：大厅里看得到这张新桌', listed, rowText || '大厅里没有这一桌')
   check(
     `新桌人数与席位对得上（0 / ${options.seats}）`,
     rowText.includes(`0 / ${options.seats}`),
     rowText,
   )
-  check(
-    '默认桌仍在列表里（多桌并存，新桌没顶掉旧桌）',
-    (await lobby.locator('[data-table="default"]').count()) === 1,
-    `桌数=${await lobby.locator('[data-table]').count()}`,
-  )
-  await screenshot(lobby, 'lobby-with-new-table')
-  await lobby.close()
+  await screenshot(page, 'lobby-with-new-table')
 
   if (!runner.begin('host')) return
-  await page.getByRole('button', { name: '加入' }).click()
+  // 回说书人面，从「我主持的桌」点进主持台。
+  await page.getByTestId('nav-storyteller').click()
+  const backRow = page.locator(`[data-my-table="${created.gameId}"]`)
+  await waitForCount(backRow, 1, options.timeoutMs)
+  await backRow.getByTestId('host-enter').click()
   const grimoire = await waitForCount(page.getByTestId('grimoire'), 1, options.timeoutMs)
-  check('凭这张票据进了这一桌的主持台（魔典可见）', grimoire, grimoire ? '魔典已渲染' : '魔典没出现')
+  check('从「我主持的桌」进主持台（魔典可见）', grimoire, grimoire ? '魔典已渲染' : '魔典没出现')
   const seatRows = await page.locator('section', { hasText: '开局分配' }).locator('tbody tr').count()
   check(`主持台的席位数与开桌时一致（${options.seats}）`, seatRows === options.seats, `UI 席位数=${seatRows}`)
   await screenshot(page, 'storyteller-console')
@@ -272,11 +284,25 @@ async function main() {
   await screenshot(page, 'night-started')
 
   if (!runner.begin('reconnect')) return
-  // 票据存在本机（TicketStore）：重开这一页应当自己接回主持台，不需要再登录、再抄票据。
-  // 这条同时说明"说书人身份跟着**桌**走"——它不依赖账号会话（账号会话只存内存，刷新即失效）。
-  await openAt(page, `${options.baseUrl}#/storyteller`)
+  // 账号会话只在内存里（刷新即失效）——所以"回来"这件事必须靠**账号**：刷新 → 重新登录 → 「我的桌」里点回来。
+  // 这正是 D-0027 要证明的：桌跟着账号走，不跟着浏览器里的一串凭据走。
+  await page.goto(`${options.baseUrl}#/storyteller`, { waitUntil: 'domcontentloaded' })
+  await page.reload({ waitUntil: 'domcontentloaded' })
+  await page.getByTestId('account-username').fill(username)
+  await page.getByTestId('account-password').fill(password)
+  await page.getByTestId('account-login').click()
+  const signedBack = await waitForCount(page.getByTestId('account-profile'), 1, options.timeoutMs)
+  check('刷新后用同一账号重新登录成功（换设备也是这条路）', signedBack, signedBack ? '资料区已出现' : '没有登录上')
+
+  const myRow = page.locator(`[data-my-table="${created.gameId}"]`)
+  const stillMine = await waitForCount(myRow, 1, options.timeoutMs)
+  check('那张桌还在「我主持的桌」里（桌不跟着浏览器走）', stillMine, stillMine ? '在列表里' : '列表里没有它')
+  if (stillMine) {
+    await myRow.getByTestId('host-enter').click()
+  }
+
   const backInConsole = await waitForCount(page.getByTestId('grimoire'), 1, options.timeoutMs)
-  check('刷新页面后凭本机票据自动接回主持台（无需重新登录）', backInConsole, backInConsole ? '魔典已渲染' : '没有自动接回')
+  check('点一下就接回主持台（魔典可见，不用再抄任何凭据）', backInConsole, backInConsole ? '魔典已渲染' : '没有接回')
   const seatRowsAfterReload = await page.locator('section', { hasText: '开局分配' }).locator('tbody tr').count()
   check(
     `接回的是同一张桌（席位数仍是 ${options.seats}）`,
@@ -286,6 +312,16 @@ async function main() {
   await screenshot(page, 'reconnected')
 
   check('全过程没有未预期的控制台错误', consoleErrors.length === 0, consoleErrors.slice(0, 3).join(' | ') || '零错误')
+}
+
+/** 登录卡上的「注册」页签（新用户要先切过去）。 */
+async function revealRegisterTab(page) {
+  const tab = page.getByTestId('account-tab-register')
+  if ((await tab.count()) > 0) {
+    await tab.click()
+  }
+
+  await waitForCount(page.getByTestId('account-display-name'), 1, options.timeoutMs)
 }
 
 /** 收尾：只关浏览器。服务器的数据由部署者按报告里的 SQL 清理。 */

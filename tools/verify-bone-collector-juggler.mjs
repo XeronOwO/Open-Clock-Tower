@@ -39,7 +39,8 @@
  *   node tools/verify-bone-collector-juggler.mjs --port 5419 --vite-port 5299           # 自定端口
  *
  * 外部耦合（换机器先核对 web/AGENTS.md §3.1）：宿主编译产物路径、SQLite 表 Games 的
- * StorytellerTicket / SeatsJson 列形状、SignalR 的 SubmitResponse 四参数签名。
+ * SeatsJson 列形状（席位票据仍直读库；说书人身份已改走账号，见 D-0027）、
+ * SignalR 的 SubmitResponse 四参数签名。
  * 退出码：0 = 全过；1 = 有失败；2 = 环境缺依赖。
  */
 import { spawn } from 'node:child_process'
@@ -48,8 +49,8 @@ import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { DatabaseSync } from 'node:sqlite'
 import { readAttributeBounded, readTextBounded } from './lib/bounded-text.mjs'
+import { openTableAndHost, seatByAccount, seatByInviteCode } from './lib/entrance.mjs'
 import { describeProfile, ensureServerArtifacts, extractProfileFlags, resolveProfile } from './lib/verify-profile.mjs'
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -83,7 +84,8 @@ mkdirSync(screenshotsDir, { recursive: true })
 
 const serverUrl = `http://localhost:${options.port}`
 const viteUrl = `http://localhost:${options.vitePort}`
-const hubUrl = `${serverUrl}/hub/game`
+/** Hub 地址：桌标识在开桌之后才定得下来，所以这里是 `let`（见下面的赋值）。 */
+let hubUrl = `${serverUrl}/hub/game`
 
 /**
  * 五席基础花名册。选角理由（每一席都写明它为什么在这里，改动前先读这段）：
@@ -143,10 +145,7 @@ async function main() {
   console.log(`  宿主产物：${artifacts.artifact}（${artifacts.built ? '本次构建' : '复用'}）`)
   await startServer()
 
-  console.log('=== 2/10 取票据并起 Vite ===')
-  const ticket = readStorytellerTicket(databasePath)
-  const seatTickets = readSeatTickets(databasePath)
-  check('席位票据齐备（5 席）', seatTickets.length === ASSIGN.length, `数据库 ${seatTickets.length} 张`)
+  console.log('=== 2/10 起 Vite ===')
 
   const vite = spawn(
     process.execPath,
@@ -160,22 +159,30 @@ async function main() {
   children.push(vite)
   await waitForHttp(viteUrl, 'Vite 开发服务器', 60_000)
 
-  console.log('=== 3/10 说书人 + 杂耍艺人 / 畸形秀演员加入真浏览器；恶魔走线级探针 ===')
+  console.log('=== 3/10 说书人开一桌并进主持台（账号身份，D-0027）；杂耍艺人 / 畸形秀演员入座，恶魔走线级探针 ===')
   const browser = await playwright.chromium.launch()
   const consoleErrors = []
   storytellerPage = await newPage(browser, { width: 1600, height: 1100 }, consoleErrors)
-  await storytellerPage.goto(viteUrl)
-  await storytellerPage.getByPlaceholder('说书人票据').fill(ticket)
-  await storytellerPage.getByRole('button', { name: '加入' }).click()
-  await storytellerPage.locator('[data-testid="grimoire"]').waitFor({ timeout: 30_000 })
+  // 说书人：注册夹具账号 → 开一桌 → 进主持台（票据退场后这是唯一路径，也是最贴近真实用法的那条）。
+  const table = await openTableAndHost(storytellerPage, {
+    frontUrl: viteUrl,
+    serverUrl,
+    databasePath,
+    seats: ASSIGN.length,
+    suffix: 'bone',
+  })
+  const seatTickets = table.seatTickets
+  // 桌标识属于连接（D-0027 之后不声明就被拒）：线级探针也连到这一桌。
+  hubUrl = table.hubUrl
+  check('席位票据齐备（5 席）', seatTickets.length === ASSIGN.length, `数据库 ${seatTickets.length} 张`)
   check(
     '说书人加入后看板可见（魔典主视图）',
     (await storytellerPage.locator('[data-testid="grimoire"]').count()) === 1,
   )
   await openDataDrawer(storytellerPage)
 
-  const jugglerPage = await joinPlayerPage(browser, seatTickets[JUGGLER_SEAT - 1], JUGGLER_SEAT, consoleErrors)
-  const mutantPage = await joinPlayerPage(browser, seatTickets[MUTANT_SEAT - 1], MUTANT_SEAT, consoleErrors)
+  const jugglerPage = await joinPlayerPage(browser, table.gameId, JUGGLER_SEAT, 'bone-juggler', consoleErrors)
+  const mutantPage = await joinPlayerPage(browser, table.gameId, MUTANT_SEAT, 'bone-mutant', consoleErrors)
   check(
     `两个玩家席加入玩家端（${JUGGLER_SEAT} 号杂耍艺人 / ${MUTANT_SEAT} 号畸形秀演员）`,
     (await jugglerPage.locator('[data-testid="player-seat"]').count()) === 1
@@ -227,15 +234,23 @@ async function main() {
 
   const issued = storytellerPage.getByTestId('traveller-issued')
   const issuedSeat = await waitForAttribute(issued, 'data-seat', String(BONE_COLLECTOR_SEAT), 20_000)
-  const issuedTicket = compact(await readTextBounded(issued.locator('.mono')))
+  const inviteCode = compact(await readTextBounded(issued.locator('.mono')))
   check(
-    `加入集骨者签发第 ${BONE_COLLECTOR_SEAT} 席与票据`,
-    issuedSeat === String(BONE_COLLECTOR_SEAT) && issuedTicket.length > 0,
-    `seat=${issuedSeat}；ticket=${issuedTicket.slice(0, 10)}…`,
+    `加入集骨者签发第 ${BONE_COLLECTOR_SEAT} 席与邀请码`,
+    issuedSeat === String(BONE_COLLECTOR_SEAT) && inviteCode.startsWith(`${table.gameId}:`),
+    `seat=${issuedSeat}；邀请码=${inviteCode.slice(0, 14)}…`,
   )
-  const boneCollectorPage = await joinPlayerPage(browser, { ticket: issuedTicket }, BONE_COLLECTOR_SEAT, consoleErrors)
+
+  // 集骨者是**中途到场**的旅行者：这一桌已经开局，大厅的席位按钮点不动，
+  // 所以他走的是"有邀请码？"那条兜底路径——说书人把这一串交给他，他粘一次就入座。
+  const boneCollectorPage = await newPage(browser, { width: 900, height: 1100 }, consoleErrors)
+  await seatByInviteCode(boneCollectorPage, {
+    frontUrl: viteUrl,
+    code: inviteCode,
+    suffix: 'bone-collector',
+  })
   check(
-    `集骨者用签发票据加入成功（${BONE_COLLECTOR_SEAT} 号，与杂耍艺人同一天在局）`,
+    `集骨者凭邀请码加入成功（${BONE_COLLECTOR_SEAT} 号，与杂耍艺人同一天在局）`,
     (await boneCollectorPage.locator('[data-testid="player-seat"]').count()) === 1,
   )
 
@@ -384,12 +399,10 @@ async function main() {
   await browser.close()
 }
 
-/** 玩家席加入真浏览器：填票据 → 断言席位徽标。 */
-async function joinPlayerPage(browser, seatTicket, seat, consoleErrors) {
+/** 玩家席加入真浏览器：注册夹具账号 → 从大厅挑空席位（D-0027，不再填票据）→ 断言席位徽标。 */
+async function joinPlayerPage(browser, gameId, seat, suffix, consoleErrors) {
   const page = await newPage(browser, { width: 900, height: 1100 }, consoleErrors)
-  await page.goto(`${viteUrl}/#player`)
-  await page.getByPlaceholder('席位票据').fill(seatTicket.ticket)
-  await page.getByRole('button', { name: '加入' }).click()
+  await seatByAccount(page, { frontUrl: viteUrl, gameId, seat, suffix })
   const badge = await waitForText(page.locator('[data-testid="player-seat"]'), String(seat), 30_000)
   if (!badge.includes(String(seat))) {
     throw new Error(`${seat} 号席位加入失败：${badge}`)
@@ -547,7 +560,8 @@ async function runNight(page, label, night) {
 
         const value = night.boneCollector.choose === null
           ? request.options.find((option) => option.text.includes('摇头'))?.value ?? null
-          : request.options.find((option) => option.text.includes(`${night.boneCollector.choose} 号玩家`))?.value ?? null;
+          // 按**选项值**挑（`seat:N`）：界面文案会随玩家名变（D-0021 的「N 号 · 名字」），值不会。
+          : request.options.find((option) => option.value === `seat:${night.boneCollector.choose}`)?.value ?? null;
         const submitted = await answerSeatRequest(night.boneCollectorPage, value)
         check(
           `${label}：集骨者${night.boneCollector.choose === null ? '摇头不用' : `选中已死亡的 ${night.boneCollector.choose} 号`}被受理`,
@@ -1129,43 +1143,6 @@ async function startServer() {
   children.push(child)
   await waitForHttp(`${serverUrl}/healthz`, '宿主 /healthz', 90_000)
   return child
-}
-
-function readStorytellerTicket(databasePathToRead) {
-  const database = new DatabaseSync(databasePathToRead, { readOnly: true })
-  try {
-    const row = database.prepare('SELECT StorytellerTicket FROM Games LIMIT 1').get()
-    if (row === undefined || typeof row.StorytellerTicket !== 'string') {
-      throw new Error('数据库里没有说书人票据')
-    }
-
-    return row.StorytellerTicket
-  } finally {
-    database.close()
-  }
-}
-
-/** 读各席位票据：SeatId 是 record struct，Web 序列化形状为 { "value": N }（两种形状都认）。 */
-function readSeatTickets(databasePathToRead) {
-  const database = new DatabaseSync(databasePathToRead, { readOnly: true })
-  try {
-    const row = database.prepare('SELECT SeatsJson FROM Games LIMIT 1').get()
-    if (row === undefined || typeof row.SeatsJson !== 'string') {
-      throw new Error('数据库里没有席位票据（Games.SeatsJson）')
-    }
-
-    const parsed = JSON.parse(row.SeatsJson)
-    if (!Array.isArray(parsed) || parsed.length === 0) {
-      throw new Error('席位票据 JSON 形状不可识别')
-    }
-
-    return parsed
-      .map((item) => ({ seat: seatNumberOf(item?.seat), ticket: String(item?.ticket ?? '') }))
-      .filter((item) => Number.isFinite(item.seat) && item.ticket.length > 0)
-      .sort((left, right) => left.seat - right.seat)
-  } finally {
-    database.close()
-  }
 }
 
 function seatNumberOf(raw) {

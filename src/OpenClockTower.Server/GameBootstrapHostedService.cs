@@ -6,13 +6,16 @@ using OpenClockTower.Application;
 namespace OpenClockTower.Server;
 
 /// <summary>
-/// 启动引导：建库 → 结构守卫（账号表 / 后加的列）→ 保证默认桌在册 → 装载**所有**桌。
+/// 启动引导：建库 → 结构守卫（账号表 / 后加的列）→ 装载**所有**桌。
 /// </summary>
 /// <remarks>
 /// <para>
 /// 多桌（D-0024）之后，"恢复"不再是对一个进程级会话调用一次，而是由 <see cref="GameRegistry"/>
-/// 把库里每一桌都装起来；本服务负责建库、结构守卫，以及保证默认桌（<see cref="GameServerOptions.GameId"/>）
-/// 仍然在册——它是升级前就存在的那一桌，不能因为改造而"消失"。
+/// 把库里每一桌都装起来；本服务负责建库与结构守卫。
+/// </para>
+/// <para>
+/// **不再创建任何桌**（D-0027）：默认桌先天没有开桌账号，与"说书人即房主"不相容。
+/// 全新部署启动后库里是空的，第一桌由人在界面上开出来——"打开站点是空大厅"是有意的初始状态。
 /// </para>
 /// <para>
 /// 夜晚计划**不在引导阶段自动构建**：真实顺序表在 <c>OpenClockTower.Rules</c>，
@@ -26,31 +29,23 @@ namespace OpenClockTower.Server;
 public sealed class GameBootstrapHostedService : IHostedService
 {
     private readonly IDbContextFactory<GameDbContext> _dbFactory;
-    private readonly IGameCatalog _catalog;
     private readonly GameRegistry _registry;
-    private readonly GameServerOptions _options;
     private readonly ILogger<GameBootstrapHostedService> _logger;
 
     /// <summary>构造引导服务。</summary>
     public GameBootstrapHostedService(
         IDbContextFactory<GameDbContext> dbFactory,
-        IGameCatalog catalog,
         GameRegistry registry,
-        IOptions<GameServerOptions> options,
         ILogger<GameBootstrapHostedService> logger)
     {
         _dbFactory = dbFactory;
-        _catalog = catalog;
         _registry = registry;
-        _options = options.Value;
         _logger = logger;
     }
 
     /// <inheritdoc />
     public async Task StartAsync(CancellationToken cancellationToken)
     {
-        var defaultGameId = new GameId(_options.GameId);
-
         await using (var db = await _dbFactory.CreateDbContextAsync(cancellationToken))
         {
             await db.Database.EnsureCreatedAsync(cancellationToken);
@@ -58,20 +53,7 @@ public sealed class GameBootstrapHostedService : IHostedService
             await EnsureGameColumnsAsync(db, cancellationToken);
         }
 
-        var setup = await _catalog.FindAsync(defaultGameId, cancellationToken);
-        if (setup is null)
-        {
-            setup = GameSetupFactory.Create(defaultGameId, _options.SeatCount);
-            await _catalog.SaveAsync(setup, cancellationToken);
-            _logger.LogWarning(
-                "已创建默认桌（升级前的那一桌）：game={GameId} 席位={SeatCount} 说书人票据={StorytellerTicket} 票据={Tickets}",
-                defaultGameId.Value,
-                setup.Seats.Count,
-                setup.StorytellerTicket,
-                string.Join(",", setup.Seats.Select(seat => $"{seat.Seat.Value}:{seat.Ticket}")));
-        }
-
-        // 装载库里全部在册的桌（多桌并行）。
+        // 装载库里全部在册的桌（多桌并行）。库是空的就什么都不装——等第一桌被开出来。
         await _registry.InitializeAsync(cancellationToken);
 
         _logger.LogInformation(
@@ -145,6 +127,9 @@ public sealed class GameBootstrapHostedService : IHostedService
         [
             ("Name", "ALTER TABLE Games ADD COLUMN Name TEXT NOT NULL DEFAULT '';"),
             ("IsLocked", "ALTER TABLE Games ADD COLUMN IsLocked INTEGER NOT NULL DEFAULT 0;"),
+            // 归属（D-0027）：老库里的桌补成 NULL = 没有房主，谁都进不去它的主持台——
+            // 这是如实反映"升级前那一桌本来就没有开桌账号"，不做任何猜测性回填。
+            ("CreatedByAccountId", "ALTER TABLE Games ADD COLUMN CreatedByAccountId INTEGER NULL;"),
         ];
 
         foreach (var (column, sql) in required)

@@ -29,15 +29,20 @@ export interface LobbyTable {
   locked: boolean
   /** 已被占用的席位号：界面据此把座位按钮置灰，玩家不必"点一下试试"。 */
   occupiedSeatNumbers: number[]
+  /** 这张桌是不是**我**开的（D-0027）：服务端按会话算好，前端不自己拼事实。 */
+  createdByMe: boolean
+  /** 这张桌上**已经属于我**的席位号（D-0027）：刷新 / 换设备后"回到我的座位"靠它。 */
+  mySeatNumbers: number[]
 }
 
-/** 建桌结果；`storytellerTicket` 是秘密（成为该桌说书人的凭据），只随事件流转。 */
+/**
+ * 建桌结果（D-0027）：回执里**没有凭据**——开桌即成为这一桌的说书人，`gameId` 就够进主持台了。
+ */
 export interface LobbyCreateResult {
   ok: boolean
   code: string
   message: string
   gameId: string
-  storytellerTicket: string | null
   seatCount: number
 }
 
@@ -61,10 +66,12 @@ export function normalizeLobbyTables(raw: unknown): LobbyTable[] {
 
     const number = (key: string): number => (typeof value[key] === 'number' ? (value[key] as number) : 0)
     const flag = (key: string): boolean => value[key] === true
-    const rawOccupied = value['occupiedSeatNumbers']
-    const occupiedSeatNumbers = Array.isArray(rawOccupied)
-      ? rawOccupied.filter((seat): seat is number => typeof seat === 'number' && Number.isInteger(seat))
-      : []
+    const seatNumbers = (key: string): number[] => {
+      const raw = value[key]
+      return Array.isArray(raw)
+        ? raw.filter((seat): seat is number => typeof seat === 'number' && Number.isInteger(seat))
+        : []
+    }
 
     tables.push({
       gameId,
@@ -73,7 +80,9 @@ export function normalizeLobbyTables(raw: unknown): LobbyTable[] {
       takenSeatCount: number('takenSeatCount'),
       started: flag('started'),
       locked: flag('locked'),
-      occupiedSeatNumbers,
+      occupiedSeatNumbers: seatNumbers('occupiedSeatNumbers'),
+      createdByMe: flag('createdByMe'),
+      mySeatNumbers: seatNumbers('mySeatNumbers'),
     })
   }
 
@@ -192,12 +201,16 @@ export class AccountGateway {
     return result
   }
 
-  /** 列出在开的桌（大厅；未登录也能看——它是公开门面）。 */
+  /** 列出在开的桌（大厅）：未登录也能看；带会话时附带"这张桌是不是我开的"（D-0027）。 */
   async listTables(): Promise<LobbyTable[]> {
-    return normalizeLobbyTables(await this.invokeRaw('ListTables'))
+    return normalizeLobbyTables(
+      await this.invokeRaw('ListTables', this.profileValue?.accountSession ?? null),
+    )
   }
 
-  /** 开一张新桌（D-0026：登录即可；服务端按部署开关判定，被拒时如实回给界面）。 */
+  /**
+   * 开一张新桌（D-0026：登录即可；D-0027：开完这一桌就是你的，回执里没有凭据）。
+   */
   async createTable(name: string, seatCount: number): Promise<LobbyCreateResult> {
     const session = this.requireSession()
     const raw = await this.invokeRaw('CreateTable', session, name, seatCount)
@@ -207,10 +220,6 @@ export class AccountGateway {
       code: typeof value['code'] === 'string' ? value['code'] : 'unknown',
       message: typeof value['message'] === 'string' ? value['message'] : '',
       gameId: typeof value['gameId'] === 'string' ? value['gameId'] : '',
-      storytellerTicket:
-        typeof value['storytellerTicket'] === 'string' && value['storytellerTicket'].length > 0
-          ? value['storytellerTicket']
-          : null,
       seatCount: typeof value['seatCount'] === 'number' ? value['seatCount'] : 0,
     }
   }

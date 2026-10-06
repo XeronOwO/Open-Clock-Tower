@@ -5,8 +5,11 @@
  * 说书人面板与玩家端能不能真的玩通夜晚与白天？**（验收规程：docs/acceptance/AGENTS.md §3）
  *
  * 场景（花名册默认五席：clockmaker / dreamer / no-dashii / mutant / klutz）：
- *   1) 起真宿主（独立临时库）→ 读说书人票据与各席位票据 → 起前端页面（默认 Vite；`--serve-front` 时由宿主托管）→ 起 Chromium；
- *   2) 说书人 + 每席一个玩家各自加入（独立浏览器上下文 = 各自设备）→ 断言加入时页头阶段是中文；
+ *   1) 起真宿主（独立临时库）→ 起前端页面（默认 Vite；`--serve-front` 时由宿主托管）→ 起 Chromium；
+ *   2) 说书人：注册夹具账号 → 开一桌 → 用这个账号进主持台（D-0027：说书人身份跟着开桌账号走，
+ *      那串说书人凭据已整个删除、界面上也不再有它的输入框；各席位票据在开桌后按桌标识**直读库**取，
+ *      那张票还没退场）；
+ *      每席一个玩家各自注册账号、从大厅挑空席位入座（独立浏览器上下文 = 各自设备）→ 断言加入时页头阶段是中文；
  *   3) 说书人分配三角色 → 诺-达鲺常驻中毒落在最近的两名镇民（带归因与效果链接）；
  *   4) 说书人上报 1 号醉酒 → 与中毒并存、互不抵消；
  *   5) 开夜 → 阶段推送让各席玩家页头变「首夜」（行 3）→ 钟表匠槽位没有玩家选项，直接进说书人
@@ -28,10 +31,11 @@
  *      归因、行 4 当前槽位高亮 + 操作台内完成真实裁定、行 3 死亡帷幕与复活解除、
  *      行 6 下钻表格与牌面同源、行 8 窄视口纵向列表；行 5（视角隔离）沿用玩家端反方向断言；
  *  12) 恢复与重建：干净流重建 → 三项等价；改脏事件流里的原因文本 → 状态账报"不一致"并由重建修回；
- *      停宿主 + 弄坏事件载荷 + 重启 → 说书人视图出现降级位与原因；重建仍失败 → 保持降级、原因更新；
+ *      停宿主 + 弄坏事件载荷 + 重启 → 说书人**重新登录接回主持台**后看到降级位与原因（D-0027：会话只在
+ *      内存里，刷新即退回登录卡）；重建仍失败 → 保持降级、原因更新；
  *      修复载荷后重建成功 → 降级清除；玩家端全程没有健康位文案 / 锚点；
- *  13) 重连补齐（快照权威）：隐藏事件不报假缺口、watermark 随快照序号前进；非零 watermark 跨掉线窗口
- *      重连（窗口内有其他席位的隐藏状态变化）仍无假告警；
+ *  13) 重连补齐（快照权威）：隐藏事件不报假缺口、watermark 随快照序号前进（页内「补齐」带非零本地已知）；
+ *      断开后从大厅回到自己的席位（新连接 → 本地已知 0），窗口内有其他席位的隐藏状态变化仍无假告警；
  *  14) 涡流干扰回归（票据 vortox-interference-counting 行 1 / 4）：涡流存活 + 健康的筑梦师结算信息能力 →
  *      裁定点写明「涡流在场：信息必须为假（真角色不得出现）」→ 说书人账本同时给「正常生效 + 原因：涡流」
  *      并落 dreamer / 涡流 一行 → 信息只到 2 号；全部玩家端扫描不到失效归因。
@@ -66,8 +70,11 @@
  *
  * 外部耦合（换机器前先核对，见 web/AGENTS.md §3.1）：
  *   - 宿主编译产物路径 src/OpenClockTower.Server/bin/Release/net10.0/OpenClockTower.Server[.exe]；
- *   - SQLite 表 Games、列 StorytellerTicket / SeatsJson（SeatId 是 record struct，
- *     Web 序列化形状为 { "value": 1 }）；
+ *   - SQLite 表 Games 的 SeatsJson 列形状（席位票据仍直读库；说书人身份已改走账号，见 D-0027；
+ *     SeatId 是 record struct，Web 序列化形状为 { "value": 1 }）；
+ *   - 入场界面锚点：登录 / 注册卡（`account-*`）、开桌（`open-table-*`）、「我主持的桌」（`data-my-table` /
+ *     `host-enter`）、大厅席位（`[data-table]` / `[data-seat]` / `[data-seat-mine]`）、邀请码
+ *     （`seat-invite` / `seat-invite-code` / `seat-invite-join`）——口径见 tools/lib/entrance.mjs；
  *   - 席位数量 = --seats = --assign 数量（建表要求每一席都有角色）；
  *   - 场景要求 --assign 含 clockmaker / dreamer / no-dashii。
  *
@@ -81,6 +88,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { DatabaseSync } from 'node:sqlite'
 import { readAttributeBounded, readTextBounded } from './lib/bounded-text.mjs'
+import { openTableAndHost, returnToSeat, seatByAccount, seatByInviteCode } from './lib/entrance.mjs'
 import { describeProfile, ensureServerArtifacts, extractProfileFlags, resolveProfile } from './lib/verify-profile.mjs'
 import { createChecker, createSectionRunner } from './lib/verify-sections.mjs'
 
@@ -101,8 +109,8 @@ const config = resolveProfile(flags, { quotaSeconds: 0.3 })
 /** 段落清单：顺序即执行顺序，也是用法头里那份清单的唯一事实来源。 */
 const SECTIONS = [
   { id: 'boot', title: '构建并启动真宿主（独立临时库）' },
-  { id: 'tickets', title: '取票据（说书人 + 各席位）并起 Vite' },
-  { id: 'join', title: '说书人与各玩家加入（每席一个独立浏览器上下文）' },
+  { id: 'tickets', title: '起 Vite 前端页面（开桌与取席位票据挪到 join 段）' },
+  { id: 'join', title: '说书人注册账号开一桌进主持台 + 各玩家注册账号挑席位入座（每席一个独立浏览器上下文）' },
   { id: 'assign', title: '说书人分配角色（席位全分配）' },
   { id: 'opening', title: '开局状态：诺-达鲺常驻中毒 + 说书人上报醉酒' },
   { id: 'annotation', title: '说书人注记：加 / 改 / 删 + 牌面 token + 玩家零下发（D-0019）' },
@@ -200,14 +208,8 @@ async function main() {
   let server = await startServer()
 
   if (!runner.begin('tickets')) return
-  const ticket = readStorytellerTicket(databasePath)
-  console.log(`说书人票据：${ticket.slice(0, 12)}…`)
-  const seatTickets = readSeatTickets(databasePath)
-  check(
-    '席位票据齐备且与席位数量一致',
-    seatTickets.length === options.seatCount,
-    `数据库 ${seatTickets.length} 张，配置 ${options.seatCount} 席`,
-  )
+  // D-0027：说书人的那串凭据已整个删除、宿主也不再自建默认桌——本段不再"从库里掏凭据"，
+  // 只把前端页面架起来——开桌、取席位票据都发生在 join 段（那里才有真浏览器与桌标识）。
   // 直接跑 Vite 的入口脚本（不经 npm、不经 shell）：**单个**进程一个 PID，
   // 收尾一次结束即可。用 `npm run dev` 会套一层 shell，杀 shell 会留下孤儿 vite（实测踩过）。
   // `--serve-front` 档不起 Vite：页面与 Hub 都由宿主同源提供（部署形态），此时前端产物必须已构建。
@@ -237,11 +239,22 @@ async function main() {
   const consoleErrors = []
 
   const storyteller = await newClient(browser, { width: 1600, height: 1100 }, consoleErrors)
-  await storyteller.page.goto(frontUrl)
-  await storyteller.page.getByPlaceholder('说书人票据').fill(ticket)
-  await storyteller.page.getByRole('button', { name: '加入' }).click()
+  // 说书人：注册夹具账号 → 开一桌 → 进主持台（票据退场后这是唯一路径，也是最贴近真实用法的那条）。
+  const table = await openTableAndHost(storyteller.page, {
+    frontUrl,
+    serverUrl,
+    databasePath,
+    seats: options.seatCount,
+    suffix: 'panel',
+  })
+  // 席位票据仍直读库（D-0027 明确留给了下一张票）：开桌之后按桌标识取，供下面各席入座用。
+  const seatTickets = table.seatTickets
+  check(
+    '席位票据齐备且与席位数量一致',
+    seatTickets.length === options.seatCount,
+    `数据库 ${seatTickets.length} 张，配置 ${options.seatCount} 席`,
+  )
   const grimoire = storyteller.page.locator('[data-testid="grimoire"]')
-  await grimoire.waitFor({ timeout: 30_000 })
   await screenshot(storyteller.page, '01-storyteller-joined')
   check('说书人加入后看板可见（魔典主视图）', (await grimoire.count()) === 1)
   check(
@@ -251,6 +264,8 @@ async function main() {
   )
 
   const players = new Map()
+  /** 各席的夹具账号：入场走账号（D-0027），后面「刷新之后接回这一面」要用同一个账号重新登录。 */
+  const seatAccounts = new Map()
   // 并发窗口取证（票据 player-information-resync-race 行 1）：拦截必须装在连接建立之前——
   // Playwright 只拦截安装之后新建的 WebSocket。
   const raceSeat = options.assign.indexOf('clockmaker') + 1
@@ -265,9 +280,15 @@ async function main() {
         hold = await installJoinResponseHold(client.page)
       }
 
-      await client.page.goto(`${frontUrl}/#player`)
-      await client.page.getByPlaceholder('席位票据').fill(seatTicket.ticket)
-      await client.page.getByRole('button', { name: '加入' }).click()
+      // 入座走账号（D-0027 / D-0025）：注册夹具账号，登录后从大厅挑这一席——席位票据不再是界面上的路径。
+      // 顺序要紧：`installJoinResponseHold` 必须装在**连接建立之前**（它按页装 routeWebSocket，
+      // 只拦安装之后新建的 WebSocket），所以先装 hold、再让 seatByAccount 打开页面并加入。
+      const account = await seatByAccount(client.page, {
+        frontUrl,
+        gameId: table.gameId,
+        seat: seatTicket.seat,
+        suffix: `panel-${seatTicket.seat}`,
+      })
       const seatBadge = client.page.locator('[data-testid="player-seat"]')
       await seatBadge.waitFor({ timeout: 30_000 })
       const badgeText = (await seatBadge.innerText()).trim()
@@ -291,11 +312,12 @@ async function main() {
           && (await client.page.locator('[data-testid="seat-console"]').count()) === 0,
         storytellerLeak.join(',') || shellText.replace(/\s+/g, ' ').slice(0, 120),
       )
-      return { seat: seatTicket.seat, client, hold }
+      return { seat: seatTicket.seat, client, hold, account }
     }),
   )
   for (const entry of joined) {
     players.set(entry.seat, entry.client)
+    seatAccounts.set(entry.seat, entry.account)
     if (entry.hold !== null) {
       raceHolds.set(entry.seat, entry.hold)
     }
@@ -836,8 +858,9 @@ async function main() {
   await screenshot(players.get(demonSeat).page, '08-unrelated-player-idle')
 
   if (!runner.begin('night1-dreamer-resolution')) return
+  // 按**选项值**挑（`seat:N`）：席位有玩家名之后文案按 D-0021 变成「N 号 · 名字」，值不会变。
   await dreamerPlayer.page
-    .locator('[data-testid="player-request-options"] label', { hasText: `${demonSeat} 号玩家` })
+    .locator(`[data-testid="player-request-options"] label[data-option-value="seat:${demonSeat}"]`)
     .locator('input[type=radio]')
     .check()
   await dreamerPlayer.page.locator('[data-testid="player-submit"]').click()
@@ -954,7 +977,8 @@ async function main() {
   await screenshot(players.get(dreamerSeat).page, '30b-player-day-open')
 
   // —— 旅行者加入（票据 traveller-and-exile 行 1；D1 / D7）——
-  // 五名旅行者一次到位：加入 = 追加新席位（6..10），说书人把签发的票据转交给新到场玩家。
+  // 五名旅行者一次到位：加入 = 追加新席位（6..10），说书人把签发的**邀请码**转交给新到场玩家
+  // （这一桌此刻已开局，大厅里点不动，所以中途到场只能走"有邀请码？"那条路）。
   // 需要玩家端动作的三人（屠夫额外提名 / 流莺夜访选目标 / 集骨者选重获目标）各开一个独立上下文；
   // 怪咖与咖啡师没有玩家端动作（咖啡师的二选一是说书人受众，R-0052）。
   const mutantSeat = options.assign.indexOf('mutant') + 1
@@ -984,24 +1008,31 @@ async function main() {
 
     const issued = storyteller.page.getByTestId('traveller-issued')
     const issuedSeat = await waitForAttribute(issued, 'data-seat', String(expectedSeat), 20_000)
-    const issuedTicket = (await issued.locator('.mono').innerText()).trim()
+    // 面板上显示的已经是**邀请码**（`桌标识:席位票据` 形态，见 TravellerControl.vue 的 inviteCode）：
+    // 大厅只列"在开的桌"、点得动的只有空席位，而这一桌此刻已开局，所以中途到场的旅行者
+    // 只能走"有邀请码？"那条路——把这一串原样交给他即可。
+    const inviteCode = (await issued.locator('.mono').innerText()).trim()
     check(
-      `行 1：加入 ${slug} 签发第 ${expectedSeat} 席与票据（转交新到场玩家）`,
-      issuedSeat === String(expectedSeat) && issuedTicket.length > 0,
-      `seat=${issuedSeat}；ticket=${issuedTicket.slice(0, 10)}…`,
+      `行 1：加入 ${slug} 签发第 ${expectedSeat} 席与邀请码（转交新到场玩家）`,
+      issuedSeat === String(expectedSeat) && inviteCode.startsWith(`${table.gameId}:`),
+      `seat=${issuedSeat}；邀请码=${inviteCode.slice(0, 14)}…`,
     )
     travellerSeats.set(slug, expectedSeat)
 
     if (travellerActors.has(slug)) {
       const client = await newClient(browser, { width: 900, height: 900 }, consoleErrors)
-      await client.page.goto(`${frontUrl}/#player`)
-      await client.page.getByPlaceholder('席位票据').fill(issuedTicket)
-      await client.page.getByRole('button', { name: '加入' }).click()
+      // 旅行者是**中途到场**的新玩家：注册自己的账号，凭说书人转交的邀请码入座
+      // （suffix 短是硬约束：`seat-` 前缀 + suffix + 序号不能超过登录名 24 字符上限）。
+      await seatByInviteCode(client.page, {
+        frontUrl,
+        code: inviteCode,
+        suffix: `panel-trav-${expectedSeat}`,
+      })
       const badge = client.page.locator('[data-testid="player-seat"]')
       await badge.waitFor({ timeout: 30_000 })
       const badgeText = (await badge.innerText()).trim()
       check(
-        `行 1：旅行者 ${expectedSeat} 号（${slug}）用签发票据加入成功`,
+        `行 1：旅行者 ${expectedSeat} 号（${slug}）凭邀请码加入成功`,
         badgeText.includes(`${expectedSeat} 号`),
         badgeText,
       )
@@ -1632,8 +1663,9 @@ async function main() {
     harlotOptions.includes(`seat:${dreamerSeat}`) && harlotOptions.includes(`seat:${harlotSeat}`),
     harlotOptions.join(','),
   )
+  // 按选项值挑（`seat:N`）：席位有玩家名之后文案变成「N 号 · 名字」（D-0021），值不会变。
   await harlotPage
-    .locator('[data-testid="player-request-options"] label', { hasText: `${dreamerSeat} 号玩家` })
+    .locator(`[data-testid="player-request-options"] label[data-option-value="seat:${dreamerSeat}"]`)
     .locator('input[type=radio]')
     .check()
   await harlotPage.getByTestId('player-submit').click()
@@ -1680,8 +1712,9 @@ async function main() {
     boneOptions.join(','),
   )
   const counterBeforeRegain = await readSlotCounter(storyteller.page)
+  // 按选项值挑（`seat:N`）：席位有玩家名之后文案变成「N 号 · 名字」（D-0021），值不会变。
   await bonePage
-    .locator('[data-testid="player-request-options"] label', { hasText: `${clockmakerSeat} 号玩家` })
+    .locator(`[data-testid="player-request-options"] label[data-option-value="seat:${clockmakerSeat}"]`)
     .locator('input[type=radio]')
     .check()
   await bonePage.getByTestId('player-submit').click()
@@ -1956,8 +1989,9 @@ async function main() {
   // 流莺每夜入槽：第三夜再选 2 号、说书人裁定「拒绝」→ 零信息零死亡（R-0051）。
   const harlotNightThree = await waitForAttribute(harlotRequest, 'data-request-state', 'pending', 180_000)
   check('行 9（流莺）：第三夜照常唤醒（每晚能力）', harlotNightThree === 'pending', `state=${harlotNightThree}`)
+  // 按选项值挑（`seat:N`）：席位有玩家名之后文案变成「N 号 · 名字」（D-0021），值不会变。
   await harlotPage
-    .locator('[data-testid="player-request-options"] label', { hasText: `${dreamerSeat} 号玩家` })
+    .locator(`[data-testid="player-request-options"] label[data-option-value="seat:${dreamerSeat}"]`)
     .locator('input[type=radio]')
     .check()
   await harlotPage.getByTestId('player-submit').click()
@@ -1989,8 +2023,9 @@ async function main() {
     demonNightThree === 'pending',
     `data-request-state=${demonNightThree}`,
   )
+  // 按选项值挑（`seat:N`）：席位有玩家名之后文案变成「N 号 · 名字」（D-0021），值不会变。
   await demonPlayer.page
-    .locator('[data-testid="player-request-options"] label', { hasText: `${clockmakerSeat} 号玩家` })
+    .locator(`[data-testid="player-request-options"] label[data-option-value="seat:${clockmakerSeat}"]`)
     .locator('input[type=radio]')
     .check()
   await demonPlayer.page.locator('[data-testid="player-submit"]').click()
@@ -2279,8 +2314,9 @@ async function main() {
     vortoxDreamerPending === 'pending',
     `data-request-state=${vortoxDreamerPending}`,
   )
+  // 按选项值挑（`seat:N`）：席位有玩家名之后文案变成「N 号 · 名字」（D-0021），值不会变。
   await dreamerPlayer.page
-    .locator('[data-testid="player-request-options"] label', { hasText: `${demonSeat} 号玩家` })
+    .locator(`[data-testid="player-request-options"] label[data-option-value="seat:${demonSeat}"]`)
     .locator('input[type=radio]')
     .check()
   await dreamerPlayer.page.locator('[data-testid="player-submit"]').click()
@@ -2420,7 +2456,8 @@ async function main() {
   )
   await screenshot(storyteller.page, '25-rebuild-ledger-repaired')
 
-  // 行 2（健康票）：停宿主 → 弄坏首发事件载荷 → 重启：说书人刷新后必须看见降级与原因。
+  // 行 2（健康票）：停宿主 → 弄坏首发事件载荷 → 重启：说书人刷新后**重新登录、接回主持台**，
+  // 必须看见降级与原因（D-0027：账号会话只在网关内存里，整页刷新即退回登录卡，不会再自动接回）。
   const consoleErrorsBeforeRestart = consoleErrors.length
   await stopServer(server)
   const savedPayload = corruptFirstEventPayload()
@@ -2430,7 +2467,7 @@ async function main() {
   // 重启噪音窗口：迭代档（快节拍）800ms 已覆盖"在途重连撞代理"的窗口；取证档保留 1500ms。
   await sleep(config.slowPacer ? 1500 : 800)
   const consoleErrorsAfterRestartWindow = consoleErrors.length
-  await storyteller.page.reload()
+  await signInHost(storyteller.page, table)
   await healthBanner.waitFor({ state: 'visible', timeout: 30_000 })
   const degradedText = (await healthBanner.innerText()).replace(/\s+/g, ' ')
   check(
@@ -2440,11 +2477,12 @@ async function main() {
   )
   await screenshot(storyteller.page, '26-room-health-degraded')
 
-  // 行 5（健康票）强化：降级窗口里真机重载一个玩家页——加入必须**显式失败**且文案中性
-  // （不出现健康位 / 数据丢失 / 事件载荷字样），这才同时证明"服务端不下发"与"前端不外泄"。
+  // 行 5（健康票）强化：降级窗口里真机重载一个玩家页——用**同一个账号**重新登录、从大厅点回自己的席位，
+  // 这次入座必须**显式失败**且文案中性（不出现健康位 / 数据丢失 / 事件载荷字样），
+  // 这才同时证明"服务端不下发"与"前端不外泄"。
   const probeSeat = [...players.keys()][0]
   const probePlayer = players.get(probeSeat)
-  await probePlayer.page.reload()
+  await signInSeat(probePlayer.page, seatAccounts.get(probeSeat))
   const degradedPlayerText = await waitForLocatorContains(probePlayer.page.locator('.shell'), '加入暂时失败', 20_000)
   const degradedPlayerLeaks = ['降级', '健康位', '数据丢失', '事件载荷'].filter((word) => degradedPlayerText.includes(word))
   check(
@@ -2524,13 +2562,10 @@ async function main() {
   )
   await screenshot(storyteller.page, '42-grimoire-annotation-after-restart')
 
-  // 行 5（健康票）另一面：房间恢复后同一玩家页重载能正常加入，且仍然看不到任何健康位。
+  // 行 5（健康票）另一面：房间恢复后同一玩家页刷新 + 同一账号回到座位能正常加入，且仍然看不到任何健康位。
   const joinsBeforeReload = seatJoinLogLines(probeSeat).length
-  await probePlayer.page.reload()
-  await probePlayer.page
-    .locator('[data-testid="player-seat"]')
-    .waitFor({ state: 'visible', timeout: 20_000 })
-    .catch(() => {})
+  // 刷新即丢账号会话（D-0027）：回来靠"重新登录 + 大厅里自己那一格仍点得动"——这条就是那个判据。
+  await returnToSeat(probePlayer.page, { frontUrl, ...seatAccounts.get(probeSeat) })
   const reloadJoin = await waitForNextSeatJoin(probeSeat, joinsBeforeReload, 20_000)
   const reloadSnapshot = joinLogNumber(reloadJoin, '快照序号')
   const recoveredPlayerText = await probePlayer.page.locator('.shell').innerText()
@@ -2587,9 +2622,16 @@ async function main() {
     firstResyncJoin ?? '未等到补齐后的加入日志',
   )
 
-  // 非零 watermark + 掉线窗口里的隐藏事件：断开 → 说书人上报其他席位（玩家白名单外）→ 重新加入。
+  // 断开窗口 + 隐藏事件：断开是真断线，回座走大厅里自己那一格（D-0027 之后玩家真实能走的那条路；
+  // 旧的「加入」按钮是票据输入框旁边的按钮，已随票据退场）。
+  //
+  // 水位口径随之变了，必须写明：重新入座会**新建一条连接**（界面换桌 / 重新入座都重建网关），
+  // 客户端带回去的"本地已知"必然是 0——它没有跨连接记忆。所以"非零 watermark 跨窗口"这条判据
+  // 由前后两次「补齐」承担（那两处本地已知都非零，且必须等于上一份快照）；这里判的是
+  // "窗口内的隐藏事件**不算缺口**、快照必须前进到窗口之后"。
   await probePlayer.page.getByRole('button', { name: '断开' }).click()
-  await probePlayer.page.getByRole('button', { name: '加入' }).waitFor({ state: 'visible', timeout: 10_000 })
+  const mySeatButton = probePlayer.page.locator('[data-seat-mine="true"]').first()
+  await mySeatButton.waitFor({ timeout: 30_000 })
   const hiddenSeatChange = await reportSeatState(storyteller.page, {
     seat: dreamerSeat,
     dimensionLabel: '醉酒',
@@ -2603,7 +2645,7 @@ async function main() {
   )
 
   const joinsBeforeRejoin = seatJoinLogLines(probeSeat).length
-  await probePlayer.page.getByRole('button', { name: '加入' }).click()
+  await mySeatButton.click()
   await probePlayer.page
     .locator('[data-testid="player-seat"]')
     .waitFor({ state: 'visible', timeout: 20_000 })
@@ -2613,23 +2655,23 @@ async function main() {
   const rejoinSnapshot = joinLogNumber(rejoinLog, '快照序号')
   const rejoinDiagnostics = await readPlayerDiagnostics(probePlayer.page)
   check(
-    `重连票行 1：本地已知 ${rejoinKnown} 跨掉线窗口重连 → 隐藏事件不报缺口、快照前进到 ${rejoinSnapshot}`,
+    `重连票行 1：断开后从大厅回到自己的席位（新连接 → 本地已知 ${rejoinKnown}，期望 0）→ 隐藏事件不报缺口、快照前进到 ${rejoinSnapshot}`,
     rejoinLog !== null
-      && firstResyncSnapshot !== null
-      && rejoinKnown === firstResyncSnapshot
+      && rejoinKnown === 0
       && rejoinSnapshot !== null
+      && firstResyncSnapshot !== null
       && rejoinSnapshot > firstResyncSnapshot
       && reconnectDiagnosticIn(rejoinDiagnostics).length === 0,
     `${rejoinLog ?? '未等到重连日志'}；诊断=${rejoinDiagnostics || '（无）'}`,
   )
 
-  // 再补齐：确认这轮重连后的 watermark 停在最新快照，而不是又卡回旧值。
+  // 再补齐：确认回到座位后的 watermark 停在最新快照，而不是又卡回旧值。
   const joinsBeforeSecondResync = seatJoinLogLines(probeSeat).length
   await probePlayer.page.getByRole('button', { name: '补齐' }).click()
   const secondResyncJoin = await waitForNextSeatJoin(probeSeat, joinsBeforeSecondResync, 20_000)
   const secondResyncKnown = joinLogNumber(secondResyncJoin, '本地已知')
   check(
-    `重连票行 1：重连后的 watermark 已到快照 ${rejoinSnapshot}（再次补齐带回 ${secondResyncKnown}）`,
+    `重连票行 1：回到座位后的 watermark 已带非零值到服务端（再次补齐带回 ${secondResyncKnown}，快照 ${rejoinSnapshot}）`,
     rejoinSnapshot !== null && secondResyncKnown === rejoinSnapshot,
     secondResyncJoin ?? '未等到再次补齐的加入日志',
   )
@@ -2768,6 +2810,40 @@ async function newClient(browser, viewport, consoleErrors) {
   })
   page.on('pageerror', (error) => consoleErrors.push(error.message))
   return { context, page }
+}
+
+/** 刷新之后用同一个夹具账号重新登录并回到这一桌的主持台（D-0027：会话只在内存里，刷新即失效）。 */
+async function signInHost(page, table) {
+  // **强制整页重载**：目标地址往往与当前地址只差一个 hash，那时 `goto` 属于同文档导航、
+  // 文档不重载，页面还停在"已连接"的状态上——门根本不会出现。
+  await page.goto(frontUrl, { waitUntil: 'domcontentloaded' })
+  await page.reload({ waitUntil: 'domcontentloaded' })
+  await page.getByTestId('account-username').fill(table.username)
+  await page.getByTestId('account-password').fill(table.password)
+  await page.getByTestId('account-login').click()
+  await page.getByTestId('account-profile').waitFor({ timeout: 30_000 })
+  await page.locator(`[data-my-table="${table.gameId}"]`).getByTestId('host-enter').click()
+  await page.getByTestId('grimoire').waitFor({ timeout: 30_000 })
+}
+
+/**
+ * 刷新之后用同一个夹具账号重新登录，并从大厅点回自己的席位（D-0027：席位不再靠票据）。
+ *
+ * 与 `tools/lib/entrance.mjs` 的 `returnToSeat` 分工：那里等席位徽章（正常回座），
+ * 这里**不等**——降级窗口里这一桌根本回不去，点下去就该拿到"加入暂时失败"那句显式失败，
+ * 等徽章只会白等满超时。所以回座失败的取证用这一条，正常回座直接用 `returnToSeat`。
+ */
+async function signInSeat(page, account) {
+  // 同上：这条路线的语义就是"刷新一次"，同 hash 的 goto 不算刷新。
+  await page.goto(`${frontUrl}/#player`, { waitUntil: 'domcontentloaded' })
+  await page.reload({ waitUntil: 'domcontentloaded' })
+  await page.getByTestId('account-username').fill(account.username)
+  await page.getByTestId('account-password').fill(account.password)
+  await page.getByTestId('account-login').click()
+  await page.getByTestId('account-profile').waitFor({ timeout: 30_000 })
+  const mine = page.locator('[data-seat-mine="true"]').first()
+  await mine.waitFor({ timeout: 30_000 })
+  await mine.click()
 }
 
 /** 玩家信息面板的可见文本。 */
@@ -3559,55 +3635,6 @@ function restoreEventPayload(saved) {
   } finally {
     database.close()
   }
-}
-
-function readStorytellerTicket(databasePath) {
-  const database = new DatabaseSync(databasePath, { readOnly: true })
-  try {
-    const row = database.prepare('SELECT StorytellerTicket FROM Games LIMIT 1').get()
-    if (row === undefined || typeof row.StorytellerTicket !== 'string') {
-      throw new Error('数据库里没有说书人票据')
-    }
-
-    return row.StorytellerTicket
-  } finally {
-    database.close()
-  }
-}
-
-/** 读各席位票据：SeatId 是 record struct，Web 序列化形状为 { "value": N }（两种形状都认）。 */
-function readSeatTickets(databasePath) {
-  const database = new DatabaseSync(databasePath, { readOnly: true })
-  try {
-    const row = database.prepare('SELECT SeatsJson FROM Games LIMIT 1').get()
-    if (row === undefined || typeof row.SeatsJson !== 'string') {
-      throw new Error('数据库里没有席位票据（Games.SeatsJson）')
-    }
-
-    const parsed = JSON.parse(row.SeatsJson)
-    if (!Array.isArray(parsed) || parsed.length === 0) {
-      throw new Error('席位票据 JSON 形状不可识别')
-    }
-
-    return parsed
-      .map((item) => ({ seat: seatNumberOf(item?.seat), ticket: String(item?.ticket ?? '') }))
-      .filter((item) => Number.isFinite(item.seat) && item.ticket.length > 0)
-      .sort((left, right) => left.seat - right.seat)
-  } finally {
-    database.close()
-  }
-}
-
-function seatNumberOf(raw) {
-  if (typeof raw === 'number') {
-    return raw
-  }
-
-  if (raw !== null && typeof raw === 'object' && typeof raw.value === 'number') {
-    return raw.value
-  }
-
-  return Number.parseInt(String(raw ?? ''), 10)
 }
 
 async function waitForHttp(url, label, timeoutMs) {

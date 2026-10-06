@@ -38,7 +38,7 @@ public sealed class EfGameCatalog : IGameCatalog
             {
                 GameId = setup.GameId.Value,
                 SeatsJson = seatsJson,
-                StorytellerTicket = setup.StorytellerTicket,
+                CreatedByAccountId = setup.CreatedByAccountId?.Value,
                 Name = setup.Name,
                 IsLocked = setup.IsLocked,
             });
@@ -46,7 +46,7 @@ public sealed class EfGameCatalog : IGameCatalog
         else
         {
             row.SeatsJson = seatsJson;
-            row.StorytellerTicket = setup.StorytellerTicket;
+            row.CreatedByAccountId = setup.CreatedByAccountId?.Value;
             row.Name = setup.Name;
             row.IsLocked = setup.IsLocked;
         }
@@ -90,7 +90,7 @@ public sealed class EfGameCatalog : IGameCatalog
     {
         GameId = new GameId(row.GameId),
         Seats = JsonSerializer.Deserialize<SeatTicket[]>(row.SeatsJson, Options) ?? [],
-        StorytellerTicket = row.StorytellerTicket,
+        CreatedByAccountId = row.CreatedByAccountId is { } owner ? new AccountId(owner) : null,
         Name = row.Name,
         IsLocked = row.IsLocked,
     };

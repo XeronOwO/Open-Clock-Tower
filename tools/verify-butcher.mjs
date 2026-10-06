@@ -27,7 +27,8 @@
  *   node tools/verify-butcher.mjs --port 5418 --vite-port 5298           # 自定端口
  *
  * 外部耦合（换机器先核对 web/AGENTS.md §3.1）：宿主编译产物路径、SQLite 表 Games 的
- * StorytellerTicket / SeatsJson 列形状、Events 表 Type / Payload 列形状（SeatId 序列化为 { value: N }）。
+ * SeatsJson 列形状（席位票据仍直读库；说书人身份已改走账号，见 D-0027）、
+ * Events 表 Type / Payload 列形状（SeatId 序列化为 { value: N }）。
  * 退出码：0 = 全过；1 = 有失败；2 = 环境缺依赖。
  */
 import { spawn } from 'node:child_process'
@@ -38,6 +39,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { DatabaseSync } from 'node:sqlite'
 import { readAttributeBounded, readTextBounded } from './lib/bounded-text.mjs'
+import { openTableAndHost, seatByAccount, seatByInviteCode } from './lib/entrance.mjs'
 import { describeProfile, ensureServerArtifacts, extractProfileFlags, resolveProfile } from './lib/verify-profile.mjs'
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -74,7 +76,8 @@ mkdirSync(screenshotsDir, { recursive: true })
 
 const serverUrl = `http://localhost:${options.port}`
 const viteUrl = `http://localhost:${options.vitePort}`
-const hubUrl = `${serverUrl}/hub/game`
+/** Hub 地址：桌标识在开桌之后才定得下来，所以这里是 `let`（见下面的赋值）。 */
+let hubUrl = `${serverUrl}/hub/game`
 
 /** 五席基础花名册（与集成 ButcherHostTests.FiveAssignments 同款：夜晚契约齐备、不卡建表）。 */
 const ASSIGN = ['clockmaker', 'dreamer', 'artist', 'klutz', 'no-dashii']
@@ -107,10 +110,7 @@ async function main() {
   await ensureServerArtifacts({ repositoryRoot, buildMode: config.buildMode })
   await startServer()
 
-  console.log('=== 2/6 取票据并起 Vite ===')
-  const ticket = readStorytellerTicket(databasePath)
-  const seatTickets = readSeatTickets(databasePath)
-  check('席位票据齐备（5 席）', seatTickets.length === ASSIGN.length, `数据库 ${seatTickets.length} 张`)
+  console.log('=== 2/6 起 Vite ===')
 
   const vite = spawn(
     process.execPath,
@@ -129,20 +129,28 @@ async function main() {
   children.push(vite)
   await waitForHttp(viteUrl, 'Vite 开发服务器', 60_000)
 
-  console.log('=== 3/6 说书人 + 投票席（1 / 3 号）加入真浏览器 ===')
+  console.log('=== 3/6 说书人开一桌并进主持台（账号身份，D-0027）+ 投票席（1 / 3 号）入座 ===')
   const browser = await playwright.chromium.launch()
   const consoleErrors = []
   const storyteller = await newPage(browser, { width: 1600, height: 1100 }, consoleErrors)
-  await storyteller.goto(viteUrl)
-  await storyteller.getByPlaceholder('说书人票据').fill(ticket)
-  await storyteller.getByRole('button', { name: '加入' }).click()
-  await storyteller.locator('[data-testid="grimoire"]').waitFor({ timeout: 30_000 })
+  // 说书人：注册夹具账号 → 开一桌 → 进主持台（票据退场后这是唯一路径，也是最贴近真实用法的那条）。
+  const table = await openTableAndHost(storyteller, {
+    frontUrl: viteUrl,
+    serverUrl,
+    databasePath,
+    seats: ASSIGN.length,
+    suffix: 'butcher',
+  })
+  const seatTickets = table.seatTickets
+  // 桌标识属于连接（D-0027 之后不声明就被拒）：线级探针也连到这一桌。
+  hubUrl = table.hubUrl
+  check('席位票据齐备（5 席）', seatTickets.length === ASSIGN.length, `数据库 ${seatTickets.length} 张`)
   check('说书人加入后看板可见（魔典主视图）', (await storyteller.locator('[data-testid="grimoire"]').count()) === 1)
 
   const players = new Map()
-  const clockmakerJoined = await joinSeatPage(players, browser, consoleErrors, seatTickets[CLOCKMAKER_SEAT - 1].ticket, CLOCKMAKER_SEAT)
+  const clockmakerJoined = await joinSeatPage(players, browser, consoleErrors, table.gameId, CLOCKMAKER_SEAT)
   check(`1 号（钟表匠）玩家页加入成功`, clockmakerJoined.badgeText.includes(`${CLOCKMAKER_SEAT} 号`), clockmakerJoined.badgeText)
-  const artistJoined = await joinSeatPage(players, browser, consoleErrors, seatTickets[ARTIST_SEAT - 1].ticket, ARTIST_SEAT)
+  const artistJoined = await joinSeatPage(players, browser, consoleErrors, table.gameId, ARTIST_SEAT)
   check(`3 号（艺术家）玩家页加入成功（无关玩家 / 公开面见证席）`, artistJoined.badgeText.includes(`${ARTIST_SEAT} 号`), artistJoined.badgeText)
 
   console.log('=== 4/6 配板 → 首夜（钟表匠裁定 + 筑梦师作废）→ 开白天 ===')
@@ -180,7 +188,7 @@ async function main() {
   check('说书人面板进入「白天进行中」', dayOpen === 'Open', `data-day-status=${dayOpen}`)
 
   console.log('=== 5/6 加入屠夫 → 首次处决开窗 → 额外提名达线 → 二次处决 ===')
-  // —— 屠夫加入：说书人签发第 6 席票据，转交新到场玩家 ——
+  // —— 屠夫加入：说书人签发第 6 席票据（签发票据本身仍被断言），新玩家登录后从大厅挑这个空席位 ——
   await storyteller.getByTestId('traveller-character').selectOption('butcher')
   await storyteller.getByTestId('traveller-alignment').selectOption('Good')
   await storyteller.getByTestId('traveller-seat').fill('')
@@ -189,14 +197,25 @@ async function main() {
 
   const issued = storyteller.getByTestId('traveller-issued')
   const issuedSeat = await waitForAttribute(issued, 'data-seat', String(BUTCHER_SEAT), 20_000)
-  const issuedTicket = (await issued.locator('.mono').innerText()).trim()
+  const inviteCode = (await issued.locator('.mono').innerText()).trim()
   check(
-    `加入屠夫签发第 ${BUTCHER_SEAT} 席与票据`,
-    issuedSeat === String(BUTCHER_SEAT) && issuedTicket.length > 0,
-    `seat=${issuedSeat}；ticket=${issuedTicket.slice(0, 10)}…`,
+    `加入屠夫签发第 ${BUTCHER_SEAT} 席与邀请码`,
+    issuedSeat === String(BUTCHER_SEAT) && inviteCode.startsWith(`${table.gameId}:`),
+    `seat=${issuedSeat}；邀请码=${inviteCode.slice(0, 14)}…`,
   )
-  const butcherJoined = await joinSeatPage(players, browser, consoleErrors, issuedTicket, BUTCHER_SEAT)
-  check(`屠夫用签发票据加入成功（${BUTCHER_SEAT} 号）`, butcherJoined.badgeText.includes(`${BUTCHER_SEAT} 号`), butcherJoined.badgeText)
+
+  // 屠夫是**中途到场**的旅行者：这一桌已经开局，大厅席位按钮点不动，他走"有邀请码？"那条路。
+  const butcherTravellerPage = await newPage(browser, { width: 900, height: 1100 }, consoleErrors)
+  await seatByInviteCode(butcherTravellerPage, {
+    frontUrl: viteUrl,
+    code: inviteCode,
+    suffix: 'butcher-traveller',
+  })
+  players.set(BUTCHER_SEAT, butcherTravellerPage)
+  const butcherBadgeText = (
+    await butcherTravellerPage.locator('[data-testid="player-seat"]').innerText()
+  ).trim()
+  check(`屠夫凭邀请码加入成功（${BUTCHER_SEAT} 号）`, butcherBadgeText.includes(`${BUTCHER_SEAT} 号`), butcherBadgeText)
 
   // —— 首次常规提名：1 号提 2 号；1 / 3 / 6 号各举一次手 = 3 票（6 席存活恰达半数）——
   const nominationList = storyteller.getByTestId('st-day-nominations')
@@ -387,12 +406,10 @@ async function main() {
   await browser.close()
 }
 
-/** 连一个真玩家席位（真浏览器 + 真 Vite；席位票据来自宿主库）。 */
-async function joinSeatPage(players, browser, consoleErrors, ticket, seat) {
+/** 连一个真玩家席位（真浏览器 + 真 Vite；入场走账号，见 D-0027；席位票据仍用于线级探针）。 */
+async function joinSeatPage(players, browser, consoleErrors, gameId, seat) {
   const page = await newPage(browser, { width: 900, height: 1100 }, consoleErrors)
-  await page.goto(`${viteUrl}/#player`)
-  await page.getByPlaceholder('席位票据').fill(ticket)
-  await page.getByRole('button', { name: '加入' }).click()
+  await seatByAccount(page, { frontUrl: viteUrl, gameId, seat, suffix: `butcher-${seat}` })
   const badge = page.locator('[data-testid="player-seat"]')
   await badge.waitFor({ timeout: 30_000 })
   const badgeText = compact(await readTextBounded(badge))
@@ -693,43 +710,6 @@ async function startServer() {
   children.push(child)
   await waitForHttp(`${serverUrl}/healthz`, '宿主 /healthz', 90_000)
   return child
-}
-
-function readStorytellerTicket(databasePathToRead) {
-  const database = new DatabaseSync(databasePathToRead, { readOnly: true })
-  try {
-    const row = database.prepare('SELECT StorytellerTicket FROM Games LIMIT 1').get()
-    if (row === undefined || typeof row.StorytellerTicket !== 'string') {
-      throw new Error('数据库里没有说书人票据')
-    }
-
-    return row.StorytellerTicket
-  } finally {
-    database.close()
-  }
-}
-
-/** 读各席位票据：SeatId 是 record struct，Web 序列化形状为 { "value": N }（两种形状都认）。 */
-function readSeatTickets(databasePathToRead) {
-  const database = new DatabaseSync(databasePathToRead, { readOnly: true })
-  try {
-    const row = database.prepare('SELECT SeatsJson FROM Games LIMIT 1').get()
-    if (row === undefined || typeof row.SeatsJson !== 'string') {
-      throw new Error('数据库里没有席位票据（Games.SeatsJson）')
-    }
-
-    const parsed = JSON.parse(row.SeatsJson)
-    if (!Array.isArray(parsed) || parsed.length === 0) {
-      throw new Error('席位票据 JSON 形状不可识别')
-    }
-
-    return parsed
-      .map((item) => ({ seat: seatNumberOf(item?.seat), ticket: String(item?.ticket ?? '') }))
-      .filter((item) => Number.isFinite(item.seat) && item.ticket.length > 0)
-      .sort((left, right) => left.seat - right.seat)
-  } finally {
-    database.close()
-  }
 }
 
 function parseArguments(argv) {

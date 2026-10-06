@@ -34,12 +34,11 @@ public sealed class GameRegistry
     private readonly PacingOptions _pacing;
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger<GameRegistry> _logger;
-    private readonly GameId _legacyGameId;
     private int _initialized;
 
     /// <summary>构造注册表（组合根：装配一局所需的依赖都在这里）。</summary>
     /// <param name="store">事件存储（按 GameId 过滤）。</param>
-    /// <param name="catalog">会话目录（票据与桌元数据）。</param>
+    /// <param name="catalog">会话目录（席位票据、归属与桌元数据）。</param>
     /// <param name="bindings">席位绑定（装载席位名读模型）。</param>
     /// <param name="accounts">账号（装载席位名读模型）。</param>
     /// <param name="abilities">角色契约目录（各局共用，无状态）。</param>
@@ -47,7 +46,6 @@ public sealed class GameRegistry
     /// <param name="clock">时钟（各局共用）。</param>
     /// <param name="pacing">节奏配置（各局共用）。</param>
     /// <param name="loggerFactory">为每局创建独立类别的日志器。</param>
-    /// <param name="legacyGameId">历史单桌标识（老库兼容：它一定在册）。</param>
     public GameRegistry(
         IGameStore store,
         IGameCatalog catalog,
@@ -57,8 +55,7 @@ public sealed class GameRegistry
         IReadOnlyList<IStandingEffectSource> standingEffects,
         IClock clock,
         PacingOptions pacing,
-        ILoggerFactory loggerFactory,
-        GameId legacyGameId)
+        ILoggerFactory loggerFactory)
     {
         ArgumentNullException.ThrowIfNull(store);
         ArgumentNullException.ThrowIfNull(catalog);
@@ -80,7 +77,6 @@ public sealed class GameRegistry
         _pacing = pacing;
         _loggerFactory = loggerFactory;
         _logger = loggerFactory.CreateLogger<GameRegistry>();
-        _legacyGameId = legacyGameId;
     }
 
     /// <summary>当前在册的桌（按标识升序；供大厅列表与启动恢复）。</summary>
@@ -135,7 +131,8 @@ public sealed class GameRegistry
         var setups = await _catalog.ListAsync(cancellationToken);
         if (setups.Count == 0)
         {
-            _logger.LogInformation("库中没有在册的桌：等待建桌（legacy={LegacyGameId}）", _legacyGameId.Value);
+            // 空库是**正常的初始状态**（D-0027：宿主不再自建默认桌）：等第一桌被开出来。
+            _logger.LogInformation("库中没有在册的桌：等待开桌（打开站点是空大厅）");
             return;
         }
 

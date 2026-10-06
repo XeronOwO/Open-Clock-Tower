@@ -53,7 +53,8 @@ function createStorytellerConnection(gameId?: string): HubConnection {
 /**
  * Hub 地址：声明**在哪一桌**（多桌，D-0024）。
  *
- * 不传就是"本机默认桌"——既有的票据流程与 18 个验收装置因此都不用改。
+ * D-0027 之后桌标识是**必给**的：服务端不再把"没声明桌"的连接回落到某张默认桌
+ * （那张桌已经不存在了），所以主持台永远连着"我点进去的那一桌"。
  */
 export function hubUrlFor(gameId?: string): string {
   return gameId === undefined || gameId.length === 0
@@ -62,31 +63,13 @@ export function hubUrlFor(gameId?: string): string {
 }
 
 /**
- * 解析说书人票据：支持 `桌标识:票据` 这种**自描述**写法。
- *
- * 多桌之后"一桌一份票据"，而票据本身长得一样（都是 `storyteller-…`）：
- * 只说一串票据，面板不知道该连哪一桌。开桌时把桌标识一起给出，用户粘进来即可，
- * 不需要再记"先去大厅找到那一桌"。
- */
-export function parseStorytellerTicket(raw: string): { gameId?: string; ticket: string } {
-  const trimmed = raw.trim()
-  const separator = trimmed.indexOf(':')
-  if (separator <= 0) {
-    return { ticket: trimmed }
-  }
-
-  const gameId = trimmed.slice(0, separator).trim()
-  const ticket = trimmed.slice(separator + 1).trim()
-  return gameId.length > 0 && ticket.length > 0 ? { gameId, ticket } : { ticket: trimmed }
-}
-
-/**
  * 说书人连接网关：只负责"连上、收视图、发命令"三件事，不持有任何领域判断。
  */
 export class StorytellerGateway {
   private readonly connection: HubConnection
-  private ticket = ''
-  /** 连接级凭据：只在内存中；票据才进 TicketStore，凭据绝不落盘。 */
+  /** 账号会话（内存态）：重连后重新出示它换新凭据；它不落盘，也没必要落盘（D-0027）。 */
+  private accountSession = ''
+  /** 连接级凭据：只在内存中，绝不落盘。 */
   private credentialValue = ''
   /** 最近一次采纳的视图（含序号）：所有写入都经过它，旧序号只丢不覆盖。 */
   private current: StorytellerViewDto | null = null
@@ -94,7 +77,7 @@ export class StorytellerGateway {
   constructor(
     private readonly callbacks: GatewayCallbacks,
     // 默认工厂**直接引用**带参函数：写成 `() => createStorytellerConnection()` 会把 gameId 吞掉，
-    // 于是连接永远落在默认桌（实测踩到：新桌票据被判"无效"，而服务端直连同一串却成功）。
+    // 于是连接永远落在默认桌（实测踩到：新桌被判"不是你开的"，而服务端直连同一串却成功）。
     createConnection: StorytellerConnectionFactory = createStorytellerConnection,
     gameId?: string,
   ) {
@@ -128,9 +111,12 @@ export class StorytellerGateway {
     return mapState(this.connection.state)
   }
 
-  /** 连接并加入说书人席位，返回首次视图；拿不到连接凭据就显式失败。 */
-  async join(ticket: string): Promise<StorytellerViewDto> {
-    this.ticket = ticket
+  /**
+   * 连接并加入这一桌的主持台（D-0027）：出示**账号会话**，服务端判定"你是不是开这一桌的账号"。
+   * 拿不到连接凭据就显式失败。
+   */
+  async joinWithAccount(accountSession: string): Promise<StorytellerViewDto> {
+    this.accountSession = accountSession
     this.callbacks.onState(this.state)
     if (this.connection.state === HubConnectionState.Disconnected) {
       await this.connection.start()
@@ -138,7 +124,7 @@ export class StorytellerGateway {
 
     this.callbacks.onState('connected')
     const joined = normalizeStorytellerJoin(
-      await this.connection.invoke<unknown>('JoinStoryteller', ticket),
+      await this.connection.invoke<unknown>('JoinStorytellerWithAccount', accountSession),
     )
     if (joined === null) {
       throw new Error('服务端没有下发连接凭据：加入结果不可识别（D-0012）')
@@ -186,7 +172,7 @@ export class StorytellerGateway {
     return replay
   }
 
-  /** 断开（保留票据，便于重连）。 */
+  /** 断开（保留账号会话，便于重连）。 */
   async stop(): Promise<void> {
     await this.connection.stop()
     this.callbacks.onState('disconnected')
@@ -205,7 +191,7 @@ export class StorytellerGateway {
 
   private async rejoin(): Promise<void> {
     try {
-      await this.join(this.ticket)
+      await this.joinWithAccount(this.accountSession)
     } catch (error) {
       this.callbacks.onDiagnostic(`重连后重新加入失败：${describe(error)}`)
     }

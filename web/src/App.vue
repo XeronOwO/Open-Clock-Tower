@@ -18,11 +18,11 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 const hash = ref(typeof window === 'undefined' ? '' : window.location.hash)
 const route = computed(() => parseRoute(hash.value))
 
-/** 顶栏链接：当前面高亮，其余可点。 */
+/** 顶栏链接：当前面高亮，其余可点。文案照界面口径（D-0027）：加入一桌 / 主持一局。 */
 const links = computed(() => [
   { label: '首页', href: HOME_LINK, route: 'home' as const, testId: 'nav-home' },
-  { label: '玩家端', href: PLAY_LINK, route: 'player' as const, testId: 'nav-player' },
-  { label: '说书人端', href: STORYTELLER_LINK, route: 'storyteller' as const, testId: 'nav-storyteller' },
+  { label: '加入一桌', href: PLAY_LINK, route: 'player' as const, testId: 'nav-player' },
+  { label: '主持一局', href: STORYTELLER_LINK, route: 'storyteller' as const, testId: 'nav-storyteller' },
 ])
 
 function syncHash(): void {

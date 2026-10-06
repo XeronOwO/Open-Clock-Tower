@@ -58,15 +58,15 @@ public sealed class MultiTableHostIsolationTests
         Assert.Equal(TableB, sessionB.GameId);
     }
 
-    /// <summary>甲桌的票据**不能**加入乙桌（票据按桌隔离，不是全局通行证）。</summary>
+    /// <summary>甲桌的**房主账号**不能加入乙桌（归属按桌隔离，不是全局通行证；D-0027）。</summary>
     [Fact]
-    public async Task TicketOfOneTable_IsRejectedByAnotherTable()
+    public async Task OwnerOfOneTable_IsRejectedByAnotherTable()
     {
         await using var host = new TestServerHost(seatCount: 5);
-        var setupA = await host.GetSetupAsync();
+        var ownerA = host.OwnerOf(TestServerHost.GameId);
         await host.RegisterTableAsync(TableB, seatCount: 5);
 
-        // 拿甲桌的说书人票据去连乙桌。
+        // 拿甲桌房主的账号会话去连乙桌。
         var connection = new HubConnectionBuilder()
             .WithUrl(new Uri(host.ServerBaseAddress, $"/hub/game?gameId={TableB.Value}"), options =>
             {
@@ -79,9 +79,44 @@ public sealed class MultiTableHostIsolationTests
         {
             await connection.StartAsync();
 
-            // 连接本身能建立（它是乙桌的连接），但甲桌的票据在乙桌无效。
+            // 连接本身能建立（它是乙桌的连接），但甲桌房主在乙桌不是房主。
             await Assert.ThrowsAsync<HubException>(
-                () => connection.InvokeAsync<StorytellerJoinDto>("JoinStoryteller", setupA.StorytellerTicket));
+                () => connection.InvokeAsync<StorytellerJoinDto>("JoinStorytellerWithAccount", ownerA.AccountSession));
+        }
+        finally
+        {
+            await connection.DisposeAsync();
+        }
+    }
+
+    /// <summary>连接不声明桌标识：**显式拒绝**（D-0027 删掉了"缺省回落默认桌"那条路）。</summary>
+    /// <remarks>
+    /// 那条回落是"一张没有房主的桌"的来源，也是老客户端最后的依赖；删掉它之后，
+    /// 每条连接都必须说清自己在哪一桌——说不清就没有任何可执行的动作。
+    /// </remarks>
+    [Fact]
+    public async Task ConnectionWithoutTableId_IsRejectedExplicitly()
+    {
+        await using var host = new TestServerHost(seatCount: 5);
+        var owner = host.OwnerOf(TestServerHost.GameId);
+
+        var connection = new HubConnectionBuilder()
+            .WithUrl(new Uri(host.ServerBaseAddress, "/hub/game"), options =>
+            {
+                options.HttpMessageHandlerFactory = _ => host.ServerHandler();
+                options.Transports = HttpTransportType.LongPolling;
+            })
+            .Build();
+
+        try
+        {
+            await connection.StartAsync();
+            var error = await Assert.ThrowsAsync<HubException>(
+                () => connection.InvokeAsync<StorytellerJoinDto>(
+                    "JoinStorytellerWithAccount",
+                    owner.AccountSession));
+
+            Assert.Contains("gameId", error.Message);
         }
         finally
         {
@@ -94,7 +129,7 @@ public sealed class MultiTableHostIsolationTests
     public async Task UnknownTable_IsRejectedExplicitly()
     {
         await using var host = new TestServerHost(seatCount: 5);
-        var setupA = await host.GetSetupAsync();
+        var owner = host.OwnerOf(TestServerHost.GameId);
 
         var connection = new HubConnectionBuilder()
             .WithUrl(new Uri(host.ServerBaseAddress, "/hub/game?gameId=no-such-table"), options =>
@@ -108,7 +143,7 @@ public sealed class MultiTableHostIsolationTests
         {
             await connection.StartAsync();
             await Assert.ThrowsAsync<HubException>(
-                () => connection.InvokeAsync<StorytellerJoinDto>("JoinStoryteller", setupA.StorytellerTicket));
+                () => connection.InvokeAsync<StorytellerJoinDto>("JoinStorytellerWithAccount", owner.AccountSession));
         }
         finally
         {

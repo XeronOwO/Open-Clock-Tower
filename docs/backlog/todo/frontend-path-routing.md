@@ -57,4 +57,4 @@ hash 最省事——井号后面的东西浏览器不发给服务器，不需要
 
 - 单 SPA 多面：`docs/decisions/active.md` D-0018
 - 部署形态与前缀：`docs/operations/deploy.md` §2 / §4
-- 入场重做（同一轮体验，但可独立做）：`docs/backlog/todo/entrance-redesign.md`
+- 入场重做（同一轮体验，但可独立做）：`docs/backlog/done/entrance-redesign.md`

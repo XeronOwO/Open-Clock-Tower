@@ -18,18 +18,17 @@ import type {
 import { alignmentLabelOf, characterLabelOf, labelOf, voidReasonLabelOf } from '@/display/labels'
 import { optionDisplayOf, seatDisplayOf } from '@/display/format'
 import HelpTip from '@/features/common/HelpTip.vue'
-import { AccountGateway, type AccountProfile, type LobbyTable } from '@/services/accountGateway'
+import type { LobbyTable } from '@/services/accountGateway'
+import * as session from '@/services/accountSession'
 import { PlayerGateway, type PlayerCallbacks } from '@/services/playerGateway'
-import { TicketStore } from '@/services/ticketStore'
 import { newIdempotencyKey } from '@/services/idempotency'
 import type { GatewayState } from '@/services/connectionState'
+import AccountGate from '@/features/account/AccountGate.vue'
 import AccountPanel from '@/features/account/AccountPanel.vue'
 import PlayerDayPanel from '@/features/player/PlayerDayPanel.vue'
 import ReplayPanel from '@/features/replay/ReplayPanel.vue'
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
-const ticket = ref('')
-const store = new TicketStore()
 const view = ref<PlayerViewDto | null>(null)
 const pending = ref<OperationRequestDto | null>(null)
 /** 白天投影（公开事实 + 自己的权限位）；服务端还没开过白天时为 null。 */
@@ -41,7 +40,6 @@ const outcome = ref<GameOutcomeDto | null>(null)
 const klutzChoices = ref<KlutzChoiceDto[]>([])
 const connectionState = ref<GatewayState>('disconnected')
 const diagnostics = ref<string[]>([])
-const joining = ref(false)
 const submitting = ref(false)
 const selectedOption = ref('')
 /** 两维选择（R-0021）的第二维取值；单维请求下保持空串。 */
@@ -66,24 +64,29 @@ const savantSubmitting = ref(false)
 let gateway: PlayerGateway | null = null
 let clientSequence = 0
 
-/** 账号（D-0021）：会话凭据只在 AccountGateway 内存里；面板只持有展示资料。 */
-const accountProfile = ref<AccountProfile | null>(null)
-const accountBusy = ref(false)
-const accountNotice = ref('')
-const accountRecoveryCode = ref('')
-let accountGateway: AccountGateway | null = null
+/**
+ * 账号（D-0021 / D-0027）：会话由 `accountSession` 模块级单例持有，**两个面共用一份**——
+ * 换面不重新登录，因为它本来就是"同一个人"。
+ */
+const accountProfile = session.profile
 
-/** 大厅（D-0025）：列出在开的桌，让玩家**自己选一个空席位坐下**——不再需要说书人发席位票据。 */
+/** 大厅（D-0025）：列出在开的桌，让玩家**自己选一个空席位坐下**——不需要任何票据。 */
 const tables = ref<LobbyTable[]>([])
 const lobbyBusy = ref(false)
 const lobbyNotice = ref('')
-/** 本连接所在的那一桌；null = 还没选（用默认桌）。 */
+/** 本连接所在的那一桌：入座时定下来（D-0027 之后没有"默认桌"可回落）。 */
 const selectedTable = ref<LobbyTable | null>(null)
 
 async function loadTables(): Promise<void> {
+  if (accountProfile.value === null) {
+    // 没登录就没有"我"，也就没有可挑的桌：大厅是登录之后才出现的东西（D-0027）。
+    tables.value = []
+    return
+  }
+
   lobbyBusy.value = true
   try {
-    tables.value = await ensureAccountGateway().listTables()
+    tables.value = await session.listTables()
     lobbyNotice.value = ''
   } catch (error) {
     lobbyNotice.value = `读取桌列表失败：${error instanceof Error ? error.message : String(error)}`
@@ -94,8 +97,8 @@ async function loadTables(): Promise<void> {
 
 /** 选一个席位坐下：重建连接指向该桌，然后只凭账号入座（不需要票据）。 */
 async function takeSeat(table: LobbyTable, seat: number): Promise<void> {
-  const session = accountProfile.value?.accountSession
-  if (session === undefined) {
+  const accountSession = accountProfile.value?.accountSession
+  if (accountSession === undefined) {
     lobbyNotice.value = '请先注册或登录，再选席位入座'
     return
   }
@@ -112,13 +115,12 @@ async function takeSeat(table: LobbyTable, seat: number): Promise<void> {
       await previous.stop()
     }
 
-    ticket.value = ''
     clientSequence = 0
     selectedTable.value = table
 
     const current = ensureGateway()
     try {
-      await current.joinTable(seat, session)
+      await current.joinTable(seat, accountSession)
       lobbyNotice.value = `已坐在 ${table.name.length > 0 ? table.name : table.gameId} 的 ${seat} 号席位`
     } catch (error) {
       // 入座失败：把半成品网关丢掉，免得界面留着一个连上了却没入座的连接。
@@ -136,6 +138,77 @@ async function takeSeat(table: LobbyTable, seat: number): Promise<void> {
   }
 }
 
+/** 邀请码入座（兜底路径）：说书人给的席位票据，写成「桌标识:票据」。 */
+const inviteCode = ref('')
+const inviteBusy = ref(false)
+const inviteNotice = ref('')
+
+/**
+ * 用邀请码入座：**这是给"大厅点不动"的场合留的一条路**——桌已开局 / 已锁桌时，
+ * 说书人新签发的旅行者席位、以及换设备的兜底，都走这里。
+ *
+ * 码写成 `桌标识:席位票据`（说书人面板显示的就是这个形态）：桌标识属于连接，
+ * 光有票据不知道连哪一桌。
+ */
+async function joinByInviteCode(): Promise<void> {
+  const raw = inviteCode.value.trim()
+  const separator = raw.indexOf(':')
+  if (separator <= 0 || separator === raw.length - 1) {
+    inviteNotice.value = '邀请码要写成「桌标识:席位票据」——说书人面板上显示的就是这一串'
+    return
+  }
+
+  const gameId = raw.slice(0, separator).trim()
+  const ticket = raw.slice(separator + 1).trim()
+  inviteBusy.value = true
+  inviteNotice.value = ''
+  try {
+    const previous = gateway
+    gateway = null
+    if (previous !== null) {
+      await previous.stop()
+    }
+
+    clientSequence = 0
+    selectedTable.value = null
+    gateway = new PlayerGateway(buildCallbacks(), undefined, gameId)
+    await gateway.joinSeat(ticket, accountProfile.value?.accountSession ?? null)
+    inviteNotice.value = `已凭邀请码入座（${gameId}）`
+  } catch (error) {
+    inviteNotice.value = `凭邀请码入座失败：${error instanceof Error ? error.message : String(error)}`
+    gateway = null
+  } finally {
+    inviteBusy.value = false
+  }
+}
+
+/**
+ * 这个席位按钮能不能点（D-0027）。
+ *
+ * 「回到我的座位」是**始终可点**的一格：账号会话只活在内存里，刷新页面就没了；
+ * 而大厅又按"已开局 / 已锁桌"整排置灰——只按旧口径禁用，玩家刷新之后就再也回不到自己的位置。
+ * 服务端本来就允许同一账号选回自己已认领的席位，界面不该比服务端更严。
+ */
+function seatDisabled(table: LobbyTable, seat: number): boolean {
+  if (table.mySeatNumbers.includes(seat)) {
+    return false
+  }
+
+  return table.locked || table.started || table.occupiedSeatNumbers.includes(seat)
+}
+
+function seatTitle(table: LobbyTable, seat: number): string {
+  if (table.mySeatNumbers.includes(seat)) {
+    return `回到我的座位（${seat} 号席）`
+  }
+
+  if (table.occupiedSeatNumbers.includes(seat)) {
+    return '这个席位已经有人了'
+  }
+
+  return table.started || table.locked ? '这一桌已经开局 / 已锁定，需要邀请码' : `坐 ${seat} 号席`
+}
+
 /** 同桌名单：有玩家名的席位 + 自己（自己还没名字时也列出来，显示回退的席位号）。 */
 const roster = computed(() => {
   const current = view.value
@@ -148,118 +221,9 @@ const roster = computed(() => {
   return [...named].sort((left, right) => left - right)
 })
 
-function ensureAccountGateway(): AccountGateway {
-  accountGateway ??= new AccountGateway()
-  return accountGateway
-}
-
-function accountFailureText(code: string, message: string): string {
-  return message.length > 0 ? `账号操作未成功（${code}）：${message}` : `账号操作未成功（${code}）`
-}
-
-async function registerAccount(username: string, displayName: string, password: string): Promise<void> {
-  accountBusy.value = true
-  accountRecoveryCode.value = ''
-  try {
-    const result = await ensureAccountGateway().register(username, displayName, password)
-    if (!result.ok) {
-      accountNotice.value = accountFailureText(result.code, result.message)
-      return
-    }
-
-    accountProfile.value = ensureAccountGateway().profile
-    accountNotice.value = '注册成功，已登录；凭票据加入即可认领席位'
-    accountRecoveryCode.value = result.recoveryCode ?? ''
-  } catch (error) {
-    accountNotice.value = `注册失败：${error instanceof Error ? error.message : String(error)}`
-  } finally {
-    accountBusy.value = false
-  }
-}
-
-async function loginAccount(username: string, password: string): Promise<void> {
-  accountBusy.value = true
-  accountRecoveryCode.value = ''
-  try {
-    const result = await ensureAccountGateway().login(username, password)
-    if (!result.ok) {
-      accountNotice.value = accountFailureText(result.code, result.message)
-      return
-    }
-
-    accountProfile.value = ensureAccountGateway().profile
-    accountNotice.value = '已登录；凭票据加入即可认领席位'
-  } catch (error) {
-    accountNotice.value = `登录失败：${error instanceof Error ? error.message : String(error)}`
-  } finally {
-    accountBusy.value = false
-  }
-}
-
-async function logoutAccount(): Promise<void> {
-  accountBusy.value = true
-  try {
-    await ensureAccountGateway().logout()
-    accountProfile.value = null
-    accountNotice.value = '已登出（席位票据仍然有效）'
-    accountRecoveryCode.value = ''
-  } catch (error) {
-    accountNotice.value = `登出失败：${error instanceof Error ? error.message : String(error)}`
-  } finally {
-    accountBusy.value = false
-  }
-}
-
-async function renameAccount(displayName: string): Promise<void> {
-  if (displayName.length === 0) {
-    accountNotice.value = '玩家名不能为空'
-    return
-  }
-
-  accountBusy.value = true
-  try {
-    const result = await ensureAccountGateway().changeDisplayName(displayName)
-    if (!result.ok) {
-      accountNotice.value = accountFailureText(result.code, result.message)
-      return
-    }
-
-    accountProfile.value = ensureAccountGateway().profile
-    accountNotice.value = `玩家名已改为「${result.displayName}」，已同步给同桌`
-  } catch (error) {
-    accountNotice.value = `改名失败：${error instanceof Error ? error.message : String(error)}`
-  } finally {
-    accountBusy.value = false
-  }
-}
-
-async function resetAccountPassword(
-  username: string,
-  recoveryCode: string,
-  newPassword: string,
-): Promise<void> {
-  accountBusy.value = true
-  accountRecoveryCode.value = ''
-  try {
-    const result = await ensureAccountGateway().resetPassword(username, recoveryCode, newPassword)
-    if (!result.ok) {
-      accountNotice.value = accountFailureText(result.code, result.message)
-      return
-    }
-
-    accountProfile.value = ensureAccountGateway().profile
-    accountNotice.value = '口令已重置并重新登录；旧会话已失效'
-    accountRecoveryCode.value = result.recoveryCode ?? ''
-  } catch (error) {
-    accountNotice.value = `重置失败：${error instanceof Error ? error.message : String(error)}`
-  } finally {
-    accountBusy.value = false
-  }
-}
-
 const stateText: Record<GatewayState, string> = {
-  disconnected: '未连接',
-  connecting: '连接中',
+  disconnected: '还没连上',
+  connecting: '正在连',
   connected: '已连接',
   reconnecting: '重连中',
 }
@@ -267,7 +231,7 @@ const stateText: Record<GatewayState, string> = {
 const connected = computed(() => connectionState.value === 'connected' && view.value !== null)
 
 function ensureGateway(): PlayerGateway {
-  // 连到"选中的那一桌"；没选就是本机默认桌（既有票据流程与装置不受影响）。
+  // 连到"选中的那一桌"：入座时定下来（D-0027 之后没有默认桌可回落）。
   gateway ??= new PlayerGateway(buildCallbacks(), undefined, selectedTable.value?.gameId)
 
   return gateway
@@ -362,22 +326,6 @@ function pushDiagnostic(message: string): void {
   }
 
   diagnostics.value = [message, ...diagnostics.value].slice(0, 5)
-}
-
-async function join(): Promise<void> {
-  joining.value = true
-  try {
-    const seatTicket = ticket.value.trim()
-    store.write(seatTicket)
-    // 视图由网关合并后经 onView 下发；这里只负责发起与报错。
-    // 账号（D-0021）：登录后带账号会话，票据用于首次认领；认领之后可以只凭账号（票据留空）。
-    await ensureGateway().joinSeat(seatTicket, accountProfile.value?.accountSession ?? null)
-    clientSequence = 0
-  } catch (error) {
-    pushDiagnostic(`加入失败：${error instanceof Error ? error.message : String(error)}`)
-  } finally {
-    joining.value = false
-  }
 }
 
 /** 提名 / 举手包装：把网关实例收敛成两个纯函数，交给白天面板（面板不持有连接）。 */
@@ -554,30 +502,29 @@ function winnerLabelOf(winner: string): string {
 }
 
 onMounted(() => {
-  // 大厅是公开门面：先把在开的桌列出来（未登录也能看，坐下才需要账号）。
+  // 大厅只在登录之后出现（D-0027）：没登录时这一面只有一张账号卡。
   void loadTables()
-  const remembered = store.read()
-  if (remembered.length > 0) {
-    ticket.value = remembered
-    void join()
-  }
+})
+
+// 登录 / 登出之后桌列表要跟着变：换了账号就不该看到上一个人的事实（比如"我开的桌"标记）。
+watch(accountProfile, () => {
+  void loadTables()
 })
 
 onBeforeUnmount(() => {
   void gateway?.stop()
-  void accountGateway?.stop()
 })
 </script>
 
 <template>
   <div class="shell">
-    <section v-if="!connected" class="login panel">
-      <h1>玩家端</h1>
-      <p class="hint">
-        登录后从下面的桌里直接选一个空席位坐下，不需要说书人发票据。席位票据仍然可用（邀请 / 换设备兜底）。
-      </p>
+    <!-- 没登录：页面上只有一张账号卡（D-0027）。桌列表是登录之后才出现的东西。 -->
+    <AccountGate v-if="!connected && accountProfile === null" />
 
-      <!-- 大厅（D-0025）：公开信息；坐下需要账号。 -->
+    <section v-else-if="!connected" class="home panel">
+      <h1>加入一桌</h1>
+      <p class="hint">挑一个空席位坐下就行——说书人不需要给你发任何东西。</p>
+
       <div class="lobby" data-testid="player-lobby">
         <div class="row">
           <strong>在开的桌</strong>
@@ -598,9 +545,10 @@ onBeforeUnmount(() => {
                 :key="seat"
                 type="button"
                 class="seat"
-                :disabled="lobbyBusy || table.locked || table.started || table.occupiedSeatNumbers.includes(seat)"
+                :disabled="lobbyBusy || seatDisabled(table, seat)"
                 :data-seat="`${table.gameId}-${seat}`"
-                :title="table.occupiedSeatNumbers.includes(seat) ? '这个席位已经有人了' : `坐 ${seat} 号席`"
+                :data-seat-mine="table.mySeatNumbers.includes(seat) ? 'true' : undefined"
+                :title="seatTitle(table, seat)"
                 @click="takeSeat(table, seat)"
               >
                 {{ seat }}
@@ -609,27 +557,25 @@ onBeforeUnmount(() => {
           </li>
         </ul>
         <p v-else class="hint">
-          还没有开桌。去顶栏的「说书人端」登录后可以自己开一桌，或先用下面的票据入口。
+          现在还没有人开桌。去顶栏的「主持一局」开一桌，你就是那一桌的说书人。
         </p>
       </div>
 
-      <p class="hint">也可以凭席位票据加入（说书人给你的那一串）。玩家端只会收到属于你自己的信息。</p>
-      <div class="row">
-        <input v-model="ticket" placeholder="席位票据" spellcheck="false" @keyup.enter="join()" />
-        <button type="button" class="primary" :disabled="joining" @click="join()">加入</button>
-      </div>
-      <AccountPanel
-        :profile="accountProfile"
-        :busy="accountBusy"
-        :notice="accountNotice"
-        :recovery-code="accountRecoveryCode"
-        @register="registerAccount"
-        @login="loginAccount"
-        @logout="logoutAccount"
-        @rename="renameAccount"
-        @reset="resetAccountPassword"
-      />
-      <p class="hint">连接状态：{{ stateText[connectionState] }}</p>
+      <!-- 邀请码（D-0025 的兜底路径，D-0027 之后撤下主路径但保留出口）：
+           桌已开局 / 已锁桌时大厅点不动——中途到场的旅行者、换设备的兜底都走这里。 -->
+      <details class="invite" data-testid="seat-invite">
+        <summary>有邀请码？凭邀请码入座</summary>
+        <p class="hint">说书人给你的那一串，形态是「桌标识:席位票据」（他面板上显示的就是它）。</p>
+        <div class="row">
+          <input v-model="inviteCode" data-testid="seat-invite-code" placeholder="桌标识:席位票据" spellcheck="false" />
+          <button type="button" :disabled="inviteBusy" data-testid="seat-invite-join" @click="joinByInviteCode()">
+            入座
+          </button>
+        </div>
+        <p v-if="inviteNotice.length > 0" class="hint" data-testid="seat-invite-notice">{{ inviteNotice }}</p>
+      </details>
+
+      <AccountPanel />
       <ul v-if="diagnostics.length > 0" class="diagnostics">
         <li v-for="message in diagnostics" :key="message">{{ message }}</li>
       </ul>
@@ -869,20 +815,8 @@ onBeforeUnmount(() => {
 
       <section class="panel" data-testid="player-account">
         <h2>账号<HelpTip topic="player-name" /></h2>
-        <p class="block-question">你的公开玩家名来自这里；改名、登出、找回口令都在这。</p>
-        <AccountPanel
-          compact
-          foldable
-          :profile="accountProfile"
-          :busy="accountBusy"
-          :notice="accountNotice"
-          :recovery-code="accountRecoveryCode"
-          @register="registerAccount"
-          @login="loginAccount"
-          @logout="logoutAccount"
-          @rename="renameAccount"
-          @reset="resetAccountPassword"
-        />
+        <p class="block-question">你的公开玩家名来自这里；改名、登出都在这。</p>
+        <AccountPanel />
       </section>
 
       <ul v-if="diagnostics.length > 0" class="diagnostics" data-testid="player-diagnostics">

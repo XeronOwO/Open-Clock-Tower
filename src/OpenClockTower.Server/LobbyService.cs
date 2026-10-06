@@ -4,7 +4,7 @@ using OpenClockTower.Contracts;
 namespace OpenClockTower.Server;
 
 /// <summary>
-/// 大厅用例：列出在开的桌、由登录账号创建新桌（D-0025 / D-0026）。
+/// 大厅用例：列出在开的桌、由登录账号创建新桌（D-0025 / D-0026 / D-0027）。
 /// </summary>
 /// <remarks>
 /// <para>
@@ -12,13 +12,13 @@ namespace OpenClockTower.Server;
 /// 属于部署方的授权策略，不是领域规则。
 /// </para>
 /// <para>
-/// 开桌只做三件事：生成标识、写会话目录（票据 + 桌元数据）、让注册表装载它。
-/// 新桌的会话信息由 <see cref="GameSetupFactory"/> 生成——与默认桌**同一套**票据实现，
-/// 不另造一条建局路径。
+/// 开桌只做三件事：生成标识、写会话目录（席位票据 + 归属 + 桌元数据）、让注册表装载它。
+/// 新桌的会话信息由 <see cref="GameSetupFactory"/> 生成——席位票据只有这一套实现，不另造一条建局路径。
 /// </para>
 /// <para>
-/// **开桌 ≠ 获得权限**（D-0026）：开桌把这一桌的说书人票据回给开桌者，他因此成为这一桌的说书人。
-/// 说书人是角色，不是身份——所以他可以随时把票据交给别人主持，平台不做"这张桌归谁"的登记。
+/// **开桌 ≠ 获得权限**（D-0026）：任何登录账号都能开。**但这一桌从此归开桌账号**（D-0027）：
+/// `CreatedByAccountId` 是进主持台的唯一依据，平台不提供转交——说书人仍是"玩这一局的角色"，
+/// 只是这个角色不再是一串可以转手的凭据。
 /// </para>
 /// </remarks>
 public sealed class LobbyService
@@ -58,11 +58,16 @@ public sealed class LobbyService
     }
 
     /// <summary>列出在开的桌（按标识升序）。</summary>
+    /// <param name="viewer">看这份列表的账号（未登录为 null）；用来算 <see cref="LobbyTableDto.CreatedByMe"/>。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
     /// <remarks>
     /// 人数从席位绑定表现算：它可能在玩家加入后变化，不缓存在内存里（"状态属于所有者"——
-    /// 绑定表才是所有者，不做第二份事实）。
+    /// 绑定表才是所有者，不做第二份事实）。归属同理，直接读会话目录的 `CreatedByAccountId`，
+    /// 服务端算好"这张桌是不是你开的"，不让前端自己拼事实（D-0027）。
     /// </remarks>
-    public async Task<IReadOnlyList<LobbyTableDto>> ListAsync(CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<LobbyTableDto>> ListAsync(
+        AccountId? viewer,
+        CancellationToken cancellationToken)
     {
         var setups = await _catalog.ListAsync(cancellationToken);
 
@@ -80,6 +85,13 @@ public sealed class LobbyService
                 TakenSeatCount = bindings.Count,
                 Started = started,
                 Locked = setup.IsLocked,
+                CreatedByMe = viewer is { } account && setup.CreatedByAccountId == account,
+                // 我自己已经认领的席位：界面据此让"回到我的座位"在开局 / 锁桌之后仍然点得动。
+                MySeatNumbers = viewer is { } me
+                    ? [.. bindings.Where(binding => binding.AccountId == me)
+                        .Select(binding => binding.Seat.Value)
+                        .OrderBy(value => value)]
+                    : [],
                 // 已占席位号：前端据此把按钮置灰，玩家不必"点一下试试"才知道被占。
                 OccupiedSeatNumbers = [.. bindings.Select(binding => binding.Seat.Value).OrderBy(value => value)],
             });
@@ -89,7 +101,7 @@ public sealed class LobbyService
     }
 
     /// <summary>
-    /// 创建一张新桌（D-0026：登录即可，开完凭返回的票据当这一桌的说书人）。
+    /// 创建一张新桌（D-0026：登录即可；D-0027：开桌即成为这一桌的说书人）。
     /// </summary>
     /// <param name="account">开桌者（由账号会话推导，客户端声明不可信）。</param>
     /// <param name="name">桌名（可为空 = 未命名）。</param>
@@ -140,16 +152,17 @@ public sealed class LobbyService
                 continue;
             }
 
-            var setup = GameSetupFactory.Create(gameId, seatCount) with { Name = trimmed };
+            var setup = GameSetupFactory.Create(gameId, seatCount, account!.Id) with { Name = trimmed };
             await _catalog.SaveAsync(setup, cancellationToken);
             await _registry.GetOrCreateAsync(gameId, cancellationToken);
 
             _logger.LogInformation(
-                "已开桌：game={GameId} 桌名={Name} 席位={SeatCount} 开桌人={Username}",
+                "已开桌：game={GameId} 桌名={Name} 席位={SeatCount} 开桌人={Username}（含账号 {AccountId}，他因此成为这一桌的说书人）",
                 gameId.Value,
                 trimmed.Length == 0 ? "(未命名)" : trimmed,
                 seatCount,
-                account!.Username);
+                account.Username,
+                account.Id.Value);
 
             return new LobbyCreateResultDto
             {
@@ -157,7 +170,6 @@ public sealed class LobbyService
                 Code = "ok",
                 Message = "已开桌",
                 GameId = gameId.Value,
-                StorytellerTicket = setup.StorytellerTicket,
                 SeatCount = seatCount,
             };
         }

@@ -43,14 +43,14 @@ export function parseRoute(hash: string): AppRoute {
   return 'storyteller'
 }
 
-/** 面 → 人话标题（顶栏显示当前位置）。 */
+/** 面 → 人话标题（顶栏显示当前位置）。界面上的词是「加入一桌 / 主持一局」，不是内部叫法（D-0027）。 */
 export function routeLabel(route: AppRoute): string {
   switch (route) {
     case 'home':
       return '首页'
     case 'player':
-      return '玩家端'
+      return '加入一桌'
     case 'storyteller':
-      return '说书人端'
+      return '主持一局'
   }
 }

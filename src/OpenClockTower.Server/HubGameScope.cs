@@ -17,14 +17,14 @@ namespace OpenClockTower.Server;
 /// 本类是单例，绑定与执行器都按连接 id 记住（一条连接只服务一桌）。
 /// </para>
 /// <para>
-/// 解析规则：连接串里的 <c>?gameId=</c> 优先，缺省回落到宿主配置的默认桌——
-/// 于是既有客户端与 18 个验收装置都不用改。未知的桌**显式拒绝**，不做"顺手建一个"。
+/// 解析规则（D-0027）：连接串里的 <c>?gameId=</c> 是**唯一**依据。此前缺省会回落到宿主配置的默认桌，
+/// 那条回落随默认桌一起删除——它同时是"一张没有房主的桌"的来源；未声明桌标识的连接**显式拒绝**。
+/// 未知的桌同样显式拒绝，不做"顺手建一个"。
 /// </para>
 /// </remarks>
 public sealed class HubGameScope
 {
     private readonly GameRegistry _games;
-    private readonly GameId _defaultGameId;
     private readonly NotificationDispatcher _dispatcher;
     private readonly Dictionary<string, GameInstance> _gamesByConnection = new(StringComparer.Ordinal);
     private readonly Dictionary<string, HubCommandExecutor> _executorsByConnection = new(StringComparer.Ordinal);
@@ -32,17 +32,15 @@ public sealed class HubGameScope
 
     /// <summary>构造绑定。</summary>
     /// <param name="games">局注册表。</param>
-    /// <param name="defaultGameId">默认桌（连接未声明桌标识时回落）。</param>
     /// <param name="dispatcher">推送分发（执行器要用）。</param>
-    internal HubGameScope(GameRegistry games, GameId defaultGameId, NotificationDispatcher dispatcher)
+    internal HubGameScope(GameRegistry games, NotificationDispatcher dispatcher)
     {
         _games = games;
-        _defaultGameId = defaultGameId;
         _dispatcher = dispatcher;
     }
 
     /// <summary>取这条连接所属的桌；首次调用时按查询串解析并记住。</summary>
-    /// <param name="httpContext">本次连接的 HTTP 上下文（查询串里可能有 gameId）。</param>
+    /// <param name="httpContext">本次连接的 HTTP 上下文（查询串里必须有 gameId）。</param>
     /// <param name="connectionId">连接标识。</param>
     /// <param name="cancellationToken">取消令牌。</param>
     internal async Task<GameInstance> GameAsync(
@@ -59,8 +57,13 @@ public sealed class HubGameScope
         }
 
         var declared = httpContext?.Request.Query["gameId"].ToString();
-        var gameId = string.IsNullOrWhiteSpace(declared) ? _defaultGameId : new GameId(declared.Trim());
+        if (string.IsNullOrWhiteSpace(declared))
+        {
+            // 不再回落默认桌（D-0027）：不声明桌标识的连接没有归属的局，也就没有任何可执行的动作。
+            throw new HubException("这条连接没有声明桌标识（?gameId=）");
+        }
 
+        var gameId = new GameId(declared.Trim());
         var game = await _games.FindAsync(gameId, cancellationToken)
             ?? throw new HubException($"这一桌不存在：{gameId.Value}");
 

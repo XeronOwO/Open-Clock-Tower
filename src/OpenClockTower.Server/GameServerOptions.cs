@@ -1,18 +1,18 @@
 namespace OpenClockTower.Server;
 
-/// <summary>宿主配置：默认桌 + 节奏配额 + 数据库位置 + 管理员名单。</summary>
+/// <summary>宿主配置：节奏配额 + 数据库位置 + 席位数 + 自助开桌开关 + 运维名单。</summary>
 public sealed class GameServerOptions
 {
     /// <summary>配置节名。</summary>
     public const string SectionName = "GameServer";
 
     /// <summary>
-    /// 默认桌标识：连接未声明 <c>?gameId=</c> 时回落到它，启动引导也保证它存在
-    /// （升级前的那一桌就是它，多桌 D-0024 之后依然如此）。
+    /// 建议席位数：**只是给界面用的默认值**，不是"宿主自己开的那一桌"。
     /// </summary>
-    public string GameId { get; set; } = "default";
-
-    /// <summary>默认桌的席位数。</summary>
+    /// <remarks>
+    /// 默认桌已随 D-0027 退场：宿主不再创建任何桌，第一桌由人在界面上开出来。
+    /// 这个值仍由 <c>/healthz</c> 下发，供开桌表单预填与面板渲染兜底。
+    /// </remarks>
     public int SeatCount { get; set; } = 5;
 
     /// <summary>SQLite 数据库路径（相对内容根）。</summary>
@@ -30,7 +30,7 @@ public sealed class GameServerOptions
     /// <remarks>
     /// 刻意放在配置而不进库：它是部署者的名单，不是玩家数据；也避免为它改库结构。
     /// 语义只到这里——关桌 / 清场这类**部署级**动作将来由它授权。
-    /// **它不是"说书人"**：说书人是这一局的主持人，由该桌票据认定，任何登录玩家开一桌就得到它。
+    /// **它不是"说书人"**：说书人是这一局的主持人，由**开桌账号**认定（D-0027），任何登录玩家开一桌就得到它。
     /// 当前唯一用途是 <see cref="AllowPlayerTables"/> 关掉后的开桌兜底。**留空 = 没有运维身份**。
     /// </remarks>
     public string[] AdminUsernames { get; set; } = [];

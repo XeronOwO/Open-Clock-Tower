@@ -689,6 +689,20 @@ export function seatDisplayOf(seat: number, seatNames: readonly SeatDisplayNameD
 }
 
 /**
+ * 用玩家名替换服务端预览里的「N 号玩家」前缀，**其余原样保留**（括号注与说明都要留着）。
+ * 预览不是这个形状时退回纯席位口径——不猜、不拼。
+ */
+function withSeatName(
+  preview: string,
+  seat: number,
+  seatNames: readonly SeatDisplayNameDto[],
+): string {
+  const label = seatDisplayOf(seat, seatNames)
+  const prefix = `${seat} 号玩家`
+  return preview.startsWith(prefix) ? `${label}${preview.slice(prefix.length)}` : label
+}
+
+/**
  * 可空席位的显示文本：缺值 / 坏值退「—」，否则与 `seatDisplayOf` 同一口径。
  * 用于"可能还没有归属席"的字段（当前槽位行动者、裁定归属、注记目标席）。
  */
@@ -701,8 +715,12 @@ export function seatTextOf(
 
 /**
  * 选项文案本地化（D-0021）：选项值形如 `seat:N` / `pair:A+B` 且**这一席已经有玩家名**时，
- * 用统一席位口径（「N 号 · 玩家名」）取代服务端原文；没名字一律保留服务端原文
- * （服务端那句带语境，如「3 号玩家」，比光秃秃的「3 号」更有用——游客面上不动它）。
+ * 用统一席位口径（「N 号 · 玩家名」）取代服务端原文里那截干巴巴的「N 号玩家」；
+ * 没名字一律保留服务端原文（服务端那句带语境，如「3 号玩家」，比光秃秃的「3 号」更有用）。
+ *
+ * **只换称呼，不丢语境**（2026-10-06 修正）：服务端的预览常常还带着后半句——
+ * 「3 号玩家（已死亡）：重获其角色能力直到下个黄昏」里的括号注与说明是玩家做选择要看的
+ * （集骨者只能选死者，去掉「已死亡」三个字等于把判据藏了）。只替换前缀那一截，其余原样保留。
  */
 export function optionDisplayOf(
   option: DecisionOptionDto,
@@ -712,7 +730,7 @@ export function optionDisplayOf(
   if (value.startsWith('seat:')) {
     const seat = Number.parseInt(value.slice('seat:'.length), 10)
     if (Number.isInteger(seat) && seat > 0 && displayNameOf(seat, seatNames) !== null) {
-      return seatDisplayOf(seat, seatNames)
+      return withSeatName(option.preview, seat, seatNames)
     }
 
     return option.preview

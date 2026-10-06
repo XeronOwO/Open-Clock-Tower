@@ -48,4 +48,29 @@ public sealed record LobbyTableDto
     /// </para>
     /// </remarks>
     public required IReadOnlyList<int> OccupiedSeatNumbers { get; init; }
+
+    /// <summary>
+    /// 这张桌是不是**你**开的（D-0027）。
+    /// </summary>
+    /// <remarks>
+    /// 由服务端按会话目录的 `CreatedByAccountId` 算好，前端不自己拼事实。
+    /// 说书人面据此列出「我主持的桌」——换设备 / 清缓存之后，桌还认得出是同一个人的。
+    /// 未登录时恒为 false（没有"你"）。
+    /// </remarks>
+    public bool CreatedByMe { get; init; }
+
+    /// <summary>
+    /// 这张桌上**已经属于你**的席位号（D-0027）。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 用途只有一个：让"回到我的座位"在这张桌**已经开局 / 已锁桌**时仍然点得动。
+    /// 没有它的话，玩家刷新页面（账号会话只在内存里，刷新即失效）之后会卡死在门口——
+    /// 大厅把已开局的席位整排置灰，而服务端其实**允许**同一账号选回自己已认领的席位。
+    /// </para>
+    /// <para>
+    /// 泄露面为零：这是"你自己坐哪"，不是"别人坐哪"。未登录时恒为空。
+    /// </para>
+    /// </remarks>
+    public IReadOnlyList<int> MySeatNumbers { get; init; } = [];
 }

@@ -9,17 +9,22 @@
  *
  * 覆盖行：2（未加入的连接）、3（旧连接凭据）、1（他人请求归属）、4（玩家调说书人命令）、
  *         5（白天提交夜间行动：完成首夜 → 开白天 → 提交被阶段闸拒绝）、6（非法选项）、
- *         8（收包不含越权信息）、9 的在线面（无关玩家零活动）、11（拒绝审计）。
+ *         8（收包不含越权信息）、9 的在线面（无关玩家零活动）、11（拒绝审计）、
+ *         账号面（D-0021 / D-0027：伪造 / 已登出的账号会话进不去，旧协议 `JoinStoryteller` 已删除）。
  * 行 6 的"僧侣"依赖尚未落地的角色，已在集成测试里用等价反例覆盖。
  *
- * 前置：Node >= 22.5（node:sqlite）、本机已构建。
+ * 说书人进场走**真实用法**（D-0027）：账号 Hub 注册夹具账号 → 由它开一桌 → 游戏连接声明该桌的
+ * `?gameId=` 并出示账号会话。票据已整个退场，宿主也不再自动建默认桌。
+ *
+ * 前置：Node >= 22.5（node:sqlite，读席位票据）、本机已构建。
  * 用法（在仓库根运行；默认迭代档 = 快节拍 + 复用产物）：
  *   node tools/verify-zero-trust.mjs                  # 迭代档
  *   node tools/verify-zero-trust.mjs --quota 2 --build  # 取证档（慢节拍 + 强制构建）
  *   node tools/verify-zero-trust.mjs --port 5397      # 自定端口
  *
- * 外部耦合（换机器先核对 web/AGENTS.md §3.1）：宿主编译产物路径、SQLite 表 Games
- * 的 StorytellerTicket / SeatsJson 列形状。退出码：0 = 全过；1 = 有失败；2 = 环境缺依赖。
+ * 外部耦合（换机器先核对 web/AGENTS.md §3.1）：宿主编译产物路径、SQLite 表 Games 的
+ * SeatsJson 列形状（席位票据仍直读库；说书人身份已改走账号，见 D-0027）。
+ * 退出码：0 = 全过；1 = 有失败；2 = 环境缺依赖。
  */
 import { spawn } from 'node:child_process'
 import { mkdtempSync, rmSync } from 'node:fs'
@@ -27,7 +32,7 @@ import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { DatabaseSync } from 'node:sqlite'
+import { readSeatTickets } from './lib/entrance.mjs'
 import { describeProfile, ensureServerArtifacts, extractProfileFlags, resolveProfile } from './lib/verify-profile.mjs'
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -58,8 +63,24 @@ console.log(`档位：${describeProfile(config)}`)
 const workspace = mkdtempSync(path.join(tmpdir(), 'oct-zero-trust-'))
 const databasePath = path.join(workspace, 'verify.db')
 const serverUrl = `http://localhost:${options.port}`
-const hubUrl = `${serverUrl}/hub/game`
 const accountHubUrl = `${serverUrl}/hub/account`
+
+/**
+ * 游戏 Hub 地址：`?gameId=` 是连接的一部分（D-0027：不声明桌的连接一律被拒），而桌标识要开完桌
+ * 才知道——所以这里是 `let`，开桌之后覆盖成带桌标识的那条（那之前没有任何游戏连接可用）。
+ */
+let hubUrl = `${serverUrl}/hub/game`
+
+/**
+ * 夹具说书人账号（D-0027）：说书人票据退场之后，"是不是说书人"只由"是不是开这一桌的账号"回答。
+ * 登录名总长受服务端 `UsernameText.MaxLength` = 24 字符约束（前缀 13 字符 + 后缀 ≤ 11）。
+ */
+const FIXTURE_HOST = {
+  username: 'fixture-host-zero-trust',
+  displayName: '夹具说书人zero-trust',
+  password: 'fixture-pw-zero-trust',
+  tableName: '零信任取证桌',
+}
 
 /** 越权字段名（说书人专属；扫描玩家客户端收到的**全部消息**）：一个精确键名命中就是泄密。 */
 const FORBIDDEN_PLAYER_KEYS = [
@@ -161,13 +182,30 @@ async function main() {
   server.stderr.on('data', (chunk) => serverLog.push(String(chunk)))
   await waitForHttp(`${serverUrl}/healthz`, '宿主 /healthz', 90_000)
 
-  console.log('=== 2/6 取票据：说书人 + 三席 ===')
-  const storytellerTicket = readStorytellerTicket(databasePath)
-  const seatTickets = readSeatTickets(databasePath)
-  check('席位票据齐备（3 席）', seatTickets.length === 3, `实际 ${seatTickets.length} 张`)
+  console.log('=== 2/6 开一桌：夹具账号 + 三席票据（D-0027：宿主不再自动建默认桌）===')
+  // 说书人票据已整个退场：装置不再"从库里掏凭据"，而是走真实用法——注册夹具账号 → 由它开一桌。
+  const accountHub = await connectTo(accountHubUrl)
+  const host = await registerFixtureHost(accountHub)
+  const created = await accountHub.invoke('CreateTable', host.session, FIXTURE_HOST.tableName, 3)
+  if (created?.ok !== true) {
+    throw new Error(`开桌失败：${created?.code ?? '未知'} ${created?.message ?? ''}`)
+  }
+
+  const gameId = String(created.gameId ?? '')
+  if (gameId.length === 0) {
+    throw new Error('开桌回执没有桌标识（D-0027：说书人面凭桌标识进主持台）')
+  }
+
+  // 账号会话在服务端不绑连接（8 小时到期，见 AccountSessionRegistry），开桌这条连接用完即关。
+  await accountHub.stop()
+  hubUrl = `${serverUrl}/hub/game?gameId=${encodeURIComponent(gameId)}`
+  console.log(`  夹具账号 ${host.username} 已开桌：game=${gameId}（${created.seatCount} 席）；游戏 Hub ${hubUrl}`)
+
+  const seatTickets = readSeatTickets(databasePath, gameId)
+  check('席位票据齐备（3 席）', seatTickets.length === 3, `实际 ${seatTickets.length} 张（game=${gameId}）`)
 
   console.log('=== 3/6 篡改客户端：加入、分配、开夜、裁定 ===')
-  const storyteller = await joinAsStoryteller(storytellerTicket)
+  const storyteller = await joinAsStoryteller(host.session)
   check('说书人加入并拿到连接凭据', storyteller.credential.length >= 16)
 
   const players = new Map()
@@ -501,9 +539,10 @@ async function main() {
     dayPushTexts.map(({ text }) => text.slice(0, 160)).join(' | ') || '没有客户端收到白天推送',
   )
 
-  console.log('=== 5.8/6 账号会话负向（D-0021）：账号会话不是游戏凭据，票据才是授权 ===')
+  console.log('=== 5.8/6 账号会话负向（D-0021 / D-0027）：账号会话不是游戏凭据，席位票据才是入座授权 ===')
   // 账号会话与连接凭据是**两套**凭据面（D-0012 / D-0021）：这一段取证"账号会话既不能当连接凭据，
-  // 也不能被伪造 / 过期后蒙混过关"，反方向取证"票据仍然是唯一的入座授权"。
+  // 也不能被伪造 / 过期后蒙混过关"，反方向取证"席位票据仍然是唯一的入座授权"（D-0027 之后
+  // 说书人这一侧不看票据了——看的是"你是不是开这一桌的账号"，见下面两条负向）。
   const accounts = await connectTo(accountHubUrl)
   const registered = await accounts.invoke('Register', 'zt-account', '零信任玩家名', 'zt-account-password-1')
   const accountSession = registered.accountSession
@@ -558,6 +597,33 @@ async function main() {
     '行 账号：已登出的账号会话进不了房（登出即失效，不靠客户端自觉）',
     loggedOut.ok === true && revokedJoin.ok,
     `登出 code=${loggedOut.code}；入座被拒：${revokedJoin.message}`,
+  )
+
+  // 说书人这一侧（D-0027）：入场不看票据、只看"你是不是开这一桌的账号"，所以负向也钉在这条机制上。
+  // 下面两条都走 anonymous 这条**没有任何身份**的游戏连接——它的其余用途到此已经全部用完。
+  const forgedHostJoin = await expectRejected(
+    () => anonymous.invoke('JoinStorytellerWithAccount', '伪造账号会话-不存在的随机串'),
+    '账号会话无效',
+  )
+  check(
+    '行 账号 / D-0027：伪造 / 过期账号会话调 JoinStorytellerWithAccount 被拒（不静默降级、不签发凭据）',
+    forgedHostJoin.ok,
+    forgedHostJoin.message,
+  )
+
+  // 旧协议入口 `JoinStoryteller` 已整个删除。这一条**不押服务端的错误文案**（"方法不存在"怎么呈现由
+  // 框架决定，写死文案会让装置跟着框架版本红），只钉实质：直调它**拿不到任何连接凭据**。
+  const legacyHostJoin = await anonymous
+    .invoke('JoinStoryteller', '旧协议说书人票据-已退场')
+    .then((result) => ({ rejected: false, result }))
+    .catch((error) => ({ rejected: true, message: error instanceof Error ? error.message : String(error) }))
+  const legacyCredential = legacyHostJoin.rejected ? undefined : legacyHostJoin.result?.credential
+  check(
+    'D-0027：旧协议 JoinStoryteller 已删除（直调它拿不到任何连接凭据：票据退场后没有这条入口）',
+    typeof legacyCredential !== 'string' || legacyCredential.length === 0,
+    legacyHostJoin.rejected
+      ? `被拒：${legacyHostJoin.message}`
+      : `未抛错，但回执里没有凭据：${JSON.stringify(legacyHostJoin.result ?? null)}`,
   )
 
   // 正向对照：带**有效**账号会话 + 票据才能入座并拿到玩家名——证明上面的拒绝不是"路径没实现"。
@@ -647,9 +713,28 @@ async function joinSeatWithAccount(ticket, accountSession) {
   return { connection, credential: joined.credential, view: joined.bundle.view, inbox }
 }
 
-async function joinAsStoryteller(ticket) {
+/**
+ * 注册夹具说书人账号（D-0027）：注册即登录，回执里带 `accountSession`；
+ * 不 ok 就当场抛（`invalid_username` 这类配置错误不该以"后面某条断言红了"的形式出现）。
+ */
+async function registerFixtureHost(connection) {
+  const account = await connection.invoke(
+    'Register',
+    FIXTURE_HOST.username,
+    FIXTURE_HOST.displayName,
+    FIXTURE_HOST.password,
+  )
+  if (account?.ok !== true || typeof account.accountSession !== 'string' || account.accountSession.length === 0) {
+    throw new Error(`夹具账号注册失败：${account?.code ?? '未知'} ${account?.message ?? ''}`)
+  }
+
+  return { ...FIXTURE_HOST, session: account.accountSession }
+}
+
+/** 说书人加入（D-0027）：连接已声明桌标识，入场出示**账号会话**——只有开这一桌的账号进得来。 */
+async function joinAsStoryteller(accountSession) {
   const connection = await connect()
-  const joined = await connection.invoke('JoinStoryteller', ticket)
+  const joined = await connection.invoke('JoinStorytellerWithAccount', accountSession)
   return { connection, credential: joined.credential }
 }
 
@@ -797,55 +882,6 @@ async function waitForHttp(url, label, timeoutMs) {
   }
 
   throw new Error(`${label} 在 ${timeoutMs}ms 内没有就绪：${lastError}`)
-}
-
-function readStorytellerTicket(databasePathToRead) {
-  const database = new DatabaseSync(databasePathToRead, { readOnly: true })
-  try {
-    const row = database.prepare('SELECT StorytellerTicket FROM Games LIMIT 1').get()
-    if (row === undefined || typeof row.StorytellerTicket !== 'string') {
-      throw new Error('数据库里没有说书人票据')
-    }
-
-    return row.StorytellerTicket
-  } finally {
-    database.close()
-  }
-}
-
-/** 读各席位票据：SeatId 是 record struct，Web 序列化形状为 { "value": N }（两种形状都认）。 */
-function readSeatTickets(databasePathToRead) {
-  const database = new DatabaseSync(databasePathToRead, { readOnly: true })
-  try {
-    const row = database.prepare('SELECT SeatsJson FROM Games LIMIT 1').get()
-    if (row === undefined || typeof row.SeatsJson !== 'string') {
-      throw new Error('数据库里没有席位票据（Games.SeatsJson）')
-    }
-
-    const parsed = JSON.parse(row.SeatsJson)
-    if (!Array.isArray(parsed) || parsed.length === 0) {
-      throw new Error('席位票据 JSON 形状不可识别')
-    }
-
-    return parsed
-      .map((item) => ({ seat: seatNumberOf(item?.seat), ticket: String(item?.ticket ?? '') }))
-      .filter((item) => Number.isFinite(item.seat) && item.ticket.length > 0)
-      .sort((left, right) => left.seat - right.seat)
-  } finally {
-    database.close()
-  }
-}
-
-function seatNumberOf(raw) {
-  if (typeof raw === 'number') {
-    return raw
-  }
-
-  if (raw !== null && typeof raw === 'object' && typeof raw.value === 'number') {
-    return raw.value
-  }
-
-  return Number.parseInt(String(raw ?? ''), 10)
 }
 
 function parseArguments(argv) {

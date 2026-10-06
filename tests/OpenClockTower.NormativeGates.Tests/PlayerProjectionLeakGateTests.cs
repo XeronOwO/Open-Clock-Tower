@@ -433,17 +433,19 @@ public sealed partial class PlayerProjectionLeakGateTests
         "@/services/idempotency",
         "@/services/playerGateway",
         "@/services/playerViewMerge",
-        "@/services/ticketStore",
         // 玩家侧自己的子组件（白天操作区）；新增依赖必须显式登记并复核（见上方注释）。
         "@/features/player/PlayerDayPanel.vue",
         // 复盘（终局后玩家面，R-0043 / D-0020）：新契约类别由服务端闸门控制——进行中玩家收包
         // 零复盘字段（反方向由集成用例与零信任装置断言），这里显式登记依赖，不做静默绕过。
         "@/display/replay",
         "@/features/replay/ReplayPanel.vue",
-        // 账号（D-0021）：账号会话是**玩家层**凭据（只用于认领席位与账号自助），与说书人面无关；
-        // 面板与网关显式登记，新增依赖仍必须复核。
+        // 账号（D-0021 / D-0027）：账号会话是**玩家层**凭据（只用于认领席位与账号自助），与说书人面无关。
+        // D-0027 之后会话收成模块级单例（`accountSession`：一条账号连接、三个面共用，秘密仍只在内存里），
+        // 门（`AccountGate`）与资料区（`AccountPanel`）都由它驱动——只发账号请求，不读任何视图数据。
         "@/services/accountGateway",
+        "@/services/accountSession",
         "@/features/account/AccountPanel.vue",
+        "@/features/account/AccountGate.vue",
         // 上手引导（票据 ui-layout-and-onboarding）：`HelpTip` 是两端共用的**纯呈现组件**——
         // 只渲染 `@/display/help` 里的静态说明文案，不读任何视图数据、不含说书人 DTO / 类型；
         // 玩家侧显式登记依赖，新增共享组件仍必须逐项复核。

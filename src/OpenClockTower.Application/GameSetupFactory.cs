@@ -6,12 +6,14 @@ namespace OpenClockTower.Application;
 /// 生成一局游戏的会话票据。
 /// </summary>
 /// <remarks>
-/// 占位实现：票据只是随机字符串；连接绑定、私有凭据与负向测试属「零信任」票据。
+/// 占位实现：席位票据只是随机字符串；连接绑定、私有凭据与负向测试属「零信任」票据。
+/// **说书人不在这里**（D-0027）：主持权归属开桌账号，由调用方在 <see cref="GameSetup.CreatedByAccountId"/>
+/// 上写明，不生成任何凭据。
 /// </remarks>
 public static class GameSetupFactory
 {
-    /// <summary>生成一局 <paramref name="seatCount"/> 名玩家的会话信息。</summary>
-    public static GameSetup Create(GameId gameId, int seatCount)
+    /// <summary>生成一局 <paramref name="seatCount"/> 名玩家的会话信息，归属 <paramref name="createdBy"/>。</summary>
+    public static GameSetup Create(GameId gameId, int seatCount, AccountId createdBy)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(seatCount, 1);
 
@@ -27,7 +29,7 @@ public static class GameSetupFactory
         {
             GameId = gameId,
             Seats = seats,
-            StorytellerTicket = $"storyteller-{Guid.NewGuid():N}",
+            CreatedByAccountId = createdBy,
         };
     }
 

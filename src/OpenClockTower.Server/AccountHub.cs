@@ -52,17 +52,21 @@ public sealed class AccountHub : Hub
     }
 
     /// <summary>
-    /// 列出在开的桌（D-0025）：玩家挑桌用，登录即可看。
+    /// 列出在开的桌（D-0025）：玩家挑桌用，登录即可看；带 <c>CreatedByMe</c> 供说书人面挑出"我的桌"。
     /// </summary>
+    /// <param name="accountSession">账号会话（未登录传 null：大厅是公开门面，只是没有"我"）。</param>
     /// <remarks>
-    /// 只返回公开信息（桌名 / 人数 / 是否开局 / 是否锁定），不含票据与席位归属。
-    /// 未登录也能看——大厅本来就是公开门面；真正入座要凭账号。
+    /// 只返回公开信息（桌名 / 人数 / 是否开局 / 是否锁定 / 是不是你开的），不含票据与席位归属。
+    /// 未登录也能看——真正入座与进主持台都要凭账号（D-0027）。
     /// </remarks>
-    public async Task<IReadOnlyList<LobbyTableDto>> ListTables() =>
-        await _lobby.ListAsync(Context.ConnectionAborted);
+    public async Task<IReadOnlyList<LobbyTableDto>> ListTables(string? accountSession)
+    {
+        var viewer = await ResolveAccountAsync(accountSession);
+        return await _lobby.ListAsync(viewer?.Id, Context.ConnectionAborted);
+    }
 
     /// <summary>
-    /// 创建一张新桌（D-0026：**登录即可**，开完凭回执里的票据主持这一桌）。
+    /// 创建一张新桌（D-0026：**登录即可**；D-0027：开桌即成为这一桌的说书人）。
     /// </summary>
     /// <param name="accountSession">账号会话（开桌要记在某个账号头上，所以必须登录）。</param>
     /// <param name="name">桌名（可为空）。</param>
@@ -70,6 +74,7 @@ public sealed class AccountHub : Hub
     /// <remarks>
     /// 授权在 <see cref="LobbyService.CreateAsync"/>（部署开关 + 运维名单），这里只解析账号：
     /// 未登录的拒绝与"本服不开放自助开桌"是两种结果码，前端要分开说。
+    /// 回执里没有票据（D-0027）——前端拿到 <c>GameId</c> 就能进主持台，因为桌已经记在这个账号名下。
     /// </remarks>
     public async Task<LobbyCreateResultDto> CreateTable(string accountSession, string? name, int seatCount)
     {

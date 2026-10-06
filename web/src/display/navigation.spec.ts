@@ -32,9 +32,9 @@ describe('URL hash → 面', () => {
     expect(parseRoute('#whatever')).toBe('storyteller')
   })
 
-  it('每个面都有可读标题', () => {
+  it('每个面都有可读标题（界面口径：加入一桌 / 主持一局，D-0027）', () => {
     expect(routeLabel('home')).toBe('首页')
-    expect(routeLabel('player')).toBe('玩家端')
-    expect(routeLabel('storyteller')).toBe('说书人端')
+    expect(routeLabel('player')).toBe('加入一桌')
+    expect(routeLabel('storyteller')).toBe('主持一局')
   })
 })

@@ -28,8 +28,8 @@ public sealed class MultiTableIsolationTests
     {
         var catalog = new FakeCatalog(
         [
-            new GameSetup { GameId = TableA, Seats = [], StorytellerTicket = "storyteller-a" },
-            new GameSetup { GameId = TableB, Seats = [], StorytellerTicket = "storyteller-b" },
+            new GameSetup { GameId = TableA, Seats = [], CreatedByAccountId = new AccountId(1) },
+            new GameSetup { GameId = TableB, Seats = [], CreatedByAccountId = new AccountId(2) },
         ]);
 
         return new GameRegistry(
@@ -41,8 +41,7 @@ public sealed class MultiTableIsolationTests
             [],
             new FixedClock(),
             PacingOptions.Default,
-            NullLoggerFactory.Instance,
-            TableA);
+            NullLoggerFactory.Instance);
     }
 
     [Fact]
