@@ -68,6 +68,41 @@ public sealed class AccountSessionRegistryTests
         Assert.False(registry.TryResolve(credential.Value, out _));
     }
 
+    /// <summary>
+    /// 会话引用（M2 / G-A2-1）：同账号的两条登录各有各的标识，按引用撤销只撤那一条。
+    /// </summary>
+    /// <remarks>连接级凭据把它记在身上，撤销才有路径打到"已经进门的那条连接"上。</remarks>
+    [Fact]
+    public void SessionRef_IsPerLogin_AndRevocableByRef()
+    {
+        var registry = new AccountSessionRegistry(new MutableClock(Now));
+        var first = registry.Issue(new AccountId(1));
+        var second = registry.Issue(new AccountId(1));
+
+        Assert.True(registry.TryResolveSession(first.Value, out var firstRef));
+        Assert.True(registry.TryResolveSession(second.Value, out var secondRef));
+        Assert.Equal(new AccountId(1), firstRef.Account);
+        Assert.Equal(new AccountId(1), secondRef.Account);
+        Assert.NotEqual(firstRef, secondRef);
+
+        Assert.True(registry.Revoke(firstRef));
+        Assert.False(registry.TryResolve(first.Value, out _));
+        Assert.True(registry.TryResolve(second.Value, out var remaining));
+        Assert.Equal(new AccountId(1), remaining);
+        Assert.False(registry.Revoke(firstRef));
+    }
+
+    /// <summary>会话引用对无效 / 空凭据一律拒绝（与会话校验同一份判据，不另开一条路径）。</summary>
+    [Fact]
+    public void SessionRef_RejectsUnknownCredential()
+    {
+        var registry = new AccountSessionRegistry(new MutableClock(Now));
+
+        Assert.False(registry.TryResolveSession("不是凭据", out _));
+        Assert.False(registry.TryResolveSession(null, out _));
+        Assert.False(registry.TryResolveSession(string.Empty, out _));
+    }
+
     /// <summary>可变时钟：会话到期断言不依赖真实时间。</summary>
     private sealed class MutableClock(DateTimeOffset now) : IClock
     {

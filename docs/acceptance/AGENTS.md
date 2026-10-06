@@ -16,8 +16,9 @@
 
 ## 2. 当前状态
 
-批次记录（逐批判出与覆盖范围）在 `docs/acceptance/batches.md`——最近批次：**E52 公网就绪审计**
-（第 1 步只读审计 10 个维度，78 条差距落 `docs/security/web-hardening-audit.md`），
+批次记录（逐批判出与覆盖范围）在 `docs/acceptance/batches.md`——最近批次：**E53 M2 第一刀 · 撤销覆盖面**
+（登出 / 改口令当场踢掉已经进门的连接，审计 G-A2-1 已修），
+**E52 公网就绪审计**（第 1 步只读审计 10 个维度，78 条差距落 `docs/security/web-hardening-audit.md`），
 **E51 M1 会话与登录态**（刷新不再掉登录），E50 前端路由改正常路径，
 **E49 部署与真机验收**（在**真机旧库**上咬出一条升级缺陷——旧版留下的 `Games.StorytellerTicket` 是
 `NOT NULL` 且无默认值，升级上来的库"老桌读得出、新桌开不了"；启动守卫已扩成"缺列补上、退场列清掉"）。

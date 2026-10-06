@@ -21,6 +21,7 @@ public sealed class AccountHub : Hub
 {
     private readonly AccountService _accounts;
     private readonly AccountSessionRegistry _sessions;
+    private readonly AccountRevocationService _revocation;
     private readonly GameRegistry _games;
     private readonly NotificationDispatcher _dispatcher;
     private readonly LobbyService _lobby;
@@ -29,13 +30,20 @@ public sealed class AccountHub : Hub
 
     /// <summary>构造账号 Hub。</summary>
     /// <remarks>
+    /// <para>
     /// 多桌（D-0024）：改名要同步到**该账号所在的每一桌**，所以这里拿注册表逐桌更新，
     /// 而不是拿一份进程级的席位名读模型（那份已随单例一起删除）。
     /// 大厅（D-0025）也挂在这里：账号是入场凭据，大厅与账号自助是同一层的事。
+    /// </para>
+    /// <para>
+    /// 撤销走 <see cref="AccountRevocationService"/>（M2 / G-A2-1）：登出与口令重置撤的不只是"下一次进门"，
+    /// 还包括由那条会话建立、**已经进门**的连接。本类不直接调会话表的撤销，免得只做一半。
+    /// </para>
     /// </remarks>
     public AccountHub(
         AccountService accounts,
         AccountSessionRegistry sessions,
+        AccountRevocationService revocation,
         GameRegistry games,
         NotificationDispatcher dispatcher,
         LobbyService lobby,
@@ -44,6 +52,7 @@ public sealed class AccountHub : Hub
     {
         _accounts = accounts;
         _sessions = sessions;
+        _revocation = revocation;
         _games = games;
         _dispatcher = dispatcher;
         _lobby = lobby;
@@ -196,10 +205,16 @@ public sealed class AccountHub : Hub
         return Accept(account, accountSession: null, recoveryCode: null);
     }
 
-    /// <summary>登出：撤销这条账号会话（幂等：已失效也返回成功，只是说明不同）。</summary>
+    /// <summary>
+    /// 登出：撤销这条账号会话**以及由它建立的在线连接**（幂等：已失效也返回成功，只是说明不同）。
+    /// </summary>
+    /// <remarks>
+    /// M2 / G-A2-1：撤销编排在 <see cref="AccountRevocationService"/>——只撤会话等于让已经进门的
+    /// 席位 / 主持台一直有效到刷新为止，那不是"登出"该有的覆盖面。
+    /// </remarks>
     public Task<AccountDto> Logout(string accountSession)
     {
-        var revoked = _sessions.Revoke(accountSession);
+        var revoked = _revocation.RevokeSession(accountSession);
         _logger.LogInformation(
             "登出：connection={ConnectionId} 已撤销={Revoked} 会话指纹={Fingerprint}",
             Context.ConnectionId,
@@ -259,7 +274,13 @@ public sealed class AccountHub : Hub
         return Accept(outcome.Account, accountSession: null, recoveryCode: null);
     }
 
-    /// <summary>恢复码重置口令（D-0021）：成功后撤销该账号全部旧会话、轮换恢复码，并直接重新登录。</summary>
+    /// <summary>
+    /// 恢复码重置口令（D-0021）：成功后撤销该账号全部旧会话、轮换恢复码，并直接重新登录。
+    /// </summary>
+    /// <remarks>
+    /// M2 / G-A2-1：撤销面含**已经进门的连接**（<see cref="AccountRevocationService"/>）——
+    /// "我怀疑账号泄露，改口令"必须当场把旧连接全部踢下线，否则改口令只是挡住了下一次登录。
+    /// </remarks>
     public async Task<AccountDto> ResetPassword(string username, string recoveryCode, string newPassword)
     {
         var outcome = await _accounts.ResetPasswordAsync(username, recoveryCode, newPassword, Context.ConnectionAborted);
@@ -272,10 +293,10 @@ public sealed class AccountHub : Hub
             return Reject(outcome);
         }
 
-        var revoked = _sessions.RevokeAllForAccount(outcome.Account.Id);
+        var revoked = _revocation.RevokeAllForAccount(outcome.Account.Id);
         var session = _sessions.Issue(outcome.Account.Id);
         _logger.LogInformation(
-            "口令已重置：account={AccountId} username={Username} 已撤销旧会话={Revoked} 已重新登录",
+            "口令已重置：account={AccountId} username={Username} 已撤销旧会话={Revoked} 已踢旧连接并重新登录",
             outcome.Account.Id,
             outcome.Account.Username,
             revoked);

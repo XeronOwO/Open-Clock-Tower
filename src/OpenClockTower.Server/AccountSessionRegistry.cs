@@ -13,6 +13,9 @@ namespace OpenClockTower.Server;
 /// </para>
 /// <para>
 /// 撤销面：登出撤一条；口令重置撤该账号的全部会话（旧登录不能再认领或改资料）。
+/// **撤销不止于此**（M2 / G-A2-1）：每条会话在签发时拿到一个进程内标识（<see cref="AccountSessionRef"/>），
+/// 连接级凭据把它记在自己身上，于是"这条会话被撤"能打到**已经进门的那条连接**上。
+/// 同批动作收在 <see cref="AccountRevocationService"/>：撤销请走它，不要只调这里。
 /// </para>
 /// </remarks>
 public sealed class AccountSessionRegistry
@@ -37,7 +40,7 @@ public sealed class AccountSessionRegistry
             _sessions.Add(new Entry
             {
                 Hash = AccountSessionCredential.HashOf(credential.Value),
-                AccountId = accountId,
+                Session = AccountSessionRef.CreateNew(accountId),
                 ExpiresAt = _clock.UtcNow + Lifetime,
             });
         }
@@ -48,7 +51,21 @@ public sealed class AccountSessionRegistry
     /// <summary>校验一条账号会话；通过则给出它所属的账号。</summary>
     public bool TryResolve(string? credential, out AccountId accountId)
     {
+        if (TryResolveSession(credential, out var session))
+        {
+            accountId = session.Account;
+            return true;
+        }
+
         accountId = default;
+        return false;
+    }
+
+    /// <summary>校验一条账号会话；通过则给出它的**服务端引用**（账号 + 进程内会话标识）。</summary>
+    /// <remarks>加入路径用它：连接级凭据要记住"是哪条会话授权了我"（M2 / G-A2-1）。</remarks>
+    public bool TryResolveSession(string? credential, out AccountSessionRef session)
+    {
+        session = default;
         if (string.IsNullOrEmpty(credential))
         {
             return false;
@@ -62,7 +79,7 @@ public sealed class AccountSessionRegistry
             {
                 if (CryptographicOperations.FixedTimeEquals(entry.Hash, hash))
                 {
-                    accountId = entry.AccountId;
+                    session = entry.Session;
                     return true;
                 }
             }
@@ -71,37 +88,25 @@ public sealed class AccountSessionRegistry
         }
     }
 
-    /// <summary>登出：撤销一条会话；原本不存在或已被清掉返回 false。</summary>
-    public bool Revoke(string? credential)
-    {
-        if (string.IsNullOrEmpty(credential))
-        {
-            return false;
-        }
+    /// <summary>登出：按凭据撤销一条会话；原本不存在或已被清掉返回 false。</summary>
+    public bool Revoke(string? credential) =>
+        TryResolveSession(credential, out var session) && Revoke(session);
 
-        var hash = AccountSessionCredential.HashOf(credential);
+    /// <summary>按服务端引用撤销一条会话（调用方已经解析过凭据时用它，省一次线性扫描）。</summary>
+    public bool Revoke(AccountSessionRef session)
+    {
         lock (_gate)
         {
-            var removed = 0;
-            for (var index = _sessions.Count - 1; index >= 0; index--)
-            {
-                if (CryptographicOperations.FixedTimeEquals(_sessions[index].Hash, hash))
-                {
-                    _sessions.RemoveAt(index);
-                    removed++;
-                }
-            }
-
-            return removed > 0;
+            return _sessions.RemoveAll(entry => entry.Session == session) > 0;
         }
     }
 
-    /// <summary>撤销某账号的全部会话（口令重置 / 改名兜底）；返回撤销条数。</summary>
+    /// <summary>撤销某账号的全部会话（口令重置 / 账号级失效）；返回撤销条数。</summary>
     public int RevokeAllForAccount(AccountId accountId)
     {
         lock (_gate)
         {
-            return _sessions.RemoveAll(entry => entry.AccountId == accountId);
+            return _sessions.RemoveAll(entry => entry.Session.Account == accountId);
         }
     }
 
@@ -109,14 +114,14 @@ public sealed class AccountSessionRegistry
     private void SweepExpired() =>
         _sessions.RemoveAll(entry => entry.ExpiresAt <= _clock.UtcNow);
 
-    /// <summary>一条会话：只存哈希、账号与到期时刻。</summary>
+    /// <summary>一条会话：只存哈希、服务端引用与到期时刻。</summary>
     private sealed class Entry
     {
         /// <summary>凭据哈希。</summary>
         public required byte[] Hash { get; init; }
 
-        /// <summary>所属账号。</summary>
-        public required AccountId AccountId { get; init; }
+        /// <summary>服务端引用（账号 + 进程内会话标识）。</summary>
+        public required AccountSessionRef Session { get; init; }
 
         /// <summary>到期时刻（绝对，不滑动）。</summary>
         public required DateTimeOffset ExpiresAt { get; init; }

@@ -63,12 +63,13 @@ public sealed class SeatJoinCoordinator
         ArgumentNullException.ThrowIfNull(game);
 
         var setup = await LoadSetupAsync(game, connectionId, cancellationToken);
-        var accountId = ResolveAccountSession(accountSession, connectionId);
+        var session = ResolveAccountSession(accountSession, connectionId);
+        var accountId = session?.Account;
         var seat = await ResolveSeatAsync(game, setup, ticket, accountId, connectionId, cancellationToken);
         var claimed = accountId is { } claimedBy
             && await ClaimSeatAsync(game, seat, claimedBy, connectionId, cancellationToken);
 
-        return await CompleteJoinAsync(game, seat, accountId, claimed, lastSequence, connectionId, cancellationToken);
+        return await CompleteJoinAsync(game, seat, session, claimed, lastSequence, connectionId, cancellationToken);
     }
 
     /// <summary>
@@ -100,8 +101,9 @@ public sealed class SeatJoinCoordinator
         ArgumentNullException.ThrowIfNull(game);
 
         var setup = await LoadSetupAsync(game, connectionId, cancellationToken);
-        var accountId = ResolveAccountSession(accountSession, connectionId)
+        var session = ResolveAccountSession(accountSession, connectionId)
             ?? throw new HubException("自助入座需要先登录账号");
+        var accountId = session.Account;
 
         var seatId = new SeatId(seat);
         if (!setup.Seats.Any(item => item.Seat == seatId))
@@ -142,20 +144,21 @@ public sealed class SeatJoinCoordinator
             accountId.Value,
             claimed);
 
-        return await CompleteJoinAsync(game, seatId, accountId, claimed, lastSequence, connectionId, cancellationToken);
+        return await CompleteJoinAsync(game, seatId, session, claimed, lastSequence, connectionId, cancellationToken);
     }
 
     /// <summary>两条加入路径的共同后半段：签发凭据 + 取重连包。</summary>
+    /// <param name="session">授权这次入座的账号会话（游客为 null）：凭据把它记在身上，撤销才打得着（M2 / G-A2-1）。</param>
     private async Task<SeatJoinOutcome> CompleteJoinAsync(
         GameInstance game,
         SeatId seat,
-        AccountId? accountId,
+        AccountSessionRef? session,
         bool claimed,
         long lastSequence,
         string connectionId,
         CancellationToken cancellationToken)
     {
-        var credential = _registry.IssueForSeat(game.GameId, seat, connectionId);
+        var credential = _registry.IssueForSeat(game.GameId, seat, connectionId, session);
         _logger.LogInformation(
             "已签发连接凭据：game={GameId} seat={Seat} connection={ConnectionId} 指纹={Fingerprint}（重连需重新出示凭据）",
             game.GameId.Value,
@@ -174,12 +177,12 @@ public sealed class SeatJoinCoordinator
                 bundle.Sequence,
                 lastSequence,
                 bundle.View.PendingRequest is not null,
-                accountId?.Value);
+                session?.Account.Value);
 
             return new SeatJoinOutcome
             {
                 Seat = seat,
-                AccountId = accountId,
+                AccountId = session?.Account,
                 Credential = credential,
                 Bundle = bundle,
                 Claimed = claimed,
@@ -251,19 +254,23 @@ public sealed class SeatJoinCoordinator
     }
 
     /// <summary>
-    /// 账号会话凭据 → 账号标识（D-0021）：没带（游客）返回 null；带了但无效显式拒绝，不静默降级。
-    /// 客户端声明一律不认——这里只信服务端自己签发的会话（D-0012）。
+    /// 账号会话凭据 → **会话引用**（D-0021 / M2 G-A2-1）：没带（游客）返回 null；带了但无效显式拒绝，
+    /// 不静默降级。客户端声明一律不认——这里只信服务端自己签发的会话（D-0012）。
     /// </summary>
-    private AccountId? ResolveAccountSession(string? accountSession, string connectionId)
+    /// <remarks>
+    /// 返回会话引用而不是账号：连接凭据要记住"是哪条会话授权了这次入座"，撤销才打得着——
+    /// 登出只该踢那一条会话建立的连接，不能牵连同账号在别的设备上的登录。
+    /// </remarks>
+    private AccountSessionRef? ResolveAccountSession(string? accountSession, string connectionId)
     {
         if (string.IsNullOrEmpty(accountSession))
         {
             return null;
         }
 
-        if (_sessions.TryResolve(accountSession, out var accountId))
+        if (_sessions.TryResolveSession(accountSession, out var session))
         {
-            return accountId;
+            return session;
         }
 
         _logger.LogWarning(

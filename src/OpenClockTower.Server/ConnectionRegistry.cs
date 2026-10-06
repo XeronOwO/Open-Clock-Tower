@@ -24,6 +24,11 @@ namespace OpenClockTower.Server;
 /// **旧连接的凭据立即作废**。凭据身份与推送路由必须一致：<see cref="Validate"/> 会核对
 /// "该桌该席位当前确实指向这条连接"，防止陈旧映射变成"零凭据也能收私有推送"的路由后门。
 /// </para>
+/// <para>
+/// **撤销覆盖面（M2 / G-A2-1）**：每条连接还记着"是哪条账号会话授权了它"，于是登出 / 口令重置能一路
+/// 打到**已经进门**的连接上（<see cref="RevokeSession"/> / <see cref="RevokeAccount"/>）——
+/// 撤销不再只作用于"下一次进门"。
+/// </para>
 /// </remarks>
 public sealed class ConnectionRegistry
 {
@@ -45,7 +50,8 @@ public sealed class ConnectionRegistry
             .Select(pair => pair.Key)];
 
     /// <summary>玩家加入 / 重连：为这条连接签发凭据；同桌同席旧连接与同连接旧凭据立即作废。</summary>
-    public ConnectionCredential IssueForSeat(GameId game, SeatId seat, string connectionId)
+    /// <param name="session">授权这次入座的账号会话（M2 / G-A2-1）；只凭票据的游客为 null。</param>
+    public ConnectionCredential IssueForSeat(GameId game, SeatId seat, string connectionId, AccountSessionRef? session)
     {
         lock (_gate)
         {
@@ -60,14 +66,15 @@ public sealed class ConnectionRegistry
             var credential = ConnectionCredential.CreateNew();
             _seats[(game, seat)] = connectionId;
             _connectionGames[connectionId] = game;
-            _credentials[connectionId] = ConnectionCredentialRecord.ForSeat(credential, seat);
+            _credentials[connectionId] = ConnectionCredentialRecord.ForSeat(credential, seat, session);
             return credential;
         }
     }
 
     /// <summary>说书人加入 / 重连：为这条连接签发凭据；**本桌**其余说书人连接立即作废。</summary>
     /// <remarks>作废范围严格限定在本桌：甲桌换说书人不能把乙桌的说书人踢下线。</remarks>
-    public ConnectionCredential IssueForStoryteller(GameId game, string connectionId)
+    /// <param name="session">授权这次加入的账号会话（M2 / G-A2-1：主持权也在撤销面内）。</param>
+    public ConnectionCredential IssueForStoryteller(GameId game, string connectionId, AccountSessionRef? session)
     {
         lock (_gate)
         {
@@ -80,7 +87,7 @@ public sealed class ConnectionRegistry
 
             var credential = ConnectionCredential.CreateNew();
             _connectionGames[connectionId] = game;
-            _credentials[connectionId] = ConnectionCredentialRecord.ForStoryteller(credential);
+            _credentials[connectionId] = ConnectionCredentialRecord.ForStoryteller(credential, session);
             return credential;
         }
     }
@@ -134,6 +141,39 @@ public sealed class ConnectionRegistry
         lock (_gate)
         {
             Revoke(connectionId);
+        }
+    }
+
+    /// <summary>
+    /// 撤销一条账号会话授权的全部连接（登出 / 该会话失效，M2 / G-A2-1）；返回被撤的连接 id。
+    /// </summary>
+    /// <remarks>
+    /// 撤的是**身份痕迹**（凭据 + 席位 / 说书人绑定），所以命令与推送一起停：只删凭据会留下
+    /// "零凭据也能收私有推送"的路由后门（见 <see cref="Validate"/>）。只按会话精确匹配——
+    /// 同账号在别的设备上的登录不受牵连。
+    /// </remarks>
+    public IReadOnlyList<string> RevokeSession(AccountSessionRef session) =>
+        RevokeWhere(record => record.Session == session);
+
+    /// <summary>撤销某个账号授权的全部连接（口令重置等账号级失效，M2 / G-A2-1）；返回被撤的连接 id。</summary>
+    public IReadOnlyList<string> RevokeAccount(AccountId account) =>
+        RevokeWhere(record => record.Session?.Account == account);
+
+    /// <summary>按记录匹配撤连接：先收集再撤（枚举期间不改字典），全程持同一把锁。</summary>
+    private IReadOnlyList<string> RevokeWhere(Func<ConnectionCredentialRecord, bool> match)
+    {
+        lock (_gate)
+        {
+            var revoked = _credentials
+                .Where(pair => match(pair.Value))
+                .Select(pair => pair.Key)
+                .ToArray();
+            foreach (var connectionId in revoked)
+            {
+                Revoke(connectionId);
+            }
+
+            return revoked;
         }
     }
 

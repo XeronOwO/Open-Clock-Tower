@@ -103,7 +103,7 @@ public sealed class HubJoinScope
         CancellationToken aborted,
         string accountSession)
     {
-        if (string.IsNullOrEmpty(accountSession) || !_sessions.TryResolve(accountSession, out var accountId))
+        if (string.IsNullOrEmpty(accountSession) || !_sessions.TryResolveSession(accountSession, out var session))
         {
             _logger.LogWarning(
                 "说书人加入被拒（账号会话无效）：connection={ConnectionId} 会话指纹={Fingerprint}",
@@ -114,7 +114,7 @@ public sealed class HubJoinScope
 
         var game = await _scope.GameAsync(httpContext, connectionId, aborted);
         var flow = new HubJoinFlow(_catalog, game, _registry, _logger, connectionId, aborted);
-        return await flow.JoinStorytellerAsync(accountId);
+        return await flow.JoinStorytellerAsync(session);
     }
 
     private async Task<SeatJoinDto> JoinSeatCoreAsync(

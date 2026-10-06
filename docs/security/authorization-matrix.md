@@ -72,9 +72,9 @@
 | `Register` | 无 | `AccountService.RegisterAsync`（口令策略 + 登录名唯一）；`AccountHub`：`if (!outcome.Accepted \|\| outcome.Account is null) { … return Reject(outcome); }` | 任何人 | `AccountFoundationTests.Register_RejectsInvalidInput_BeforeTouchingStore`、`.Register_ReturnsRecoveryCode_AndRejectsDuplicateUsernameCaseInsensitively` | **无限速 / 无配额**（每次注册固定两次 PBKDF2）→ G-A5-2 |
 | `Login` | 口令 | `AccountService.AuthenticateAsync`；失败一律中性：`return Reject(outcome);`（`AccountFoundationTests.Authenticate_IsNeutral_ForWrongPasswordAndUnknownUser`） | 任何人（凭口令） | 同上 | **无失败次数限制 / 渐进延迟 / 锁定** → G-A1-1 |
 | `Resume` | 账号会话 | `AccountHub.Resume`：`var account = await ResolveAccountAsync(accountSession); if (account is null) { … return InvalidSession(); }`；回执 `Accept(account, accountSession: null, recoveryCode: null)` | 任何持有效会话者（只回自己资料） | `AccountHostTests.Resume_ReturnsProfileWithoutCredential_AndRejectsRevokedSessions`、`.Resume_AfterPasswordReset_RejectsOldSession_AndAcceptsNewOne` | 无（方法不带任何账号标识参数，不存在"查别人"入口） |
-| `Logout` | 账号会话 | `AccountHub.Logout`：`var revoked = _sessions.Revoke(accountSession);`（幂等） | 任何持会话者（只能撤自己那一条） | `AccountSessionRegistryTests.Revoke_InvalidatesSession` | **撤销不覆盖已建立的连接**（旧连接凭据仍被 `GameHub` 受理，运行时已证实）→ **G-A2-1（Critical）** |
+| `Logout` | 账号会话 | `AccountHub.Logout`：`var revoked = _revocation.RevokeSession(accountSession);` → `AccountRevocationService`（撤会话 + **同批撤它建立的在线连接**；幂等） | 任何持会话者（只能撤自己那一条） | `SessionRevocationHostTests.Logout_RejectsCommandsOnLiveSeatConnection`（旧席位连接被拒）· `.Logout_RejectsQueriesOnLiveStorytellerConnection`（旧主持连接被拒）· `.Logout_OnlyRevokesConnectionsOfThatSession`（不牵连同账号另一条会话）· `.Logout_DoesNotTouchGuestConnection`（游客不受牵连）· `AccountSessionRegistryTests.Revoke_InvalidatesSession` | **已修**（M2 第一刀，G-A2-1）：撤销现在打到**已建立**的连接上，命令与推送一起停；客户端侧"主动断开 + 提示文案"留在 G-A2-7 |
 | `ChangeDisplayName` | 账号会话 | `AccountHub.ChangeDisplayName`：`if (!_sessions.TryResolve(accountSession, out var accountId)) { … return InvalidSession(); }` → `_accounts.ChangeDisplayNameAsync(accountId, displayName, …)` | 任何持有效会话者（只能改自己） | `AccountHostTests.ChangeDisplayName_PropagatesToPlayerAndStorytellerViews`（正面）；**伪造会话无直证** | 缺一条"伪造会话改名被拒"的反向直证；另：改名遍历**全部桌**广播（G-A10-8） |
-| `ResetPassword` | 登录名 + 恢复码 | `AccountService.ResetPasswordAsync`（恢复码校验 + 轮换 + `RevokeAllForAccount`） | 持正确恢复码者 | `AccountHostTests.ResetPassword_RotatesRecoveryCode_AndRevokesOldSessions`（含旧会话 / 旧口令 / 旧恢复码三条反向） | 无限速（G-A1-1）；**撤销同样不覆盖已建立的连接**（G-A2-1） |
+| `ResetPassword` | 登录名 + 恢复码 | `AccountService.ResetPasswordAsync`（恢复码校验 + 轮换）；撤销走 `AccountRevocationService.RevokeAllForAccount`（该账号**全部**会话 + 它们的在线连接） | 持正确恢复码者 | `AccountHostTests.ResetPassword_RotatesRecoveryCode_AndRevokesOldSessions`（含旧会话 / 旧口令 / 旧恢复码三条反向）· `SessionRevocationHostTests.ResetPassword_RejectsLiveSeatConnection`（在线连接被踢） | 无限速（G-A1-1）；撤销覆盖面**已修**（M2 第一刀，G-A2-1） |
 
 ## 3 审计追加的运行时读数与更正
 
@@ -84,8 +84,9 @@
 | 2 | **幂等回执能否被别的演员复用**（一次性探针：说书人 `JoinTraveller` 用键 K → 玩家用同一个 K 再调） | 玩家拿到 `identity.storyteller_only`、**没有票据**。原因：`CommandGatePipeline` 先 `CheckIdentity`、后才看 `receipt`。**静态分析判定的"玩家可偷走席位票据"被推翻**；残留是回执无归属字段 + 这条**顺序没有用例锁住**（G-A4-1，Low） |
 | 3 | **锁桌是否拦票据入座**（一次性探针：`SetTableLock(true)` → 未消费票据 `JoinSeat`） | 锁桌返回 `True`，**票据照样入座成功**——锁只拦自助那条路（G-A4-2，Medium） |
 | 4 | **同账号两条说书人连接** | 后进者可用，**先进者立即失效且事先没有任何提示**（G-A2-5，High） |
+| 5 | **撤销覆盖面**（M2 第一刀，修复后复测） | 登出 / 口令重置后，**旧连接的命令被凭据闸拒**（`连接凭据无效`），私有推送同时停；只踢那一条会话建立的连接，同账号另一条会话与游客连接不受牵连（`SessionRevocationHostTests` 5 条 + 单测 8 条） |
 
-**M2 的施工建议（按优先级）**：① G-A2-1 撤销覆盖面（Critical，先做）→ ② 上表"缺反向用例"的 **23 个说书人命令**用表驱动一次补齐（`ReportSeatState` / `PunishExecution` / `PitHagCasualty` / `RebuildRoom` 这类能改状态或杀人的排前面）→ ③ G-A4-2 锁桌语义统一 → ④ G-A4-3 桌标识比对 → ⑤ G-A4-4 大厅字段面 → ⑥ G-A4-1 回执归属 + 锁住"身份闸先于回执"的顺序。
+**M2 的施工建议（按优先级）**：① ~~G-A2-1 撤销覆盖面~~ **已完成**（M2 第一刀，批次 E53）→ ② 上表"缺反向用例"的 **23 个说书人命令**用表驱动一次补齐（`ReportSeatState` / `PunishExecution` / `PitHagCasualty` / `RebuildRoom` 这类能改状态或杀人的排前面）→ ③ G-A4-2 锁桌语义统一 → ④ G-A4-3 桌标识比对 → ⑤ G-A4-4 大厅字段面 → ⑥ G-A4-1 回执归属 + 锁住"身份闸先于回执"的顺序 → ⑦ G-A2-7 前端撤销性（含"登出后主动断开牌局连接 + 提示"）。
 
 ## 相关阅读
 

@@ -52,28 +52,28 @@ internal sealed class HubJoinFlow
     /// <summary>
     /// 说书人加入：**只认这一桌的开桌账号**，签发连接凭据（同局同一时刻只保留一条有效说书人连接）。
     /// </summary>
-    /// <param name="accountId">调用者出示的账号会话解析出的账号。</param>
-    internal async Task<StorytellerJoinDto> JoinStorytellerAsync(AccountId accountId)
+    /// <param name="session">调用者出示的账号会话解析出的**会话引用**（账号 + 会话标识，M2 / G-A2-1）。</param>
+    internal async Task<StorytellerJoinDto> JoinStorytellerAsync(AccountSessionRef session)
     {
         var setup = await LoadSetupAsync();
-        if (setup.CreatedByAccountId is not { } owner || owner != accountId)
+        if (setup.CreatedByAccountId is not { } owner || owner != session.Account)
         {
             // 拒绝理由分成两种，日志里说清楚是哪一种（对外只给中性文案，不透露这桌是谁开的）。
             _logger.LogWarning(
                 "说书人加入被拒（不是开桌账号）：connection={ConnectionId} game={GameId} 账号={AccountId} 开桌账号={Owner}",
                 _connectionId,
                 _game.GameId.Value,
-                accountId.Value,
+                session.Account.Value,
                 setup.CreatedByAccountId?.Value);
             throw new HubException("这一桌不是你开的");
         }
 
-        var credential = _registry.IssueForStoryteller(_game.GameId, _connectionId);
+        var credential = _registry.IssueForStoryteller(_game.GameId, _connectionId, session);
         _logger.LogInformation(
             "已签发说书人连接凭据：connection={ConnectionId} game={GameId} 账号={AccountId} 指纹={Fingerprint}（旧说书人连接已作废）",
             _connectionId,
             _game.GameId.Value,
-            accountId.Value,
+            session.Account.Value,
             ConnectionCredential.FingerprintOf(credential.Value));
 
         var view = ProjectionMapper.ToDto(_game.Session.GetStorytellerView());

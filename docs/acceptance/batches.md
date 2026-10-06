@@ -1529,6 +1529,39 @@ Chromium 把资源加载失败写进 console，被算成"重启窗口内的非�
 
 **本批票据**：`in-progress/web-hardening-programme.md`（第 1 步完成，票继续挂 in-progress 做第 2 步 M2–M6）。
 
+## 批次 E53（2026-10-06，M2 第一刀：撤销覆盖面 G-A2-1）
+
+**本批票据**：`in-progress/web-hardening-programme.md` 的 **M2 第一刀**（审计差距 **G-A2-1**，Critical）。
+
+**这一批解决什么**：登出 / 口令重置过去只作用到"下一次进门"——**已经进门的那条连接继续有效**：
+席位能继续行动、主持台能继续主持，直到刷新 / 关页 / 断线（审计 R2 一次性探针的读数）。
+这一刀把撤销**打到已建立的连接上**：连接凭据从签发那刻起就记着"是哪条账号会话授权了它"，
+撤销只留一个入口（`AccountRevocationService`），会话表与连接表同批动。
+口径与取舍见 `docs/decisions/active.md` **D-0030**（含"为什么粒度按会话而不是账号"、
+"为什么不做每条命令回查会话"）。
+
+**本批取证构成**（先红后绿；真宿主 + 真 SignalR + 真 SQLite）：
+
+| 取证 | 命令 | 结果 |
+|---|---|---|
+| 回归面（本批主证据，**改动前**） | `dotnet test tests/OpenClockTower.Integration.Tests --filter FullyQualifiedName~SessionRevocationHostTests` | **5 条全红**，红因一致：撤销后凭据闸仍然放行（`IsRejectedByConnectionGate` 为 false / 期望的 `HubException` 没抛出） |
+| 回归面（**改动后**） | 同上 | **5 条全绿**——登出踢旧席位连接 · 登出踢旧主持连接 · 口令重置踢旧连接 · 只踢那一条会话（同账号另一条会话不受牵连）· 游客连接不受账号撤销牵连 |
+| 边界单测 | `ConnectionRegistryTests` 6 条 + `AccountSessionRegistryTests` 新增 2 条 | 全绿——未知 / 重复撤销是空操作 · 按账号覆盖该账号全部会话 · 游客隔离 · 会话引用按登录唯一 |
+| 三条门禁（冻结版） | `dotnet build` / `dotnet test OpenClockTower.slnx` / `dotnet format` | 0 警告 0 错误 · **1320 项全绿**（门禁 26 / 内核 501 / 规则 494 / 集成 299，较 E52 的 1307 **+13**）· format 退出 0 |
+
+**红 → 绿的具体读数**（这条缺口"确实存在"的运行时证据）：改动前，登出回执 `ok`、`Resume` 回执
+`invalid_session`，但**同一条连接上的 `Nominate` 仍然过凭据闸**；改动后同一条命令被判
+`连接凭据无效：请先用票据加入（D-0012）`。
+
+**残余与边界（本批明确不做）**：
+① 客户端那一半：同页面登出后前端**不主动断开**牌局连接（服务端已经拒），也没有"你已被登出"的提示文案
+——留在 **G-A2-7**（前端撤销性单测）同批；
+② 会话**到期**（8 小时绝对值）不追溯已建立的连接：正在对局的那条连接不会被踢（有意为之，D-0030 口径 5），
+到期时的提示 / 续期口径属 **G-A2-4**；
+③ 本批**未部署到真机**：改动只在服务端逻辑，部署实例仍跑 E51 的产物；M2 后续条目与 M3 一起部署时复验。
+
+**本批票据**：`in-progress/web-hardening-programme.md`（第 2 步 **M2 第一刀完成**，票继续挂 in-progress 做 M2 其余条目与 M3–M6）。
+
 ## 相关阅读
 
 - 验收规程：`docs/acceptance/AGENTS.md`

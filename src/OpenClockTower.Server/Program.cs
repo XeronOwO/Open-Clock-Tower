@@ -55,6 +55,8 @@ builder.Services.AddSingleton(provider => new GameRegistry(
     provider.GetRequiredService<PacingOptions>(),
     provider.GetRequiredService<ILoggerFactory>()));
 builder.Services.AddSingleton<ConnectionRegistry>();
+// 撤销编排（M2 / G-A2-1）：撤账号会话与撤"由它授权的在线连接"必须同批——登出 / 口令重置只走它。
+builder.Services.AddSingleton<AccountRevocationService>();
 builder.Services.AddSingleton<HubActorResolver>();
 builder.Services.AddSingleton<NotificationDispatcher>();
 // 连接 ↔ 桌的绑定（多桌 D-0024）：单例——SignalR 的 Hub 每次调用新建实例，字段记不住东西。
