@@ -1436,6 +1436,7 @@ Chromium 把资源加载失败写进 console，被算成"重启窗口内的非�
 | 主装置 | **全部通过（判定 289 项 · 跳过 2 项）** |
 | 账号装置（`--only replay`） | 4 项全过 |
 | 前端门禁 | 242 通过 / 0 失败 + typecheck / build 干净 |
+| 部署后真机验收 | `verify-live-open-table.mjs --base-url http://<部署地址>/clocktower/ --seats 7` → **21 项全过**；线上探针 **6 项全过**（空地址 = 首页且无登录卡 · 自指链接已消失 · `/storyteller` 与 `/play` 仍是登录卡 · 首页点「主持一局」不重载）；真机测试数据已清（`Games` 0 · `Users` 1） |
 
 **本批票据**：`done/frontend-path-routing.md` 与 `done/root-address-home-and-home-cleanup.md`。
 
