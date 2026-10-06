@@ -8,14 +8,16 @@
 做法：**服务端权威状态** + **确定性规则内核**自动推演状态与链式反应，
 但把说书人的自由裁量权完整保留——平台只做 **记录 + 校验 + 推演**，不替说书人拍板。
 
-> **当前状态：工程骨架阶段。** 规范体系、解决方案、7 个项目与 4 条规范门禁已落地并通过验证；
-> 规则内核只完成了六状态正交这一块，前端与服务端尚未开始。
-> 进度以 [docs/backlog/README.md](docs/backlog/README.md) 为准。
+> **当前状态：首版已完成，已在一台公网 Linux 机器上跑起来。** 《梦殒春宵》30 个角色（含 5 名旅行者）、
+> 说书人端 + 每名玩家的设备端、断线重连、复盘回放、账号与玩家名都已落地，并有真机验收装置逐条判过。
+> 怎么部署见 [docs/operations/deploy.md](docs/operations/deploy.md)；还剩什么没做以
+> [docs/backlog/README.md](docs/backlog/README.md) 为准。
 
 ## 快速了解
 
 | 你想知道 | 去读 |
 |---|---|
+| 怎么部署给别人玩 | [docs/operations/deploy.md](docs/operations/deploy.md) |
 | 系统怎么组成、为什么这么设计 | [docs/architecture/current.md](docs/architecture/current.md) |
 | 选了什么、放弃了什么 | [docs/decisions/active.md](docs/decisions/active.md) |
 | **哪些规则还没定论** | [docs/standard/rulings.md](docs/standard/rulings.md) |
@@ -30,15 +32,17 @@
 
 ```bash
 dotnet build OpenClockTower.slnx            # 0 警告 0 错误
-dotnet test  OpenClockTower.slnx            # 12 通过 / 0 失败
-dotnet format OpenClockTower.slnx --verify-no-changes
+dotnet test  OpenClockTower.slnx            # 后端全绿（含 NormativeGates：规范写成会失败的测试）
+dotnet format OpenClockTower.slnx
 ```
 
-需要 **.NET SDK 10.0**（实测 10.0.401）与 **Node.js**（实测 v24.14.1 / pnpm 11.7.0）。
+需要 **.NET SDK 10.0**（实测 10.0.401）与 **Node.js**（实测 v24.14.1）。
 TFM、可空性、警告即错误等共享编译设定集中在 `Directory.Build.props`，包版本集中在
 `Directory.Packages.props`——换 SDK 或升级包时只改这两处。
 
-前端在 `web/`，使用 Vue 3 + TypeScript（**尚未创建**）。
+前端在 `web/`（Vue 3 + TypeScript + Vite）。先 `npm run build`，宿主会把产物带进 `wwwroot` 一起发页面；
+只跑后端也不受影响（没有产物时宿主照常启动，只是没有页面）。本机怎么跑见
+[web/AGENTS.md](web/AGENTS.md) §2。
 
 ## 首版范围
 

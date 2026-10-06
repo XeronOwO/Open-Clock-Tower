@@ -14,6 +14,7 @@
 | 规则断言的依据从哪来 | [standard/sources.md](standard/sources.md) |
 | 某个词在这里是什么意思 | [standard/terminology.md](standard/terminology.md) |
 | 某个角色怎么实现、依据在哪 | [standard/character-rules.md](standard/character-rules.md) |
+| 怎么部署到一台 Linux 机器上给别人玩 | [operations/deploy.md](operations/deploy.md) |
 | 还剩什么没做 | [backlog/README.md](backlog/README.md) |
 
 ## 三条最该先记住的事
@@ -34,6 +35,7 @@
 | [decisions/](decisions/) | 决策记录（`D-nnnn`） |
 | [backlog/](backlog/) | 待办票据，状态即目录 |
 | [acceptance/](acceptance/) | 验收规程 |
+| [operations/](operations/) | 部署与运维（怎么发布、怎么改配置、怎么备份） |
 | [evidence/](evidence/) | 交付清单与验证证据 |
 | [development/](development/) | 代理工作细则 |
 

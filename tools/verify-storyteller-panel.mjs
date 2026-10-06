@@ -5,7 +5,7 @@
  * 说书人面板与玩家端能不能真的玩通夜晚与白天？**（验收规程：docs/acceptance/AGENTS.md §3）
  *
  * 场景（花名册默认五席：clockmaker / dreamer / no-dashii / mutant / klutz）：
- *   1) 起真宿主（独立临时库）→ 读说书人票据与各席位票据 → 起 Vite → 起 Chromium；
+ *   1) 起真宿主（独立临时库）→ 读说书人票据与各席位票据 → 起前端页面（默认 Vite；`--serve-front` 时由宿主托管）→ 起 Chromium；
  *   2) 说书人 + 每席一个玩家各自加入（独立浏览器上下文 = 各自设备）→ 断言加入时页头阶段是中文；
  *   3) 说书人分配三角色 → 诺-达鲺常驻中毒落在最近的两名镇民（带归因与效果链接）；
  *   4) 说书人上报 1 号醉酒 → 与中毒并存、互不抵消；
@@ -49,12 +49,15 @@
  *   node tools/verify-storyteller-panel.mjs --only day1         # 只跑到白天段，且只有该段计入判定
  *   node tools/verify-storyteller-panel.mjs --from rebuild      # 全程执行，但从重建段起才计入判定
  *   node tools/verify-storyteller-panel.mjs --quota 2 --screenshots-all --build   # 取证档（一批一次）
+ *   node tools/verify-storyteller-panel.mjs --serve-front        # 部署形态：页面由宿主托管（需先 cd web; npm run build）
  *
  * 档位（详见 tools/lib/verify-profile.mjs；取证档必须显式，默认是快档）：
  *   --quota <秒>         每槽节拍（默认 0.3；取证档用 2 秒）
  *   --screenshots-all    落盘全部截图（默认不落盘；"证据截图都已落盘"断言只在落盘档判定）
  *   --no-screenshots     显式不落盘（默认行为）
  *   --build / --skip-build   强制重建 / 显式复用（默认自动：产物缺失或 src/ 源码更新时重建）
+ *   --serve-front        页面改由宿主自己托管的构建产物提供（不起 Vite）= 部署形态；
+ *                       前置：web/dist 已构建（cd web; npm run build）
  *
  * 段落（按序执行；--only 与 --from 互斥；前面段作为必要前置照跑，但只有选中段计入判定）：
  *   boot · tickets · join · assign · opening · annotation · night1-clockmaker · night1-dreamer-request
@@ -160,7 +163,13 @@ if (config.screenshots) {
 const runStartedAt = Date.now()
 
 const serverUrl = `http://localhost:${options.port}`
+/**
+ * 页面入口。默认由 Vite 开发服务器提供（迭代快、有 HMR）；
+ * `--serve-front` 时改由**宿主自己托管的构建产物**提供——那就是部署形态（一个进程同时发页面与接口），
+ * 也是唯一能证明"部署后玩家真的能打开页面"的档位。
+ */
 const viteUrl = `http://localhost:${options.vitePort}`
+const frontUrl = options.serveFront ? serverUrl : viteUrl
 const children = []
 /** 浏览器实例（模块级：正常收尾与 --only 早退路径都要关掉，避免留下孤儿 Chromium）。 */
 let browser = null
@@ -201,26 +210,34 @@ async function main() {
   )
   // 直接跑 Vite 的入口脚本（不经 npm、不经 shell）：**单个**进程一个 PID，
   // 收尾一次结束即可。用 `npm run dev` 会套一层 shell，杀 shell 会留下孤儿 vite（实测踩过）。
-  const vite = spawn(
-    process.execPath,
-    [path.join(webRoot, 'node_modules', 'vite', 'bin', 'vite.js'), '--port', String(options.vitePort), '--strictPort'],
-    {
-      cwd: webRoot,
-      env: { ...process.env, VITE_SERVER_TARGET: serverUrl, VITE_SEAT_COUNT: String(options.seatCount) },
-      stdio: ['ignore', 'pipe', 'pipe'],
-    },
-  )
-  children.push(vite)
-  vite.stdout.on('data', (chunk) => process.stdout.write(`[vite] ${String(chunk)}`))
-  vite.stderr.on('data', (chunk) => process.stderr.write(`[vite] ${String(chunk)}`))
-  await waitForHttp(viteUrl, 'Vite 开发服务器', 60_000)
+  // `--serve-front` 档不起 Vite：页面与 Hub 都由宿主同源提供（部署形态），此时前端产物必须已构建。
+  if (options.serveFront) {
+    await ensureFrontendArtifacts()
+    console.log(`页面由宿主托管（部署形态）：${serverUrl}（未起 Vite）`)
+  } else {
+    const vite = spawn(
+      process.execPath,
+      [path.join(webRoot, 'node_modules', 'vite', 'bin', 'vite.js'), '--port', String(options.vitePort), '--strictPort'],
+      {
+        cwd: webRoot,
+        // VITE_SEAT_COUNT 已退役：席位数量改由前端启动时读服务端 /healthz（见 web/src/services/serverConfig.ts），
+        // 这里只保留开发服务器的代理目标。
+        env: { ...process.env, VITE_SERVER_TARGET: serverUrl },
+        stdio: ['ignore', 'pipe', 'pipe'],
+      },
+    )
+    children.push(vite)
+    vite.stdout.on('data', (chunk) => process.stdout.write(`[vite] ${String(chunk)}`))
+    vite.stderr.on('data', (chunk) => process.stderr.write(`[vite] ${String(chunk)}`))
+    await waitForHttp(viteUrl, 'Vite 开发服务器', 60_000)
+  }
 
   if (!runner.begin('join')) return
   browser = await playwright.chromium.launch()
   const consoleErrors = []
 
   const storyteller = await newClient(browser, { width: 1600, height: 1100 }, consoleErrors)
-  await storyteller.page.goto(viteUrl)
+  await storyteller.page.goto(frontUrl)
   await storyteller.page.getByPlaceholder('说书人票据').fill(ticket)
   await storyteller.page.getByRole('button', { name: '加入' }).click()
   const grimoire = storyteller.page.locator('[data-testid="grimoire"]')
@@ -248,7 +265,7 @@ async function main() {
         hold = await installJoinResponseHold(client.page)
       }
 
-      await client.page.goto(`${viteUrl}/#player`)
+      await client.page.goto(`${frontUrl}/#player`)
       await client.page.getByPlaceholder('席位票据').fill(seatTicket.ticket)
       await client.page.getByRole('button', { name: '加入' }).click()
       const seatBadge = client.page.locator('[data-testid="player-seat"]')
@@ -977,7 +994,7 @@ async function main() {
 
     if (travellerActors.has(slug)) {
       const client = await newClient(browser, { width: 900, height: 900 }, consoleErrors)
-      await client.page.goto(`${viteUrl}/#player`)
+      await client.page.goto(`${frontUrl}/#player`)
       await client.page.getByPlaceholder('席位票据').fill(issuedTicket)
       await client.page.getByRole('button', { name: '加入' }).click()
       const badge = client.page.locator('[data-testid="player-seat"]')
@@ -3475,7 +3492,10 @@ async function dumpOutcomeDiagnostics(page, label, error) {
   await screenshot(page, `diag-${label}-outcome`, { force: true }).catch(() => {})
 }
 
-/** 分配表的席位数量（UI 由 VITE_SEAT_COUNT 决定，与宿主 GameServer__SeatCount 对齐）。 */
+/**
+ * 分配表的席位数量（前端启动时读服务端 `/healthz` 的 `seatCount`；本断言因此同时验证
+ * "服务端配置 = 面板渲染"这条链——两边分叉时这里会红，而不是少画一席还看不出来）。
+ */
 async function readSeatCount(page) {
   return page.locator('section', { hasText: '开局分配' }).locator('tbody tr').count()
 }
@@ -3605,6 +3625,20 @@ async function waitForHttp(url, label, timeoutMs) {
   throw new Error(`${label} 在 ${timeoutMs}ms 内没有就绪：${lastError}`)
 }
 
+/**
+ * `--serve-front` 档的前置：宿主托管的是 `web/dist` 的构建产物，没构建就没有页面。
+ * 这里只保证"有产物"，不重建（要新产物自己先跑 `npm run build`）——装置的职责是验证，不是替你构建。
+ */
+async function ensureFrontendArtifacts() {
+  if (existsSync(path.join(webRoot, 'dist', 'index.html'))) {
+    return
+  }
+
+  throw new Error(
+    `--serve-front 需要前端构建产物：${path.join(webRoot, 'dist', 'index.html')} 不存在。先运行 cd web; npm run build`,
+  )
+}
+
 /** 启动真宿主（沿用同一临时库与端口）；返回子进程，日志累加到模块级 serverLog。 */
 async function startServer() {
   const executableSuffix = process.platform === 'win32' ? '.exe' : ''
@@ -3618,7 +3652,9 @@ async function startServer() {
     `OpenClockTower.Server${executableSuffix}`,
   )
   const child = spawn(serverExecutable, [], {
-    cwd: repositoryRoot,
+    // 工作目录 = 产物目录：宿主的内容根取当前工作目录，页面（wwwroot）就在产物目录里。
+    // 从仓库根启动时内容根会是仓库根，于是 / 变 404 而 /healthz 照常 200——这种"半个能跑"最难查（实测踩过）。
+    cwd: path.dirname(serverExecutable),
     env: {
       ...process.env,
       ASPNETCORE_URLS: serverUrl,
@@ -3707,6 +3743,8 @@ function parseArguments(argv) {
     seatCount: undefined,
     assign: ['clockmaker', 'dreamer', 'no-dashii', 'mutant', 'klutz'],
     screenshots: 'artifacts/web',
+    // 默认走 Vite 开发服务器（迭代快）；--serve-front 改走宿主托管的构建产物 = 部署形态。
+    serveFront: false,
   }
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -3735,6 +3773,11 @@ function parseArguments(argv) {
       case '--screenshots':
         parsed.screenshots = value ?? parsed.screenshots
         index += 1
+        break
+      case '--serve-front':
+        // 部署形态：页面由宿主自己托管（不起 Vite）。注意本开关与其他选项一样**不携带取值**，
+        // 因此不 index += 1——否则会吞掉后面的旗标。
+        parsed.serveFront = true
         break
       default:
         throw new Error(`未知参数：${flag}`)

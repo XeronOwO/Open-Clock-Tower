@@ -153,7 +153,7 @@ async function main() {
     [path.join(webRoot, 'node_modules', 'vite', 'bin', 'vite.js'), '--port', String(options.vitePort), '--strictPort'],
     {
       cwd: webRoot,
-      env: { ...process.env, VITE_SERVER_TARGET: serverUrl, VITE_SEAT_COUNT: String(ASSIGN.length) },
+      env: { ...process.env, VITE_SERVER_TARGET: serverUrl },
       stdio: 'ignore',
     },
   )

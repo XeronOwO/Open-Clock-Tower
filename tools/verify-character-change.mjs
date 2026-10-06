@@ -160,7 +160,7 @@ async function runPresentGrantScene() {
     ],
     {
       cwd: webRoot,
-      env: { ...process.env, VITE_SERVER_TARGET: serverUrl, VITE_SEAT_COUNT: String(ASSIGN.length) },
+      env: { ...process.env, VITE_SERVER_TARGET: serverUrl },
       stdio: 'ignore',
     },
   )
@@ -620,7 +620,7 @@ async function runAbsentGrantScene() {
     ],
     {
       cwd: webRoot,
-      env: { ...process.env, VITE_SERVER_TARGET: absentServerUrl, VITE_SEAT_COUNT: String(ASSIGN.length) },
+      env: { ...process.env, VITE_SERVER_TARGET: absentServerUrl },
       stdio: 'ignore',
     },
   )
