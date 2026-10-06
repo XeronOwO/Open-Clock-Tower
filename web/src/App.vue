@@ -1,18 +1,106 @@
 <script setup lang="ts">
 /**
- * 单 SPA 两套视图（D-0004）：说书人端与玩家端是同一份构建的两个入口视图。
- * 入口由 URL hash 决定：#player 进玩家视图，其余进说书人视图。
- * 两者从不共享视图数据——玩家视图里没有、也不该有说书人专属字段。
+ * 单 SPA 多面（D-0004 / D-0018）：首页、玩家端、说书人端是同一份构建的三个面，
+ * 由 URL hash 决定（解析规则见 `display/navigation.ts`）。
+ *
+ * 这里同时负责**导航**：此前各面互相孤立——想换一面只能手改地址栏，
+ * 也没有首页（打开根路径直接是说书人登录框）。顶栏把这三个面互相连起来。
+ *
+ * 兼容红线（两处的历史行为不能变，18 个验收装置与既有链接依赖它）：
+ * 容器访问根路径（空 hash）仍是说书人端；`#player` 仍进玩家端。
  */
 import StorytellerPanel from '@/features/storyteller/StorytellerPanel.vue'
 import PlayerPanel from '@/features/player/PlayerPanel.vue'
-import { computed, ref } from 'vue'
+import HomePanel from '@/features/home/HomePanel.vue'
+import { HOME_LINK, PLAY_LINK, parseRoute, routeLabel, STORYTELLER_LINK } from '@/display/navigation'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 
 const hash = ref(typeof window === 'undefined' ? '' : window.location.hash)
-const isPlayer = computed(() => hash.value.toLowerCase().includes('player'))
+const route = computed(() => parseRoute(hash.value))
+
+/** 顶栏链接：当前面高亮，其余可点。 */
+const links = computed(() => [
+  { label: '首页', href: HOME_LINK, route: 'home' as const, testId: 'nav-home' },
+  { label: '玩家端', href: PLAY_LINK, route: 'player' as const, testId: 'nav-player' },
+  { label: '说书人端', href: STORYTELLER_LINK, route: 'storyteller' as const, testId: 'nav-storyteller' },
+])
+
+function syncHash(): void {
+  hash.value = window.location.hash
+}
+
+onMounted(() => {
+  window.addEventListener('hashchange', syncHash)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('hashchange', syncHash)
+})
 </script>
 
 <template>
-  <PlayerPanel v-if="isPlayer" />
-  <StorytellerPanel v-else />
+  <div class="app">
+    <!-- 顶栏：各面之间的跳转入口（此前没有，只能手改地址栏）。 -->
+    <nav class="topnav" data-testid="top-nav">
+      <span class="brand">OpenClockTower</span>
+      <a
+        v-for="link in links"
+        :key="link.href"
+        class="navlink"
+        :class="{ current: route === link.route }"
+        :href="link.href"
+        :data-testid="link.testId"
+        :aria-current="route === link.route ? 'page' : undefined"
+      >
+        {{ link.label }}
+      </a>
+      <span class="hint here" data-testid="nav-current">当前位置：{{ routeLabel(route) }}</span>
+    </nav>
+
+    <HomePanel v-if="route === 'home'" />
+    <PlayerPanel v-else-if="route === 'player'" />
+    <StorytellerPanel v-else />
+  </div>
 </template>
+
+<style scoped>
+.app {
+  min-height: 100vh;
+}
+
+.topnav {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--line);
+  background: var(--paper-raised);
+  flex-wrap: wrap;
+}
+
+.brand {
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.navlink {
+  color: var(--ink-soft);
+  text-decoration: none;
+  padding: 2px 6px;
+  border-radius: 6px;
+}
+
+.navlink:hover {
+  color: var(--accent);
+}
+
+.navlink.current {
+  color: var(--accent);
+  background: var(--accent-soft);
+  font-weight: 600;
+}
+
+.here {
+  margin-left: auto;
+}
+</style>
