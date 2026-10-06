@@ -34,4 +34,13 @@ public sealed record AccountDto
 
     /// <summary>一次性恢复码明文：仅注册 / 口令重置成功时返回一次；服务端只存哈希。</summary>
     public string? RecoveryCode { get; init; }
+
+    /// <summary>
+    /// 这个账号是不是管理员（D-0025：只有管理员能开桌）。
+    /// </summary>
+    /// <remarks>
+    /// 由服务端按配置的登录名清单判定；前端据此决定要不要显示"开桌"入口。
+    /// **它不是权限**——真正的判定在建桌用例里，前端只是少显示一个按钮。
+    /// </remarks>
+    public bool IsAdmin { get; init; }
 }

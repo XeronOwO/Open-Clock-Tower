@@ -23,25 +23,85 @@ public sealed class AccountHub : Hub
     private readonly AccountSessionRegistry _sessions;
     private readonly GameRegistry _games;
     private readonly NotificationDispatcher _dispatcher;
+    private readonly LobbyService _lobby;
+    private readonly AdminDirectory _admins;
     private readonly ILogger<AccountHub> _logger;
 
     /// <summary>构造账号 Hub。</summary>
     /// <remarks>
     /// 多桌（D-0024）：改名要同步到**该账号所在的每一桌**，所以这里拿注册表逐桌更新，
     /// 而不是拿一份进程级的席位名读模型（那份已随单例一起删除）。
+    /// 大厅（D-0025）也挂在这里：账号是入场凭据，大厅与账号自助是同一层的事。
     /// </remarks>
     public AccountHub(
         AccountService accounts,
         AccountSessionRegistry sessions,
         GameRegistry games,
         NotificationDispatcher dispatcher,
+        LobbyService lobby,
+        AdminDirectory admins,
         ILogger<AccountHub> logger)
     {
         _accounts = accounts;
         _sessions = sessions;
         _games = games;
         _dispatcher = dispatcher;
+        _lobby = lobby;
+        _admins = admins;
         _logger = logger;
+    }
+
+    /// <summary>
+    /// 列出在开的桌（D-0025）：玩家挑桌用，登录即可看。
+    /// </summary>
+    /// <remarks>
+    /// 只返回公开信息（桌名 / 人数 / 是否开局 / 是否锁定），不含票据与席位归属。
+    /// 未登录也能看——大厅本来就是公开门面；真正入座要凭账号。
+    /// </remarks>
+    public async Task<IReadOnlyList<LobbyTableDto>> ListTables() =>
+        await _lobby.ListAsync(Context.ConnectionAborted);
+
+    /// <summary>
+    /// 创建一张新桌（D-0025：**只有管理员**）。开发者与运维的入口。
+    /// </summary>
+    /// <param name="accountSession">账号会话（必须是管理员的）。</param>
+    /// <param name="name">桌名（可为空）。</param>
+    /// <param name="seatCount">席位数。</param>
+    public async Task<LobbyCreateResultDto> CreateTable(string accountSession, string? name, int seatCount)
+    {
+        var account = await ResolveAccountAsync(accountSession);
+        if (account is null)
+        {
+            return new LobbyCreateResultDto
+            {
+                Ok = false,
+                Code = "invalid_session",
+                Message = "账号会话无效或已过期，请重新登录",
+            };
+        }
+
+        var result = await _lobby.CreateAsync(account, name, seatCount, Context.ConnectionAborted);
+        if (result.Ok)
+        {
+            _logger.LogInformation(
+                "已开桌：connection={ConnectionId} game={GameId} 开桌人={Username}",
+                Context.ConnectionId,
+                result.GameId,
+                account.Username);
+        }
+
+        return result;
+    }
+
+    /// <summary>账号会话 → 账号（无效时返回 null；调用方给出中性拒绝）。</summary>
+    private async Task<Account?> ResolveAccountAsync(string? accountSession)
+    {
+        if (string.IsNullOrEmpty(accountSession) || !_sessions.TryResolve(accountSession, out var accountId))
+        {
+            return null;
+        }
+
+        return await _accounts.FindAsync(accountId, Context.ConnectionAborted);
     }
 
     /// <summary>注册（D-0021）：成功后**同时登录**，返回账号会话与一次性恢复码。</summary>
@@ -191,7 +251,7 @@ public sealed class AccountHub : Hub
         Message = "账号会话无效或已过期，请重新登录",
     };
 
-    private static AccountDto Accept(Account account, string? accountSession, string? recoveryCode) => new()
+    private AccountDto Accept(Account account, string? accountSession, string? recoveryCode) => new()
     {
         Ok = true,
         Code = "ok",
@@ -200,5 +260,7 @@ public sealed class AccountHub : Hub
         DisplayName = account.DisplayName,
         AccountSession = accountSession,
         RecoveryCode = recoveryCode,
+        // 只是"让前端知道要不要显示开桌入口"；真正的权限判定在 LobbyService 里。
+        IsAdmin = _admins.IsAdmin(account),
     };
 }

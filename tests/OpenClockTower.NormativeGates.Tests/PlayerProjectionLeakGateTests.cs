@@ -48,11 +48,17 @@ public sealed partial class PlayerProjectionLeakGateTests
         Path.Combine("src", "OpenClockTower.Contracts", "SeatDisplayNameDto.cs"),
         // 账号自助结果（D-0021）：玩家可见契约（口令 / 会话是秘密，不落盘、不进日志）——同样登记进扫描面。
         Path.Combine("src", "OpenClockTower.Contracts", "AccountDto.cs"),
+        // 大厅列表（D-0025）：挑桌用的公开信息（桌名 / 人数 / 是否开局 / 是否锁定），
+        // 所有玩家都看得到；票据与席位归属**不在**这份契约里——登记进扫描面正是要让禁词扫描盯住这一点。
+        Path.Combine("src", "OpenClockTower.Contracts", "LobbyTableDto.cs"),
     ];
 
     /// <summary>说书人专属契约（只在说书人视图 / 说书人命令里出现）；新增项必须人工复核。</summary>
     private static readonly HashSet<string> StorytellerOnlyContracts = new(StringComparer.Ordinal)
     {
+        // 建桌结果（D-0025）：含说书人票据（成为该桌说书人的凭据），只回给开桌的管理员——
+        // 绝不能进玩家面，故列为说书人专属。
+        "LobbyCreateResultDto.cs",
         "AbilityResolutionDto.cs",
         "AbilityUseDto.cs",
         "BarberNightDto.cs",
