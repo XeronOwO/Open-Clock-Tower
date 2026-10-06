@@ -206,6 +206,8 @@ M4 滥用与风控 · M5 数据层与运维 · M6 开源与合规。
 **形态先说清（这部分是好的，别推翻）**：服务端鉴权是**单一凭据链 + 一处集中判定**——账号会话（只存 SHA-256、固定时间比较、8 小时绝对过期、可撤销）→ 席位票据（只定位、不授权）→ **连接级凭据**（`ConnectionRegistry`，唯一身份来源）。`GameHub` 41 个公开方法里 37 个第一步过 `HubActorResolver.Resolve` / `ResolveStoryteller`，失败即 `HubException`、根本不触达 Application；随后 `CommandGatePipeline.CheckIdentity` 按 `ActorKind` 逐命令族判定；桌边界靠连接的 `?gameId=` 与注册表按 `(GameId, SeatId)` 分区，说书人身份靠 `Games.CreatedByAccountId`。
 **运行时读数**（R1，对部署实例）：用伪造凭据逐个调 `GetStorytellerView` / `GetReplay` / `SubmitResponse` / `StartNight` / `SetTableLock` / `ReleaseSeatBinding` / `ProposeSetup` / `JoinTable` / `JoinStorytellerWithAccount`，**每一个都返回一致的拒绝**（`HubException: 连接凭据无效：请先用票据加入（D-0012）` 或 `这一桌不存在` / `账号会话无效或已过期`）——未授权入口是关着的。
 
+**逐方法矩阵单独一页**：`docs/security/authorization-matrix.md`（41 个 `GameHub` 方法 + 8 个 `AccountHub` 方法，逐个给"身份材料 / 拦截位置 / 允许身份 / 反方向用例 / 缺口"，并带审计追加的 4 条运行时读数）。**那一页就是 M2 的验收物**，M2 在它上面原地补用例。
+
 #### G-A4-1 幂等回执没有归属：`(GameId, IdempotencyKey)` 是主键，回执不核对是谁的｜**原判 High，运行时推翻 → Low**｜M2
 - **现状证据**：`ReceiptEntity` 主键只有 `(GameId, IdempotencyKey)`；`CommandGatePipeline` 命中回执即 `GateDecision.Duplicate(receipt)`；`GameSession.AnnotateIssuedTravellerSeat` 在重复投递时会把 `IssuedSeatTicket` 明文回填进回执。
 - **运行时读数**（R2，一次性探针）：说书人先调 `JoinTraveller`（同键）→ `Kind=Accepted`、**有票（39 字符）**；同桌玩家拿**同一个幂等键**再调 → `Kind=Rejected`、`Code=identity.storyteller_only`、**无票**。原因在代码里也看得到：`CommandGatePipeline` **先** `CheckIdentity(envelope)`、**后**才看 `receipt`。
@@ -661,6 +663,7 @@ M4 滥用与风控 · M5 数据层与运维 · M6 开源与合规。
 
 ## 相关阅读
 
+- **逐方法的授权矩阵（M2 的起点）**：`docs/security/authorization-matrix.md`
 - 票据（第 2 步按里程碑改造）：`docs/backlog/in-progress/web-hardening-programme.md`
 - 完成口径与"不用 JWT"的论证：`docs/decisions/active.md` D-0028
 - 会话持久化的取舍与已知欠账：`docs/decisions/active.md` D-0029

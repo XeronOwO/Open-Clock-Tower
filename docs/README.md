@@ -16,6 +16,7 @@
 | 某个角色怎么实现、依据在哪 | [standard/character-rules.md](standard/character-rules.md) |
 | 怎么部署到一台 Linux 机器上给别人玩 | [operations/deploy.md](operations/deploy.md) |
 | **还差什么才能放公网** | [security/web-hardening-audit.md](security/web-hardening-audit.md) |
+| 某个 Hub 方法**谁能调**、服务端拦在哪 | [security/authorization-matrix.md](security/authorization-matrix.md) |
 | 还剩什么没做 | [backlog/README.md](backlog/README.md) |
 
 ## 三条最该先记住的事
