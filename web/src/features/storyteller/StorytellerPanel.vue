@@ -13,6 +13,8 @@ import type { ReplayViewDto, StorytellerViewDto } from '@/contracts/game'
 import { clockTimeOf } from '@/display/format'
 import { labelOf } from '@/display/labels'
 import { StorytellerGateway, type GatewayState } from '@/services/storytellerGateway'
+import { AccountGateway, type AccountProfile, type LobbyCreateResult } from '@/services/accountGateway'
+import AccountPanel from '@/features/account/AccountPanel.vue'
 import { readSeatCount, DEFAULT_SEAT_COUNT } from '@/services/serverConfig'
 import { TicketStore } from '@/services/ticketStore'
 import type { CommandOutcome, CommandSender } from '@/services/storytellerCommands'
@@ -55,6 +57,154 @@ async function syncSeatCount(): Promise<void> {
 }
 
 const ticket = ref('')
+
+/**
+ * 开桌（D-0025：**只有管理员**能开）。
+ *
+ * 说书人拿到票据的路径此前只有"服务器建好那一桌、从日志里抄票据"——多桌之后这条路径不够用了：
+ * 一桌一份票据，必须有界面能开新桌并把票据交给开桌的人。
+ */
+const lobbyName = ref('')
+const lobbySeats = ref(7)
+const lobbyBusy = ref(false)
+const lobbyNotice = ref('')
+const newTable = ref<LobbyCreateResult | null>(null)
+const lobbyProfile = ref<AccountProfile | null>(null)
+const lobbyRecoveryCode = ref('')
+let accountForLobby: AccountGateway | null = null
+
+function ensureLobbyAccount(): AccountGateway {
+  accountForLobby ??= new AccountGateway()
+  return accountForLobby
+}
+
+/** 账号回执的失败文案（成功由调用方各自描述）。 */
+function lobbyFailureText(code: string, message: string): string {
+  if (message.length > 0) {
+    return message
+  }
+
+  switch (code) {
+    case 'invalid_credentials':
+      return '登录名或口令不对'
+    case 'username_taken':
+      return '这个登录名已经被占用'
+    case 'invalid_session':
+      return '账号会话已过期，请重新登录'
+    default:
+      return `未成功（${code}）`
+  }
+}
+
+async function registerForLobby(username: string, displayName: string, password: string): Promise<void> {
+  lobbyBusy.value = true
+  lobbyRecoveryCode.value = ''
+  try {
+    const result = await ensureLobbyAccount().register(username, displayName, password)
+    if (!result.ok) {
+      lobbyNotice.value = lobbyFailureText(result.code, result.message)
+      return
+    }
+
+    lobbyProfile.value = ensureLobbyAccount().profile
+    lobbyRecoveryCode.value = result.recoveryCode ?? ''
+    lobbyNotice.value = result.isAdmin
+      ? '已注册并登录（你是管理员，可以开桌）'
+      : '已注册并登录；但你不是管理员，开桌会被拒（需要运维把你加进名单）'
+  } catch (error) {
+    lobbyNotice.value = `注册失败：${error instanceof Error ? error.message : String(error)}`
+  } finally {
+    lobbyBusy.value = false
+  }
+}
+
+async function loginForLobby(username: string, password: string): Promise<void> {
+  lobbyBusy.value = true
+  try {
+    const result = await ensureLobbyAccount().login(username, password)
+    if (!result.ok) {
+      lobbyNotice.value = lobbyFailureText(result.code, result.message)
+      return
+    }
+
+    lobbyProfile.value = ensureLobbyAccount().profile
+    lobbyNotice.value = result.isAdmin ? '已登录（管理员）' : '已登录；但你不是管理员，开桌会被拒'
+  } catch (error) {
+    lobbyNotice.value = `登录失败：${error instanceof Error ? error.message : String(error)}`
+  } finally {
+    lobbyBusy.value = false
+  }
+}
+
+async function logoutForLobby(): Promise<void> {
+  lobbyBusy.value = true
+  try {
+    await ensureLobbyAccount().logout()
+    lobbyProfile.value = null
+    lobbyNotice.value = '已登出'
+  } finally {
+    lobbyBusy.value = false
+  }
+}
+
+async function renameForLobby(displayName: string): Promise<void> {
+  if (displayName.length === 0) {
+    lobbyNotice.value = '玩家名不能为空'
+    return
+  }
+
+  lobbyBusy.value = true
+  try {
+    const result = await ensureLobbyAccount().changeDisplayName(displayName)
+    if (!result.ok) {
+      lobbyNotice.value = lobbyFailureText(result.code, result.message)
+      return
+    }
+
+    lobbyProfile.value = ensureLobbyAccount().profile
+    lobbyNotice.value = `玩家名已改为「${result.displayName}」`
+  } finally {
+    lobbyBusy.value = false
+  }
+}
+
+async function resetForLobby(username: string, recoveryCode: string, newPassword: string): Promise<void> {
+  lobbyBusy.value = true
+  try {
+    const result = await ensureLobbyAccount().resetPassword(username, recoveryCode, newPassword)
+    if (!result.ok) {
+      lobbyNotice.value = lobbyFailureText(result.code, result.message)
+      return
+    }
+
+    lobbyProfile.value = ensureLobbyAccount().profile
+    lobbyRecoveryCode.value = result.recoveryCode ?? ''
+    lobbyNotice.value = '口令已重置并重新登录'
+  } finally {
+    lobbyBusy.value = false
+  }
+}
+
+async function openTable(): Promise<void> {
+  lobbyBusy.value = true
+  lobbyNotice.value = ''
+  newTable.value = null
+  try {
+    accountForLobby ??= new AccountGateway()
+    const result = await accountForLobby.createTable(lobbyName.value.trim(), lobbySeats.value)
+    if (!result.ok) {
+      lobbyNotice.value = `开桌被拒：${result.message.length > 0 ? result.message : result.code}`
+      return
+    }
+
+    newTable.value = result
+    lobbyNotice.value = `已开桌：${result.gameId}（${result.seatCount} 席）`
+  } catch (error) {
+    lobbyNotice.value = `开桌失败：${error instanceof Error ? error.message : String(error)}`
+  } finally {
+    lobbyBusy.value = false
+  }
+}
 const store = new TicketStore()
 const view = ref<StorytellerViewDto | null>(null)
 const connectionState = ref<GatewayState>('disconnected')
@@ -220,6 +370,33 @@ onBeforeUnmount(() => {
         <input v-model="ticket" placeholder="说书人票据" spellcheck="false" @keyup.enter="join()" />
         <button type="button" class="primary" :disabled="joining" @click="join()">加入</button>
       </div>
+
+      <!-- 开桌（D-0025）：只有管理员能开；开完把这一桌的票据交回给开桌的人。 -->
+      <details class="lobby-open" data-testid="storyteller-open-table">
+        <summary>开一桌新的（管理员）</summary>
+        <AccountPanel
+          :profile="lobbyProfile"
+          :busy="lobbyBusy"
+          :notice="lobbyNotice"
+          recovery-code=""
+          @register="registerForLobby"
+          @login="loginForLobby"
+          @logout="logoutForLobby"
+          @rename="renameForLobby"
+          @reset="resetForLobby"
+        />
+        <div class="row">
+          <input v-model="lobbyName" placeholder="桌名（可留空）" spellcheck="false" />
+          <input v-model.number="lobbySeats" type="number" min="1" max="20" class="seats-input" />
+          <button type="button" :disabled="lobbyBusy" @click="openTable()">开桌</button>
+        </div>
+        <p v-if="lobbyNotice.length > 0" class="hint">{{ lobbyNotice }}</p>
+        <p v-if="newTable !== null" class="hint">
+          这一桌叫 <strong>{{ newTable.gameId }}</strong>，它的说书人票据是
+          <span class="mono" data-testid="new-table-ticket">{{ newTable.storytellerTicket }}</span>
+          ——把它填到上面的输入框里即可进入主持台（这串只显示这一次，请自己存好）。
+        </p>
+      </details>
       <p class="hint">连接状态：{{ stateText[connectionState] }}</p>
       <ul v-if="diagnostics.length > 0" class="diagnostics">
         <li v-for="message in diagnostics" :key="message">{{ message }}</li>
