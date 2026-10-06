@@ -1,45 +1,55 @@
 <script setup lang="ts">
 /**
  * 单 SPA 多面（D-0004 / D-0018）：首页、玩家端、说书人端是同一份构建的三个面，
- * 由 URL hash 决定（解析规则见 `display/navigation.ts`）。
+ * 由**地址路径**决定（解析规则见 `display/navigation.ts`，地址怎么变见 `display/routing.ts`）。
  *
  * 这里同时负责**导航**：此前各面互相孤立——想换一面只能手改地址栏，
  * 也没有首页（打开根路径直接是说书人登录框）。顶栏把这三个面互相连起来。
  *
+ * 点顶栏是**拦截 + `pushState`**，不是整页跳转：账号会话只活在内存里（D-0021），
+ * 一旦重载就退回登录卡，"换个面还得再登一次"就是被这么修掉的。
+ *
  * 兼容红线（两处的历史行为不能变，18 个验收装置与既有链接依赖它）：
- * 容器访问根路径（空 hash）仍是说书人端；`#player` 仍进玩家端。
+ * 容器访问根路径（空地址）仍是说书人端；旧的 `#player` 仍进玩家端（`main.ts` 里就地改写成 `/play`）。
  */
 import StorytellerPanel from '@/features/storyteller/StorytellerPanel.vue'
 import PlayerPanel from '@/features/player/PlayerPanel.vue'
 import HomePanel from '@/features/home/HomePanel.vue'
-import { HOME_LINK, PLAY_LINK, parseRoute, routeLabel, STORYTELLER_LINK } from '@/display/navigation'
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { HOME_LINK, PLAY_LINK, routeLabel, type AppRoute, STORYTELLER_LINK } from '@/display/navigation'
+import { interceptLinkClick, subscribeRoute } from '@/display/routing'
+import { onBeforeUnmount, onMounted, ref } from 'vue'
 
-const hash = ref(typeof window === 'undefined' ? '' : window.location.hash)
-const route = computed(() => parseRoute(hash.value))
+const route = ref<AppRoute>('storyteller')
+let unsubscribe: (() => void) | null = null
 
 /** 顶栏链接：当前面高亮，其余可点。文案照界面口径（D-0027）：加入一桌 / 主持一局。 */
-const links = computed(() => [
+const links = [
   { label: '首页', href: HOME_LINK, route: 'home' as const, testId: 'nav-home' },
   { label: '加入一桌', href: PLAY_LINK, route: 'player' as const, testId: 'nav-player' },
   { label: '主持一局', href: STORYTELLER_LINK, route: 'storyteller' as const, testId: 'nav-storyteller' },
-])
+]
 
-function syncHash(): void {
-  hash.value = window.location.hash
+/** 站内链接一律走这里：接管成功就不重载文档；中键 / 修饰键点击原样交给浏览器。 */
+function onClick(event: MouseEvent): void {
+  interceptLinkClick(event)
 }
 
 onMounted(() => {
-  window.addEventListener('hashchange', syncHash)
+  unsubscribe = subscribeRoute((next) => {
+    route.value = next
+  })
 })
 
 onBeforeUnmount(() => {
-  window.removeEventListener('hashchange', syncHash)
+  unsubscribe?.()
+  unsubscribe = null
 })
 </script>
 
 <template>
-  <div class="app">
+  <!-- 点击监听挂在根节点上（不是只挂在顶栏）：首页的入口卡片也是站内链接，
+       漏掉它们就会在点「加入一桌」时整页重载——那正是这一轮要消掉的"换个面还要再登一次"。 -->
+  <div class="app" @click="onClick">
     <!-- 顶栏：各面之间的跳转入口（此前没有，只能手改地址栏）。 -->
     <nav class="topnav" data-testid="top-nav">
       <span class="brand">OpenClockTower</span>

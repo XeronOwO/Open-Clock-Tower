@@ -26,7 +26,8 @@
  *   `open-table-name` / `open-table-seats` / `open-table-submit`           开桌表单
  *   `grimoire`（主持台）· `player-seat`（已入座徽标）· `top-nav`（顶栏）
  *   顶栏 `nav-home` / `nav-player` / `nav-storyteller`：**文案可变，锚点不变**
- *   兼容红线：空地址（根路径）仍是"主持一局"那一面、`#player` 仍是"加入一桌"那一面。
+ *   兼容红线：空地址（根路径）仍是"主持一局"那一面、`#player` 仍是"加入一桌"那一面
+ *   （后者现在是**重定向**：落点 `/play`，见 gate 段的"旧井号地址"一条）。
  *
  * 用法（在仓库根运行）：
  *   node tools/verify-entrance-usability.mjs
@@ -199,7 +200,7 @@ async function main() {
   const bystander = await newClient(browser, consoleErrors)
 
   if (!runner.begin('gate')) return
-  await openFace(bystander.page, `${frontUrl}/#/home`)
+  await openFace(bystander.page, `${frontUrl}/home`)
   check(
     '首页给出两个入口（加入一桌 / 主持一局）',
     (await bystander.page.getByTestId('home-to-player').count()) === 1 &&
@@ -212,12 +213,22 @@ async function main() {
       (await bystander.page.getByTestId('open-table-submit').count()) === 0,
   )
   await inspectGate(bystander.page, '说书人面（空地址）', `${frontUrl}/`)
-  await inspectGate(bystander.page, '玩家面（#player）', `${frontUrl}/#player`)
+  await inspectGate(bystander.page, '玩家面（/play）', `${frontUrl}/play`)
+
+  // 旧的井号地址（#player）是用户手里与老装置里的写法：必须自己落到新地址上，且地址栏里不再有井号。
+  await bystander.page.goto(`${frontUrl}/#player`, { waitUntil: 'domcontentloaded' })
+  const legacySettled = await waitForCount(bystander.page.getByTestId('top-nav'), 1, uiWaitMs)
+  const legacyUrl = new URL(bystander.page.url())
+  check(
+    '旧井号地址 #player 自动落到 /play（地址栏里不再有井号）',
+    legacySettled && legacyUrl.pathname === '/play' && legacyUrl.hash === '',
+    `落点=${legacyUrl.pathname}${legacyUrl.hash}`,
+  )
 
   if (!runner.begin('plain')) return
-  await scanForbiddenTerms(bystander.page, '首页', `${frontUrl}/#/home`)
+  await scanForbiddenTerms(bystander.page, '首页', `${frontUrl}/home`)
   await scanForbiddenTerms(bystander.page, '说书人面（空地址）', `${frontUrl}/`)
-  await scanForbiddenTerms(bystander.page, '玩家面（#player）', `${frontUrl}/#player`)
+  await scanForbiddenTerms(bystander.page, '玩家面（/play）', `${frontUrl}/play`)
 
   if (!runner.begin('host')) return
   const host = await newClient(browser, consoleErrors)
@@ -322,8 +333,19 @@ async function main() {
 
   if (!runner.begin('faces')) return
   // 同一个文档里换面（点顶栏而不是重新打开）：账号会话该跟着人走，不该跟着面走。
+  // 判据取"文档加载次数"与"地址栏路径"（票 frontend-path-routing 的验收行 4）：
+  // 换面若退化成整页跳转，文档重新加载、内存里的账号会话就没了——下面那条"还认得我"会跟着红。
+  const beforeSwitch = await readDocumentLoads(stranger.page)
   await stranger.page.getByTestId('nav-storyteller').click()
   const switched = await waitForFace(stranger.page, 'nav-storyteller')
+  const afterSwitch = await readDocumentLoads(stranger.page)
+  const switcherUrl = new URL(stranger.page.url())
+  check(
+    '切面没有重载文档（加载次数不变）且地址栏换成目标路径',
+    beforeSwitch !== null && afterSwitch === beforeSwitch && switcherUrl.pathname === '/storyteller',
+    `加载次数 ${String(beforeSwitch)} → ${String(afterSwitch)}；地址=${switcherUrl.pathname}`,
+  )
+
   const storytellerRendered = await waitForAnyTestId(
     stranger.page,
     ['my-tables', 'storyteller-ticket', 'open-table-submit'],
@@ -351,6 +373,18 @@ async function main() {
     consoleErrors.length === 0,
     consoleErrors.slice(0, 3).join(' | ') || '零错误',
   )
+}
+
+/**
+ * 本文档加载了几次（Performance API 的导航条目数）。
+ *
+ * 用来判"换面到底有没有整页跳转"：文档每重载一次就多一条导航条目。取不到（浏览器不支持）时返回 null，
+ * 调用方据此把这条判成红——**不许**在拿不到读数时当成功。
+ */
+async function readDocumentLoads(page) {
+  return await page
+    .evaluate(() => (typeof performance?.getEntriesByType === 'function' ? performance.getEntriesByType('navigation').length : null))
+    .catch(() => null)
 }
 
 /**

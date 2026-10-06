@@ -130,7 +130,7 @@ export async function seatByInviteCode(page, options) {
           password: options.account.password,
         }
 
-  await page.goto(`${options.frontUrl}/#player`, { waitUntil: 'domcontentloaded' })
+  await page.goto(`${options.frontUrl}/play`, { waitUntil: 'domcontentloaded' })
   if (options.account === undefined) {
     await registerOnGate(page, account)
   } else {
@@ -167,10 +167,10 @@ export async function returnToSeat(page, options) {
     password: options.password,
   }
 
-  // **强制整页重载**：目标地址与当前地址往往只差一个 hash（`#player` 对 `#player`），
-  // 那时 `goto` 属于同文档导航、文档不重载，页面还停在"已连接"的状态上——门根本不会出现。
-  // 这条路线的语义就是"刷新一次"，所以显式 reload。
-  await page.goto(`${options.frontUrl}/#player`, { waitUntil: 'domcontentloaded' })
+  // **强制整页重载**：这条路线的语义就是"刷新一次"（会话只活在内存里，刷新即登出，才需要重新登录）。
+  // 目标地址与当前地址往往只差一个路径段（或只差查询串），那时 `goto` 属于同文档导航、文档不重载，
+  // 页面还停在"已连接"的状态上——门根本不会出现。所以显式 reload，不依赖"地址变了"这个假设。
+  await page.goto(`${options.frontUrl}/play`, { waitUntil: 'domcontentloaded' })
   await page.reload({ waitUntil: 'domcontentloaded' })
   await loginOnGate(page, account)
 
@@ -193,7 +193,7 @@ export async function returnToSeat(page, options) {
 export async function seatByAccount(page, options) {
   const account = fixtureAccount('seat-', options.suffix ?? 'seat')
 
-  await page.goto(`${options.frontUrl}/#player`, { waitUntil: 'domcontentloaded' })
+  await page.goto(`${options.frontUrl}/play`, { waitUntil: 'domcontentloaded' })
   await registerOnGate(page, account)
 
   const row = page.locator(`[data-table="${options.gameId}"]`)

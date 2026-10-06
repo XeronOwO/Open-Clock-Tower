@@ -2846,8 +2846,8 @@ async function signInHost(page, table) {
  * 等徽章只会白等满超时。所以回座失败的取证用这一条，正常回座直接用 `returnToSeat`。
  */
 async function signInSeat(page, account) {
-  // 同上：这条路线的语义就是"刷新一次"，同 hash 的 goto 不算刷新。
-  await page.goto(`${frontUrl}/#player`, { waitUntil: 'domcontentloaded' })
+  // 同上：这条路线的语义就是"刷新一次"，同地址的 goto 不算刷新。
+  await page.goto(`${frontUrl}/play`, { waitUntil: 'domcontentloaded' })
   await page.reload({ waitUntil: 'domcontentloaded' })
   await page.getByTestId('account-username').fill(account.username)
   await page.getByTestId('account-password').fill(account.password)

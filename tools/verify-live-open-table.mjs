@@ -158,7 +158,7 @@ async function main() {
   page.on('pageerror', (error) => consoleErrors.push(error.message))
 
   if (!runner.begin('home')) return
-  await openAt(page, `${options.baseUrl}#/home`)
+  await openAt(page, `${options.baseUrl}home`)
   const homeReady = await waitForCount(page.getByTestId('home-to-storyteller'), 1, options.timeoutMs)
   check('首页在部署前缀下打得开（真 nginx + 真宿主）', homeReady, options.baseUrl)
   check(
@@ -168,7 +168,7 @@ async function main() {
   )
 
   if (!runner.begin('register')) return
-  await openAt(page, `${options.baseUrl}#/storyteller`)
+  await openAt(page, `${options.baseUrl}storyteller`)
   await revealRegisterTab(page)
   await page.getByTestId('account-username').fill(username)
   await page.getByTestId('account-display-name').fill(displayName)
@@ -216,7 +216,7 @@ async function main() {
   // 未登录的玩家面：只有一张登录卡（D-0027 的第一条判据，在**部署形态**下同样要成立）。
   const stranger = await context.newPage()
   stranger.on('pageerror', (error) => consoleErrors.push(error.message))
-  await openAt(stranger, `${options.baseUrl}#/player`)
+  await openAt(stranger, `${options.baseUrl}play`)
   const strangerLobby = await stranger.getByTestId('player-lobby').count()
   const strangerSeats = await stranger.locator('[data-seat]').count()
   check(
@@ -286,7 +286,7 @@ async function main() {
   if (!runner.begin('reconnect')) return
   // 账号会话只在内存里（刷新即失效）——所以"回来"这件事必须靠**账号**：刷新 → 重新登录 → 「我的桌」里点回来。
   // 这正是 D-0027 要证明的：桌跟着账号走，不跟着浏览器里的一串凭据走。
-  await page.goto(`${options.baseUrl}#/storyteller`, { waitUntil: 'domcontentloaded' })
+  await page.goto(`${options.baseUrl}storyteller`, { waitUntil: 'domcontentloaded' })
   await page.reload({ waitUntil: 'domcontentloaded' })
   await page.getByTestId('account-username').fill(username)
   await page.getByTestId('account-password').fill(password)

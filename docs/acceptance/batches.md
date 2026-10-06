@@ -1384,6 +1384,31 @@ Chromium 把资源加载失败写进 console，被算成"重启窗口内的非�
   `RejectionMessage` 为空且 `Failure` 非空 = 服务端抛异常（真缺陷，按异常栈查）；
   其余拒绝码按内核判定路径查。**复现出来的当次就要按缺陷修，不许再当"偶发"放过去。**
 
+## 批次 E50（2026-10-06，前端路由改用正常路径：地址从 `#/play` 变成 `/play`）
+
+**本批票据**：`review/frontend-path-routing.md`（需求方当面问"为什么要用 `#` 设计 path"）。
+
+**本批取证构成**：
+
+| 取证 | 命令 | 结果 |
+|---|---|---|
+| **入场可用性验收**（本批主证据） | `node tools/verify-entrance-usability.mjs`（迭代档） | **全部通过（判定 29 项 · 0 失败）**，10.5s——含本批新增的两条：旧井号地址落到 `/play` 且地址栏无井号 · 切面**加载次数 1 → 1** 且地址变 `/storyteller` |
+| 账号与玩家名（那 20 处 `#player` 里最关键的"刷新回座"） | `node tools/verify-accounts.mjs --only replay`（迭代档） | **全部通过（判定 4 项 · 0 失败）**，13.3s；其中"回到座位后重取快照"一条走的就是 `goto` + `reload` |
+| 主装置（多席位真链路） | `node tools/verify-storyteller-panel.mjs`（迭代档） | **全部通过（判定 289 项 · 跳过 2 项 · 0 失败）**，76.2s |
+| 前端单元（纯逻辑） | `npx vitest run src/display/navigation.spec.ts src/display/routing.spec.ts` | **31 项全过**（解析 12 · 地址改写与订阅 19） |
+| 门禁（冻结版） | `dotnet build` / `dotnet test OpenClockTower.slnx` / `dotnet format` / `npm run gate` | 0 警告 0 错误 · **1305 通过 / 0 失败** · format 退出 0 · web **242 通过 / 0 失败** + typecheck / build 全绿 |
+
+**本批判出**：地址栏形状换成正常路径（`/` · `/home` · `/play` · `/storyteller`）；点顶栏与首页入口
+**不重载文档**（账号会话不掉，这正是 hash 唯一站得住的理由被补上的地方）；旧井号地址
+（`#player` / `#/play` / `#/home` / `#/storyteller`）自动落到新路径且不留井号；空地址仍是说书人端。
+
+**为什么装置没有集体失效**：旧地址走的是"就地改写"（`replaceState`，不产生历史记录），
+所以 16 个装置里那 20 处 `#player` 不改也能过——本批仍然把它们改成新路径，
+只在可用性装置里**留一条**旧地址的断言（兼容网不等于主路径）。
+
+**本批没做的**：这一批跑的是**迭代档**（路由是前端行为，没有节拍器可观察，档位不影响判据）；
+票据留在 `review/` 等下一次**取证档批次**的正式判定。
+
 ## 相关阅读
 
 - 验收规程：`docs/acceptance/AGENTS.md`
