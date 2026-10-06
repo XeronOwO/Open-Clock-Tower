@@ -39,15 +39,45 @@ export interface GatewayCallbacks {
 }
 
 /** 连接工厂：默认连真宿主；测试注入假连接以验证"序号闸"真的接在 Join / 刷新响应上。 */
-export type StorytellerConnectionFactory = () => HubConnection
+export type StorytellerConnectionFactory = (gameId?: string) => HubConnection
 
 /** 默认连接：真 SignalR（与玩家侧同口径的自动重连与日志级别）。 */
-function createStorytellerConnection(): HubConnection {
+function createStorytellerConnection(gameId?: string): HubConnection {
   return new HubConnectionBuilder()
-    .withUrl(HUB_PATH)
+    .withUrl(hubUrlFor(gameId))
     .withAutomaticReconnect([0, 1000, 3000, 5000])
     .configureLogging(LogLevel.Warning)
     .build()
+}
+
+/**
+ * Hub 地址：声明**在哪一桌**（多桌，D-0024）。
+ *
+ * 不传就是"本机默认桌"——既有的票据流程与 18 个验收装置因此都不用改。
+ */
+export function hubUrlFor(gameId?: string): string {
+  return gameId === undefined || gameId.length === 0
+    ? HUB_PATH
+    : `${HUB_PATH}?gameId=${encodeURIComponent(gameId)}`
+}
+
+/**
+ * 解析说书人票据：支持 `桌标识:票据` 这种**自描述**写法。
+ *
+ * 多桌之后"一桌一份票据"，而票据本身长得一样（都是 `storyteller-…`）：
+ * 只说一串票据，面板不知道该连哪一桌。开桌时把桌标识一起给出，用户粘进来即可，
+ * 不需要再记"先去大厅找到那一桌"。
+ */
+export function parseStorytellerTicket(raw: string): { gameId?: string; ticket: string } {
+  const trimmed = raw.trim()
+  const separator = trimmed.indexOf(':')
+  if (separator <= 0) {
+    return { ticket: trimmed }
+  }
+
+  const gameId = trimmed.slice(0, separator).trim()
+  const ticket = trimmed.slice(separator + 1).trim()
+  return gameId.length > 0 && ticket.length > 0 ? { gameId, ticket } : { ticket: trimmed }
 }
 
 /**
@@ -63,9 +93,13 @@ export class StorytellerGateway {
 
   constructor(
     private readonly callbacks: GatewayCallbacks,
+    // 默认工厂**直接引用**带参函数：写成 `() => createStorytellerConnection()` 会把 gameId 吞掉，
+    // 于是连接永远落在默认桌（实测踩到：新桌票据被判"无效"，而服务端直连同一串却成功）。
     createConnection: StorytellerConnectionFactory = createStorytellerConnection,
+    gameId?: string,
   ) {
-    this.connection = createConnection()
+    // 桌在建连接时就定下来：`?gameId=` 属于这条连接，服务端据此路由到那一局。
+    this.connection = createConnection(gameId)
 
     this.connection.on('ReceiveStorytellerViewChanged', (payload: unknown) => {
       this.applyView(normalizeStorytellerView(payload))

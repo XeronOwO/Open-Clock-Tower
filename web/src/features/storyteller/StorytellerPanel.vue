@@ -12,7 +12,7 @@
 import type { ReplayViewDto, StorytellerViewDto } from '@/contracts/game'
 import { clockTimeOf } from '@/display/format'
 import { labelOf } from '@/display/labels'
-import { StorytellerGateway, type GatewayState } from '@/services/storytellerGateway'
+import { StorytellerGateway, parseStorytellerTicket, type GatewayState } from '@/services/storytellerGateway'
 import { AccountGateway, type AccountProfile, type LobbyCreateResult } from '@/services/accountGateway'
 import AccountPanel from '@/features/account/AccountPanel.vue'
 import { readSeatCount, DEFAULT_SEAT_COUNT } from '@/services/serverConfig'
@@ -277,21 +277,39 @@ function winnerLabelOf(winner: string): string {
 
 const connected = computed(() => connectionState.value === 'connected' && view.value !== null)
 
-function ensureGateway(): StorytellerGateway {
+/** 当前网关连的是哪一桌（票据里声明的）；换桌要重建连接。 */
+let gatewayGameId: string | undefined
+
+/** 丢弃当前网关（换桌或重连前调用）：必须等它真的停下来，否则新连接的 start 会撞上关闭过程。 */
+async function dropGateway(): Promise<void> {
+  const previous = gateway
+  gateway = null
+  gatewayRef.value = null
+  if (previous !== null) {
+    await previous.stop()
+  }
+}
+
+function ensureGateway(gameId?: string): StorytellerGateway {
   if (gateway === null) {
-    const created = new StorytellerGateway({
-      onView: (next) => {
-        // 每次 Join（含重连后的重新加入）都换一条连接：凭据与视图一起刷新，绝不沿用旧连接的。
-        credential.value = created.credential
-        view.value = next
+    const created = new StorytellerGateway(
+      {
+        onView: (next) => {
+          // 每次 Join（含重连后的重新加入）都换一条连接：凭据与视图一起刷新，绝不沿用旧连接的。
+          credential.value = created.credential
+          view.value = next
+        },
+        onState: (state) => {
+          connectionState.value = state
+        },
+        onDiagnostic: (message) => pushDiagnostic(message),
       },
-      onState: (state) => {
-        connectionState.value = state
-      },
-      onDiagnostic: (message) => pushDiagnostic(message),
-    })
+      undefined,
+      gameId,
+    )
     gateway = created
     gatewayRef.value = created
+    gatewayGameId = gameId
   }
 
   return gateway
@@ -304,9 +322,17 @@ function pushDiagnostic(message: string): void {
 async function join(): Promise<void> {
   joining.value = true
   try {
+    // 票据可以写成 `桌标识:票据`（开桌时给出的就是这种自描述写法）：这样面板知道该连哪一桌。
+    const parsed = parseStorytellerTicket(ticket.value)
     store.write(ticket.value.trim())
-    const current = ensureGateway()
-    await current.join(ticket.value.trim())
+
+    // 换桌（或首次）要重建连接：`?gameId=` 属于连接，不能复用连到别桌的那条。
+    if (gateway !== null && gatewayGameId !== parsed.gameId) {
+      await dropGateway()
+    }
+
+    const current = ensureGateway(parsed.gameId)
+    await current.join(parsed.ticket)
     credential.value = current.credential
     outcome.value = null
   } catch (error) {
@@ -391,10 +417,12 @@ onBeforeUnmount(() => {
           <button type="button" :disabled="lobbyBusy" @click="openTable()">开桌</button>
         </div>
         <p v-if="lobbyNotice.length > 0" class="hint">{{ lobbyNotice }}</p>
-        <p v-if="newTable !== null" class="hint">
-          这一桌叫 <strong>{{ newTable.gameId }}</strong>，它的说书人票据是
-          <span class="mono" data-testid="new-table-ticket">{{ newTable.storytellerTicket }}</span>
-          ——把它填到上面的输入框里即可进入主持台（这串只显示这一次，请自己存好）。
+        <p v-if="newTable !== null && newTable.storytellerTicket !== null" class="hint">
+          这一桌是 <strong>{{ newTable.gameId }}</strong>。下面这串是它的说书人票据（**只显示这一次**，请自己存好）——
+          直接填到上面的输入框里即可进入主持台：
+          <span class="mono" data-testid="new-table-ticket">{{
+            `${newTable.gameId}:${newTable.storytellerTicket}`
+          }}</span>
         </p>
       </details>
       <p class="hint">连接状态：{{ stateText[connectionState] }}</p>

@@ -99,7 +99,9 @@ export class PlayerGateway {
 
   constructor(
     private readonly callbacks: PlayerCallbacks,
-    createConnection: GameConnectionFactory = () => createPlayerConnection(),
+    // 默认工厂**直接引用**带参函数：写成 `() => createPlayerConnection()` 会把 gameId 吞掉，
+    // 于是连接永远落在默认桌（多桌下表现为"坐到了别的桌"）。
+    createConnection: GameConnectionFactory = createPlayerConnection,
     gameId?: string,
   ) {
     // 桌在**建连接时**就定下来：`?gameId=` 属于这条连接，之后每条命令都由服务端按它路由。
