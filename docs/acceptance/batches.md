@@ -1703,6 +1703,54 @@ MSBuild 复用节点已关。
 
 **本批票据**：`in-progress/web-hardening-programme.md`（**M4 第一刀完成**；票继续挂 in-progress 做 M4 剩余与 M5–M6）。
 
+## 批次 E57（2026-10-07，M5 第一刀：库的运维底座 G-A6-4 / G-A6-6 / G-A6-8 / G-A7-4 / G-A7-5 文档半）
+
+**本批票据**：`in-progress/web-hardening-programme.md` 的 **M5 第一刀**——审计差距
+**G-A6-4**（备份从未演练，**High**）· **G-A6-6**（库文件 644，Medium）· **G-A6-8**（WAL 与 `busy_timeout` 口径，Medium）·
+**G-A7-4**（单元缺 `User=`、重启语义没写，Medium）· **G-A7-5**（回滚零步骤，Medium，**只做文档半**）。
+口径登记在 `docs/decisions/active.md` **D-0034**。
+
+**这一批解决什么**：库里是全部账号与整局事件流，而它的运维面此前几乎是空的——备份只有停服三行、从未演练恢复；
+库文件 644、进程以 root 跑；日志模式与写锁等待没有任何地方声明。这一批把"会不会丢、权限归谁、口径在哪"补齐，
+并**顺手修正了审计的两处结论**（`busy_timeout = 0` 的归属、WAL 的来源）。
+
+**本批取证构成**：
+
+| 取证 | 命令 | 结果 |
+|---|---|---|
+| **集成用例（真宿主 + 真 SQLite）** | `dotnet test tests/OpenClockTower.Integration.Tests --filter …DatabaseMaintenanceTests` | **9 条全绿**：已有 delete 库启动后变 wal + 忙等 5000 + 同步 FULL · 热备份内容与源库逐项一致 · 同一瞬间两次备份不覆盖 · 轮转只删自己的名字 · 坏备份被报出来 · 非库文件报错 · 缺库时命令给可读错误 · 备份能被读回成一局历史 · Unix 上备份文件 600 |
+| **门禁（新增 5 条）** | `dotnet test tests/OpenClockTower.NormativeGates.Tests --filter …DatabaseOperationsGateTests` | 单元的运行身份与权限条款 · 备份单元与定时器 · 演练脚本的安全边界（只往临时目录写、**真的**调 `db-report`）· 生成脚本的产物与步骤 · 部署文档的备份 / 恢复 / 回滚 / WAL 四节 |
+| **先红后绿（9 处）** | 同上两个工程 | 逐处改坏源码复跑再还原，每处**红 1 条**：去掉 EF 拦截器注册 · 启动不设日志模式 · 轮转不过滤文件名 · 备份不防覆盖 · 体检不做完整性检查 · 单元去 `UMask` · 演练脚本不体检 · 文档去回滚 · 生成脚本漏定时器模板 |
+| **真机读数①：升级与运行身份** | SSH：换包 → 建专用用户 → 属主 / 权限 → 装单元 → `daemon-reload` → 重启 | `systemctl show -p User -p Group -p UMask` = `<运行用户>` / `<运行用户>` / `0077`；`ps -o user=` = `<运行用户>`（**不再是 root**）；`data/` **700**、`oct.db` 与 `oct.db-wal` **600**、属主是运行用户；站点 `200`；启动日志新增一行 `数据库口径：库=<APP_DIR>/data/oct.db · 大小=102400B · 日志模式=wal · 同步级别=FULL · 写锁等待=5000ms` |
+| **真机读数②：热备份（不停服）** | `systemctl start clocktower-backup.service`（单元里就是一条 `backup --db … --out … --keep 7`） | 服务在跑时备出 `oct-<UTC 时刻>.db`：**102,400 字节** · 权限 **600** · SHA-256 `f1d9…` · 完整性 `ok` · 桌=1 事件=1（与源库逐项一致）· `轮转：保留最近 7 份，本次删除 0 份`；`systemctl list-timers` 显示下一次在当天 00:01 |
+| **真机读数③：恢复演练** | `runuser -u <运行用户> -- bash restore-drill.sh --app-dir <APP_DIR> --backup <那份备份> --port 5199` | ① 恢复出来的库：完整性 `ok` · 桌=1 · 事件=1 · 最后序号=1；② 临时实例 `/healthz` → `{"status":"ok","seatCount":7}`；③ 启动日志 `装载在册的桌：数量=1 标识=…`；④ 收尾后 `/tmp` 无残留、端口已释放、**生产库字节数与权限一个字节没变**、站点仍 `200` |
+| **真机咬出来的两个坑**（本批内修掉并写进部署文档） | 同上 | ① 入口程序 `chmod u+x`（744）在换成专用用户后 systemd 报 `status=203/EXEC`，实测连撞 6 次自动重启，日志里只有 "Permission denied" ⇒ 改成 `chmod 755`，生成脚本与文档同步；② 站点特化的 `Environment=` 行追加到单元末尾会落到 `[Install]` 段被忽略（`Unknown key 'Environment' in section [Install]`）⇒ 要加在 `[Service]` 段 |
+| **顺带清掉一处过期凭据残留** | SSH：`ls` + 全仓检索 + 删除 | 应用目录里留着一份票据时代的 `tickets.txt`（明文写着说书人票据与各席位票据，**全仓没有任何代码会读它**）⇒ 已删除 |
+| 三条门禁（冻结版） | `dotnet build` / `dotnet test OpenClockTower.slnx` / `dotnet format` | 构建 **0 警告 0 错误** · **1398 项全绿**（门禁 37 / 内核 501 / 规则 494 / 集成 366）· format 就地通过（本批改了 `tests/`，三条按规矩全跑） |
+
+**部署记录（2026-10-07，真机）**：`node tools/deploy-prepare.mjs --app-dir <APP_DIR> --prefix /clocktower/ --port 5080 --seats 7 --run-user <运行用户> --backup-dir <备份目录>`
+产出 **48.6 MB** 自包含包 + 三份 systemd 配置 → 上传 → 停服 → `rm -f wwwroot/assets/*` → 解包 → `chmod 755` 入口 →
+`chown -R root:<运行用户>` 与 `data/` + 备份目录归运行用户 → 装单元（保留本站的运维名单那一行）→ `daemon-reload` →
+`enable --now clocktower clocktower-backup.timer`。
+
+**演练数据的编排**：恢复演练要"能读出一局历史"，而部署库当时是 **0 桌**。做法是**临时探针**（仓库外脚本，跑完即删）：
+注册一个探针账号 → 开一桌 → 加入主持台 → 上报一次席位状态（**1 条事件**）→ 备份 → 演练 → 按显式 Id / GameId 删除探针行
+（复核：`Games` / `Events` / `Snapshots` / `Receipts` / `SeatBindings` 全为 **0**，`Users` 回到 2）。
+
+**收尾清理**：目标机 `/tmp` 的安装包、三份单元副本与演练脚本已删；升级前的库快照与旧单元备份已删（新备份已在备份目录里）；
+本机 `artifacts/deploy`（48.6 MB 包 + publish 目录）与 `%TEMP%` 的本批日志、探针脚本已删；MSBuild 复用节点已关。
+**留下的**：目标机备份目录里那一份备份（本批的运维产物，定时器从今天起每天续上）。
+
+**残余与边界（本批明确不做）**：
+① **异地备份**：备份目录在本机（单盘部署，没有可指的第二块盘）；`rsync` 拉走的路径写在部署文档 §6.2，**没在本机验证**；
+② **回滚演练**：G-A7-5 只做了文档半，旧版发布包没有留档 ⇒ 验收判据仍未达成；
+③ schema 迁移（G-A6-1 / 6-2 / 6-3）· 删除路径与保留策略（G-A6-5 · G-A1-6）· 空闲桌回收（G-A5-5 容量半边）·
+重连包缓存（G-A5-6 缓存半边）· CI（G-A7-1）· 健康检查语义（G-A7-2）· 日志轮转（G-A7-3）· 磁盘水位（G-A7-6）·
+指标（G-A7-7）仍在 M5 的账上；
+④ 本批**未做**渗透测试与并发压测（审计页 §5 的"没覆盖"清单不变）。
+
+**本批票据**：`in-progress/web-hardening-programme.md`（**M5 第一刀完成**；票继续挂 in-progress 做 M5 剩余与 M6）。
+
 ## 相关阅读
 
 - 验收规程：`docs/acceptance/AGENTS.md`

@@ -30,6 +30,7 @@ public sealed class GameBootstrapHostedService : IHostedService
 {
     private readonly IDbContextFactory<GameDbContext> _dbFactory;
     private readonly GameRegistry _registry;
+    private readonly SqliteOptions _sqliteOptions;
     private readonly ILogger<GameBootstrapHostedService> _logger;
 
     /// <summary>说书人票据时代的列（D-0027 起不再映射；老库里那一列由结构守卫清掉）。</summary>
@@ -42,10 +43,12 @@ public sealed class GameBootstrapHostedService : IHostedService
     public GameBootstrapHostedService(
         IDbContextFactory<GameDbContext> dbFactory,
         GameRegistry registry,
+        SqliteOptions sqliteOptions,
         ILogger<GameBootstrapHostedService> logger)
     {
         _dbFactory = dbFactory;
         _registry = registry;
+        _sqliteOptions = sqliteOptions;
         _logger = logger;
     }
 
@@ -57,6 +60,7 @@ public sealed class GameBootstrapHostedService : IHostedService
             await db.Database.EnsureCreatedAsync(cancellationToken);
             await EnsureAccountSchemaAsync(db, cancellationToken);
             await EnsureGameSchemaAsync(db, cancellationToken);
+            await ApplySqliteRuntimeAsync(db, cancellationToken);
         }
 
         // 装载库里全部在册的桌（多桌并行）。库是空的就什么都不装——等第一桌被开出来。
@@ -161,6 +165,55 @@ public sealed class GameBootstrapHostedService : IHostedService
                     RetiredTicketColumn);
                 throw;
             }
+        }
+    }
+
+    /// <summary>
+    /// SQLite 运行口径（M5 / G-A6-8）：**日志模式设一次**（持久属性写在库文件里），
+    /// 同步级别与忙等由拦截器在每条连接上设——这里读回实际生效的值并记一行启动读数。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 读回而不是"设完就算"：<c>PRAGMA journal_mode=wal</c> 在只读文件系统、或者库被别的连接
+    /// 独占时会**静默保持原模式**。全新部署过去跑的是 SQLite 默认的 <c>delete</c> 模式
+    /// （审计 R3 里那台机器上的 <c>wal</c> 是人工设的），所以这一行日志是"这台机器上到底哪种模式"的唯一判据。
+    /// </para>
+    /// <para>
+    /// 连接从 EF 的打开路径拿（<c>OpenConnectionAsync</c>）：这样读到的忙等就是**拦截器真的生效了**的证据，
+    /// 而不是这条代码自己临时设的值。
+    /// </para>
+    /// </remarks>
+    private async Task ApplySqliteRuntimeAsync(GameDbContext db, CancellationToken cancellationToken)
+    {
+        var connection = db.Database.GetDbConnection();
+        await db.Database.OpenConnectionAsync(cancellationToken);
+        try
+        {
+            var journalMode = await SqliteConnectionPragmas.ApplyJournalModeAsync(connection, cancellationToken);
+            var busyTimeout = await SqliteConnectionPragmas.ReadBusyTimeoutAsync(connection, cancellationToken);
+            var path = connection.DataSource;
+            var size = File.Exists(path) ? new FileInfo(path).Length : 0;
+
+            _logger.LogInformation(
+                "数据库口径：库={Path} · 大小={Size}B · 日志模式={JournalMode} · 同步级别={Synchronous} · 写锁等待={BusyTimeout}ms",
+                path,
+                size,
+                journalMode,
+                SqliteConnectionPragmas.Synchronous,
+                busyTimeout);
+
+            if (!string.Equals(journalMode, SqliteConnectionPragmas.JournalMode, StringComparison.OrdinalIgnoreCase))
+            {
+                // 不打断启动（服务照常能跑），但必须看得见：这条口径决定崩溃恢复与并发读写的形态。
+                _logger.LogWarning(
+                    "日志模式没有生效：期望 {Expected}，实际 {Actual}——只读文件系统、库被独占，或这个库不是本进程建的。",
+                    SqliteConnectionPragmas.JournalMode,
+                    journalMode);
+            }
+        }
+        finally
+        {
+            await db.Database.CloseConnectionAsync();
         }
     }
 

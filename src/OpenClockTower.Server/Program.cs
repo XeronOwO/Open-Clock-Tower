@@ -5,10 +5,19 @@ using OpenClockTower.Kernel;
 using OpenClockTower.Rules;
 using OpenClockTower.Server;
 
+// 数据库维护命令（M5 / G-A6-4）：backup / db-report 在**建宿主之前**分流——
+// 定时备份要在服务正常运行时被 systemd 调起来，不该顺带再起一个 Kestrel。
+if (MaintenanceCli.IsMaintenanceCommand(args))
+{
+    return MaintenanceCli.Run(args, Console.Out, Console.Error);
+}
+
 var builder = WebApplication.CreateBuilder(args);
 var serverOptions = builder.Configuration
     .GetSection(GameServerOptions.SectionName)
     .Get<GameServerOptions>() ?? new GameServerOptions();
+// SQLite 口径（M5 / G-A6-8）：连接级的那两条由拦截器打到每一个连接上，取值在这里显式取出。
+var sqliteOptions = serverOptions.Sqlite;
 // 传输面上限与账号限速（M3 / G-A3-4 · G-A1-1）：取值显式、可配、在启动日志里可见（依赖 D-0031 / D-0032）。
 var transportLimits = builder.Configuration
     .GetSection(TransportLimitsOptions.SectionName)
@@ -62,8 +71,12 @@ builder.Services.AddSingleton(new PacingOptions
     SlotQuota = TimeSpan.FromSeconds(serverOptions.SlotQuotaSeconds),
 });
 builder.Services.AddSingleton<IClock, SystemClock>();
-builder.Services.AddDbContextFactory<GameDbContext>(options => options.UseSqlite(
-    $"Data Source={Path.Combine(builder.Environment.ContentRootPath, serverOptions.DatabasePath)}"));
+builder.Services.AddSingleton(sqliteOptions);
+// SQLite 连接口径（M5 / G-A6-8）：日志模式在启动引导里设一次（持久属性），
+// 同步级别与忙等是连接级属性，靠拦截器保证**每一条**连接都成立。
+builder.Services.AddDbContextFactory<GameDbContext>(options => options
+    .UseSqlite($"Data Source={Path.Combine(builder.Environment.ContentRootPath, serverOptions.DatabasePath)}")
+    .AddInterceptors(new SqlitePragmaInterceptor(sqliteOptions)));
 builder.Services.AddSingleton<IGameStore, EfGameStore>();
 builder.Services.AddSingleton<IGameCatalog, EfGameCatalog>();
 // 账号与席位绑定（D-0021）：账号是全局身份、绑定是会话信息；口令 / 会话凭据只存哈希（SecretToken）。
@@ -211,6 +224,8 @@ app.MapHub<AccountHub>("/hub/account");
 // SPA 回退：静态文件与既有端点都没匹配上、且路径不像文件时才交给前端路由（`/` 与 `/#player` 同一份构建）。
 app.MapFallbackToFile("{*path:nonfile}", "index.html");
 app.Run();
+// 维护命令那条早退分支给了退出码，顶层语句因此变成 int 入口（服务正常退出 = 0）。
+return 0;
 
 /// <summary>集成测试用的程序入口标记。</summary>
 public partial class Program

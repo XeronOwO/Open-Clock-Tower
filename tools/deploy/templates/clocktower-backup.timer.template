@@ -1,0 +1,14 @@
+[Unit]
+Description=OpenClockTower daily database backup
+
+[Timer]
+# 默认每天 00:00（服务器本地时区）。改法见 docs/operations/deploy.md §6.1。
+OnCalendar={{BACKUP_CALENDAR}}
+# 停机错过的备份，开机后补跑一次：备份的连续性不该被一次重启吃掉。
+Persistent=true
+# 错开整点：别和其它定时任务一起去抢磁盘。
+RandomizedDelaySec=300
+Unit=clocktower-backup.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,19 @@
+[Unit]
+Description=OpenClockTower database backup (hot backup, no downtime)
+# 备份**不需要**停服：走 SQLite 的在线备份 API，服务照常跑。因此这里刻意不写 After=/Wants=——
+# 服务没在跑的时候也该能备份（比如刚恢复完、还没起来）。
+# 同一条命令手跑一遍就是同样的结果，排查时先手跑（见 docs/operations/deploy.md §6.1）。
+
+[Service]
+Type=oneshot
+User={{RUN_USER}}
+Group={{RUN_USER}}
+# 备份文件与库文件同一个规矩：只有属主可读（G-A6-6）。
+UMask=0077
+WorkingDirectory={{APP_DIR}}
+# 库路径**显式写出**：定时任务里"备的是哪个库"必须一眼可见，不吃环境变量与 appsettings 的默认值。
+ExecStart={{APP_DIR}}/OpenClockTower.Server backup --db {{APP_DIR}}/data/oct.db --out {{BACKUP_DIR}} --keep {{BACKUP_KEEP}}
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true

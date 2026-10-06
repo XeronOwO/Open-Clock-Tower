@@ -4,11 +4,26 @@ After=network.target
 
 [Service]
 Type=simple
+# 专用运行用户（M5 / G-A7-4）：进程不再是 root——真出事时攻击者拿到的只是这个用户。
+# 用户要先建出来（见 docs/operations/deploy.md §3）：没有这个用户，systemd 会以 status=217/USER 拒绝启动。
+User={{RUN_USER}}
+Group={{RUN_USER}}
+# 新写入的文件默认只有属主可读（M5 / G-A6-6）：这个目录底下是库文件与它的 -wal / -shm，
+# 里面装着全部口令哈希与整局事件流；配合部署文档里的 data/ 700 与 oct.db 600。
+UMask=0077
 # 必须是应用目录：宿主的页面目录（wwwroot）跟着工作目录走，写错会变成"接口能用、页面 404"
 WorkingDirectory={{APP_DIR}}
 ExecStart={{APP_DIR}}/OpenClockTower.Server
 Restart=always
 RestartSec=3
+# 最小权限：不需要提权、不需要写系统目录、看不到别人的家目录、临时目录是本进程私有的。
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
 Environment=DOTNET_ENVIRONMENT=Production
 # 只监听本机：对外入口收敛到 nginx 一处
 Environment=ASPNETCORE_URLS=http://127.0.0.1:{{PORT}}

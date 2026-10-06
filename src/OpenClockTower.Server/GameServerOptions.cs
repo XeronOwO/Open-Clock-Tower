@@ -18,6 +18,12 @@ public sealed class GameServerOptions
     /// <summary>SQLite 数据库路径（相对内容根）。</summary>
     public string DatabasePath { get; set; } = "openclocktower.db";
 
+    /// <summary>
+    /// SQLite 连接口径（M5 / G-A6-8）：日志模式与同步级别写死在
+    /// <see cref="SqliteConnectionPragmas"/>，这里只有可配的"等锁等多久"。
+    /// </summary>
+    public SqliteOptions Sqlite { get; set; } = new();
+
     /// <summary>每个槽位的最短配额（秒），默认 10（D-0013）。</summary>
     public double SlotQuotaSeconds { get; set; } = 10;
 

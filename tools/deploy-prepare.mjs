@@ -2,10 +2,12 @@
 /**
  * 生成 Linux 发布包与配套服务配置（**通用**：填几个值就能用，任何人 clone 下来都能跑）。
  *
- * 产出三样东西，拿到目标机器上照着 `docs/operations/deploy.md` 做即可：
- *   1. `oct-linux.tar.gz`   —— 自包含发布包（自带 .NET 运行时，目标机不用装 .NET）；
- *   2. `clocktower.service` —— systemd 单元，已填好你给的路径 / 端口 / 席位数；
- *   3. `clocktower.conf`    —— nginx 片段，已按你给的前缀与端口写好转发（含 SignalR 长连接头）。
+ * 产出拿到目标机器上照着 `docs/operations/deploy.md` 做即可：
+ *   1. `oct-linux.tar.gz`             —— 自包含发布包（自带 .NET 运行时，目标机不用装 .NET）；
+ *   2. `clocktower.service`           —— systemd 单元，已填好你给的路径 / 端口 / 席位数 / 运行用户；
+ *   3. `clocktower-backup.service`    —— 热备份单元（不停服，走 SQLite 在线备份 API）；
+ *   4. `clocktower-backup.timer`      —— 备份定时器（默认每天一次，停机错过会补跑）；
+ *   5. `clocktower.conf`              —— nginx 片段，已按你给的前缀与端口写好转发（含 SignalR 长连接头）。
  *
  * 用法（在仓库根运行）：
  *   node tools/deploy-prepare.mjs --app-dir /srv/oct --prefix /clocktower/ --port 5080 --seats 7
@@ -49,6 +51,10 @@ function parseArguments(argv) {
     port: 5080,
     seats: 7,
     slotQuotaSeconds: 10,
+    runUser: 'clocktower',
+    backupDir: '/var/backups/clocktower',
+    backupKeep: 7,
+    backupCalendar: 'daily',
     outDir: path.join(repositoryRoot, 'artifacts', 'deploy'),
     skipFrontendBuild: false,
   }
@@ -75,6 +81,22 @@ function parseArguments(argv) {
         break
       case '--slot-quota':
         options.slotQuotaSeconds = Number.parseInt(value ?? '', 10)
+        index += 1
+        break
+      case '--run-user':
+        options.runUser = value ?? options.runUser
+        index += 1
+        break
+      case '--backup-dir':
+        options.backupDir = value ?? options.backupDir
+        index += 1
+        break
+      case '--backup-keep':
+        options.backupKeep = Number.parseInt(value ?? '', 10)
+        index += 1
+        break
+      case '--backup-calendar':
+        options.backupCalendar = value ?? options.backupCalendar
         index += 1
         break
       case '--out':
@@ -115,6 +137,24 @@ function parseArguments(argv) {
     throw new Error(`--seats 必须 ≥ 1：当前是 ${options.seats}`)
   }
 
+  // 运行用户与备份目录会原样写进 systemd 单元，写错的表现是"服务起不来"或"备份写不进去"：
+  // 与端口一样，在生成阶段就把明显不合法的值拦下来。
+  if (!/^[a-z_][a-z0-9_-]*$/.test(options.runUser)) {
+    throw new Error(`--run-user 不合法（小写字母 / 数字 / 下划线 / 连字符）：${options.runUser}`)
+  }
+
+  if (!options.backupDir.startsWith('/')) {
+    throw new Error(`--backup-dir 必须是绝对路径：${options.backupDir}`)
+  }
+
+  if (!Number.isInteger(options.backupKeep) || options.backupKeep < 1) {
+    throw new Error(`--backup-keep 必须 ≥ 1：当前是 ${options.backupKeep}`)
+  }
+
+  if (!options.backupCalendar.trim()) {
+    throw new Error('--backup-calendar 不能为空（systemd 的 OnCalendar 表达式，例如 daily）')
+  }
+
   return options
 }
 
@@ -129,11 +169,16 @@ function printUsage() {
   --port <端口>           宿主监听的本机端口（默认 5080）
   --seats <数量>          席位数（默认 7）
   --slot-quota <秒>       每个行动格的最短配额（默认 10）
+  --run-user <用户名>     专用运行用户（默认 clocktower；见部署文档 §3）
+  --backup-dir <路径>     备份目录（默认 /var/backups/clocktower；应与库文件**不同盘**，见 §6）
+  --backup-keep <份数>    保留最近几份备份（默认 7）
+  --backup-calendar <式>  备份定时的 OnCalendar 表达式（默认 daily）
   --out <目录>            产物输出目录（默认 artifacts/deploy）
   --skip-frontend-build   复用现有 web/dist（只有你确定产物是新的才用）
   -h, --help              显示本说明
 
 产出：oct-linux.tar.gz · clocktower.service · clocktower.conf
+      clocktower-backup.service · clocktower-backup.timer
 安装与排查见 docs/operations/deploy.md。`)
 }
 
@@ -231,14 +276,28 @@ if (existsSync(tarball)) {
 
 run('tar', ['-czf', tarball, '-C', publishDir, '.'])
 
-// ---- 4) 生成两份配置 ----
+// ---- 4) 生成配置：一个服务单元 + 一套备份定时器 + 一份 nginx 片段 ----
 const unit = renderTemplate('clocktower.service.template', {
   '{{APP_DIR}}': options.appDir,
   '{{PORT}}': String(options.port),
   '{{SEATS}}': String(options.seats),
   '{{SLOT_QUOTA}}': String(options.slotQuotaSeconds),
+  '{{RUN_USER}}': options.runUser,
 })
 writeUnixText(path.join(options.outDir, 'clocktower.service'), unit)
+
+const backupUnit = renderTemplate('clocktower-backup.service.template', {
+  '{{APP_DIR}}': options.appDir,
+  '{{RUN_USER}}': options.runUser,
+  '{{BACKUP_DIR}}': options.backupDir,
+  '{{BACKUP_KEEP}}': String(options.backupKeep),
+})
+writeUnixText(path.join(options.outDir, 'clocktower-backup.service'), backupUnit)
+
+const backupTimer = renderTemplate('clocktower-backup.timer.template', {
+  '{{BACKUP_CALENDAR}}': options.backupCalendar,
+})
+writeUnixText(path.join(options.outDir, 'clocktower-backup.timer'), backupTimer)
 
 let nginx = renderTemplate('clocktower.conf.template', {
   '{{LOCATION}}': locationPath,
@@ -260,11 +319,15 @@ const sizeMb = (statSync(tarball).size / 1024 / 1024).toFixed(1)
 console.log('')
 console.log(`完成。产物在 ${options.outDir} ：`)
 console.log(`  oct-linux.tar.gz    ${sizeMb} MB —— 传到目标机器`)
-console.log('  clocktower.service  → /etc/systemd/system/')
-console.log('  clocktower.conf     → /etc/nginx/conf.d/')
+console.log('  clocktower.service          → /etc/systemd/system/')
+console.log('  clocktower-backup.service   → /etc/systemd/system/')
+console.log('  clocktower-backup.timer     → /etc/systemd/system/')
+console.log('  clocktower.conf             → /etc/nginx/conf.d/')
 console.log('')
 console.log('在目标机器上（详见 docs/operations/deploy.md §3）：')
-console.log(`  mkdir -p ${options.appDir}/data`)
+// 专用运行用户 + 库权限（M5 / G-A6-6 / G-A7-4）：进程不再是 root，库文件不再对同机所有人可读。
+console.log(`  useradd --system --no-create-home --shell /usr/sbin/nologin ${options.runUser}`)
+console.log(`  mkdir -p ${options.appDir}/data ${options.backupDir}`)
 // 前端产物带内容哈希：每次构建换文件名，tar 覆盖式解压不会删旧文件——
 // 不清就会每部署一次多留一份（实测积过 12 份 js/css）。
 console.log(`  rm -f ${options.appDir}/wwwroot/assets/*`)
@@ -272,8 +335,19 @@ console.log(`  tar -xzf oct-linux.tar.gz -C ${options.appDir}`)
 // 归档里的权限位来自构建机（Windows 上常落成 666 / 777），收敛一次。
 // `X` 只对目录与本来就可执行的文件生效，新解出来的程序还没有执行位，所以要单独再给一次。
 console.log(`  chmod -R u=rwX,go=rX ${options.appDir}`)
-console.log(`  chmod u+x ${options.appDir}/OpenClockTower.Server`)
-console.log('  # 放好两份配置 → systemctl daemon-reload && systemctl enable --now clocktower')
+// 入口程序的执行位要给**运行用户**：只加属主那一位会得到 744，进程是 clocktower 而属主是 root，
+// systemd 直接报 203/EXEC（真机实测踩到过——"服务起不来"却看不出是权限问题）。
+console.log(`  chmod 755 ${options.appDir}/OpenClockTower.Server`)
+console.log(`  chown -R root:${options.runUser} ${options.appDir}`)
+console.log(`  chown -R ${options.runUser}:${options.runUser} ${options.appDir}/data ${options.backupDir}`)
+console.log(`  chmod 700 ${options.appDir}/data ${options.backupDir}`)
+console.log(`  chmod 600 ${options.appDir}/data/oct.db     # 老库升级上来时做一次；新库由 UMask=0077 建出来就是 600`)
+console.log('  # 放好三份 systemd 配置与 nginx 片段 → systemctl daemon-reload')
+console.log('  # systemctl enable --now clocktower clocktower-backup.timer')
 console.log('  # nginx -t && systemctl reload nginx')
 console.log('')
 console.log(`对外地址：http://<你的域名或IP>${options.prefix}`)
+console.log(`备份：每天 ${options.backupCalendar} 落到 ${options.backupDir}（保留 ${options.backupKeep} 份）——`)
+console.log(`  systemctl list-timers clocktower-backup.timer · journalctl -u clocktower-backup -n 20`)
+console.log('恢复演练（没演练过的备份不算备份，见 §6.4）：')
+console.log('  bash tools/deploy/restore-drill.sh --app-dir <APP_DIR> --backup <一份备份文件> --port 5199')

@@ -87,6 +87,9 @@ public sealed class TestServerHost : IAsyncDisposable
     /// <summary>宿主服务容器。</summary>
     public IServiceProvider Services => _factory.Services;
 
+    /// <summary>本宿主用的 SQLite 文件（备份 / 体检类用例要指着真实的库文件做）。</summary>
+    public string DatabasePath => _databasePath;
+
     /// <summary>局注册表（多桌用例要按标识取具体某一桌，D-0024）。</summary>
     public GameRegistry GameRegistry => _factory.Services.GetRequiredService<GameRegistry>();
 
