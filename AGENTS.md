@@ -48,6 +48,10 @@ dotnet format OpenClockTower.slnx
   （第 1 步只读审计 10 个维度 → 第 2 步 M1 会话与登录态 → M6 开源与合规就绪）；
   第 1 步的差距清单（G-A1-1 …）在 `docs/security/web-hardening-audit.md`；
   完成口径见 `docs/decisions/active.md` D-0028（禁止"基本完成"式交付）。
+- `[CRITICAL]` **授权面以可执行矩阵为准**：每个 Hub 方法"谁能调"写在
+  `docs/security/authorization-matrix.md`，并由 `tests/OpenClockTower.Integration.Tests/AuthorizationSurfaceHostTests.cs`
+  表驱动扫描（玩家 / 说书人 / 匿名三种身份 + 覆盖门禁）。**新增或改名 Hub 方法必须在那里表态**：
+  声明谁不能调，或标 `NotDriven` 并写明由哪条既有用例覆盖——不表态测试就红。
 - `[CRITICAL]` 交付前过三关：**架构**（职责单一、依赖干净）、**测试**（行为有运行时验证）、
   **可维护性**（后人读得懂、改得动）。"能跑"是最低线，不是目标。
 - `[CRITICAL]` 根因优先，不打补丁堆积；有正路就不走捷径，次优方案必须给出架构理由。
