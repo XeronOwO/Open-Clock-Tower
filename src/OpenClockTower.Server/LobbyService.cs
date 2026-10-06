@@ -4,17 +4,21 @@ using OpenClockTower.Contracts;
 namespace OpenClockTower.Server;
 
 /// <summary>
-/// 大厅用例：列出在开的桌、由管理员创建新桌（D-0025）。
+/// 大厅用例：列出在开的桌、由登录账号创建新桌（D-0025 / D-0026）。
 /// </summary>
 /// <remarks>
 /// <para>
-/// 放在 Server 层而不是 Application：授权依据是本机配置的管理员名单（<see cref="AdminDirectory"/>），
+/// 放在 Server 层而不是 Application：授权依据是本机配置（<see cref="TableCreationPolicy"/>），
 /// 属于部署方的授权策略，不是领域规则。
 /// </para>
 /// <para>
-/// 建桌只做三件事：生成标识、写会话目录（票据 + 桌元数据）、让注册表装载它。
+/// 开桌只做三件事：生成标识、写会话目录（票据 + 桌元数据）、让注册表装载它。
 /// 新桌的会话信息由 <see cref="GameSetupFactory"/> 生成——与默认桌**同一套**票据实现，
 /// 不另造一条建局路径。
+/// </para>
+/// <para>
+/// **开桌 ≠ 获得权限**（D-0026）：开桌把这一桌的说书人票据回给开桌者，他因此成为这一桌的说书人。
+/// 说书人是角色，不是身份——所以他可以随时把票据交给别人主持，平台不做"这张桌归谁"的登记。
 /// </para>
 /// </remarks>
 public sealed class LobbyService
@@ -35,7 +39,7 @@ public sealed class LobbyService
     private readonly IGameCatalog _catalog;
     private readonly ISeatBindingStore _bindings;
     private readonly GameRegistry _registry;
-    private readonly AdminDirectory _admins;
+    private readonly TableCreationPolicy _tableCreation;
     private readonly ILogger<LobbyService> _logger;
 
     /// <summary>构造大厅服务。</summary>
@@ -43,13 +47,13 @@ public sealed class LobbyService
         IGameCatalog catalog,
         ISeatBindingStore bindings,
         GameRegistry registry,
-        AdminDirectory admins,
+        TableCreationPolicy tableCreation,
         ILogger<LobbyService> logger)
     {
         _catalog = catalog;
         _bindings = bindings;
         _registry = registry;
-        _admins = admins;
+        _tableCreation = tableCreation;
         _logger = logger;
     }
 
@@ -84,25 +88,36 @@ public sealed class LobbyService
         return tables;
     }
 
-    /// <summary>创建一张新桌（只有管理员）。</summary>
+    /// <summary>
+    /// 创建一张新桌（D-0026：登录即可，开完凭返回的票据当这一桌的说书人）。
+    /// </summary>
     /// <param name="account">开桌者（由账号会话推导，客户端声明不可信）。</param>
     /// <param name="name">桌名（可为空 = 未命名）。</param>
     /// <param name="seatCount">席位数。</param>
     /// <param name="cancellationToken">取消令牌。</param>
+    /// <remarks>
+    /// 拒绝分两种，文案不混：**未登录**是会话问题，"**本服不开放自助开桌**"是部署开关收口
+    /// （<see cref="TableCreationPolicy.AllowsPlayerTables"/>）。两者都不透露运维名单里有谁。
+    /// </remarks>
     public async Task<LobbyCreateResultDto> CreateAsync(
         Account? account,
         string? name,
         int seatCount,
         CancellationToken cancellationToken)
     {
-        if (!_admins.IsAdmin(account))
+        if (!_tableCreation.CanCreate(account))
         {
-            // 中性文案 + 审计：不告诉调用者"谁是管理员"。
+            // `CanCreate` 为假只有两种可能：没登录，或部署方关掉了自助开桌（关掉时 `AllowsPlayerTables` 必为 false）。
+            var reason = account is null ? "未登录" : "本服已关闭玩家自助开桌";
             _logger.LogWarning(
-                "建桌被拒（权限）：account={AccountId} username={Username} 原因=不是管理员",
+                "开桌被拒（授权）：account={AccountId} username={Username} 原因={Reason}",
                 account?.Id.Value,
-                account?.Username ?? "(未登录)");
-            return Fail("not_admin", "只有管理员可以开新桌");
+                account?.Username ?? "(未登录)",
+                reason);
+
+            return account is null
+                ? Fail("invalid_session", "账号会话无效或已过期，请重新登录")
+                : Fail("not_allowed", "本服当前不开放自助开桌，请联系运维开桌");
         }
 
         var trimmed = (name ?? string.Empty).Trim();
@@ -147,7 +162,7 @@ public sealed class LobbyService
             };
         }
 
-        _logger.LogError("建桌失败：连续 {Attempts} 次标识撞号", 5);
+        _logger.LogError("开桌失败：连续 {Attempts} 次标识撞号", 5);
         return Fail("id_conflict", "开桌失败，请重试");
     }
 

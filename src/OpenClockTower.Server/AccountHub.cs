@@ -24,7 +24,7 @@ public sealed class AccountHub : Hub
     private readonly GameRegistry _games;
     private readonly NotificationDispatcher _dispatcher;
     private readonly LobbyService _lobby;
-    private readonly AdminDirectory _admins;
+    private readonly TableCreationPolicy _tableCreation;
     private readonly ILogger<AccountHub> _logger;
 
     /// <summary>构造账号 Hub。</summary>
@@ -39,7 +39,7 @@ public sealed class AccountHub : Hub
         GameRegistry games,
         NotificationDispatcher dispatcher,
         LobbyService lobby,
-        AdminDirectory admins,
+        TableCreationPolicy tableCreation,
         ILogger<AccountHub> logger)
     {
         _accounts = accounts;
@@ -47,7 +47,7 @@ public sealed class AccountHub : Hub
         _games = games;
         _dispatcher = dispatcher;
         _lobby = lobby;
-        _admins = admins;
+        _tableCreation = tableCreation;
         _logger = logger;
     }
 
@@ -62,11 +62,15 @@ public sealed class AccountHub : Hub
         await _lobby.ListAsync(Context.ConnectionAborted);
 
     /// <summary>
-    /// 创建一张新桌（D-0025：**只有管理员**）。开发者与运维的入口。
+    /// 创建一张新桌（D-0026：**登录即可**，开完凭回执里的票据主持这一桌）。
     /// </summary>
-    /// <param name="accountSession">账号会话（必须是管理员的）。</param>
+    /// <param name="accountSession">账号会话（开桌要记在某个账号头上，所以必须登录）。</param>
     /// <param name="name">桌名（可为空）。</param>
     /// <param name="seatCount">席位数。</param>
+    /// <remarks>
+    /// 授权在 <see cref="LobbyService.CreateAsync"/>（部署开关 + 运维名单），这里只解析账号：
+    /// 未登录的拒绝与"本服不开放自助开桌"是两种结果码，前端要分开说。
+    /// </remarks>
     public async Task<LobbyCreateResultDto> CreateTable(string accountSession, string? name, int seatCount)
     {
         var account = await ResolveAccountAsync(accountSession);
@@ -260,7 +264,7 @@ public sealed class AccountHub : Hub
         DisplayName = account.DisplayName,
         AccountSession = accountSession,
         RecoveryCode = recoveryCode,
-        // 只是"让前端知道要不要显示开桌入口"；真正的权限判定在 LobbyService 里。
-        IsAdmin = _admins.IsAdmin(account),
+        // 只是"让前端知道现在能不能开桌"；真正的授权判定在 LobbyService 里。
+        CanCreateTable = _tableCreation.CanCreate(account),
     };
 }

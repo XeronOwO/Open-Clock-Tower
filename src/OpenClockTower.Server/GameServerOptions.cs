@@ -25,11 +25,23 @@ public sealed class GameServerOptions
     public int PacerIntervalMilliseconds { get; set; } = 200;
 
     /// <summary>
-    /// 管理员的**登录名**清单（D-0025：只有管理员能开桌）。
+    /// **运维身份**的登录名清单（D-0026：运维身份，不是开桌前置）。
     /// </summary>
     /// <remarks>
-    /// 刻意放在配置而不进库：它是部署者的授权名单，不是玩家数据；也避免为它改库结构。
-    /// 冷启动靠部署时指定第一个管理员。**留空 = 任何人都不能开桌**（宁可不给，也不默认放开）。
+    /// 刻意放在配置而不进库：它是部署者的名单，不是玩家数据；也避免为它改库结构。
+    /// 语义只到这里——关桌 / 清场这类**部署级**动作将来由它授权。
+    /// **它不是"说书人"**：说书人是这一局的主持人，由该桌票据认定，任何登录玩家开一桌就得到它。
+    /// 当前唯一用途是 <see cref="AllowPlayerTables"/> 关掉后的开桌兜底。**留空 = 没有运维身份**。
     /// </remarks>
     public string[] AdminUsernames { get; set; } = [];
+
+    /// <summary>
+    /// 是否放开**玩家自助开桌**（D-0026，默认放开）。
+    /// </summary>
+    /// <remarks>
+    /// 默认放开：说书人是"玩这一局的角色"而不是系统权限，谁都能开一桌自己主持——小圈子自用就该是这样。
+    /// 公开部署怕被刷桌时配 <c>GameServer__AllowPlayerTables=false</c> 收口，
+    /// 此时退回"只有 <see cref="AdminUsernames"/> 里的运维身份能开"。
+    /// </remarks>
+    public bool AllowPlayerTables { get; set; } = true;
 }

@@ -4,7 +4,7 @@ using OpenClockTower.Application;
 namespace OpenClockTower.Server;
 
 /// <summary>
-/// 管理员判定（D-0025：只有管理员能开桌）。
+/// **运维身份**名单（D-0026：部署级身份，与说书人无关）。
 /// </summary>
 /// <remarks>
 /// <para>
@@ -12,11 +12,17 @@ namespace OpenClockTower.Server;
 /// 玩家名可以随便改，绝不能当权限依据。
 /// </para>
 /// <para>
-/// 规则单一且安全：**清单为空 = 谁都不是管理员**。宁可不给权限，也不默认放开——
-/// 这是本类唯一容易写错的地方，所以写在这里说死。
+/// 语义边界（这里曾经写错，所以写死）：**本类不判定"谁是这一局的说书人"**。
+/// 说书人是"主持这一局的人"，由该桌的说书人票据认定，任何登录玩家开一桌就得到它。
+/// 本类只回答"这个账号是不是部署方指定的人"，当前唯一用途是
+/// <see cref="GameServerOptions.AllowPlayerTables"/> 关掉后的开桌兜底（见 <see cref="TableCreationPolicy"/>），
+/// 将来用于关桌 / 清场这类部署级动作。
 /// </para>
 /// <para>
-/// 配置形态**两种都认**（实测踩过：单个标量绑不到 `string[]`，部署时配一个管理员会静默失效）：
+/// 规则单一且安全：**清单为空 = 谁都不是运维身份**。宁可不给权限，也不默认放开。
+/// </para>
+/// <para>
+/// 配置形态**两种都认**（实测踩过：单个标量绑不到 `string[]`，部署时配一个运维会静默失效）：
 /// 索引式 <c>GameServer:AdminUsernames:0</c>…（推荐）与单值逗号分隔
 /// <c>GameServer__AdminUsernames=a,b</c>（环境变量里最省事的写法）。
 /// </para>
@@ -25,7 +31,7 @@ public sealed class AdminDirectory
 {
     private readonly HashSet<string> _usernames;
 
-    /// <summary>构造管理员名单。</summary>
+    /// <summary>构造运维名单。</summary>
     /// <param name="configuration">宿主配置（读 <see cref="GameServerOptions.SectionName"/> 下的名单）。</param>
     public AdminDirectory(IConfiguration configuration)
     {
@@ -36,7 +42,7 @@ public sealed class AdminDirectory
         // 两种形态都认，且**每个取值都可以再是逗号分隔的一串**：
         //   索引式 `AdminUsernames:0=<运维账号>`（appsettings 里最清楚）
         //   单值   `AdminUsernames=<运维账号>,alice`（环境变量里最省事）
-        // 实测踩过：单个标量绑不到 `string[]`，只认索引式会让部署时配的管理员静默失效。
+        // 实测踩过：单个标量绑不到 `string[]`，只认索引式会让部署时配的名单静默失效。
         var raw = section.GetChildren().Select(child => child.Value ?? string.Empty).ToArray();
         if (raw.Length == 0)
         {
@@ -56,10 +62,16 @@ public sealed class AdminDirectory
             StringComparer.OrdinalIgnoreCase);
     }
 
-    /// <summary>配置里是否指定过管理员（空清单时前端不必显示"开桌"入口）。</summary>
-    public bool HasAnyAdmin => _usernames.Count > 0;
-
-    /// <summary>这个账号是不是管理员。</summary>
-    public bool IsAdmin(Account? account) =>
+    /// <summary>这个账号是不是部署方指定的运维身份。</summary>
+    public bool IsOperator(Account? account) =>
         account is not null && _usernames.Contains(account.Username);
+
+    /// <summary>
+    /// 配置里是否指定过运维身份。
+    /// </summary>
+    /// <remarks>
+    /// 只有 <see cref="TableCreationPolicy"/> 用它判"关闭自助开桌 + 一个人都没配 = 没人开得出新桌"这条死路，
+    /// 并在启动时把话说出来——静默地谁都开不了桌是最难查的一种部署错误。
+    /// </remarks>
+    public bool HasAnyOperator => _usernames.Count > 0;
 }

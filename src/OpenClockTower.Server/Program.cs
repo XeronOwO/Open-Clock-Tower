@@ -29,9 +29,16 @@ builder.Services.AddSingleton<ISeatBindingStore, EfSeatBindingStore>();
 builder.Services.AddSingleton<AccountService>();
 builder.Services.AddSingleton<SeatBindingService>();
 builder.Services.AddSingleton<AccountSessionRegistry>();
-// 管理员名单（D-0025：只有管理员能开桌）：来自本机配置的登录名清单；清单为空 = 谁都不是管理员。
+// 运维身份名单（D-0026）：来自本机配置的登录名清单；清单为空 = 谁都不是运维身份。
+// 它不是"说书人"——说书人由该桌票据认定，任何登录账号开一桌就得到它。
 builder.Services.AddSingleton(provider => new AdminDirectory(builder.Configuration));
-// 大厅用例（D-0025）：列桌 / 建桌。
+// 开桌授权（D-0026）：默认任何登录账号都能开；配 GameServer:AllowPlayerTables=false 收口为只有运维能开。
+// "收口 + 没配运维名单 = 谁都开不了桌"这条死路由策略对象在启动时打告警，不静默。
+builder.Services.AddSingleton(provider => new TableCreationPolicy(
+    serverOptions,
+    provider.GetRequiredService<AdminDirectory>(),
+    provider.GetRequiredService<ILogger<TableCreationPolicy>>()));
+// 大厅用例（D-0025）：列桌 / 开桌。
 builder.Services.AddSingleton<LobbyService>();
 // 规则层的角色契约：提示目录与结算目录指向同一批实现（NightActions），常驻效果来源单列。
 builder.Services.AddSingleton<IAbilityResolutionCatalog>(NightActions.Resolutions);

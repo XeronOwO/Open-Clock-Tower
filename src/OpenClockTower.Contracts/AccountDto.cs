@@ -36,11 +36,12 @@ public sealed record AccountDto
     public string? RecoveryCode { get; init; }
 
     /// <summary>
-    /// 这个账号是不是管理员（D-0025：只有管理员能开桌）。
+    /// 这个账号现在能不能开桌（D-0026）。
     /// </summary>
     /// <remarks>
-    /// 由服务端按配置的登录名清单判定；前端据此决定要不要显示"开桌"入口。
-    /// **它不是权限**——真正的判定在建桌用例里，前端只是少显示一个按钮。
+    /// 由服务端按部署开关 + 运维名单算好；前端据此决定要不要给"开桌"入口。
+    /// **它不是权限**——真正的判定在开桌用例里，前端只是少显示一个按钮。
+    /// 未登录一律 false：开桌要记在某个账号头上。
     /// </remarks>
-    public bool IsAdmin { get; init; }
+    public bool CanCreateTable { get; init; }
 }

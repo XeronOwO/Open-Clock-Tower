@@ -1,16 +1,16 @@
 namespace OpenClockTower.Contracts;
 
-/// <summary>建桌结果（D-0025：只有管理员能开桌）。</summary>
+/// <summary>开桌结果（D-0026：登录即可开，开桌者凭票据成为这一桌说书人）。</summary>
 /// <remarks>
 /// 失败也是正常结果（<see cref="Ok"/> = false + 中性 <see cref="Message"/>），不是异常。
-/// <see cref="StorytellerTicket"/> 是**秘密**：只回给开桌的那个管理员，用于进入说书人台。
+/// <see cref="StorytellerTicket"/> 是**秘密**：只回给开桌的那个人，用于进入说书人台。
 /// </remarks>
 public sealed record LobbyCreateResultDto
 {
     /// <summary>是否成功。</summary>
     public required bool Ok { get; init; }
 
-    /// <summary>机器可读结果码：ok / not_admin / invalid_session / invalid_name / invalid_seat_count / id_conflict。</summary>
+    /// <summary>机器可读结果码：ok / not_allowed / invalid_session / invalid_name / invalid_seat_count / id_conflict。</summary>
     public required string Code { get; init; }
 
     /// <summary>中性说明（可直接展示）。</summary>
