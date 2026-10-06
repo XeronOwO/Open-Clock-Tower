@@ -164,6 +164,9 @@ systemctl start clocktower
 
 ```bash
 systemctl stop clocktower
+# 前端产物带内容哈希：每次构建换文件名，而 tar 覆盖式解压**不会删掉旧文件**。
+# 不清就会每部署一次多留一份（实测：几天下来积了 12 份 js/css），所以先清空这一步。
+rm -f <APP_DIR>/wwwroot/assets/*
 tar -xzf oct-linux.tar.gz -C <APP_DIR>        # 覆盖程序；data/ 不随包发布，不受影响
 chmod -R u=rwX,go=rX <APP_DIR>                # 归档权限来自构建机，收敛一次
 chmod u+x <APP_DIR>/OpenClockTower.Server     # 入口程序的执行位（丢了会 203/EXEC）

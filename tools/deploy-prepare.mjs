@@ -265,6 +265,9 @@ console.log('  clocktower.conf     → /etc/nginx/conf.d/')
 console.log('')
 console.log('在目标机器上（详见 docs/operations/deploy.md §3）：')
 console.log(`  mkdir -p ${options.appDir}/data`)
+// 前端产物带内容哈希：每次构建换文件名，tar 覆盖式解压不会删旧文件——
+// 不清就会每部署一次多留一份（实测积过 12 份 js/css）。
+console.log(`  rm -f ${options.appDir}/wwwroot/assets/*`)
 console.log(`  tar -xzf oct-linux.tar.gz -C ${options.appDir}`)
 // 归档里的权限位来自构建机（Windows 上常落成 666 / 777），收敛一次。
 // `X` 只对目录与本来就可执行的文件生效，新解出来的程序还没有执行位，所以要单独再给一次。

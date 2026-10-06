@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http.Connections;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.SignalR.Client;
+using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.DependencyInjection;
 using OpenClockTower.Application;
 using OpenClockTower.Contracts;
@@ -223,6 +224,10 @@ public sealed class LobbyHostTests : IDisposable
     {
         _host?.Dispose();
 
+        // 宿主停了，但本进程的 SQLite 连接池还可能握着库文件句柄（Windows 上就删不掉）。
+        // 不清池会留下 oct-lobby-* 残渣目录（实测：本轮积了一百多个），所以显式清。
+        SqliteConnection.ClearAllPools();
+
         foreach (var file in new[] { "lobby.db", "lobby.db-shm", "lobby.db-wal" })
         {
             var path = Path.Combine(_contentRoot, file);
@@ -234,7 +239,7 @@ public sealed class LobbyHostTests : IDisposable
                 }
                 catch (IOException)
                 {
-                    // 连接池可能还握着句柄；这类残留由收尾统一清理。
+                    // 仍被占用时留下目录，由收尾统一清理；这里不静默吞掉"删除失败"的语义。
                 }
             }
         }
