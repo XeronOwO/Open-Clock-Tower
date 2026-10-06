@@ -147,24 +147,26 @@ server {
 sudo nginx -t && sudo systemctl reload nginx
 ```
 
-## 5. 入口与票据
+## 5. 入口与账号
 
 三个入口（同一个页面，靠地址里的 hash 分面）：
 
 | 入口 | 地址 | 干什么 |
 |---|---|---|
-| 首页 | `<PREFIX>#/home` | 看有哪些桌在开，挑一个入口 |
-| 玩家端 | `<PREFIX>#/play`（旧写法 `#player` 仍可用） | 注册 / 登录，选空席位入座 |
-| 说书人端 | `<PREFIX>#/storyteller`（**空 hash 也是它**） | 主持一局：开桌、配板、走夜晚 |
+| 首页 | `<PREFIX>#/home` | 说清楚这是什么 + 两个方向 |
+| 加入一桌 | `<PREFIX>#/play`（旧写法 `#player` 仍可用） | 注册 / 登录，从在开的桌里挑空席位入座 |
+| 主持一局 | `<PREFIX>#/storyteller`（**空 hash 也是它**） | 登录后开一桌；「我主持的桌」里点进主持台 |
 
-**说书人票据**（主机凭据，等同密码）：
+**账号是唯一的身份证**（D-0027）：没登录时每个面只有一张登录 / 注册卡；
+**谁开桌，这一桌就归谁**，进主持台只认那个账号——换设备、清缓存，登录同一账号桌还在。
 
-- **默认桌的票据**在首次建局时生成，之后固定不变：`journalctl -u clocktower | grep 票据`
-- **别人自己开的桌**不需要你去发票据：谁开桌，平台就把那一桌的票据回给谁，他直接进主持台。
-  这也是说书人的口径——**说书人是玩这一局的角色，不是系统权限**，所以默认谁都能开一桌（D-0026）；
-  要收紧就按 §3 配 `GameServer__AllowPlayerTables=false`。
-- 席位票据仍然可用（邀请朋友 / 换设备兜底），但玩家注册登录后可以自己选空席位，不需要它。
-- 票据是明文凭据：**走 HTTP 时链路上的人可以看到**。长期开建议加 HTTPS（§8）
+- **没有"默认桌"**：装完打开站点就是**空大厅**，第一桌由人在界面上开出来（旧版升级上来的库里
+  可能还留着过去那张 `default` 桌，见 §7 的说明）。
+- **不再有说书人票据**：那串要抄的凭据已整个退场（协议里也没有了）。
+- 谁都能开一桌（D-0026）；要收紧就按 §3 配 `GameServer__AllowPlayerTables=false`。
+- **没账号的人今天在界面上没有入座入口**：席位票据本身还在协议里，登录后有一处
+  「有邀请码？」兜底（给"这一桌已开局、大厅点不动"的场合，比如中途到场的旅行者）；
+  游客要不要一个入口，是**尚未拍板的产品决定**（见 `docs/backlog/todo/seat-ticket-entrance.md`）。
 
 ## 6. 备份与恢复
 
@@ -193,7 +195,20 @@ journalctl -u clocktower -n 20 --no-pager     # 确认起来了、库还是原�
 ```
 
 `data/` 不在包里，**升级不会动你的对局数据**。反过来：换新库（删掉 `oct.db` 重启）等于
-**开新的一局**，票据全部重新生成。
+**开新的一局**。
+
+**从"有默认桌"的旧版升级上来时**（D-0027 之后）：库里过去那张 `default` 桌会**补列成"没有房主"**
+——它照旧出现在大厅里，但谁也进不去它的主持台（没有归属就没有说书人）。这是如实反映
+"升级前那一桌本来就没有开桌账号"，不是故障。要清掉它就按下面的 SQL 删（**先停服务再删**：
+开着的桌活在宿主内存里，不停服务就删会被写回来）：
+
+```bash
+systemctl stop clocktower
+sqlite3 <APP_DIR>/data/oct.db "DELETE FROM SeatBindings WHERE GameId='default'; \
+  DELETE FROM Events WHERE GameId='default'; DELETE FROM Snapshots WHERE GameId='default'; \
+  DELETE FROM Receipts WHERE GameId='default'; DELETE FROM Games WHERE GameId='default';"
+systemctl start clocktower
+```
 
 ## 8. 排查
 
