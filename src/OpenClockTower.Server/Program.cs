@@ -30,7 +30,7 @@ builder.Services.AddSingleton<AccountService>();
 builder.Services.AddSingleton<SeatBindingService>();
 builder.Services.AddSingleton<AccountSessionRegistry>();
 // 管理员名单（D-0025：只有管理员能开桌）：来自本机配置的登录名清单；清单为空 = 谁都不是管理员。
-builder.Services.AddSingleton(provider => new AdminDirectory(serverOptions));
+builder.Services.AddSingleton(provider => new AdminDirectory(builder.Configuration));
 // 大厅用例（D-0025）：列桌 / 建桌。
 builder.Services.AddSingleton<LobbyService>();
 // 规则层的角色契约：提示目录与结算目录指向同一批实现（NightActions），常驻效果来源单列。

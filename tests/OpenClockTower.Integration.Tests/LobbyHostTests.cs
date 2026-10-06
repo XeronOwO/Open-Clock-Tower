@@ -97,6 +97,25 @@ public sealed class LobbyHostTests : IDisposable
     }
 
     [Fact]
+    public async Task CreateTable_WithCommaSeparatedAdminList_StillRecognisesAdmin()
+    {
+        // 实测踩过：环境变量只能给字符串，而**单个标量绑不到 string[]**——
+        // 部署时写 `GameServer__AdminUsernames=<运维账号>` 会让管理员静默失效（识别成非管理员）。
+        // 这里锁住"单值 + 逗号分隔"这条部署最常用的形态。
+        StartHost($"{AdminUsername},another-admin");
+        await using var connection = await ConnectAccountAsync();
+
+        var registered = await connection.InvokeAsync<AccountDto>(
+            "Register", AdminUsername, "主持人", "password-123");
+        Assert.True(registered.Ok, registered.Message);
+        Assert.True(registered.IsAdmin, "逗号分隔名单里的登录名也应当被判为管理员");
+
+        var created = await connection.InvokeAsync<LobbyCreateResultDto>(
+            "CreateTable", registered.AccountSession, "逗号名单", 5);
+        Assert.True(created.Ok, $"{created.Code}：{created.Message}");
+    }
+
+    [Fact]
     public async Task CreateTable_ByOrdinaryPlayer_IsRejected()
     {
         StartHost(AdminUsername);
