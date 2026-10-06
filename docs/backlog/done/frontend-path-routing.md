@@ -1,6 +1,6 @@
 # 前端路由改用正常路径：地址从 `#/play` 变成 `/play`
 
-- Status: Review（代码完成，等验收批次）
+- Status: Done（2026-10-06 部署到真机并复验通过）
 - Priority: Medium（用户当面问"为什么要用 `#` 设计 path，不能用正常 path 吗"）
 - Depends on: 无（服务端那一侧**已经就绪**，见下）
 
@@ -81,6 +81,28 @@ hash 最省事——井号后面的东西浏览器不发给服务器，不需要
 **待正式验收**：上面这些读数是**迭代档**跑出来的（路由是前端行为，没有节拍器可观察，
 档位不影响判据）。按 `docs/acceptance/AGENTS.md` §3，正式判定要来自一次**取证档**
 （`--quota 2 --screenshots-all`）跑——留待下一次取证批次，故本票停在 `review/`。
+
+## 真机部署与复验（2026-10-06，需求方当场问"为什么我浏览器里还有井号"）
+
+**原因**：上一轮（E49）部署的是 `91332b6` 那一版，**本票的改动当时还没上服务器**，
+所以线上打开站点看到的仍是井号地址。当场按 `docs/operations/deploy.md` §2–§3 部署：
+
+`node tools/deploy-prepare.mjs --app-dir <APP_DIR> --prefix /clocktower/ --port 5080 --seats 7`
+→ 上传 → `systemctl stop clocktower` → `rm -f <APP_DIR>/wwwroot/assets/*` → 解压 →
+`chmod -R u=rwX,go=rX` + `chmod u+x OpenClockTower.Server` → 起服。
+
+| 真机读数 | 证据 |
+|---|---|
+| 部署后真机验收 | `node tools/verify-live-open-table.mjs --base-url http://<部署地址>/clocktower/ --seats 7` → **21 项全过**，14.5s（该装置四个入口已改成新路径，跑的就是 `/clocktower/play`） |
+| 子路径下的深路径 | `curl /clocktower/{play,home,storyteller}` 三条都 200，返回的 `index.html` 引用新产物 `assets/index-C5DbmjT3.js`——**nginx 不用改**，SPA 回退在真前缀下成立 |
+| 行为探针（线上真浏览器） | 旧地址 `#player` → `/clocktower/play` 且地址栏无井号 · 刷新 `/clocktower/play` 仍在玩家面 · 空地址仍是「主持一局」· 点顶栏换面加载次数 1 → 1（判定 6 项全过；探针为一次性脚本，未入装置） |
+| 缓存口径 | `index.html` 与 `assets/*.js` 的响应头都没有长 `max-age`（只有 `ETag` / `Last-Modified`），换产物后浏览器会重新取，用户**不需要手动清缓存** |
+
+清理：真机验证留下的测试账号与测试桌按装置打印的 SQL 删净（先停服），清理后
+`Games` 0 · `Users` 1（原有的 `<运维账号>`）· `Events` / `Snapshots` / `SeatBindings` / `Receipts` 全 0。
+
+**残余（不影响本票结论）**：本票的正式判定证据来自**部署后真机验收**与**可用性装置**，
+没有单独跑一次取证档的可用性装置（那条路径没有节拍器可观察，档位不影响判据）。
 
 ## 残余
 

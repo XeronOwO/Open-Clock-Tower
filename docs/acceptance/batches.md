@@ -1409,6 +1409,21 @@ Chromium 把资源加载失败写进 console，被算成"重启窗口内的非�
 **本批没做的**：这一批跑的是**迭代档**（路由是前端行为，没有节拍器可观察，档位不影响判据）；
 票据留在 `review/` 等下一次**取证档批次**的正式判定。
 
+**同批部署到真机并复验（2026-10-06，需求方问"为什么我浏览器里还有井号"时做的）**：
+`node tools/deploy-prepare.mjs --app-dir <APP_DIR> --prefix /clocktower/ --port 5080 --seats 7`
+→ 上传 → 停服 → `rm -f <APP_DIR>/wwwroot/assets/*` → 解压 → `chmod -R u=rwX,go=rX` + `chmod u+x`
+→ 起服。升级前真机跑的是**上一版**产物（`index-9iEZysmu.js`），所以那会儿打开站点确实还是井号地址。
+
+| 真机读数 | 命令 | 结果 |
+|---|---|---|
+| 部署后真机验收 | `node tools/verify-live-open-table.mjs --base-url http://<部署地址>/clocktower/ --seats 7` | **全部通过（判定 21 项 · 0 失败）**，14.5s（该装置的四个入口本批已改成新路径，跑的就是 `/clocktower/play`） |
+| nginx 下的深路径 | `curl -H "Host: <域名>" http://127.0.0.1/clocktower/{play,home,storyteller}` | 三条**都是 200**，且返回的 `index.html` 引用的是新产物 `assets/index-C5DbmjT3.js`（子路径挂载下 SPA 回退成立，nginx 不用改） |
+| 真机行为探针（一次性，不入装置） | 真浏览器打线上：旧地址 → `/clocktower/play` 且地址栏无井号 · 刷新 `/clocktower/play` 仍在玩家面 · 空地址仍是「主持一局」· 点顶栏换面加载次数 1 → 1 | 判定 6 项全过 |
+| 缓存口径 | `curl -D -` 看 `index.html` 与 `assets/*.js` 的响应头 | 都**没有**长 `max-age`（只有 `ETag` / `Last-Modified`）：换了产物浏览器会重新取，不需要用户手动清缓存 |
+
+真机验证留下的测试账号与测试桌已按装置打印的 SQL 清掉（先 `systemctl stop clocktower`）：
+清理后 `Games` 0 · `Users` 1（原有的 `<运维账号>`）· `Events` 0 · `Snapshots` 0 · `SeatBindings` 0 · `Receipts` 0。
+
 ## 相关阅读
 
 - 验收规程：`docs/acceptance/AGENTS.md`
