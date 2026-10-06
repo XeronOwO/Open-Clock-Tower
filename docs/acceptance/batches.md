@@ -1462,6 +1462,7 @@ Chromium 把资源加载失败写进 console，被算成"重启窗口内的非�
 | 女巫 / 初始配板 | `verify-witch` · `verify-setup-randomizer` | **28 / 58 项全过** |
 | 前端单元（纯逻辑） | `npx vitest run` | **256 通过 / 0 失败**（新增 `browserSession.spec.ts` 12 项 + 恢复用例 2 项） |
 | 门禁（冻结版） | `dotnet build` / `dotnet test OpenClockTower.slnx` / `dotnet format` / `npm run gate` | 0 警告 0 错误 · 全量通过 · format 退出 0 · web 256 通过 + typecheck / build 全绿 |
+| **真机验收**（真 nginx + 真部署 + 真产物） | `node tools/verify-live-open-table.mjs --base-url http://<部署地址>/clocktower/ --seats 7` | **全部通过（判定 25 项 · 0 失败）**——`reconnect` 段 9 项里 5 条是 M1 的判据：刷新后第一眼不是登录卡 · 自动接回主持台 · 首页显示登录身份 · 点首页直达卡接回主持台 · 新标签页必须重新登录（另含"换设备回来仍能点回"） |
 
 **同批改了两条规范门禁**（规则变了，会失败的测试跟着变）：
 `CredentialSecurityGateTests` 由"任何凭据都不落盘"改成**落盘边界**——只有账号会话凭据可以持久化，
@@ -1477,6 +1478,17 @@ Chromium 把资源加载失败写进 console，被算成"重启窗口内的非�
 | 三个装置的帧收集器把**账号连接与游戏连接**的 `invocationId` 混在一个序列里匹配回执 | 夹具缺陷（`SubmitResponse` 收到了 `ListTables` 的回执，表现为"提交明明成功、装置判红"） | 帧收集器加 `connectionId`，回执只在**同一条连接**内匹配（`seamstress` / `retro-info` / `death-triggers` 三处同族） |
 | `retro-info` 的越权扫描拿整个载荷做子串匹配 | 夹具口径过宽（把**公开的同桌名单**判成泄露：夹具玩家名恰好叫「夹具玩家retro-flowergirl」） | 扫描收窄到"与能力归属有关的字段"（本人信息结果 / 本人失能名单 / 本人请求），56 项全过 |
 | `setup-randomizer` 首夜槽位数仍写 13 | 过时口径（咖啡师黄昏槽之后是 14，主装置同口径早已是 14） | 对齐成 14；该装置 58 项全过 |
+
+**同批部署到真机并复验（2026-10-06）**：
+`node tools/deploy-prepare.mjs --app-dir <APP_DIR> --prefix /clocktower/ --port 5080 --seats 7`
+→ 上传 → 停服 → `rm -f <APP_DIR>/wwwroot/assets/*` → 解压 → `chmod -R u=rwX,go=rX` + `chmod u+x`
+→ 起服。真机产物换成 `index-BfJeyCy9.js`（assets 下只有 js / css 各一份，无陈旧哈希文件）。
+
+| 真机读数 | 结果 |
+|---|---|
+| 部署后真机验收 | **25 项全过**（`reconnect` 段 9 项，M1 判据占 5 条） |
+| 服务状态 | `systemctl is-active clocktower` = active · `/healthz` = 200 · assets = `index-BfJeyCy9.js` + `index-BlX_1d-4.css` |
+| 真机库 | 装置留下的测试桌 / 测试账号按装置提示的 SQL 清掉，**并顺带清掉更早一轮遗留的夹具桌**（`走查桌zzblns`，房主 `probe-host-zzblns`）与两个 `probe-*` 夹具账号：清理后 `Games` 0 · `SeatBindings` 0 · `Events` 0 · `Snapshots` 0 · `Receipts` 0 · `Users` **2**（只留用户自己的 `<运维账号>` 与 `XeronOwO`） |
 
 **残余与边界（本批明确不做）**：
 ① `sessionStorage` 对同源脚本可读 ⇒ XSS 能窃取会话（比 HttpOnly Cookie 弱一档）——这是**记在案的欠账**，

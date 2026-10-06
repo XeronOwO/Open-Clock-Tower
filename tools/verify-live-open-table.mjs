@@ -330,6 +330,38 @@ async function main() {
   )
   await screenshot(page, 'reconnected')
 
+  // M1 行 2 / 行 3：首页要认出回来的人——显示登录身份，并给一张「回到我那一桌」直达卡；
+  // 点它接回主持台（位置记着"我正在主持哪一桌"，能不能进去仍由服务端按开桌账号判定）。
+  await page.getByTestId('nav-home').click()
+  let homeIdentity = false
+  try {
+    await page.getByTestId('home-profile').waitFor({ timeout: options.timeoutMs })
+    await page.getByTestId('home-back-to-table').waitFor({ timeout: options.timeoutMs })
+    homeIdentity = true
+  } catch {
+    homeIdentity = false
+  }
+
+  const homeText = homeIdentity ? compact(await readTextBounded(page.getByTestId('home-identity'))) : ''
+  check(
+    'M1 行 2：首页显示登录身份 + 「回到我那一桌」入口',
+    homeIdentity && homeText.includes(username),
+    homeText.slice(0, 160) || '首页没有身份块',
+  )
+
+  let homeBackToConsole = false
+  if (homeIdentity) {
+    await page.getByTestId('home-back-to-table').click()
+    homeBackToConsole = await waitForCount(page.getByTestId('grimoire'), 1, options.timeoutMs)
+  }
+
+  check(
+    'M1 行 3：从首页点「回到我那一桌」接回主持台（离开再回来落点不变）',
+    homeBackToConsole,
+    homeBackToConsole ? '魔典已渲染' : '没有接回',
+  )
+  await screenshot(page, 'home-identity')
+
   // 反方向 + 换设备（新标签页 = 关掉原标签页重开）：`sessionStorage` 每个标签页一份，
   // 所以这里**必须重新登录**；登录之后这一桌仍在「我主持的桌」里，点一下就能接回。
   // M1 的"关标签页即清"与 D-0027 的"桌跟着账号走"在这里同时成立。

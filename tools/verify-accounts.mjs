@@ -86,6 +86,7 @@ const SECTIONS = [
   { id: 'account-panel', title: '收尾：账号面板一次性恢复码' },
   { id: 'onboarding', title: '收尾：说明入口（悬停 / 点按 / Esc）' },
   { id: 'layout', title: '版面量度（内容高 + 整页截图）+ 控制台零错误' },
+  { id: 'home-identity', title: 'M1 行 2/3：首页认出回来的人 + 「回到我那一桌」落回原席' },
   { id: 'fresh-tab', title: 'M1 反方向：新标签页必须重新登录（关标签页即清）+ 换设备回自己那一席' },
 ]
 
@@ -624,6 +625,45 @@ async function main() {
   await screenshot(storytellerPage, 'accounts-08-layout-storyteller')
 
   check('浏览器控制台没有报错', consoleErrors.length === 0, consoleErrors.slice(0, 3).join(' | '))
+
+  if (!runner.begin('home-identity')) return
+  // M1 行 2 / 行 3：首页要**认出回来的人**——已登录时显示身份，并给一张「回到我那一桌」直达卡；
+  // 点它落到位置记的那一面，并且真的回到原来那一席。
+  // 顺带覆盖行 3：从玩家面离开（切到首页）再回来，落点仍是原来那一席（面板记住位置）。
+  await bobPage.getByTestId('nav-home').click()
+  let homeIdentity = false
+  try {
+    await bobPage.getByTestId('home-profile').waitFor({ timeout: 20_000 })
+    await bobPage.getByTestId('home-back-to-table').waitFor({ timeout: 20_000 })
+    homeIdentity = true
+  } catch {
+    homeIdentity = false
+  }
+
+  const homeText = homeIdentity ? compact(await readTextBounded(bobPage.getByTestId('home-identity'))) : ''
+  check(
+    'M1 行 2：首页显示登录身份 + 「回到我那一桌」入口（带桌标识与席位）',
+    homeIdentity && homeText.includes(bobAccount.username) && homeText.includes(`${SEAT_B} 号席位`),
+    homeText.slice(0, 160) || '首页没有身份块',
+  )
+
+  let homeBack = false
+  if (homeIdentity) {
+    await bobPage.getByTestId('home-back-to-table').click()
+    try {
+      await bobPage.getByTestId('player-seat').waitFor({ timeout: 20_000 })
+      homeBack = true
+    } catch {
+      homeBack = false
+    }
+  }
+
+  check(
+    'M1 行 3：从首页点「回到我那一桌」落回原来那一席（位置记着我在哪）',
+    homeBack,
+    homeBack ? `已回到 ${SEAT_B} 号席位` : '没有回到原席',
+  )
+  await screenshot(bobPage, 'accounts-12-home-identity')
 
   if (!runner.begin('fresh-tab')) return
   // M1 行 1 的**反方向**：新标签页必须重新登录。`sessionStorage` 是每个标签页一份——
