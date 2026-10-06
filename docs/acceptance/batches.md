@@ -1499,6 +1499,36 @@ Chromium 把资源加载失败写进 console，被算成"重启窗口内的非�
 
 **本批票据**：`in-progress/web-hardening-programme.md`（M1 完成，票继续挂在 in-progress 等第 1 步审计与 M2–M6）。
 
+## 批次 E52（2026-10-06，公网就绪审计：第 1 步只读审计 10 个维度）
+
+**本批票据**：`in-progress/web-hardening-programme.md` 的 **第 1 步（只读审计）**。
+
+**这一批解决什么**：把"能跑"和"敢放公网"之间的差距逐条查出来，产出一份**带运行时证据**的差距清单——
+不靠"看起来没问题"，也不把审计责任外包给用户。结果落 `docs/security/web-hardening-audit.md`
+（**78 条**活条目：Critical 5 · High 18 · Medium 39 · Low 16），票据 §1.5 是它的索引。
+
+**本批取证构成**（四类读数，全部只读）：
+
+| 取证 | 命令 / 方式 | 结果 |
+|---|---|---|
+| 部署实例只读探测 | `curl -sSI` / `-I https://` / `GET healthz`（部署地址） | 200 明文 · **无任何安全响应头** · HTTPS 握手失败（无 TLS 监听）· 无尾斜杠 → 301 到明文 |
+| SignalR 一次性探针（仓库外脚本，跑完删除） | 未授权调用 9 个 Hub 方法 + 连打 12 次失败登录 + 8+8 次计时 | **未授权调用逐个被拒**（一致文案）· **12 次失败登录零拒绝**（零限速）· 中性 55 ms vs 真实 55.8 ms（**无枚举时序**） |
+| 真宿主一次性探针（4 条用例，跑完删除） | `dotnet test --filter TempAuditProbeTests` | 登出后旧连接凭据**仍被受理**（G-A2-1）· 同账号第二个主持台**顶掉先前的**（G-A2-5）· 锁桌后票据**照样入座**（G-A4-2）· 幂等键跨演员复用**拿不到票**（原判 High **被推翻**） |
+| 服务端只读检查 | `systemctl show` / `cat` 单元与 nginx 片段 / `ss -lntp` / `df` / `journalctl` / `sqlite3` PRAGMA 与索引 | 明文 80 · 无证书 · **服务以 root 跑** · 库 644 · `journal_mode=wal` / `busy_timeout=0` / `integrity_check=ok` · 两条唯一索引都在 · 磁盘 72% · **无自动化备份** |
+| 依赖与合规扫描 | `dotnet list package --vulnerable --include-transitive` · `npm audit` · GitHub 内容 API 查 `.github/workflows` | NuGet 9 工程**无已知漏洞** · npm **0 项** · 平台侧 **404（无 CI）** |
+| 门禁（冻结版） | `dotnet test OpenClockTower.slnx` · `npm run gate` | 1307 项全绿（门禁 26 / 内核 501 / 规则 494 / 集成 286）· 前端 typecheck + lint + **256 项** + 构建全绿 |
+
+**审计窗口内修正的两处文档缺陷**（都不改产品代码）：
+① 根 `AGENTS.md` 指向 `docs/backlog/todo/web-hardening-programme.md`（票据早在 `in-progress/`）——已改为实际路径并补上审计页指针；
+② D-0028 里"审计票 / 改造票"两条已合并成一张两步走票，路径同步更正。
+**这两处的成因（票据移库不同步入口、指令文件里的路径没人校验）已作为差距 G-A10-9 记进清单，要求加门禁。**
+
+**残余与边界**：本批**只查不改**——差距清单是 M2–M6 的输入，`Critical` 未清零前**不许对外发布**（根 `AGENTS.md` 的安全底线）。
+本批没覆盖的部分（未做渗透测试与并发压测 · 未做"一局进行中重启服务"真机读数 · 手机端零运行时判据 ·
+未验证 7 名真人同局 · 未实测 60 万次迭代耗时 · 未做备份恢复演练）逐条写在审计页 §5，不许当"都查了"。
+
+**本批票据**：`in-progress/web-hardening-programme.md`（第 1 步完成，票继续挂 in-progress 做第 2 步 M2–M6）。
+
 ## 相关阅读
 
 - 验收规程：`docs/acceptance/AGENTS.md`

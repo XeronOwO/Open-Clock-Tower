@@ -13,6 +13,8 @@
 | `backlog/` | 待办票据，状态即目录 | 中文 |
 | `acceptance/` | 代理运行的验收规程 | 中文 |
 | `evidence/` | 交付清单与验证证据 | 中文 |
+| `operations/` | 部署与运维（占位符形态，任何人可用） | 中文 |
+| `security/` | 公网就绪审计的结论与差距清单 | 中文 |
 | `development/` | 代理工作细则 | 中文 |
 
 - 人工文档**只有中文一份**（`docs/decisions/active.md` D-0016）。**不建 `docs/en/` 镜像**，

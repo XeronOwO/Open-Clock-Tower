@@ -44,8 +44,9 @@ dotnet format OpenClockTower.slnx
   要开源给别人部署——HTTPS、加盐慢哈希、会话生命周期、逐操作服务端鉴权、登录限速与审计日志、
   依赖漏洞扫描、秘密不进仓库都是**必做项**，不得以"小圈子自用 / 先做核心功能"为由降级；
   上线前必须有一次带证据的安全审计，`Critical` 未清零不许对外发布。
-- `[REF]` 这项工作的两步走：审计 + 改造计划同在 `docs/backlog/todo/web-hardening-programme.md`
+- `[REF]` 这项工作的两步走：审计 + 改造计划同在 `docs/backlog/in-progress/web-hardening-programme.md`
   （第 1 步只读审计 10 个维度 → 第 2 步 M1 会话与登录态 → M6 开源与合规就绪）；
+  第 1 步的差距清单（G-A1-1 …）在 `docs/security/web-hardening-audit.md`；
   完成口径见 `docs/decisions/active.md` D-0028（禁止"基本完成"式交付）。
 - `[CRITICAL]` 交付前过三关：**架构**（职责单一、依赖干净）、**测试**（行为有运行时验证）、
   **可维护性**（后人读得懂、改得动）。"能跑"是最低线，不是目标。
