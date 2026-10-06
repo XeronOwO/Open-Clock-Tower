@@ -236,13 +236,7 @@ public sealed class DayPhaseHostTests
         }
         finally
         {
-            foreach (var path in new[] { databasePath, databasePath + "-wal", databasePath + "-shm" })
-            {
-                if (File.Exists(path))
-                {
-                    File.Delete(path);
-                }
-            }
+            TestDatabaseFiles.Delete(databasePath);
         }
     }
 

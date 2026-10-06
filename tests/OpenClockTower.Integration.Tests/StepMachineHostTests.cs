@@ -396,14 +396,5 @@ public sealed class StepMachineHostTests
         Assert.Single(stored.Select(item => item.Event).OfType<OperationRequestAnsweredEvent>());
     }
 
-    private static void DeleteFiles(string databasePath)
-    {
-        foreach (var path in new[] { databasePath, databasePath + "-wal", databasePath + "-shm" })
-        {
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-            }
-        }
-    }
+    private static void DeleteFiles(string databasePath) => TestDatabaseFiles.Delete(databasePath);
 }

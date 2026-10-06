@@ -474,14 +474,5 @@ public sealed class PitHagResidueHostTests
             Character = item.Character,
         })];
 
-    private static void DeleteFiles(string databasePath)
-    {
-        foreach (var path in new[] { databasePath, databasePath + "-wal", databasePath + "-shm" })
-        {
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-            }
-        }
-    }
+    private static void DeleteFiles(string databasePath) => TestDatabaseFiles.Delete(databasePath);
 }

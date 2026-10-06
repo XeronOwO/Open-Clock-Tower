@@ -225,27 +225,14 @@ public sealed class AccountThrottleHostTests : IDisposable
             connection.DisposeAsync().AsTask().GetAwaiter().GetResult();
         }
 
+        // 宿主必须显式销毁：它不只是"占内存"——M5 / G-A6-3 之后它还**握着库的单实例锁**，
+        // 不销毁就删不掉锁文件（`throttle.db.lock`），临时目录也清不掉。
+        // 这条在加锁之前是看不出来的（旧写法只删库文件，锁文件悄悄留在目录里没人管）。
+        _host?.Dispose();
+
         SqliteConnection.ClearAllPools();
-        DeleteIfExists(Path.Combine(_contentRoot, "throttle.db"));
+        TestDatabaseFiles.DeleteOrFail(Path.Combine(_contentRoot, "throttle.db"));
         DeleteDirectoryIfEmpty(_contentRoot);
-    }
-
-    private static void DeleteIfExists(string path)
-    {
-        Assert.False(File.Exists(path) && !TryDelete(path), $"测试残留文件删不掉，需要收尾清理：{path}");
-    }
-
-    private static bool TryDelete(string path)
-    {
-        try
-        {
-            File.Delete(path);
-            return true;
-        }
-        catch (IOException)
-        {
-            return false;
-        }
     }
 
     private static void DeleteDirectoryIfEmpty(string path)

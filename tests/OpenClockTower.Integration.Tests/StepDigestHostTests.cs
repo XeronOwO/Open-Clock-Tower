@@ -390,14 +390,5 @@ public sealed class StepDigestHostTests
     private static SeatStateFactDto Fact(SeatStateDto state, string dimension) =>
         state.Facts.Single(fact => fact.Dimension == dimension);
 
-    private static void DeleteDatabaseFiles(string databasePath)
-    {
-        foreach (var path in new[] { databasePath, databasePath + "-wal", databasePath + "-shm" })
-        {
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-            }
-        }
-    }
+    private static void DeleteDatabaseFiles(string databasePath) => TestDatabaseFiles.Delete(databasePath);
 }

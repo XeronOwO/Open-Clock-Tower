@@ -402,26 +402,8 @@ public sealed class AbuseGuardHostTests : IDisposable
     {
         StopHostAsync().GetAwaiter().GetResult();
         SqliteConnection.ClearAllPools();
-        DeleteIfExists(_databasePath);
+        TestDatabaseFiles.DeleteOrFail(_databasePath);
         DeleteDirectoryIfEmpty(_contentRoot);
-    }
-
-    private static void DeleteIfExists(string path)
-    {
-        Assert.False(File.Exists(path) && !TryDelete(path), $"测试残留文件删不掉，需要收尾清理：{path}");
-    }
-
-    private static bool TryDelete(string path)
-    {
-        try
-        {
-            File.Delete(path);
-            return true;
-        }
-        catch (IOException)
-        {
-            return false;
-        }
     }
 
     private static void DeleteDirectoryIfEmpty(string path)

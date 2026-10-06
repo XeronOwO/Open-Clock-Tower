@@ -136,14 +136,18 @@ public sealed class LegacyDatabaseUpgradeTests : IDisposable
     /// <remarks>
     /// <para>
     /// 刻意与"新库"对比而不是写死期望列：写死的清单会在加列时过期，而这条判据的意义正是
-    /// "升级路径与新建路径产出同一形态"——两边一起变才算对。比的是列名 + 类型 + NOT NULL
-    /// + 主键位（**不比列序**：SQLite 用列名取值，补列顺序不影响语义）。
+    /// "升级路径与新建路径产出同一形态"——两边一起变才算对。比的是表 / 列（名 + 类型 + NOT NULL
+    /// + 主键位）/ 索引（名 + 列 + 唯一性）；**不比列序**：SQLite 用列名取值，补列顺序不影响语义。
     /// </para>
     /// <para>
     /// **默认值刻意不比**：老库的 <c>Name</c> / <c>IsLocked</c> 是上一版用
     /// <c>ADD COLUMN ... DEFAULT</c> 补的（<c>NOT NULL</c> 在 SQLite 上必须带默认值才被接受），
     /// 而新库里这两列没有默认值——这是两次"合法但写法不同"的建表留下的差异，
     /// 要抹平得重建整张表。它不影响行为：所有写入都由 EF 按列名显式给值，默认值永远轮不到。
+    /// </para>
+    /// <para>
+    /// 结构由**产品侧那个读取器**读（<see cref="SqliteSchemaReader"/>），不再由用例自己扫
+    /// <c>PRAGMA</c>：两套读法迟早会分叉，而分叉之后这条用例就不再证明产品看到的东西了。
     /// </para>
     /// </remarks>
     [Fact]
@@ -165,11 +169,58 @@ public sealed class LegacyDatabaseUpgradeTests : IDisposable
         var upgraded = await ReadSchemaAsync(_legacyDatabasePath);
         var freshSchema = await ReadSchemaAsync(_freshDatabasePath);
 
-        Assert.Equal(freshSchema.Keys, upgraded.Keys);
-        foreach (var (table, columns) in freshSchema)
-        {
-            Assert.Equal(columns, upgraded[table]);
-        }
+        Assert.Equal(freshSchema.ToCanonicalText(), upgraded.ToCanonicalText());
+    }
+
+    /// <summary>
+    /// 升级的**版本记账**（G-A6-2）：老库跑完 v1 之后，库文件里的版本就是本版支持的最新版，
+    /// 而且结构与 EF 模型逐项一致（退场列没了、补的列在、两条唯一索引都在）。
+    /// </summary>
+    /// <remarks>
+    /// 版本号必须真的落进库文件（而不是只活在启动日志里）：它是下次启动判断
+    /// "还要不要迁移"与"这个库是不是比程序新"的唯一依据。两条唯一索引单列出来断言，
+    /// 是因为它们是"一号一人 / 一席一人"的唯一执行者——审计说的"丢索引没人管"就是这里。
+    /// </remarks>
+    [Fact]
+    public async Task LegacyTicketEraDatabase_AfterUpgrade_IsAtLatestVersionAndMatchesTheModel()
+    {
+        await CreateLegacyDatabaseAsync();
+        StartHost();
+        await using var account = await ConnectAccountAsync();
+        _ = await RegisterAsync(account, "version-check", "查版本的人");
+
+        Assert.Equal(SchemaMigrationCatalog.LatestVersion, await ReadUserVersionAsync(_legacyDatabasePath));
+
+        var upgraded = await ReadSchemaAsync(_legacyDatabasePath);
+        Assert.False(upgraded.HasColumn("Games", "StorytellerTicket"));
+        Assert.True(upgraded.HasColumn("Games", "CreatedByAccountId"));
+        Assert.True(upgraded.TableNamed("Users")?.IndexNamed("IX_Users_UsernameKey")?.IsUnique);
+        Assert.True(upgraded.TableNamed("SeatBindings")?.IndexNamed("IX_SeatBindings_GameId_AccountId")?.IsUnique);
+        Assert.Empty(SchemaComparer.Compare(ModelSchema(), upgraded));
+    }
+
+    /// <summary>
+    /// 再老一步的库（**连账号表都还没有**）也能平滑升上来：缺的表由 v1 迁移补建，不再是"请换新库"。
+    /// </summary>
+    /// <remarks>
+    /// 这条取代的是 D-0021 时代的口径——那时缺表就显式失败并提示换新库，而"换新库"对使用者
+    /// 等于**丢掉全部对局数据**。现在缺表只是迁移清单里的一条 <c>CREATE TABLE IF NOT EXISTS</c>：
+    /// 跑一遍就补齐，补完还要过结构核对（列 / 索引不对一样会被拦下来）。
+    /// </remarks>
+    [Fact]
+    public async Task LegacyDatabaseWithoutAccountTables_IsHealedByTheBaselineMigration()
+    {
+        await CreateLegacyDatabaseAsync();
+        await ExecuteSqlAsync(_legacyDatabasePath, "DROP TABLE \"Users\";");
+
+        StartHost();
+        await using var account = await ConnectAccountAsync();
+        var registered = await RegisterAsync(account, "healed", "被治好的人");
+
+        Assert.True(registered.Ok, registered.Message);
+        var schema = await ReadSchemaAsync(_legacyDatabasePath);
+        Assert.True(schema.HasTable("Users"));
+        Assert.True(schema.TableNamed("Users")?.IndexNamed("IX_Users_UsernameKey")?.IsUnique);
     }
 
     /// <summary>把真机老库的结构与那一桌灌进临时库（用例自己造老库，不依赖任何外部数据）。</summary>
@@ -233,44 +284,38 @@ public sealed class LegacyDatabaseUpgradeTests : IDisposable
         return (connection, joined.Credential);
     }
 
-    /// <summary>读出库里每张表的列形态（列名 → 类型 / NOT NULL / 主键位；默认值刻意不参与比对）。</summary>
-    private static async Task<SortedDictionary<string, SortedDictionary<string, string>>> ReadSchemaAsync(
-        string databasePath)
+    /// <summary>读出库的结构（**产品侧那个读取器**：用例与运行时看到的是同一份形状）。</summary>
+    private static async Task<DatabaseSchema> ReadSchemaAsync(string databasePath)
     {
-        await using var connection = new SqliteConnection($"Data Source={databasePath}");
+        await using var connection = new SqliteConnection($"Data Source={databasePath};Pooling=False");
         await connection.OpenAsync();
+        return await SqliteSchemaReader.ReadAsync(connection, CancellationToken.None);
+    }
 
-        var tables = new List<string>();
-        await using (var listCommand = connection.CreateCommand())
-        {
-            listCommand.CommandText =
-                "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name;";
-            await using var reader = await listCommand.ExecuteReaderAsync();
-            while (await reader.ReadAsync())
-            {
-                tables.Add(reader.GetString(0));
-            }
-        }
+    /// <summary>库文件里的结构版本（<c>user_version</c>）。</summary>
+    private static async Task<int> ReadUserVersionAsync(string databasePath)
+    {
+        await using var connection = new SqliteConnection($"Data Source={databasePath};Pooling=False");
+        await connection.OpenAsync();
+        return await SqliteUserVersion.ReadAsync(connection, CancellationToken.None);
+    }
 
-        var schema = new SortedDictionary<string, SortedDictionary<string, string>>(StringComparer.Ordinal);
-        foreach (var table in tables)
-        {
-            var columns = new SortedDictionary<string, string>(StringComparer.Ordinal);
-            await using var command = connection.CreateCommand();
-            // 表名来自本用例自己的库（sqlite_master），不是外部输入。
-            command.CommandText = $"PRAGMA table_info(\"{table}\");";
-            await using var reader = await command.ExecuteReaderAsync();
-            while (await reader.ReadAsync())
-            {
-                // 列 1 = 列名，2 = 声明类型，3 = NOT NULL，5 = 主键位（0 起）。
-                columns[reader.GetString(1)] =
-                    $"{reader.GetString(2)}|notnull={reader.GetInt32(3)}|pk={reader.GetInt32(5)}";
-            }
+    /// <summary>对库跑一条 SQL（用例用它把老库改成某个具体形态，例如丢掉账号表）。</summary>
+    private static async Task ExecuteSqlAsync(string databasePath, string sql)
+    {
+        await using var connection = new SqliteConnection($"Data Source={databasePath};Pooling=False");
+        await connection.OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = sql;
+        await command.ExecuteNonQueryAsync();
+    }
 
-            schema[table] = columns;
-        }
-
-        return schema;
+    /// <summary>EF 模型说的"库应该长什么样"（不给它任何连接，只借模型）。</summary>
+    private static DatabaseSchema ModelSchema()
+    {
+        using var db = new GameDbContext(
+            new DbContextOptionsBuilder<GameDbContext>().UseSqlite("Data Source=:memory:").Options);
+        return SchemaContract.FromModel(db);
     }
 
     /// <inheritdoc />
@@ -286,21 +331,8 @@ public sealed class LegacyDatabaseUpgradeTests : IDisposable
         // 宿主停了，但本进程的 SQLite 连接池还可能握着库文件句柄（Windows 上就删不掉）。
         SqliteConnection.ClearAllPools();
 
-        foreach (var file in new[] { "legacy.db", "legacy.db-shm", "legacy.db-wal", "fresh.db", "fresh.db-shm", "fresh.db-wal" })
-        {
-            var path = Path.Combine(_contentRoot, file);
-            if (File.Exists(path))
-            {
-                try
-                {
-                    File.Delete(path);
-                }
-                catch (IOException)
-                {
-                    // 仍被占用时留下文件，由收尾统一清理；这里不静默吞掉"删除失败"的语义。
-                }
-            }
-        }
+        TestDatabaseFiles.Delete(Path.Combine(_contentRoot, "legacy.db"));
+        TestDatabaseFiles.Delete(Path.Combine(_contentRoot, "fresh.db"));
 
         if (Directory.Exists(_contentRoot) && Directory.GetFileSystemEntries(_contentRoot).Length == 0)
         {

@@ -68,19 +68,29 @@ public sealed class TestServerHost : IAsyncDisposable
             builder.ConfigureLogging(logging => logging.AddProvider(new CollectingLoggerProvider(Logs)));
         });
 
-        // 触发宿主启动：建库、结构守卫、装载在册的桌（D-0027 之后**宿主不再自建任何桌**）。
-        _ = _factory.Services;
-
-        // 夹具自己把默认桌开出来，并把它记在一个夹具账号名下——进主持台只认这个账号（D-0027）。
-        RegisterTableAsync(GameId, seatCount).GetAwaiter().GetResult();
-
-        // 按需开启测试夹具夜晚：已有阶段（重启恢复等场景）不重开，保持与旧引导行为一致
-        if (autoStartTestNight && Session.GetStorytellerView().Phase is null)
+        // 触发宿主启动：建库、结构迁移与核对、装载在册的桌（D-0027 之后**宿主不再自建任何桌**）。
+        // 起不来时把工厂销毁掉：M5 / G-A6-3 之后宿主还握着库的单实例锁，
+        // 不销毁的话后面几步（删库 / 删锁文件）会全部失败——而"起不来"正是本类用例要判的场景之一。
+        try
         {
-            ExecuteHostCommandAsync(
-                new StartPhaseCommand { Plan = TestNightPlan.CreateFirstNight(seatCount) },
-                "test-bootstrap:test-night-1",
-                CancellationToken.None).GetAwaiter().GetResult();
+            _ = _factory.Services;
+
+            // 夹具自己把默认桌开出来，并把它记在一个夹具账号名下——进主持台只认这个账号（D-0027）。
+            RegisterTableAsync(GameId, seatCount).GetAwaiter().GetResult();
+
+            // 按需开启测试夹具夜晚：已有阶段（重启恢复等场景）不重开，保持与旧引导行为一致
+            if (autoStartTestNight && Session.GetStorytellerView().Phase is null)
+            {
+                ExecuteHostCommandAsync(
+                    new StartPhaseCommand { Plan = TestNightPlan.CreateFirstNight(seatCount) },
+                    "test-bootstrap:test-night-1",
+                    CancellationToken.None).GetAwaiter().GetResult();
+            }
+        }
+        catch
+        {
+            _factory.Dispose();
+            throw;
         }
     }
 
@@ -476,9 +486,7 @@ public sealed class TestServerHost : IAsyncDisposable
         // 由收尾统一清理；见票据 `done/deployment-verification-cleanup.md` 的"测试卫生"一节。
         if (_deleteDatabaseOnDispose)
         {
-            DeleteIfExists(_databasePath);
-            DeleteIfExists(_databasePath + "-wal");
-            DeleteIfExists(_databasePath + "-shm");
+            TestDatabaseFiles.Delete(_databasePath);
         }
     }
 
@@ -504,25 +512,4 @@ public sealed class TestServerHost : IAsyncDisposable
                     options.Transports = HttpTransportType.LongPolling;
                 })
             .Build();
-
-    private static void DeleteIfExists(string path)
-    {
-        if (!File.Exists(path))
-        {
-            return;
-        }
-
-        for (var attempt = 0; attempt < 10; attempt++)
-        {
-            try
-            {
-                File.Delete(path);
-                return;
-            }
-            catch (IOException) when (attempt < 9)
-            {
-                Thread.Sleep(20);
-            }
-        }
-    }
 }

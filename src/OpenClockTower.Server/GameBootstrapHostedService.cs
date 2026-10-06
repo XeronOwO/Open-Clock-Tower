@@ -1,17 +1,22 @@
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Logging;
 using OpenClockTower.Application;
 
 namespace OpenClockTower.Server;
 
 /// <summary>
-/// 启动引导：建库 → 结构守卫（账号表 / 会话表的列对账）→ 装载**所有**桌。
+/// 启动引导：**结构迁移与核对** → SQLite 运行口径读数 → 装载**所有**桌。
 /// </summary>
 /// <remarks>
 /// <para>
 /// 多桌（D-0024）之后，"恢复"不再是对一个进程级会话调用一次，而是由 <see cref="GameRegistry"/>
-/// 把库里每一桌都装起来；本服务负责建库与结构守卫。
+/// 把库里每一桌都装起来；本服务负责让库先变成可用形态。
+/// </para>
+/// <para>
+/// **结构那一半已经搬走**（M5 / G-A6-2）：建表 / 补列 / 建索引的语句全部归
+/// <see cref="SchemaMigrationCatalog"/>，本服务只按顺序调用
+/// <see cref="DatabaseSchemaUpgrader"/>（读版本 → 跑欠下的迁移 → 核对结构）与口径读数。
+/// 从前那种"每加一列就往守卫里补一行"的写法没有了——那不是机制，是记账。
 /// </para>
 /// <para>
 /// **不再创建任何桌**（D-0027）：默认桌先天没有开桌账号，与"说书人即房主"不相容。
@@ -22,7 +27,7 @@ namespace OpenClockTower.Server;
 /// 按它建表需要角色分配与角色行动契约。在那之前，开阶段是宿主 / 说书人的显式动作。
 /// </para>
 /// <para>
-/// 单桌装载失败**不阻断启动**：失败的那一桌自带降级位（room health），说书人可在界面里显式重建，
+/// 单桌装载失败**不阻断启动**：失败的那一桌自带降位（room health），说书人可在界面里显式重建，
 /// 一格坏桌不该让别的桌开不了（多桌的可用性要求）。
 /// </para>
 /// </remarks>
@@ -32,12 +37,6 @@ public sealed class GameBootstrapHostedService : IHostedService
     private readonly GameRegistry _registry;
     private readonly SqliteOptions _sqliteOptions;
     private readonly ILogger<GameBootstrapHostedService> _logger;
-
-    /// <summary>说书人票据时代的列（D-0027 起不再映射；老库里那一列由结构守卫清掉）。</summary>
-    private const string RetiredTicketColumn = "StorytellerTicket";
-
-    /// <summary>清掉退场列：<c>NOT NULL</c> 且无默认值的列会让新行的 INSERT 直接被拒。</summary>
-    private const string DropRetiredTicketColumnSql = "ALTER TABLE Games DROP COLUMN StorytellerTicket;";
 
     /// <summary>构造引导服务。</summary>
     public GameBootstrapHostedService(
@@ -57,10 +56,8 @@ public sealed class GameBootstrapHostedService : IHostedService
     {
         await using (var db = await _dbFactory.CreateDbContextAsync(cancellationToken))
         {
-            await db.Database.EnsureCreatedAsync(cancellationToken);
-            await EnsureAccountSchemaAsync(db, cancellationToken);
-            await EnsureGameSchemaAsync(db, cancellationToken);
-            await ApplySqliteRuntimeAsync(db, cancellationToken);
+            var schemaVersion = await DatabaseSchemaUpgrader.UpgradeAsync(db, _logger, cancellationToken);
+            await ApplySqliteRuntimeAsync(db, schemaVersion, cancellationToken);
         }
 
         // 装载库里全部在册的桌（多桌并行）。库是空的就什么都不装——等第一桌被开出来。
@@ -76,114 +73,24 @@ public sealed class GameBootstrapHostedService : IHostedService
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
     /// <summary>
-    /// 账号表守卫（D-0021）：现库用 <c>EnsureCreated</c>，不会给已存在的库补表；
-    /// 缺表时**显式失败**并提示换新库——不做在线迁移、不静默继续。
-    /// </summary>
-    private async Task EnsureAccountSchemaAsync(GameDbContext db, CancellationToken cancellationToken)
-    {
-        try
-        {
-            _ = await db.Users.AsNoTracking().AnyAsync(cancellationToken);
-            _ = await db.SeatBindings.AsNoTracking().AnyAsync(cancellationToken);
-        }
-        catch (Exception exception) when (exception is not OperationCanceledException)
-        {
-            _logger.LogCritical(
-                exception,
-                "旧库缺少账号 / 席位绑定表：本版不做在线迁移，请换新库（D-0021）");
-            throw;
-        }
-    }
-
-    /// <summary>
-    /// 会话表的结构守卫：**缺列补上、退场列清掉**——<c>EnsureCreated</c> 只建不改，
-    /// 老库不会自己长成新形态。
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// 两种动作都是原地操作（SQLite 的 <c>ADD COLUMN</c> / <c>DROP COLUMN</c>），不碰别列的数据，
-    /// 于是**升级既不会让你打不开原来那一桌，也不会让你开不了新桌**。
-    /// </para>
-    /// <para>
-    /// 这是本版唯一的 DDL 例外，且只做这两类：改类型 / 加约束 / 重建表仍主张换新库。
-    /// 换掉 SQLite provider 时，这里要一并换成正式迁移（D-0004 允许换 provider）。
-    /// </para>
-    /// </remarks>
-    private async Task EnsureGameSchemaAsync(GameDbContext db, CancellationToken cancellationToken)
-    {
-        var existing = await ReadGameColumnsAsync(db, cancellationToken);
-
-        // 每项：列名 + 追加语句（NOT NULL 在 SQLite 上必须带默认值才被接受）。
-        (string Column, string Sql)[] required =
-        [
-            ("Name", "ALTER TABLE Games ADD COLUMN Name TEXT NOT NULL DEFAULT '';"),
-            ("IsLocked", "ALTER TABLE Games ADD COLUMN IsLocked INTEGER NOT NULL DEFAULT 0;"),
-            // 归属（D-0027）：老库里的桌补成 NULL = 没有房主，谁都进不去它的主持台——
-            // 这是如实反映"升级前那一桌本来就没有开桌账号"，不做任何猜测性回填。
-            ("CreatedByAccountId", "ALTER TABLE Games ADD COLUMN CreatedByAccountId INTEGER NULL;"),
-        ];
-
-        foreach (var (column, sql) in required)
-        {
-            if (existing.Contains(column))
-            {
-                continue;
-            }
-
-            try
-            {
-                await db.Database.ExecuteSqlRawAsync(sql, cancellationToken);
-                _logger.LogWarning("旧库补列（升级兼容）：Games.{Column}", column);
-            }
-            catch (Exception exception) when (exception is not OperationCanceledException)
-            {
-                _logger.LogCritical(
-                    exception,
-                    "补列失败：Games.{Column}——库结构与本版不匹配，请换新库",
-                    column);
-                throw;
-            }
-        }
-
-        // 退场列（D-0027）：说书人票据时代的凭据，本版不再映射它。留着不只是"没用"——
-        // 老库那一列是 **NOT NULL 且没有默认值**，于是**开新桌的 INSERT 会被它当场拒掉**
-        // （实测：NOT NULL constraint failed: Games.StorytellerTicket），
-        // 表现成最难查的那种半截升级："原来那一桌读得出，新桌开不了"。
-        // 删掉它，老库与新库同形态；顺带把退场的凭据从磁盘上抹掉。
-        if (existing.Contains(RetiredTicketColumn))
-        {
-            try
-            {
-                await db.Database.ExecuteSqlRawAsync(DropRetiredTicketColumnSql, cancellationToken);
-                _logger.LogWarning("旧库删列（退场凭据）：Games.{Column}", RetiredTicketColumn);
-            }
-            catch (Exception exception) when (exception is not OperationCanceledException)
-            {
-                _logger.LogCritical(
-                    exception,
-                    "删列失败：Games.{Column}——库结构与本版不匹配，请换新库",
-                    RetiredTicketColumn);
-                throw;
-            }
-        }
-    }
-
-    /// <summary>
     /// SQLite 运行口径（M5 / G-A6-8）：**日志模式设一次**（持久属性写在库文件里），
     /// 同步级别与忙等由拦截器在每条连接上设——这里读回实际生效的值并记一行启动读数。
     /// </summary>
     /// <remarks>
     /// <para>
     /// 读回而不是"设完就算"：<c>PRAGMA journal_mode=wal</c> 在只读文件系统、或者库被别的连接
-    /// 独占时会**静默保持原模式**。全新部署过去跑的是 SQLite 默认的 <c>delete</c> 模式
-    /// （审计 R3 里那台机器上的 <c>wal</c> 是人工设的），所以这一行日志是"这台机器上到底哪种模式"的唯一判据。
+    /// 独占时会**静默保持原模式**。已有库的日志模式取决于它的来历（从备份恢复回来的库是
+    /// 单文件 rollback 形态），所以这一行日志是"这台机器上到底哪种模式"的唯一判据。
     /// </para>
     /// <para>
     /// 连接从 EF 的打开路径拿（<c>OpenConnectionAsync</c>）：这样读到的忙等就是**拦截器真的生效了**的证据，
     /// 而不是这条代码自己临时设的值。
     /// </para>
     /// </remarks>
-    private async Task ApplySqliteRuntimeAsync(GameDbContext db, CancellationToken cancellationToken)
+    private async Task ApplySqliteRuntimeAsync(
+        GameDbContext db,
+        int schemaVersion,
+        CancellationToken cancellationToken)
     {
         var connection = db.Database.GetDbConnection();
         await db.Database.OpenConnectionAsync(cancellationToken);
@@ -195,9 +102,12 @@ public sealed class GameBootstrapHostedService : IHostedService
             var size = File.Exists(path) ? new FileInfo(path).Length : 0;
 
             _logger.LogInformation(
-                "数据库口径：库={Path} · 大小={Size}B · 日志模式={JournalMode} · 同步级别={Synchronous} · 写锁等待={BusyTimeout}ms",
+                "数据库口径：库={Path} · 大小={Size}B · 结构版本={SchemaVersion}/{LatestVersion} · "
+                + "日志模式={JournalMode} · 同步级别={Synchronous} · 写锁等待={BusyTimeout}ms",
                 path,
                 size,
+                schemaVersion,
+                SchemaMigrationCatalog.LatestVersion,
                 journalMode,
                 SqliteConnectionPragmas.Synchronous,
                 busyTimeout);
@@ -215,38 +125,5 @@ public sealed class GameBootstrapHostedService : IHostedService
         {
             await db.Database.CloseConnectionAsync();
         }
-    }
-
-    /// <summary>读出 <c>Games</c> 现有的列名（对账的依据）。</summary>
-    /// <remarks>连的是上下文自己的连接，用完按原状态归还——开着的不要替调用方关掉。</remarks>
-    private static async Task<HashSet<string>> ReadGameColumnsAsync(GameDbContext db, CancellationToken cancellationToken)
-    {
-        var existing = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var connection = (SqliteConnection)db.Database.GetDbConnection();
-        var opened = connection.State != System.Data.ConnectionState.Open;
-        if (opened)
-        {
-            await connection.OpenAsync(cancellationToken);
-        }
-
-        try
-        {
-            await using var command = connection.CreateCommand();
-            command.CommandText = "PRAGMA table_info(Games);";
-            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-            while (await reader.ReadAsync(cancellationToken))
-            {
-                existing.Add(reader.GetString(1));
-            }
-        }
-        finally
-        {
-            if (opened)
-            {
-                await connection.CloseAsync();
-            }
-        }
-
-        return existing;
     }
 }

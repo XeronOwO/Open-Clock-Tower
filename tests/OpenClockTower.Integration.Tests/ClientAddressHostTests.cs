@@ -184,7 +184,7 @@ public sealed class ClientAddressHostTests : IDisposable
     {
         SqliteConnection.ClearAllPools();
         DeleteIfExists(Path.Combine(_contentRoot, "wwwroot", "index.html"));
-        DeleteIfExists(Path.Combine(_contentRoot, "address.db"));
+        TestDatabaseFiles.DeleteOrFail(Path.Combine(_contentRoot, "address.db"));
         DeleteDirectoryIfEmpty(Path.Combine(_contentRoot, "wwwroot"));
         DeleteDirectoryIfEmpty(_contentRoot);
     }

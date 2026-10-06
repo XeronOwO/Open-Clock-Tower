@@ -11,7 +11,8 @@ namespace OpenClockTower.Server;
 /// <remarks>
 /// <para>
 /// 一律以 <c>Mode=ReadOnly</c> 打开：体检的对象可能是**正在服务的库**，也可能是一份**备份**——
-/// 两种情况下都不允许"看一下"顺手改掉什么（<c>EnsureCreated</c> 那种建表动作在这里是禁止的）。
+/// 两种情况下都不允许"看一下"顺手改掉什么（建表 / 补列那种动作归
+/// <see cref="SchemaMigrationCatalog"/>，只在启动时跑，这里禁止）。
 /// </para>
 /// <para>
 /// 体检是运维的第一手读数：备份命令拿它判"这份备份能不能用"，恢复演练拿它判"恢复出来的库是不是那一份"。
@@ -48,6 +49,9 @@ public static class DatabaseInspector
         var pageCount = ReadInt(connection, "PRAGMA page_count;");
         var freelistCount = ReadInt(connection, "PRAGMA freelist_count;");
         var journalMode = ReadText(connection, "PRAGMA journal_mode;");
+        // 结构版本（M5 / G-A6-2）：只读一个头字段。体检是"动手之前先看一眼"的动作，
+        // 而"这个库比程序新还是旧"正是动手之前最该知道的一件事（回滚、恢复都用得上）。
+        var schemaVersion = ReadInt(connection, "PRAGMA user_version;");
         // 完整性检查刻意留到最后：它是唯一会**逐页读**的动作，坏库上它会以异常的形式报出来。
         var integrity = ReadText(connection, "PRAGMA integrity_check;");
 
@@ -65,6 +69,8 @@ public static class DatabaseInspector
             Sha256Of(path),
             integrity,
             journalMode,
+            schemaVersion,
+            SchemaMigrationCatalog.LatestVersion,
             pageSize,
             pageCount,
             freelistCount,

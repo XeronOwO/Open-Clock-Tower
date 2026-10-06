@@ -441,15 +441,6 @@ public sealed class EndedGamePendingRequestVoidTests
         Assert.Fail("夜晚在 64 次强推内没有走完");
     }
 
-    /// <summary>删掉测试库文件（含 WAL / SHM）；失败路径与正常路径共用。</summary>
-    private static void DeleteFiles(string databasePath)
-    {
-        foreach (var path in new[] { databasePath, databasePath + "-wal", databasePath + "-shm" })
-        {
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-            }
-        }
-    }
+    /// <summary>删掉测试库文件（含 WAL / SHM / 单实例锁）；失败路径与正常路径共用。</summary>
+    private static void DeleteFiles(string databasePath) => TestDatabaseFiles.Delete(databasePath);
 }

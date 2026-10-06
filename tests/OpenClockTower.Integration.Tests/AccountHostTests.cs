@@ -312,14 +312,7 @@ public sealed class AccountHostTests
         finally
         {
             SqliteConnection.ClearAllPools();
-            foreach (var suffix in new[] { string.Empty, "-wal", "-shm" })
-            {
-                var path = databasePath + suffix;
-                if (File.Exists(path))
-                {
-                    File.Delete(path);
-                }
-            }
+            TestDatabaseFiles.Delete(databasePath);
         }
     }
 }

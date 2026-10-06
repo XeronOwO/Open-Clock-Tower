@@ -154,8 +154,8 @@ public sealed class StaticHostingTests : IDisposable
         // 逐项清掉测试自己造的文件，不做递归删除。
         DeleteIfExists(Path.Combine(_contentRoot, "wwwroot", "assets", "index-abc.js"));
         DeleteIfExists(Path.Combine(_contentRoot, "wwwroot", "index.html"));
-        DeleteIfExists(Path.Combine(_contentRoot, "test.db"));
-        DeleteIfExists(Path.Combine(_contentRoot, "no-webroot", "test.db"));
+        TestDatabaseFiles.DeleteOrFail(Path.Combine(_contentRoot, "test.db"));
+        TestDatabaseFiles.DeleteOrFail(Path.Combine(_contentRoot, "no-webroot", "test.db"));
         DeleteDirectoryIfEmpty(Path.Combine(_contentRoot, "wwwroot", "assets"));
         DeleteDirectoryIfEmpty(Path.Combine(_contentRoot, "wwwroot"));
         DeleteDirectoryIfEmpty(Path.Combine(_contentRoot, "no-webroot"));

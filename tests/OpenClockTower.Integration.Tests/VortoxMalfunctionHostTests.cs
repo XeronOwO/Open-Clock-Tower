@@ -107,13 +107,7 @@ public sealed class VortoxMalfunctionHostTests
 
     private static void DeleteDatabaseFiles(string databasePath)
     {
-        foreach (var path in new[] { databasePath, databasePath + "-wal", databasePath + "-shm" })
-        {
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-            }
-        }
+        TestDatabaseFiles.Delete(databasePath);
     }
 
     private static async Task ResolveDecisionAsync(

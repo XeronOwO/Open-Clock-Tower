@@ -4,12 +4,12 @@ namespace OpenClockTower.Server;
 /// <remarks>
 /// <para>
 /// 多桌（D-0024）之后本表每个在册的桌一行，主键仍是游戏标识。
-/// <see cref="Name"/> / <see cref="IsLocked"/> / <see cref="CreatedByAccountId"/> 是后加的列：老库靠启动守卫补列
-/// （<c>GameBootstrapHostedService.EnsureGameSchemaAsync</c>），不会因为升级而读不出数据。
+/// <see cref="Name"/> / <see cref="IsLocked"/> / <see cref="CreatedByAccountId"/> 是后加的列：老库靠 v1 基线迁移
+/// 补列（<c>SchemaMigrationCatalog</c>），不会因为升级而读不出数据。
 /// </para>
 /// <para>
-/// <c>StorytellerTicket</c> 随 D-0027 退场：本类不再映射它，老库里的那一列由同一个守卫**删掉**
-/// ——它是 <c>NOT NULL</c> 且没有默认值，留着会让开新桌的写入被 SQLite 拒掉（详见该守卫的说明）。
+/// <c>StorytellerTicket</c> 随 D-0027 退场：本类不再映射它，老库里的那一列由同一条迁移**删掉**
+/// ——它是 <c>NOT NULL</c> 且没有默认值，留着会让开新桌的写入被 SQLite 拒掉（详见该迁移的说明）。
 /// </para>
 /// </remarks>
 public sealed class GameSetupEntity

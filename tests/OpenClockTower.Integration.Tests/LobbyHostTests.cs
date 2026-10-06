@@ -460,21 +460,7 @@ public sealed class LobbyHostTests : IDisposable
         // 不清池会留下 oct-lobby-* 残渣目录（实测：本轮积了一百多个），所以显式清。
         SqliteConnection.ClearAllPools();
 
-        foreach (var file in new[] { "lobby.db", "lobby.db-shm", "lobby.db-wal" })
-        {
-            var path = Path.Combine(_contentRoot, file);
-            if (File.Exists(path))
-            {
-                try
-                {
-                    File.Delete(path);
-                }
-                catch (IOException)
-                {
-                    // 仍被占用时留下目录，由收尾统一清理；这里不静默吞掉"删除失败"的语义。
-                }
-            }
-        }
+        TestDatabaseFiles.Delete(Path.Combine(_contentRoot, "lobby.db"));
 
         if (Directory.Exists(_contentRoot) && Directory.GetFileSystemEntries(_contentRoot).Length == 0)
         {

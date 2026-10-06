@@ -503,16 +503,7 @@ public sealed class ExileHostTests
     private static SeatId[] Seats(int first, int last) =>
         [.. Enumerable.Range(first, last - first + 1).Select(value => new SeatId(value))];
 
-    private static void DeleteDatabaseFile(string databasePath)
-    {
-        foreach (var path in new[] { databasePath, databasePath + "-wal", databasePath + "-shm" })
-        {
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-            }
-        }
-    }
+    private static void DeleteDatabaseFile(string databasePath) => TestDatabaseFiles.Delete(databasePath);
 
     /// <summary>一次用例内持有的说书人客户端与旅行者席位（用例收尾时释放客户端）。</summary>
     private sealed record DaySession(GameClient Storyteller, SeatId TravellerSeat) : IAsyncDisposable

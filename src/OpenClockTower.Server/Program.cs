@@ -74,8 +74,16 @@ builder.Services.AddSingleton<IClock, SystemClock>();
 builder.Services.AddSingleton(sqliteOptions);
 // SQLite 连接口径（M5 / G-A6-8）：日志模式在启动引导里设一次（持久属性），
 // 同步级别与忙等是连接级属性，靠拦截器保证**每一条**连接都成立。
+// 库路径在这里解析一次、两处共用：EF 的连接串，与库文件级单实例锁（M5 / G-A6-3）。
+var databasePath = Path.Combine(builder.Environment.ContentRootPath, serverOptions.DatabasePath);
+// 单实例锁注册成单例：**生命周期交给容器**（随宿主一起释放）。
+// 不用 `using var` 握着它——那条路径要等入口方法返回，而宿主被销毁与入口方法返回之间有一段窗口，
+// 于是"重启"类用例会在前一个宿主刚销毁时撞上"另一个实例还在跑"（实测：13 条用例里 9 条报这个）。
+builder.Services.AddSingleton(provider => ServerInstanceLock.Acquire(
+    databasePath,
+    provider.GetRequiredService<ILogger<ServerInstanceLock>>()));
 builder.Services.AddDbContextFactory<GameDbContext>(options => options
-    .UseSqlite($"Data Source={Path.Combine(builder.Environment.ContentRootPath, serverOptions.DatabasePath)}")
+    .UseSqlite($"Data Source={databasePath}")
     .AddInterceptors(new SqlitePragmaInterceptor(sqliteOptions)));
 builder.Services.AddSingleton<IGameStore, EfGameStore>();
 builder.Services.AddSingleton<IGameCatalog, EfGameCatalog>();
@@ -170,6 +178,11 @@ builder.Services.AddSignalR(options =>
 });
 
 var app = builder.Build();
+
+// 立刻把锁建出来（单例的构造就是"拿锁"）：**在端口绑定之前**定下"同一份库只有一个服务进程"。
+// 拿不到就抛，进程起不来——误开两个实例从前会被伪装成"库坏了、请换新库"，那是最坏的一种错误信息。
+// 锁文件留在库旁边，停机后还在是正常的（见 ServerInstanceLock 的说明：删它反而会破坏单实例）。
+_ = app.Services.GetRequiredService<ServerInstanceLock>();
 
 // 传输面接线顺序**就是安全性**：先按可信代理归一真实地址（后面所有日志、限速都依赖它），
 // 再发响应头（安全头 + 缓存口径），然后按声明长度拦超限请求体，最后才轮到页面与端点。

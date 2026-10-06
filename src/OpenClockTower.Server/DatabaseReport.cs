@@ -14,6 +14,8 @@ namespace OpenClockTower.Server;
 /// <param name="Sha256">整文件 SHA-256（小写十六进制）——异地里核对"传过去的那份是不是这一份"。</param>
 /// <param name="Integrity">SQLite <c>integrity_check</c> 的结论（<c>ok</c> 才是好）。</param>
 /// <param name="JournalMode">日志模式（库文件里的持久属性）。</param>
+/// <param name="SchemaVersion">库文件里的**结构版本**（<c>user_version</c>；0 = 迁移时代之前建的库）。</param>
+/// <param name="SupportedSchemaVersion">本程序支持到哪一版（比 <paramref name="SchemaVersion"/> 小就是"库比程序新"）。</param>
 /// <param name="PageSize">页大小（字节）。</param>
 /// <param name="PageCount">页数。</param>
 /// <param name="FreelistCount">空闲页数（不占内容、但占文件）。</param>
@@ -25,6 +27,8 @@ public sealed record DatabaseReport(
     string Sha256,
     string Integrity,
     string JournalMode,
+    int SchemaVersion,
+    int SupportedSchemaVersion,
     int PageSize,
     int PageCount,
     int FreelistCount,
@@ -44,6 +48,7 @@ public sealed record DatabaseReport(
         {
             $"文件：{Path}（{SizeBytes.ToString("N0", CultureInfo.InvariantCulture)} 字节 · SHA-256 {Sha256}）",
             $"体检：完整性={Integrity} · 日志模式={JournalMode} · 页大小={PageSize} · 页数={PageCount} · 空闲页={FreelistCount}",
+            $"结构：版本={SchemaVersion} · 本程序支持到={SupportedSchemaVersion}{SchemaVersionNote()}",
             $"内容：桌={Tables.Games} · 事件={Tables.Events} · 账号={Tables.Users} · 快照={Tables.Snapshots}"
             + $" · 回执={Tables.Receipts} · 席位绑定={Tables.SeatBindings}",
         };
@@ -57,4 +62,19 @@ public sealed record DatabaseReport(
 
         return string.Join(Environment.NewLine, lines);
     }
+
+    /// <summary>
+    /// 版本关系的一句话结论（只在不一致时出现）。
+    /// </summary>
+    /// <remarks>
+    /// 两个方向都要说：**库比程序新** = 这个库被更新版的程序改过，换回旧程序之前必须先想清楚
+    /// （迁移只进不退，部署文档 §9.3）；**库比程序旧** = 起一次服务就会自动补上，不用人管。
+    /// 前者是回滚现场的唯一预警，所以它出现在体检读数里而不是只出现在启动日志里——
+    /// 体检正是"动手之前先看一眼"的那个动作。
+    /// </remarks>
+    private string SchemaVersionNote() => SchemaVersion > SupportedSchemaVersion
+        ? " ⚠ 比本程序新：迁移只进不退，回滚程序前先看部署文档 §9.3"
+        : SchemaVersion < SupportedSchemaVersion
+            ? " （启动一次即自动补齐迁移）"
+            : string.Empty;
 }

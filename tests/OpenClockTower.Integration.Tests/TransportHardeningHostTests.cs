@@ -280,7 +280,7 @@ public sealed class TransportHardeningHostTests : IDisposable
         SqliteConnection.ClearAllPools();
         DeleteIfExists(Path.Combine(_contentRoot, "wwwroot", "assets", "index-abc.js"));
         DeleteIfExists(Path.Combine(_contentRoot, "wwwroot", "index.html"));
-        DeleteIfExists(Path.Combine(_contentRoot, "transport.db"));
+        TestDatabaseFiles.DeleteOrFail(Path.Combine(_contentRoot, "transport.db"));
         DeleteDirectoryIfEmpty(Path.Combine(_contentRoot, "wwwroot", "assets"));
         DeleteDirectoryIfEmpty(Path.Combine(_contentRoot, "wwwroot"));
         DeleteDirectoryIfEmpty(_contentRoot);
