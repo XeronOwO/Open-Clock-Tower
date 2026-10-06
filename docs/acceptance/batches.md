@@ -1424,6 +1424,21 @@ Chromium 把资源加载失败写进 console，被算成"重启窗口内的非�
 真机验证留下的测试账号与测试桌已按装置打印的 SQL 清掉（先 `systemctl stop clocktower`）：
 清理后 `Games` 0 · `Users` 1（原有的 `<运维账号>`）· `Events` 0 · `Snapshots` 0 · `SeatBindings` 0 · `Receipts` 0。
 
+**同日追加：根地址改为首页（票据 `done/root-address-home-and-home-cleanup.md`）**。
+需求方接着问"为什么 `/clocktower` 进去是登录页，而不是变成 `/home` 页"，以及首页底下那条
+「回到这一页」是什么意思。口径：**空地址 = 首页**（门厅）、说书人端 = `/storyteller`、
+首页那行自指链接删掉。装置侧连带改动：说书人入口改走 `/storyteller`（空地址现在是首页，
+等登录卡会白等满超时）、可用性装置新增"空地址是首页"与"首页刻意不做登录"两条判据。
+
+| 追加取证 | 结果 |
+|---|---|
+| 可用性装置（含新增判据） | **全部通过（判定 34 项 · 0 失败）**；入座路径仍 7 步（阈值 7） |
+| 主装置 | **全部通过（判定 289 项 · 跳过 2 项）** |
+| 账号装置（`--only replay`） | 4 项全过 |
+| 前端门禁 | 242 通过 / 0 失败 + typecheck / build 干净 |
+
+**本批票据**：`done/frontend-path-routing.md` 与 `done/root-address-home-and-home-cleanup.md`。
+
 ## 相关阅读
 
 - 验收规程：`docs/acceptance/AGENTS.md`

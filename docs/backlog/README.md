@@ -70,6 +70,7 @@ todo/  →  in-progress/  →  review/  →  done/
 
 ### Done
 
+- [根地址改为首页，并下掉首页那张"回到这一页"自指链接](done/root-address-home-and-home-cleanup.md) — Medium — 需求方两问（`/clocktower` 进去是登录页而不是 `/home`；`/home` 底下的「回到这一页」是何意味）：空地址改成首页、说书人端有了自己的地址 `/storyteller`，自指链接整条删掉。可用性装置 34 项 · 主装置 289 项全过
 - [前端路由改用正常路径](done/frontend-path-routing.md) — Medium — 地址从 `#/play` 变成 `play`；服务端回退早已就绪，点链接改由前端接管（不重载文档），旧井号链接靠就地改写兜住。已部署真机并复验：真机验收 21 项 · 可用性装置 29 项 · 主装置 289 项 · 前端 242 项全过
 - [入场重做：账号是唯一身份证，票据退回兜底](done/entrance-redesign.md) — **High** — 需求方三条当面意见（界面到处硬塞 / 说书人票据是什么 / 切个面又要重登一次）是同一个域：账号是唯一入口、说书人票据与 `JoinStoryteller(ticket)` 整个删除、默认桌与回落路径退场（D-0027）。装置与夹具先行迁移（19 个装置 + `TestServerHost`，读法收进 `tools/lib/entrance.mjs`），同批咬出并修掉三个缺口（刷新回不到座位 / 旅行者没有入口 / 选项文案吃掉语境）；主装置 289 项 · 账号 36 项 · 入场可用性 27 项 · 集骨者 52 项全绿，门禁 1305 通过
 - [可用性验收装置：证明"一个没用过的人能自己走通"](done/usability-acceptance-device.md) — **High** — 补的是验收体系自己的洞：其余装置全在问"规则对不对 / 功能通不通"，没有一条问"第一次打开这个站的人知不知道该点哪"。装置 `tools/verify-entrance-usability.mjs`（第二十个，不直读库）**先以红交付**（判定 27 项 · 红 13 项，读数留在票据里），随入场重做转绿（27 项全过，16.6s）

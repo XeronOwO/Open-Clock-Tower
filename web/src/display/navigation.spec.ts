@@ -20,12 +20,12 @@ import {
  * "点一下真的不重载"由真机装置判（`verify-entrance-usability.mjs` 的换面段）。
  */
 describe('地址路径 → 面', () => {
-  it('兼容红线一：空地址（容器访问根路径）仍然是说书人端', () => {
-    expect(routeFromPath('/')).toBe('storyteller')
-    expect(routeFromPath('')).toBe('storyteller')
+  it('空地址是首页（门厅：先说清这是什么）', () => {
+    expect(routeFromPath('/')).toBe('home')
+    expect(routeFromPath('')).toBe('home')
   })
 
-  it('四个面的新路径', () => {
+  it('四个面的地址', () => {
     expect(HOME_LINK).toBe('/home')
     expect(PLAY_LINK).toBe('/play')
     expect(STORYTELLER_LINK).toBe('/storyteller')
@@ -40,9 +40,9 @@ describe('地址路径 → 面', () => {
     expect(routeFromPath('/home/')).toBe('home')
   })
 
-  it('不认识的值退回说书人端（历史行为，不是报错页）', () => {
-    expect(routeFromPath('/whatever')).toBe('storyteller')
-    expect(routeFromPath('/player')).toBe('storyteller')
+  it('不认识的地址也落到首页（给门厅，比给一张报错式的登录卡好）', () => {
+    expect(routeFromPath('/whatever')).toBe('home')
+    expect(routeFromPath('/player')).toBe('home')
   })
 
   it('路径归一化：只去查询串与末尾斜杠，根路径不动', () => {
@@ -51,11 +51,11 @@ describe('地址路径 → 面', () => {
     expect(normalizePath('/')).toBe('/')
   })
 
-  it('每个面都给出"地址栏里应有的路径"（顶栏高亮用它，而不是拿 href 硬比）', () => {
-    // 用户在 `/` 打开说书人端时，顶栏「主持一局」必须是高亮项——虽然它自己的 href 是 `/storyteller`。
-    expect(routeState('/')).toEqual({ route: 'storyteller', canonicalPath: '/storyteller' })
-    expect(routeState('/play')).toEqual({ route: 'player', canonicalPath: '/play' })
+  it('每一面都给出"地址栏里应有的路径"（顶栏高亮与旧地址落点都用它）', () => {
+    expect(routeState('/')).toEqual({ route: 'home', canonicalPath: '/home' })
     expect(routeState('/home')).toEqual({ route: 'home', canonicalPath: '/home' })
+    expect(routeState('/play')).toEqual({ route: 'player', canonicalPath: '/play' })
+    expect(routeState('/storyteller')).toEqual({ route: 'storyteller', canonicalPath: '/storyteller' })
   })
 })
 

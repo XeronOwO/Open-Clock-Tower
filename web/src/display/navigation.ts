@@ -8,9 +8,9 @@
  *
  * 单 SPA 多面这一点没变（D-0004 / D-0018）：四个面仍是同一份构建，由地址决定显示哪一个。
  *
- * **兼容是硬约束**：18 个验收装置与用户手里的旧链接依赖既有行为——
- * 容器里的空地址（`http://host/`）必须仍然是**说书人端**，旧的 `#player` 必须仍然进玩家端。
- * 所以旧写法一律保留为"重定向的入口"（`legacyHashTarget`），新面只用新路径。
+ * **四个面各有各的地址，空地址是首页**：`<前缀>` = 首页 · `<前缀>play` = 加入一桌 ·
+ * `<前缀>storyteller` = 主持一局。旧的 `#player` 这类井号写法仍然进得去（`legacyHashTarget`
+ * 会把它们就地改写，见 `routing.ts`）——老链接不该失效，但新链接一律用正常路径。
  */
 import { RUNTIME_BASE } from '@/services/runtimeBase'
 
@@ -48,17 +48,18 @@ export function pathOfRoute(route: AppRoute): string {
 }
 
 /**
- * 首页地址。
+ * 根地址 = 首页（需求方 2026-10-06 当面指出："`/clocktower` 进去是登录页，而不是变成 `/home` 页"）。
  *
- * 说书人端保持"根地址 = 它"（历史行为，也是装置与用户的入口），所以它的后缀放在
- * `STORYTELLER_LINK` 之外单独保留：`/` 与 `/storyteller` **都**是说书人端（见 `routeFromPath`）。
+ * 这一条改的是**根地址的含义**：以前空地址直接怼一张说书人登录卡，第一次打开站点的人不知道这是干什么的
+ * （这正是"首页"当初被加进来的理由，只是当时没敢动根地址）。现在根地址就是门厅，
+ * 说书人端有自己的地址 `/storyteller`——用户在顶栏点「主持一局」到这里。
  */
 export const HOME_LINK = pathOf('home')
 
 /** 玩家端地址（旧的 `#player` 仍然有效，由 `legacyHashTarget` 兜住）。 */
 export const PLAY_LINK = pathOf('player')
 
-/** 说书人端地址（**空地址也是它**：容器访问根路径必须落到说书人登录框）。 */
+/** 说书人端地址（**不再是空地址**：空地址是首页）。 */
 export const STORYTELLER_LINK = pathOf('storyteller')
 
 /**
@@ -103,9 +104,9 @@ export function normalizePath(pathname: string): string {
 /**
  * 解析**地址路径**到当前面。
  *
- * 判据按优先级：部署前缀剥掉之后逐段比较 → **其余一律说书人端**（历史行为）。
- * 最后那条是刻意的：容器访问根路径（空地址）必须落到说书人登录框，
- * 否则既有装置会在"等说书人面板出现"这一步卡死。
+ * 判据：部署前缀剥掉之后与某一面的后缀**逐段比较**（表由 `ROUTE_SEGMENTS` 反查，不另写一份），
+ * 其余统统落到**首页**——不认识的地址给门厅，比给一张"报错式"的登录卡好，
+ * 也让"打开站点先看到这是什么"对任何写错的地址都成立。
  *
  * @param pathname 地址里的路径，如 `/`、`/play`、`/clocktower/storyteller`。
  */
@@ -113,29 +114,24 @@ export function routeFromPath(pathname: string): AppRoute {
   const path = normalizePath(pathname.length === 0 ? '/' : pathname)
   const prefix = RUNTIME_BASE === '/' ? '' : RUNTIME_BASE.slice(0, -1)
 
-  // 前缀之外的路径不是本站的地址（理论到不了这里：应用本身就是从那里加载的），退回历史行为。
+  // 前缀之外的路径不是本站的地址（理论到不了这里：应用本身就是从那里加载的），同样落到首页。
   if (prefix.length > 0 && !path.startsWith(prefix)) {
-    return 'storyteller'
+    return 'home'
   }
 
   const segment = path.slice(prefix.length)
-  switch (segment) {
-    case '/play':
-      return 'player'
-    case '/home':
-      return 'home'
-    default:
-      return 'storyteller'
-  }
+  const matched = (Object.keys(ROUTE_SEGMENTS) as AppRoute[]).find(
+    (route) => `/${ROUTE_SEGMENTS[route]}` === segment,
+  )
+  return matched ?? 'home'
 }
 
 /**
  * 当前位置解析成"面 + 该面在地址栏里应有的路径"。
  *
  * 两者一起返回，是因为 App 需要的正是这一对：`route` 决定渲染哪一个面，
- * `canonicalPath` 决定顶栏哪一条是高亮项（用户在 `/` 打开说书人端时，
- * 顶栏的「主持一局」应当是高亮的，而它的 `href` 是 `/storyteller`）。
- * 比较放在**规范化之后**，否则 `/play/`（末尾斜杠）会被判成"不在任何已知面上"。
+ * `canonicalPath` 决定该面在地址栏里的形状（`/play/` 这类带末尾斜杠的写法也算同一面）。
+ * 比较放在**规范化之后**，否则 `/play/` 会被判成"不在任何已知面上"。
  */
 export function routeState(pathname: string): { route: AppRoute; canonicalPath: string } {
   const route = routeFromPath(pathname)

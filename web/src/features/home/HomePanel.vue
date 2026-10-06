@@ -6,8 +6,11 @@
  * 这里刻意**不做登录、也不列桌**：登录在各面自己的门上（`AccountGate`），
  * 桌列表在"加入一桌"那一面（未登录看别人的桌没有意义——坐下要先登录，D-0027）。
  * 首页只做一件事：说清楚这是什么，然后指两个方向。
+ *
+ * **不放"回到这一页"这类自指链接**（需求方 2026-10-06 当面问"回到这一页是何意味"）：
+ * 它指向的就是当前这一页，点了什么也不会发生；要回首页走顶栏的「首页」。
  */
-import { HOME_LINK, PLAY_LINK, STORYTELLER_LINK } from '@/display/navigation'
+import { PLAY_LINK, STORYTELLER_LINK } from '@/display/navigation'
 </script>
 
 <template>
@@ -32,8 +35,6 @@ import { HOME_LINK, PLAY_LINK, STORYTELLER_LINK } from '@/display/navigation'
         账号是唯一的身份证：同一个账号可以在每一桌各坐一席；换台设备、清掉缓存，登录回来桌还在。
       </p>
     </section>
-
-    <p class="hint foot"><a :href="HOME_LINK">回到这一页</a></p>
   </div>
 </template>
 
@@ -72,9 +73,5 @@ import { HOME_LINK, PLAY_LINK, STORYTELLER_LINK } from '@/display/navigation'
 
 .entry:hover {
   border-color: var(--accent);
-}
-
-.foot {
-  text-align: center;
 }
 </style>

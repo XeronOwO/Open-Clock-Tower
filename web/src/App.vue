@@ -3,23 +3,23 @@
  * 单 SPA 多面（D-0004 / D-0018）：首页、玩家端、说书人端是同一份构建的三个面，
  * 由**地址路径**决定（解析规则见 `display/navigation.ts`，地址怎么变见 `display/routing.ts`）。
  *
- * 这里同时负责**导航**：此前各面互相孤立——想换一面只能手改地址栏，
- * 也没有首页（打开根路径直接是说书人登录框）。顶栏把这三个面互相连起来。
+ * 这里同时负责**导航**：此前各面互相孤立——想换一面只能手改地址栏，也没有首页。
+ * 顶栏把这三个面互相连起来，**空地址（根路径）就是首页**。
  *
  * 点顶栏是**拦截 + `pushState`**，不是整页跳转：账号会话只活在内存里（D-0021），
  * 一旦重载就退回登录卡，"换个面还得再登一次"就是被这么修掉的。
  *
- * 兼容红线（两处的历史行为不能变，18 个验收装置与既有链接依赖它）：
- * 容器访问根路径（空地址）仍是说书人端；旧的 `#player` 仍进玩家端（`main.ts` 里就地改写成 `/play`）。
+ * 旧的 `#player` 这类井号地址仍进得去：`main.ts` 在挂载前把它们就地改写成新路径。
  */
 import StorytellerPanel from '@/features/storyteller/StorytellerPanel.vue'
 import PlayerPanel from '@/features/player/PlayerPanel.vue'
 import HomePanel from '@/features/home/HomePanel.vue'
-import { HOME_LINK, PLAY_LINK, routeLabel, type AppRoute, STORYTELLER_LINK } from '@/display/navigation'
+import { HOME_LINK, PLAY_LINK, routeFromPath, routeLabel, type AppRoute, STORYTELLER_LINK } from '@/display/navigation'
 import { interceptLinkClick, subscribeRoute } from '@/display/routing'
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 
-const route = ref<AppRoute>('storyteller')
+// 首帧就按**当前地址**画，而不是先画一个默认面再被订阅纠正过来——否则打开首页时会闪一下说书人面。
+const route = ref<AppRoute>(routeFromPath(window.location.pathname))
 let unsubscribe: (() => void) | null = null
 
 /** 顶栏链接：当前面高亮，其余可点。文案照界面口径（D-0027）：加入一桌 / 主持一局。 */

@@ -47,14 +47,11 @@ export function applyLegacyHash(location: Location = window.location): boolean {
     return false
   }
 
-  // 落点一律取"这一面的规范地址"（**不是**在旧路径上就地推导）：`/` 与 `/storyteller` 都是说书人端，
-  // 但 `#player` 必须落到 `/play`，而 `#/storyteller` 落到 `/storyteller`——与旧地址自己的写法一一对应，
-  // 不去猜用户"本来想停在哪个别名上"。
+  // 落点取"这一面的规范地址"：`#player` 落到 `/play`、`#/storyteller` 落到 `/storyteller`。
   const canonical = pathOfRoute(route)
-  // 当前地址已经**就是**这一面时（含别名，比如说书人端的 `/`），只在**同一个路径**上把井号去掉：
-  // 整页跳转一次只为把 `/` 换成 `/storyteller` 不值得。
-  // 判据用**面**而不是路径——`/` 与 `/storyteller` 路径不同、面相同（这正是"别名"的含义）；
-  // 拿路径比会把这条优化写成永远不生效的假分支。
+  // 当前地址已经**就是**这一面时（比如带着井号的 `/play`），只在原地把井号去掉：
+  // 整页跳转一次只为改一个井号不值得。
+  // 判据用**面**而不是路径——路径可以有多条等价写法（`/play/` 带末尾斜杠），面只有一个。
   const sameRoute = routeState(location.pathname).route === route
   const destination = sameRoute ? location.pathname : canonical
 

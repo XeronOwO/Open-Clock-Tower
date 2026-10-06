@@ -153,9 +153,9 @@ sudo nginx -t && sudo systemctl reload nginx
 
 | 入口 | 地址 | 干什么 |
 |---|---|---|
-| 首页 | `<PREFIX>home` | 说清楚这是什么 + 两个方向 |
+| 首页 | `<PREFIX>`（也认 `<PREFIX>home`） | 打开站点先看到"这是什么 + 两个方向" |
 | 加入一桌 | `<PREFIX>play`（旧写法 `#player` 仍可用） | 注册 / 登录，从在开的桌里挑空席位入座 |
-| 主持一局 | `<PREFIX>storyteller`（**空地址也是它**） | 登录后开一桌；「我主持的桌」里点进主持台 |
+| 主持一局 | `<PREFIX>storyteller` | 登录后开一桌；「我主持的桌」里点进主持台 |
 
 **路径分面不需要额外配置**：宿主对"不像文件的路径"回退到同一份 `index.html`（`Program.cs` 末尾的
 SPA 回退），nginx 那条 `location <PREFIX>` 也照常转发——换地址形状**不用改 nginx**。

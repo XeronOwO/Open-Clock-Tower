@@ -26,8 +26,8 @@
  *   `open-table-name` / `open-table-seats` / `open-table-submit`           开桌表单
  *   `grimoire`（主持台）· `player-seat`（已入座徽标）· `top-nav`（顶栏）
  *   顶栏 `nav-home` / `nav-player` / `nav-storyteller`：**文案可变，锚点不变**
- *   兼容红线：空地址（根路径）仍是"主持一局"那一面、`#player` 仍是"加入一桌"那一面
- *   （后者现在是**重定向**：落点 `/play`，见 gate 段的"旧井号地址"一条）。
+ *   四个面的地址：空地址 = 首页 · `/home` = 首页 · `/play` = 加入一桌 · `/storyteller` = 主持一局；
+ *   旧的井号写法（`#player` 等）**是重定向入口**（gate 段有一条断言守着它）。
  *
  * 用法（在仓库根运行）：
  *   node tools/verify-entrance-usability.mjs
@@ -200,11 +200,15 @@ async function main() {
   const bystander = await newClient(browser, consoleErrors)
 
   if (!runner.begin('gate')) return
-  await openFace(bystander.page, `${frontUrl}/home`)
+  // 空地址 = 首页（门厅）；说书人面与玩家面各有各的地址。三条入口都逐面判一遍。
+  await openFace(bystander.page, `${frontUrl}/`)
+  const rootIsHome = await waitForCount(bystander.page.getByTestId('home-to-storyteller'), 1, uiWaitMs)
   check(
-    '首页给出两个入口（加入一桌 / 主持一局）',
-    (await bystander.page.getByTestId('home-to-player').count()) === 1 &&
+    '空地址（根路径）是首页：给出两个入口',
+    rootIsHome &&
+      (await bystander.page.getByTestId('home-to-player').count()) === 1 &&
       (await bystander.page.getByTestId('home-to-storyteller').count()) === 1,
+    rootIsHome ? '两个入口都在' : '根路径没有渲染首页',
   )
   check(
     '首页不是登录页：上面没有账号表单 / 票据输入框 / 开桌表单',
@@ -212,7 +216,8 @@ async function main() {
       (await bystander.page.getByTestId('storyteller-ticket').count()) === 0 &&
       (await bystander.page.getByTestId('open-table-submit').count()) === 0,
   )
-  await inspectGate(bystander.page, '说书人面（空地址）', `${frontUrl}/`)
+  await inspectGate(bystander.page, '首页（/home 与空地址同一面）', `${frontUrl}/home`, 'none')
+  await inspectGate(bystander.page, '说书人面（/storyteller）', `${frontUrl}/storyteller`)
   await inspectGate(bystander.page, '玩家面（/play）', `${frontUrl}/play`)
 
   // 旧的井号地址（#player）是用户手里与老装置里的写法：必须自己落到新地址上，且地址栏里不再有井号。
@@ -226,13 +231,13 @@ async function main() {
   )
 
   if (!runner.begin('plain')) return
-  await scanForbiddenTerms(bystander.page, '首页', `${frontUrl}/home`)
-  await scanForbiddenTerms(bystander.page, '说书人面（空地址）', `${frontUrl}/`)
+  await scanForbiddenTerms(bystander.page, '首页（空地址）', `${frontUrl}/`)
+  await scanForbiddenTerms(bystander.page, '说书人面（/storyteller）', `${frontUrl}/storyteller`)
   await scanForbiddenTerms(bystander.page, '玩家面（/play）', `${frontUrl}/play`)
 
   if (!runner.begin('host')) return
   const host = await newClient(browser, consoleErrors)
-  await host.page.goto(`${frontUrl}/`, { waitUntil: 'domcontentloaded' })
+  await host.page.goto(`${frontUrl}/storyteller`, { waitUntil: 'domcontentloaded' })
   await revealAccountForm(host.page)
   await revealRegisterTab(host.page)
   await host.page.getByTestId('account-username').fill(hostAccount.username)
@@ -252,7 +257,7 @@ async function main() {
 
   if (!runner.begin('relogin')) return
   const elsewhere = await newClient(browser, consoleErrors)
-  await elsewhere.page.goto(`${frontUrl}/`, { waitUntil: 'domcontentloaded' })
+  await elsewhere.page.goto(`${frontUrl}/storyteller`, { waitUntil: 'domcontentloaded' })
   await revealAccountForm(elsewhere.page)
   await elsewhere.page.getByTestId('account-username').fill(hostAccount.username)
   await elsewhere.page.getByTestId('account-password').fill(hostAccount.password)
@@ -274,7 +279,7 @@ async function main() {
     myTables ? rowText || '「我主持的桌」里没有这一桌' : '页面上没有「我主持的桌」',
   )
   check(
-    '空地址（根路径）仍是"主持一局"那一面：给的是我的桌，不是玩家选席',
+    '说书人面（/storyteller）给的是我的桌，不是玩家选席',
     myTables && (await elsewhere.page.locator('[data-seat]').count()) === 0,
     `我的桌=${myTables ? '在' : '不在'}；席位按钮=${await elsewhere.page.locator('[data-seat]').count()}`,
   )
@@ -291,7 +296,7 @@ async function main() {
   await elsewhere.context.close()
 
   if (!runner.begin('sit')) return
-  // 新用户视角：从**打开站点**开始，只做"屏幕上看起来该做的事"，每一步都记数。
+  // 新用户视角：从**打开站点**（空地址 = 首页）开始，只做"屏幕上看起来该做的事"，每一步都记数。
   const stranger = await newClient(browser, consoleErrors)
   const steps = createStepCounter()
   await stranger.page.goto(`${frontUrl}/`, { waitUntil: 'domcontentloaded' })
@@ -390,8 +395,13 @@ async function readDocumentLoads(page) {
 /**
  * 「未登录时只有一张登录卡」逐面判定：登录卡在、别的入口面元素一个都不该在。
  * 判据用**存在性**（`count()`），不是可见性——票据输入框藏在折叠区里也算"还在"。
+ *
+ * `loginCard` 传 `false` 用于**首页**：首页按设计不做登录（`HomePanel.vue` 的说明），
+ * 它只负责"说清这是什么 + 指两个方向"——所以在首页上"没有登录卡"才是对的。
+ *
+ * @param {'card'|'none'} expectation 这一面未登录时该不该有登录卡。
  */
-async function inspectGate(page, label, url) {
+async function inspectGate(page, label, url, expectation = 'card') {
   await openFace(page, url)
   await settle()
   const counts = {
@@ -406,8 +416,10 @@ async function inspectGate(page, label, url) {
   }
 
   check(
-    `未登录打开${label}：有一张登录卡（账号表单）`,
-    counts.loginCard === 1 && counts.password === 1,
+    expectation === 'card'
+      ? `未登录打开${label}：有一张登录卡（账号表单）`
+      : `未登录打开${label}：刻意不做登录（首页只指方向）`,
+    expectation === 'card' ? counts.loginCard === 1 && counts.password === 1 : counts.loginCard === 0,
     `账号输入框=${counts.loginCard}；口令输入框=${counts.password}`,
   )
   check(

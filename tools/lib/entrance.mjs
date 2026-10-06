@@ -15,6 +15,8 @@
  * `account-display-name` / `account-password` / `account-register` / `account-profile` /
  * `open-table-name` / `open-table-seats` / `open-table-submit` / `[data-my-table]` /
  * `host-enter` / `grimoire` / `player-lobby` / `[data-table]` / `[data-seat]` / `player-seat`。
+ *
+ * 入口地址：说书人面 `/storyteller`（空地址是首页）、玩家面 `/play`。
  */
 import { DatabaseSync } from 'node:sqlite'
 
@@ -75,7 +77,7 @@ export async function openTableAndHost(page, options) {
   const { username, displayName, password } = host
   const name = options.name ?? `夹具桌${suffix}`
 
-  await page.goto(options.frontUrl, { waitUntil: 'domcontentloaded' })
+  await page.goto(`${options.frontUrl}/storyteller`, { waitUntil: 'domcontentloaded' })
   await registerOnGate(page, { username, displayName, password })
 
   await waitFor(page.getByTestId('open-table-submit'), 1)

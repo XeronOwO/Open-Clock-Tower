@@ -2826,9 +2826,9 @@ async function newClient(browser, viewport, consoleErrors) {
 
 /** 刷新之后用同一个夹具账号重新登录并回到这一桌的主持台（D-0027：会话只在内存里，刷新即失效）。 */
 async function signInHost(page, table) {
-  // **强制整页重载**：目标地址往往与当前地址只差一个 hash，那时 `goto` 属于同文档导航、
+  // **强制整页重载**：目标地址往往与当前地址只差一个查询串或井号，那时 `goto` 属于同文档导航、
   // 文档不重载，页面还停在"已连接"的状态上——门根本不会出现。
-  await page.goto(frontUrl, { waitUntil: 'domcontentloaded' })
+  await page.goto(`${frontUrl}/storyteller`, { waitUntil: 'domcontentloaded' })
   await page.reload({ waitUntil: 'domcontentloaded' })
   await page.getByTestId('account-username').fill(table.username)
   await page.getByTestId('account-password').fill(table.password)

@@ -102,9 +102,9 @@ describe('旧井号地址改写（在挂载前调用）', () => {
   })
 
   it('上一版的井号路径同样改写', () => {
-    const window = fakeWindow('/', '#/home')
+    const window = fakeWindow('/play', '#/storyteller')
     expect(applyLegacyHash(asLocation(window))).toBe(true)
-    expect(window.location.pathname).toBe('/home')
+    expect(window.location.pathname).toBe('/storyteller')
   })
 
   it('回放位置（带查询串的井号）也改写，且不把查询串带进地址栏', () => {
@@ -121,8 +121,8 @@ describe('旧井号地址改写（在挂载前调用）', () => {
     expect(window.location.hash).toBe('')
   })
 
-  it('说书人端的旧写法落在 `/` 上时不做整页跳转（别名已经是这一面）', () => {
-    const window = fakeWindow('/', '#/storyteller')
+  it('根地址的井号写法改写后不做整页跳转（`/` 已经是首页这一面）', () => {
+    const window = fakeWindow('/', '#/home')
     expect(applyLegacyHash(asLocation(window))).toBe(true)
     expect(window.location.pathname).toBe('/')
     expect(window.location.hash).toBe('')
@@ -157,13 +157,13 @@ describe('面变化订阅', () => {
     const window = fakeWindow('/')
     const off = subscribeRoute((route) => seen.push(route), asWindow(window))
 
-    window.location.pathname = '/home'
+    window.location.pathname = '/storyteller'
     window.dispatchEvent(new Event('popstate'))
     window.location.pathname = '/play'
     window.dispatchEvent(new Event('hashchange'))
     off()
 
-    expect(seen).toEqual(['storyteller', 'home', 'player'])
+    expect(seen).toEqual(['home', 'storyteller', 'player'])
   })
 
   it('面没变就不重复播报（两个事件同时到达时不会白渲染一次）', () => {
@@ -199,10 +199,10 @@ describe('面变化订阅', () => {
     const off = subscribeRoute((route) => seen.push(route), asWindow(window))
     off()
 
-    window.location.pathname = '/home'
+    window.location.pathname = '/storyteller'
     window.dispatchEvent(new Event('popstate'))
 
-    expect(seen).toEqual(['storyteller'])
+    expect(seen).toEqual(['home'])
   })
 })
 
@@ -216,7 +216,6 @@ describe('站内链接点击的处置（纯判定）', () => {
 
   it('普通左键点站内链接：接管并换成目标路径（不重载文档）', () => {
     expect(decideLinkNavigation(intent())).toEqual({ action: 'push', path: '/play' })
-    expect(decideLinkNavigation(intent({ href: `${here}home` }))).toEqual({ action: 'push', path: '/home' })
   })
 
   it('中键 / 修饰键点击一律放行给浏览器（用户要开新标签页）', () => {
@@ -235,7 +234,9 @@ describe('站内链接点击的处置（纯判定）', () => {
 
   it('重复点当前面：放行给浏览器（不堆历史记录）', () => {
     expect(decideLinkNavigation(intent({ href: `${here}play`, currentUrl: `${here}play` }))).toEqual({ action: 'pass' })
-    expect(decideLinkNavigation(intent({ href: here, currentUrl: here }))).toEqual({ action: 'pass' })
+    expect(decideLinkNavigation(intent({ href: `${here}home`, currentUrl: `${here}home` }))).toEqual({ action: 'pass' })
+    // 根地址就是首页：在 `/` 上点「首页」不该再推一条记录。
+    expect(decideLinkNavigation(intent({ href: `${here}home`, currentUrl: here }))).toEqual({ action: 'pass' })
   })
 
   it('切换到目标面时，与目标面无关的查询串 / 井号（如回放位置）被清掉', () => {
@@ -245,19 +246,14 @@ describe('站内链接点击的处置（纯判定）', () => {
     expect(decision).toEqual({ action: 'push', path: '/home' })
   })
 
-  it('同一面点来点去不重复跳；从别的面切过去才接管，且落到该面的规范地址', () => {
-    // 顶栏「主持一局」的 href 是 `/storyteller`，而 `/` 也是说书人端——两者是同一个面。
-    expect(decideLinkNavigation(intent({ href: `${here}storyteller` }))).toEqual({ action: 'pass' })
-    expect(decideLinkNavigation(intent({ href: here, currentUrl: `${here}storyteller` }))).toEqual({
-      action: 'pass',
-    })
-    // 从玩家面切过去要接管；说书人端的规范地址只有一个（`/` 与 `/storyteller` 都归到它）。
-    expect(decideLinkNavigation(intent({ href: here, currentUrl: `${here}play` }))).toEqual({
-      action: 'push',
-      path: '/storyteller',
-    })
+  it('从别的面点头栏链接才接管，且落到该面的规范地址', () => {
+    // 从玩家面点「主持一局」：接管，落到 `/storyteller`。
     expect(
       decideLinkNavigation(intent({ href: `${here}storyteller`, currentUrl: `${here}play` })),
     ).toEqual({ action: 'push', path: '/storyteller' })
+    // 从说书人面点「首页」：接管，落到 `/home`（根地址也是首页，所以回首页是就地改写）。
+    expect(
+      decideLinkNavigation(intent({ href: `${here}home`, currentUrl: `${here}storyteller` })),
+    ).toEqual({ action: 'push', path: '/home' })
   })
 })
