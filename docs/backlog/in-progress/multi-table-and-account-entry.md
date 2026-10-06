@@ -96,21 +96,45 @@
 - 席位票据保留：D-0021 的游客路径与"换设备兜底"仍有用，废除会丢能力。
 - 隔离的判据按 `docs/acceptance/AGENTS.md` §4 的"**不该看见的人确实没看见**"来写（行 8）。
 
-## 已完成：多桌地基（第一阶段）
+## 进度
+
+### 第一阶段：多桌地基（已提交 `89b4507`）
 
 | 产出 | 说明 |
 |---|---|
 | `GameInstance` | 一局的实例束：会话 + **每局一份**的席位名读模型 + 复盘读侧 |
 | `GameRegistry` | 局的组合根：按标识解析 / 按需装载 / 启动时装载**全部**在册的桌 |
 | `IGameCatalog.ListAsync` | 列出在册的桌（启动恢复与大厅列表共用） |
-| `MultiTableIsolationTests` | **5 条隔离用例全绿**（37ms，纯内存、不经宿主装配） |
+| `MultiTableIsolationTests` | 5 条隔离用例（纯内存、不经宿主装配） |
 
-隔离用例覆盖：装载全部桌（不只默认那一个）· 同标识同实例 / 不同标识不同实例 ·
-未知桌返回 null 且**不会被顺手创建** · 席位名按局隔离（含反方向"乙桌看不到甲桌"）·
-同一账号在另一桌的名字不受本桌改名影响。
+### 第二阶段：宿主按桌工作（已提交 `58de6f2`）
 
-**尚未接线**：宿主仍以单例形式持有 `GameSession` / `SeatNameDirectory`，
-`GameHub` 也还没有"按连接解析桌"的能力。也就是说：**地基已就位并已验证，但运行时还没用上**。
+- `GameHub` 按连接解析桌（`?gameId=` 优先、缺省回落默认桌），未知桌显式拒绝；
+  绑定与执行器拆到 `HubGameScope`（**Hub 因此回到 600 行门禁之内**——拆分是门禁拦下后按规矩做的）。
+- `SeatJoinCoordinator` / `HubJoinFlow` 不再持有"当前是哪一局"；`GameSession` 与
+  `SeatNameDirectory` 的进程级单例注册**已删除**——一次迁完，不留两份事实。
+- `ConnectionRegistry` 按 (桌, 席位) 分区：此前用全局 `SeatId` 作键，两桌同席位号的推送会互相覆盖。
+- `NotificationDispatcher` 每个入口都要求先给"哪一桌"；节拍器逐桌推进，单桌出错不影响其余桌。
+- 启动引导装载**全部**桌 + **加列守卫**（老库缺 `Name` / `IsLocked` 时原地 `ADD COLUMN`，
+  升级不会让你打不开原来那一桌）。
+- `MultiTableHostIsolationTests`：真宿主 + 真 SignalR 三条（甲桌席位名不出现在乙桌、
+  甲桌票据加入乙桌被拒、未知桌被拒）。
+
+### 第三阶段：大厅与建桌（已提交 `22545c9`）
+
+- `AdminDirectory`：管理员 = 配置里的**登录名**清单；**清单为空 = 谁都不能开桌**。
+- `LobbyService` + `AccountHub.ListTables / CreateTable`；`AccountDto.IsAdmin`（仅用于显示入口）。
+- `LobbyHostTests` 六条：管理员建桌成功且新桌立刻可用、普通玩家被拒、空名单拒绝所有人、
+  席位数越界被拒、无效会话被拒、两桌互不影响。
+
+### 尚未做（顺序即依赖）
+
+1. **玩家自助入座**（D-0025 的核心体验）：`JoinTable(accountSession, gameId, seat)` ——
+   登录后选空席位入座，不再需要票据。需要给 `SeatJoinCoordinator` 加"自助认领"路径。
+2. **前端**：首页（账号 + 桌列表 + 开桌入口）、入座界面、顶栏导航与两端互链
+   （导航见 `todo/frontend-navigation.md`）。
+3. **服务器验证**：把多桌形态部署上去，真机开两桌验证隔离（`AdminUsernames` 需配到单元里）。
+4. **锁桌 / 移人**：说书人开局前的管理动作（D-0025 的代价条款）。
 
 ## 中途放弃的接线方式（教训，别再走一遍）
 
