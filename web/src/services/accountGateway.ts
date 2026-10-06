@@ -1,8 +1,9 @@
 /**
  * 账号端连接（D-0021）：注册 / 登录 / 登出 / 改玩家名 / 恢复码重置。
  *
- * 秘密纪律（D-0012 / D-0021）：账号会话凭据只存在**内存**里（本类私有字段）——
- * 不落盘、不进 DOM、不进日志；页面刷新后必须重新登录（席位票据仍按既有规则持久化）。
+ * 秘密纪律（D-0012 / D-0021 / D-0029）：账号会话凭据只存在**内存**与 `sessionStorage`
+ * （`services/browserSession.ts`）两处——不进 DOM、不进日志；连接级凭据仍只在内存里。
+ * 刷新页面由 `Resume` 向服务端确认后恢复，关标签页即清。
  * 连接目标是与游戏 Hub 分开的 `/hub/account`；凭据与游戏连接无关，只用于认领席位与账号自助。
  */
 import { HubConnectionBuilder, HubConnectionState, LogLevel, type HubConnection } from '@microsoft/signalr'
@@ -164,6 +165,27 @@ export class AccountGateway {
   async login(username: string, password: string): Promise<AccountDto> {
     const result = await this.invoke('Login', username, password)
     this.adopt(result)
+    return result
+  }
+
+  /**
+   * 用持久化的账号会话恢复登录态（M1 / D-0029）：刷新页面之后的第一件事。
+   *
+   * 回执**不带凭据**（恢复不是签发，服务端也不会重发），所以这里沿用本地那一份——
+   * 它刚刚被服务端确认有效。无效时 `profileValue` 保持 null，由调用方清掉持久化并回登录卡。
+   */
+  async resume(accountSession: string): Promise<AccountDto> {
+    const result = await this.invoke('Resume', accountSession)
+    if (result.ok) {
+      this.profileValue = {
+        id: result.id,
+        username: result.username,
+        displayName: result.displayName,
+        accountSession,
+        canCreateTable: result.canCreateTable === true,
+      }
+    }
+
     return result
   }
 

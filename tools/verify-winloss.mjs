@@ -331,8 +331,16 @@ async function main() {
   )
   await screenshot(klutzPage, 'winloss-04-player-replay')
 
-  // 刷新 / 重连：位置来自 URL 里的序号；重连后自动重开复盘并回到同一步（票据矩阵行 7）。
+  // 刷新：M1（D-0029）之后刷新**不再掉登录**——账号会话从 `sessionStorage` 恢复、按位置自动回到原席，
+  // 复盘面板再按 URL 里的序号重开并回到同一步（票据矩阵行 7）。
+  // 此前这一页刷新会停在登录卡上（会话只在内存里），复盘面板根本不会出现。
   await klutzPage.reload()
+  const seatAfterReload = await waitForText(klutzPage.getByTestId('player-seat'), String(KLUTZ_SEAT), 30_000)
+  check(
+    'M1：刷新后仍在原席（不重新登录、不点席位）',
+    seatAfterReload.includes(String(KLUTZ_SEAT)),
+    seatAfterReload,
+  )
   await klutzPage.getByTestId('replay-panel').waitFor({ timeout: 30_000 })
   const restoredProgress = await waitForText(klutzPage.getByTestId('replay-progress'), '第 2 /', 30_000)
   check(

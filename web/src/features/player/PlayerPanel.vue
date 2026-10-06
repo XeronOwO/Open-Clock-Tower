@@ -4,6 +4,10 @@
  *
  * 玩家只能看到服务端下发给他的东西：自己的席位、当前大阶段、发给自己的请求与信息类结果。
  * 看板 / 状态账 / 计划进度一概不下发——所以这里也不会有对应的代码路径（D-0013 §5）。
+ *
+ * M1（D-0029）：登录态与"我在哪一席"由 `sessionStorage` 承载，**刷新后自动坐回原席**；
+ * 坐不回去（席位被解除绑定 / 桌没了 / 会话失效）时如实说明并清掉位置，不装作回来了。
+ * 入座只有一条实现（`enterSeat`）——大厅点席位与刷新自动回座走的是同一条路。
  */
 import type {
   GameOutcomeDto,
@@ -27,7 +31,7 @@ import AccountGate from '@/features/account/AccountGate.vue'
 import AccountPanel from '@/features/account/AccountPanel.vue'
 import PlayerDayPanel from '@/features/player/PlayerDayPanel.vue'
 import ReplayPanel from '@/features/replay/ReplayPanel.vue'
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 
 const view = ref<PlayerViewDto | null>(null)
 const pending = ref<OperationRequestDto | null>(null)
@@ -63,10 +67,13 @@ const savantSubmitting = ref(false)
 
 let gateway: PlayerGateway | null = null
 let clientSequence = 0
+/** 自动回座只做一次（M1）：成功或失败都不再重试，免得每次登录态变化都重放一遍失败。 */
+let resumed = false
 
 /**
- * 账号（D-0021 / D-0027）：会话由 `accountSession` 模块级单例持有，**两个面共用一份**——
- * 换面不重新登录，因为它本来就是"同一个人"。
+ * 账号（D-0021 / D-0027 / D-0029）：会话由 `accountSession` 模块级单例持有，**两个面共用一份**——
+ * 换面不重新登录，因为它本来就是"同一个人"；M1 起它还写进 `sessionStorage`，
+ * 所以连刷新都不用再登一次（位置见下面的 `resumeSeat`）。
  */
 const accountProfile = session.profile
 
@@ -95,10 +102,43 @@ async function loadTables(): Promise<void> {
   }
 }
 
-/** 选一个席位坐下：重建连接指向该桌，然后只凭账号入座（不需要票据）。 */
-async function takeSeat(table: LobbyTable, seat: number): Promise<void> {
+/**
+ * 进这一桌的某个席位：换连接 → 只凭账号入座（不需要票据）。
+ *
+ * 这是入座的**唯一实现**——大厅点席位与刷新后的自动回座（M1）都走它；
+ * 各写一份，迟早会分叉出"其中一条少校验一步"。
+ */
+async function enterSeat(gameId: string, seat: number): Promise<void> {
   const accountSession = accountProfile.value?.accountSession
   if (accountSession === undefined) {
+    throw new Error('尚未登录：没有账号会话')
+  }
+
+  // 换桌 = 换连接：先让旧网关**停干净**再建新的（`stop()` 会等到状态真的 Disconnected）。
+  // 顺序很要紧：若先建新连接，旧连接的关闭还在进行中，SignalR 会报
+  // "Failed to start the HttpConnection before stop() was called"（实测踩到）。
+  const previous = gateway
+  gateway = null
+  if (previous !== null) {
+    await previous.stop()
+  }
+
+  clientSequence = 0
+  const current = new PlayerGateway(buildCallbacks(), undefined, gameId)
+  gateway = current
+  try {
+    await current.joinTable(seat, accountSession)
+  } catch (error) {
+    // 入座失败：把半成品网关丢掉，免得界面留着一个连上了却没入座的连接。
+    gateway = null
+    await current.stop()
+    throw error
+  }
+}
+
+/** 选一个席位坐下（大厅主路径）：入座成功即记住位置，刷新后能自动回到这里。 */
+async function takeSeat(table: LobbyTable, seat: number): Promise<void> {
+  if (accountProfile.value === null) {
     lobbyNotice.value = '请先注册或登录，再选席位入座'
     return
   }
@@ -106,35 +146,49 @@ async function takeSeat(table: LobbyTable, seat: number): Promise<void> {
   lobbyBusy.value = true
   lobbyNotice.value = ''
   try {
-    // 换桌 = 换连接：先让旧网关**停干净**再建新的（`stop()` 会等到状态真的 Disconnected）。
-    // 顺序很要紧：若先建新连接，旧连接的关闭还在进行中，SignalR 会报
-    // "Failed to start the HttpConnection before stop() was called"（实测踩到）。
-    const previous = gateway
-    gateway = null
-    if (previous !== null) {
-      await previous.stop()
-    }
-
-    clientSequence = 0
     selectedTable.value = table
-
-    const current = ensureGateway()
-    try {
-      await current.joinTable(seat, accountSession)
-      lobbyNotice.value = `已坐在 ${table.name.length > 0 ? table.name : table.gameId} 的 ${seat} 号席位`
-    } catch (error) {
-      // 入座失败：把半成品网关丢掉，免得界面留着一个连上了却没入座的连接。
-      gateway = null
-      await current.stop()
-      throw error
-    }
+    await enterSeat(table.gameId, seat)
+    // 记住"我在哪一席"（M1 / D-0029）：刷新回来该直接坐回去，而不是重新逛一遍大厅。
+    session.rememberTable({ surface: 'player', gameId: table.gameId, seat })
+    lobbyNotice.value = `已坐在 ${table.name.length > 0 ? table.name : table.gameId} 的 ${seat} 号席位`
 
     // 人数变了：刷新列表，别让大厅停在旧数字上。
     await loadTables()
   } catch (error) {
+    selectedTable.value = null
     lobbyNotice.value = `入座失败：${error instanceof Error ? error.message : String(error)}`
   } finally {
     lobbyBusy.value = false
+  }
+}
+
+/**
+ * 回到上一次坐的那一席（M1 / D-0029）：刷新的正常路径。
+ *
+ * 只在"已登录 + 还没连上任何一桌 + 记得位置"时跑一次。回不去就**清掉位置并说明原因**——
+ * 留着一条永远失败的记录，只会让每次刷新都重演同一个失败。
+ */
+async function resumeSeat(): Promise<void> {
+  if (resumed || gateway !== null || accountProfile.value === null) {
+    return
+  }
+
+  const target = session.activeTable.value
+  if (target === null || target.surface !== 'player' || target.seat === null) {
+    return
+  }
+
+  resumed = true
+  try {
+    selectedTable.value = tables.value.find((table) => table.gameId === target.gameId) ?? null
+    await enterSeat(target.gameId, target.seat)
+    lobbyNotice.value = `已回到「${target.gameId}」的 ${target.seat} 号席位`
+  } catch (error) {
+    session.forgetTable()
+    selectedTable.value = null
+    lobbyNotice.value = `没能回到 ${target.seat} 号席位：${
+      error instanceof Error ? error.message : String(error)
+    }`
   }
 }
 
@@ -172,8 +226,12 @@ async function joinByInviteCode(): Promise<void> {
     clientSequence = 0
     selectedTable.value = null
     gateway = new PlayerGateway(buildCallbacks(), undefined, gameId)
-    await gateway.joinSeat(ticket, accountProfile.value?.accountSession ?? null)
+    const joined = await gateway.joinSeat(ticket, accountProfile.value?.accountSession ?? null)
     inviteNotice.value = `已凭邀请码入座（${gameId}）`
+    // 邀请码也是入座：位置照样记住（M1），否则刷新之后这条路径进来的人回不去。
+    if (accountProfile.value !== null && joined.seat > 0) {
+      session.rememberTable({ surface: 'player', gameId, seat: joined.seat })
+    }
   } catch (error) {
     inviteNotice.value = `凭邀请码入座失败：${error instanceof Error ? error.message : String(error)}`
     gateway = null
@@ -185,8 +243,8 @@ async function joinByInviteCode(): Promise<void> {
 /**
  * 这个席位按钮能不能点（D-0027）。
  *
- * 「回到我的座位」是**始终可点**的一格：账号会话只活在内存里，刷新页面就没了；
- * 而大厅又按"已开局 / 已锁桌"整排置灰——只按旧口径禁用，玩家刷新之后就再也回不到自己的位置。
+ * 「回到我的座位」是**始终可点**的一格：它不能被"已开局 / 已锁桌"的整排置灰吃掉——
+ * 只按旧口径禁用，换设备回来（或清掉浏览器登录态）的玩家就再也回不到自己的位置。
  * 服务端本来就允许同一账号选回自己已认领的席位，界面不该比服务端更严。
  */
 function seatDisabled(table: LobbyTable, seat: number): boolean {
@@ -476,6 +534,8 @@ async function resync(): Promise<void> {
 
 async function disconnect(): Promise<void> {
   await gateway?.stop()
+  // 主动离开就是主动离开（M1）：位置一起忘掉，别让下一次刷新又把人送回这一席。
+  session.forgetTable()
   view.value = null
   pending.value = null
   day.value = null
@@ -501,15 +561,18 @@ function winnerLabelOf(winner: string): string {
   return `未知胜方（${winner}）`
 }
 
-onMounted(() => {
-  // 大厅只在登录之后出现（D-0027）：没登录时这一面只有一张账号卡。
-  void loadTables()
-})
-
 // 登录 / 登出之后桌列表要跟着变：换了账号就不该看到上一个人的事实（比如"我开的桌"标记）。
-watch(accountProfile, () => {
-  void loadTables()
-})
+// 自动回座也挂在这里（M1 / D-0029）：登录态是**异步**恢复的（`accountSession.restore`），
+// 挂载那一刻还读不到"我是谁"，只能等它落定再决定回哪一桌。
+// `immediate` 让"挂载时已经登录"（例如页内切面后回来）这条也算上。
+watch(
+  accountProfile,
+  async () => {
+    await loadTables()
+    await resumeSeat()
+  },
+  { immediate: true },
+)
 
 onBeforeUnmount(() => {
   void gateway?.stop()

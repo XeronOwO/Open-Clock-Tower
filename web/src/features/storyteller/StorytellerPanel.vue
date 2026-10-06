@@ -11,7 +11,9 @@
  *
  * 信息姿态：本面板只显示服务端下发的说书人视图（D-0012：视图由服务端重新投影）；
  * 前端不做领域推断，也不缓存旧值假装"还是那样"——掉线重连后整份重取。
- * 零信任姿态：命令必须带连接级凭据；凭据只在内存里，不渲染、不落盘。
+ * 零信任姿态：命令必须带连接级凭据；**连接级**凭据只在内存里，不渲染、不落盘（D-0012）。
+ * M1（D-0029）：账号会话进 `sessionStorage`，**刷新后自动接回主持台**；
+ * 接不回去就说清楚并清掉位置，不装作还在主持。
  */
 import type { ReplayViewDto, StorytellerViewDto } from '@/contracts/game'
 import { clockTimeOf } from '@/display/format'
@@ -125,6 +127,9 @@ const replayOpen = ref(false)
 
 let gateway: StorytellerGateway | null = null
 
+/** 自动接回主持台只做一次（M1）：成功或失败都不再重试，免得每次登录态变化都重放一遍失败。 */
+let resumedHost = false
+
 /** 网关实例的响应式引用：命令发送方要随它计算。 */
 const gatewayRef = shallowRef<StorytellerGateway | null>(null)
 
@@ -231,12 +236,13 @@ function pushDiagnostic(message: string): void {
  * 进这一桌的主持台（D-0027）：出示账号会话，服务端判定"你是不是开这一桌的账号"。
  *
  * 桌标识必须是这一桌的：`?gameId=` 属于连接（多桌 D-0024），所以换桌要重建连接。
+ * 返回是否真的进去了——自动接回（M1）要据此决定"位置还留不留"。
  */
-async function enterTable(gameId: string): Promise<void> {
+async function enterTable(gameId: string): Promise<boolean> {
   const current = profile.value
   if (current === null) {
     pushDiagnostic('还没登录：请先登录，再进主持台')
-    return
+    return false
   }
 
   joining.value = true
@@ -249,11 +255,39 @@ async function enterTable(gameId: string): Promise<void> {
     await gatewayForTable.joinWithAccount(current.accountSession)
     credential.value = gatewayForTable.credential
     outcome.value = null
+    // 记住"我正在主持哪一桌"（M1 / D-0029）：刷新回来直接接回主持台，不用再从列表里点一次。
+    session.rememberTable({ surface: 'storyteller', gameId, seat: null })
+    return true
   } catch (error) {
     pushDiagnostic(`进主持台失败：${error instanceof Error ? error.message : String(error)}`)
+    return false
   } finally {
     joining.value = false
   }
+}
+
+/**
+ * 接回上一次主持的那一桌（M1 / D-0029）：刷新的正常路径。
+ *
+ * 接不回去就**清掉位置并说明**——留着一条永远接不回去的记录，只会让每次刷新都重演同一个失败。
+ */
+async function resumeTable(): Promise<void> {
+  if (resumedHost || connected.value || profile.value === null) {
+    return
+  }
+
+  const target = session.activeTable.value
+  if (target === null || target.surface !== 'storyteller') {
+    return
+  }
+
+  resumedHost = true
+  if (await enterTable(target.gameId)) {
+    return
+  }
+
+  session.forgetTable()
+  pushDiagnostic(`没能接回「${target.gameId}」的主持台：这一桌可能已经不在了，或你的账号不再是它的开桌人`)
 }
 
 async function refresh(): Promise<void> {
@@ -268,6 +302,8 @@ async function disconnect(): Promise<void> {
   await gateway?.stop()
   view.value = null
   credential.value = ''
+  // 主动断开 = 主动离开这一桌（M1）：位置一起忘掉，别让下一次刷新又把人送回来。
+  session.forgetTable()
 }
 
 /** 命令回执统一在这里展示：服务端的拒绝是信息，不是故障。 */
@@ -285,13 +321,20 @@ function showOutcome(result: CommandOutcome): void {
 
 onMounted(() => {
   void syncSeatCount()
-  void loadMyTables()
 })
 
 // 登录 / 登出之后「我主持的桌」要跟着变：换了账号就不该看到上一个人的桌。
-watch(profile, () => {
-  void loadMyTables()
-})
+// 接回主持台也挂在这里（M1 / D-0029）：登录态是**异步**恢复的（`accountSession.restore`），
+// 挂载那一刻还读不到"我是谁"，只能等它落定再决定接哪一桌。
+// `immediate` 覆盖"页内切到这一面时已经登录"的情形——那正是"从别处回来要落在主持台"。
+watch(
+  profile,
+  async () => {
+    await loadMyTables()
+    await resumeTable()
+  },
+  { immediate: true },
+)
 
 onBeforeUnmount(() => {
   void gateway?.stop()

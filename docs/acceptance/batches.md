@@ -1440,6 +1440,53 @@ Chromium 把资源加载失败写进 console，被算成"重启窗口内的非�
 
 **本批票据**：`done/frontend-path-routing.md` 与 `done/root-address-home-and-home-cleanup.md`。
 
+## 批次 E51（2026-10-06，M1 会话与登录态：刷新不再掉登录）
+
+**本批票据**：`in-progress/web-hardening-programme.md` 的 **M1**（上线就绪两步走的第 2 步第一站）。
+
+**这一批解决什么**（需求方 2026-10-06 当面指为"极其不负责任"的那条）：刷新页面即退回登录卡——
+说书人与玩家**都掉**。M1 把**账号会话凭据**放进 `sessionStorage`（唯一落盘出口
+`web/src/services/browserSession.ts`），启动时向服务端确认（新入口 `AccountHub.Resume`：只读、幂等、
+**不重发凭据、不续期**），并按"位置"自动回到原来那一面那一席；连接级凭据仍然只在网关内存里。
+方案与取舍见 `docs/decisions/active.md` **D-0029**。
+
+**本批取证构成**（本地真链路：真宿主 + 真 Vite + 真 Chromium 独立上下文）：
+
+| 取证 | 命令 | 结果 |
+|---|---|---|
+| 账号与玩家名（本批主证据） | `node tools/verify-accounts.mjs`（迭代档） | **全部通过（判定 39 项 · 0 失败）**，14.0s——含本批新增 3 条：刷新后不登录不点席位即回原席 · 新标签页必须重新登录 · 新标签页登录后仍能回到自己那一席 |
+| 主装置（多席位真链路） | `node tools/verify-storyteller-panel.mjs`（迭代档） | **全部通过（判定 289 项 · 跳过 2 项 · 0 失败）**——含"宿主重启后刷新**必须**重新登录、再点回主持台"这条**会话生命周期**证据（会话只在内存里，D-0021 第 6 条） |
+| 可用性装置（首页新增身份块） | `node tools/verify-entrance-usability.mjs` | **全部通过（判定 34 项 · 0 失败）** |
+| 胜负与复盘 | `node tools/verify-winloss.mjs` | **全部通过（判定 29 项 · 0 失败）**——含"刷新后仍在原席"（此前这一页刷新会停在登录卡） |
+| 限次信息族 / 死亡触发族 / 回溯型信息族 | `verify-seamstress-artist` · `verify-death-triggers` · `verify-retro-info` | **82 / 73 / 56 项全过** |
+| 女巫 / 初始配板 | `verify-witch` · `verify-setup-randomizer` | **28 / 58 项全过** |
+| 前端单元（纯逻辑） | `npx vitest run` | **256 通过 / 0 失败**（新增 `browserSession.spec.ts` 12 项 + 恢复用例 2 项） |
+| 门禁（冻结版） | `dotnet build` / `dotnet test OpenClockTower.slnx` / `dotnet format` / `npm run gate` | 0 警告 0 错误 · 全量通过 · format 退出 0 · web 256 通过 + typecheck / build 全绿 |
+
+**同批改了两条规范门禁**（规则变了，会失败的测试跟着变）：
+`CredentialSecurityGateTests` 由"任何凭据都不落盘"改成**落盘边界**——只有账号会话凭据可以持久化，
+且 `localStorage` / `sessionStorage` 只允许出现在 `web/src/services/browserSession.ts` 这**一个出口**；
+`PlayerProjectionLeakGateTests` 的玩家侧依赖清单登记了 `@/services/browserSession`
+（纯基础设施：只读写一条记录，不含任何 DTO / 视图类型）。
+
+**同批咬出并修掉的既有夹具缺陷（4 处，都不是本批引入）**——复核装置时逐条以基线实验定性：
+
+| 缺陷 | 性质 | 处置 |
+|---|---|---|
+| `seamstress` 装置等的是 `JoinSeatWithAccount`，而 D-0027 之后玩家入座走 `JoinTable` | 夹具漂移（基线直接崩在半途，只跑完 34 项） | 改判据为 `JoinTable`；该装置 82 项全过 |
+| 三个装置的帧收集器把**账号连接与游戏连接**的 `invocationId` 混在一个序列里匹配回执 | 夹具缺陷（`SubmitResponse` 收到了 `ListTables` 的回执，表现为"提交明明成功、装置判红"） | 帧收集器加 `connectionId`，回执只在**同一条连接**内匹配（`seamstress` / `retro-info` / `death-triggers` 三处同族） |
+| `retro-info` 的越权扫描拿整个载荷做子串匹配 | 夹具口径过宽（把**公开的同桌名单**判成泄露：夹具玩家名恰好叫「夹具玩家retro-flowergirl」） | 扫描收窄到"与能力归属有关的字段"（本人信息结果 / 本人失能名单 / 本人请求），56 项全过 |
+| `setup-randomizer` 首夜槽位数仍写 13 | 过时口径（咖啡师黄昏槽之后是 14，主装置同口径早已是 14） | 对齐成 14；该装置 58 项全过 |
+
+**残余与边界（本批明确不做）**：
+① `sessionStorage` 对同源脚本可读 ⇒ XSS 能窃取会话（比 HttpOnly Cookie 弱一档）——这是**记在案的欠账**，
+缓解落在 M3（CSP + HTTPS）与依赖漏洞扫描，进审计清单，不许消失；
+② 每个标签页独立 ⇒ 新标签页要重新登录（本轮把它写成了断言，不是缺陷）；
+③ 会话仍 8 小时绝对过期、进程重启全失效；"记住我 / 滑动过期"属审计 A2 维度的待议项；
+④ 席位票据的界面入口（`todo/seat-ticket-entrance.md`）与"锁桌 / 移人的界面"不因本批改变。
+
+**本批票据**：`in-progress/web-hardening-programme.md`（M1 完成，票继续挂在 in-progress 等第 1 步审计与 M2–M6）。
+
 ## 相关阅读
 
 - 验收规程：`docs/acceptance/AGENTS.md`

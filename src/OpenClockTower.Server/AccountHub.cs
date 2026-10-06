@@ -160,6 +160,42 @@ public sealed class AccountHub : Hub
         return Accept(outcome.Account, session.Value, recoveryCode: null);
     }
 
+    /// <summary>
+    /// 用持久化的账号会话恢复登录态（M1 / D-0029）：只读、幂等，**不重发凭据、不续期**。
+    /// </summary>
+    /// <param name="accountSession">浏览器带回来的账号会话（`sessionStorage` 里那一份）。</param>
+    /// <remarks>
+    /// <para>
+    /// 刷新页面之后前端拿它确认"这串凭据现在还算不算数"：有效就重建资料区（含能力位），
+    /// 无效就清空持久化、退回登录卡——撤销性因此不退步（D-0029 口径 4）。
+    /// </para>
+    /// <para>
+    /// 授权面：任何人凭**自己的**会话可调，回执只含自己的资料；本方法**不接受任何账号标识参数**，
+    /// 因此不存在"查别人"的入口（登记进 M2 的"方法 × 允许身份"矩阵）。
+    /// </para>
+    /// </remarks>
+    public async Task<AccountDto> Resume(string accountSession)
+    {
+        var account = await ResolveAccountAsync(accountSession);
+        if (account is null)
+        {
+            _logger.LogWarning(
+                "会话恢复被拒（无效或已过期）：connection={ConnectionId} 会话指纹={Fingerprint}",
+                Context.ConnectionId,
+                AccountSessionCredential.FingerprintOf(accountSession));
+            return InvalidSession();
+        }
+
+        // 回执里不带凭据：恢复不是签发，明文会话不在这条路径上二次流转。
+        _logger.LogDebug(
+            "会话已恢复：account={AccountId} username={Username} connection={ConnectionId} 会话指纹={Fingerprint}",
+            account.Id.Value,
+            account.Username,
+            Context.ConnectionId,
+            AccountSessionCredential.FingerprintOf(accountSession));
+        return Accept(account, accountSession: null, recoveryCode: null);
+    }
+
     /// <summary>登出：撤销这条账号会话（幂等：已失效也返回成功，只是说明不同）。</summary>
     public Task<AccountDto> Logout(string accountSession)
     {

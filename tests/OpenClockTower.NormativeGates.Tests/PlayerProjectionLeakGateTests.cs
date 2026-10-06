@@ -444,6 +444,10 @@ public sealed partial class PlayerProjectionLeakGateTests
         // 门（`AccountGate`）与资料区（`AccountPanel`）都由它驱动——只发账号请求，不读任何视图数据。
         "@/services/accountGateway",
         "@/services/accountSession",
+        // M1 / D-0029：账号会话凭据的**持久化出口**（`sessionStorage` 只在这一个文件里被碰）。
+        // 它是纯基础设施：只做"读一条记录 / 写一条记录"，不认识游戏数据、不引用任何 DTO / 视图类型；
+        // 连接级凭据仍然只在网关内存里——`browserSession` 的形状里根本没有这一类字段。
+        "@/services/browserSession",
         "@/features/account/AccountPanel.vue",
         "@/features/account/AccountGate.vue",
         // 上手引导（票据 ui-layout-and-onboarding）：`HelpTip` 是两端共用的**纯呈现组件**——

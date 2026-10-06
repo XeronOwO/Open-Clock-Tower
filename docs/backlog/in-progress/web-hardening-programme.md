@@ -1,6 +1,6 @@
 # 上线就绪两步走：先审计差距，再按里程碑把安全底座补齐
 
-- Status: Todo
+- Status: In progress（M1 会话与登录态，2026-10-06 开工；M1 完成后再回第 1 步审计）
 - Priority: **High**
 - Depends on: 无（**第 1 步审计只读**；第 2 步里 **M1 不依赖审计**，可立即开工）
 
@@ -103,6 +103,28 @@
 | 2 | 首页显示登录身份；已登录时给"回到我那一桌"的直达入口 | 装置断言：登录后首页出现身份与入口，点一下到主持台 |
 | 3 | 面板记住所在位置（从主持台离开再回来仍在主持台） | 装置断言：离开 → 返回落点 = 主持台 |
 | 4 | 可撤销性不退步：改口令 / 登出后旧凭据立刻失效（含 `sessionStorage` 里那份） | 装置断言 + 集成用例：旧凭据被拒 |
+
+**M1 实施记录（2026-10-06，本地证据批次 E51；真机读数见批次记录）**：
+
+| # | 做了什么 | 判据与证据 |
+|---|---|---|
+| 1 | **凭据持久化**：新 `web/src/services/browserSession.ts` 做唯一落盘出口（`sessionStorage`；存储不可用即降级为内存并如实标注 `persistent=false`）· `accountSession.restore()` 启动即向服务端确认 · 服务端新增 `AccountHub.Resume`（只读、幂等、**不重发凭据、不续期**） | 账号装置 **39 项**（含"刷新后不重新登录、不点席位即回到原席"）· 开桌装置 **21 项**（含"刷新后第一眼不是登录卡"）· 主装置 **289 项** · `browserSession.spec.ts` 12 项 + `accountGateway.spec.ts` 11 项 |
+| 2 | **首页认出回来的人**：`HomePanel.vue` 身份块（`home-profile`）+ "回到我那一桌"直达卡（`home-back-to-table`，按位置记的面决定落点） | 可用性装置 **34 项**（首页未登录态仍只指方向、不做登录） |
+| 3 | **面板记住位置**：`ActiveTable{surface,gameId,seat}` 与凭据同存一条；两端 `resumeSeat` / `resumeTable` 自动回原处；**回不去就清掉位置并说明原因**（不许每次刷新重演同一个失败） | 账号 / 开桌 / 主装置（刷新回席、自动接回主持台）· 胜负装置"刷新后仍在原席" · `seamstress` 装置按 `JoinTable` 帧断言"真的重新入座了" |
+| 4 | **撤销性不退步**：登出 / 口令重置 → 服务端撤销 + 本地清；旧凭据即使被塞回存储也被拒 | 集成用例 `Resume_ReturnsProfileWithoutCredential_AndRejectsRevokedSessions` · `Resume_AfterPasswordReset_RejectsOldSession_AndAcceptsNewOne` |
+| 反方向 | **关标签页即清**（`sessionStorage` 每标签页一份） | 账号装置与开桌装置各一条"新标签页必须重新登录"；账号装置续判"重登后仍能回到自己那一席" |
+
+**M1 的决策与边界**：方案与取舍登记在 `docs/decisions/active.md` **D-0029**（含"为什么不是 HttpOnly Cookie"、
+"为什么不落盘连接级凭据"、"存储不可用怎么办"、"XSS 欠账记进 M3"）。
+会话生命周期**不变**：8 小时绝对过期、进程重启即全失效——主装置的健康票段就是这条的运行时证据
+（宿主重启后刷新**必须**重新登录，装置因此覆盖"自动接回"与"重新登录接回"两条真实路径）。
+
+**M1 的同批产出（整族对齐）**：复核装置时咬出并修掉 4 处既有夹具漂移，都不是本轮引入、但都会让装置假红/假绿：
+① `seamstress` 装置还在等 `JoinSeatWithAccount`，而 D-0027 之后玩家入座走 `JoinTable`（基线直接崩在半途）；
+② 三个装置的帧收集器把**账号连接与游戏连接**的 `invocationId` 混在一个序列里匹配回执，于是 `SubmitResponse`
+收到了 `ListTables` 的回执（表现为"提交明明成功、装置判红"）；
+③ `retro-info` 的越权扫描拿整个载荷做子串匹配，把**公开的同桌名单**（夹具玩家名里带角色 slug）判成泄露；
+④ `setup-randomizer` 的首夜槽位数还停在 13（咖啡师黄昏槽之后是 14）。
 
 ### M2 · 授权与越权（公网第一风险）
 

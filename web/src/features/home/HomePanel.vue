@@ -1,20 +1,62 @@
 <script setup lang="ts">
 /**
- * 首页：这是什么、从哪进去。
+ * 首页：这是什么、从哪进去，以及**现在的我是谁、我刚才在哪**（M1 / D-0029）。
  *
  * 它解决的问题是"打开站点直接怼一个登录框"——访客不知道这是干什么的、也不知道该点哪里。
  * 这里刻意**不做登录、也不列桌**：登录在各面自己的门上（`AccountGate`），
  * 桌列表在"加入一桌"那一面（未登录看别人的桌没有意义——坐下要先登录，D-0027）。
- * 首页只做一件事：说清楚这是什么，然后指两个方向。
+ *
+ * M1 之后它多做一件事：**认出回来的人**。登录态由 `sessionStorage` 里的凭据恢复，
+ * 恢复成功就在顶部显示身份，并给一张"回到我那一桌"的直达卡——
+ * 刷新回来的人要的是"继续刚才那一局"，不是重新逛一遍大厅。
  *
  * **不放"回到这一页"这类自指链接**（需求方 2026-10-06 当面问"回到这一页是何意味"）：
  * 它指向的就是当前这一页，点了什么也不会发生；要回首页走顶栏的「首页」。
  */
+import { computed } from 'vue'
 import { PLAY_LINK, STORYTELLER_LINK } from '@/display/navigation'
+import * as session from '@/services/accountSession'
+
+const profile = session.profile
+const activeTable = session.activeTable
+const busy = session.busy
+const notice = session.notice
+
+/** "回到我那一桌"落到哪一面：位置记的是哪一面就回哪一面。 */
+const backHref = computed(() =>
+  activeTable.value?.surface === 'storyteller' ? STORYTELLER_LINK : PLAY_LINK,
+)
+
+/** 那一桌是哪一桌：位置里只有桌标识（要显示桌名得另查大厅，而首页刻意不列桌）。 */
+const backHint = computed(() => {
+  const table = activeTable.value
+  if (table === null) {
+    return ''
+  }
+
+  return table.surface === 'storyteller'
+    ? `继续主持「${table.gameId}」这一桌`
+    : `回到「${table.gameId}」的 ${table.seat ?? 0} 号席位`
+})
 </script>
 
 <template>
   <div class="home">
+    <!-- 认出回来的人（M1）：恢复成功后才有这一块；恢复中不显示——还没确认的事不能先说出口。 -->
+    <section v-if="profile !== null" class="panel me" data-testid="home-identity">
+      <p class="hint">
+        已登录：<strong data-testid="home-profile">{{ profile.username }}（{{ profile.displayName }}）</strong>
+        <button type="button" class="link" data-testid="home-logout" :disabled="busy" @click="session.logout()">
+          登出
+        </button>
+      </p>
+      <a v-if="activeTable !== null" class="entry back" :href="backHref" data-testid="home-back-to-table">
+        <strong>回到我那一桌</strong>
+        <span class="hint">{{ backHint }}</span>
+      </a>
+      <p v-if="notice.length > 0" class="notice" data-testid="home-notice">{{ notice }}</p>
+    </section>
+
     <section class="panel intro">
       <h1>血染钟楼 · 线上平台</h1>
       <p>
@@ -47,6 +89,11 @@ import { PLAY_LINK, STORYTELLER_LINK } from '@/display/navigation'
   padding: 16px;
 }
 
+.me {
+  display: grid;
+  gap: 8px;
+}
+
 .intro h1 {
   margin: 0 0 8px;
   font-size: 22px;
@@ -73,5 +120,23 @@ import { PLAY_LINK, STORYTELLER_LINK } from '@/display/navigation'
 
 .entry:hover {
   border-color: var(--accent);
+}
+
+/* "回到我那一桌"是回来的人的第一件事：给它一条强调边，别和下面的入口卡混成一样。 */
+.back {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.link {
+  background: none;
+  border: none;
+  color: var(--accent);
+  padding: 0 0 0 8px;
+  text-decoration: underline;
+}
+
+.notice {
+  color: var(--danger, #b3261e);
 }
 </style>

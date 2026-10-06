@@ -21,9 +21,9 @@
  *
  * 两处必须写明的连接口径（与死亡触发族装置同源）：
  *   1) **服务端每个席位只保留一条连接**（ConnectionRegistry.IssueForSeat）：本装置不给任何席位另开
- *      第二条连接；白天 1 的「重连」走的是**整页刷新 + 同一账号回到座位**（D-0014 的快照恢复，
- *      D-0027 之后这才是玩家真实能走的那条路：会话丢了要重新登录，回来靠大厅里自己那一格
- *      「回到我的座位」）。另开 SignalR 客户端会把浏览器页的凭据挤掉，断言会假绿。
+ *      第二条连接；白天 1 的「重连」走的是**整页刷新**（M1 / D-0029：刷新即自动按位置回到原席，
+ *      前端用 `sessionStorage` 里的账号会话重新入座）——这才是玩家真实能走的那条路。
+ *      另开 SignalR 客户端会把浏览器页的凭据挤掉，断言会假绿。
  *   2) SignalR 默认 JSON 协议的**帧尾带 `\x1e` 记录分隔符**：必须按 `\x1e` 切段再解析，
  *      否则每条帧都会抛异常、被吞成「没有推送」→ 推送扫描静默假绿。
  *
@@ -393,11 +393,11 @@ async function main() {
     blockedClose.raw,
   )
 
-  // 重连（D-0014）：重新 Join 一次，快照必须恢复进行中问题并在界面上可见（见 `rejoinSeat` 的注释）。
+  // 重连（D-0014 / M1）：刷新即自动重新入座一次，快照必须恢复进行中问题并在界面上可见（见 `rejoinSeat` 的注释）。
   await rejoinSeat(artistPage, ARTIST_SEAT, seatAccounts.get(ARTIST_SEAT), frameSinks.get(ARTIST_SEAT))
   const artistWaitingAfterReload = await waitForArtistPanelState(artistPage, 'waiting', 30_000)
   check(
-    '刷新后用同一账号回到座位：等待态仍在且带问题全文（快照恢复，D-0014）',
+    'M1：刷新后自动回到原席，等待态仍在且带问题全文（快照恢复，D-0014）',
     artistWaitingAfterReload !== null && artistWaitingAfterReload.pending.includes(QUESTION_ONE),
     JSON.stringify(artistWaitingAfterReload),
   )
@@ -781,15 +781,21 @@ async function main() {
 
 /** 一席的连接帧收集器：received 记全部收到的帧，invocations 记发出去的调用。 */
 function createFrameSink() {
-  return { frames: [], invocations: [] }
+  return { frames: [], invocations: [], connectionCount: 0 }
 }
 
 /** 把 page 的 WebSocket 帧接到 sink 上（SignalR 默认 JSON 协议，文本帧）。 */
 function attachFrameSink(page, sink) {
   page.on('websocket', (socket) => {
-    socket.on('framereceived', (frame) => recordFrame(sink, 'received', frame.payload))
+    // **每条连接一个 id**：`invocationId` 只在单条连接内有意义，而一个页面同时挂着两条
+    // （账号 `/hub/account` 与游戏 `/hub/game`）。混在一起按 invocationId 找回调，会把另一条连接上
+    // 同号调用的回执当成自己的——2026-10-06 实测：SubmitResponse 收到了 ListTables 的回执，
+    // 表现为"提交明明成功（请求区已回空态）、装置却判红"，而基线一样红（与本轮改动无关）。
+    const connectionId = sink.connectionCount
+    sink.connectionCount += 1
+    socket.on('framereceived', (frame) => recordFrame(sink, connectionId, 'received', frame.payload))
     socket.on('framesent', (frame) => {
-      const entry = recordFrame(sink, 'sent', frame.payload)
+      const entry = recordFrame(sink, connectionId, 'sent', frame.payload)
       if (entry !== null && entry.parsed !== null) {
         sink.invocations.push(entry)
       }
@@ -797,10 +803,10 @@ function attachFrameSink(page, sink) {
   })
 }
 
-function recordFrame(sink, direction, rawPayload) {
+function recordFrame(sink, connectionId, direction, rawPayload) {
   const payload = typeof rawPayload === 'string' ? rawPayload : '<binary>'
   const messages = parseSignalRMessages(payload)
-  const entry = { direction, payload, parsed: messages[0] ?? null, messages }
+  const entry = { connectionId, direction, payload, parsed: messages[0] ?? null, messages }
   sink.frames.push(entry)
   return entry
 }
@@ -1296,19 +1302,18 @@ async function askArtistQuestion(page, question) {
 }
 
 /**
- * 「刷新 / 换设备回来」的真路径（D-0027）——**整页刷新**，不是页内「补齐」。
+ * 「刷新回来」的真路径（M1 / D-0029）——**整页刷新**，不是页内「补齐」。
  *
- * 为什么必须是刷新：账号会话只活在内存里，刷新即失效，这才是玩家真实遇到的事；
- * 刷新之后要能回来，靠的是"大厅里自己那一格仍然点得动"（服务端把 `MySeatNumbers` 给它）。
- * 只点页内「补齐」证明的是"同一条连接还能重取快照"，证明不了"人回来得了"。
- * 只点页内「补齐」证明的是"同一条连接还能重取快照"，证明不了"人回来得了"。
+ * 为什么必须是刷新：合上盖子、切走再切回、手滑按 F5，都是玩家真实会遇到的事。
+ * M1 之后刷新由前端自己向服务端确认凭据（`Resume`）并按**位置**坐回原席（`JoinTable`）——
+ * 装置据此断言"真的重新入座、快照重取了"，而不是"同一条连接还能重取快照"（那是页内「补齐」）。
  */
 async function rejoinSeat(page, seat, account, sink) {
   const before = sink.invocations.length
-  await returnToSeat(page, { frontUrl: viteUrl, ...account })
-  const rejoined = await waitForInvocation(sink, before, 'JoinSeatWithAccount', 30_000)
+  await returnToSeat(page, { frontUrl: viteUrl })
+  const rejoined = await waitForInvocation(sink, before, 'JoinTable', 30_000)
   if (!rejoined) {
-    throw new Error(`${seat} 号席位的「回到我的座位」没有发出 JoinSeatWithAccount：快照没有重取，后续断言会假绿`)
+    throw new Error(`${seat} 号席位的「刷新自动回座」没有发出 JoinTable：快照没有重取，后续断言会假绿`)
   }
 
   return waitForText(page.locator('[data-testid="player-seat"]'), String(seat), 30_000)
@@ -1399,11 +1404,22 @@ async function submitRequestAndAwaitOutcome(page, sink) {
     if (invocation !== undefined) {
       const invocationId = String(invocation.parsed.invocationId ?? '')
       // 回执可能与推送同帧到达：必须在**全部消息**里找，不能只看每条帧的第一条。
+      // 且必须**限定同一条连接**：invocationId 只在单条连接内唯一，而页面同时挂着账号与游戏两条连接。
       const completion = sink.frames
+        .filter((frame) => frame.connectionId === invocation.connectionId)
         .flatMap((frame) => frame.messages)
         .find((message) => message.type === 3 && String(message.invocationId ?? '') === invocationId)
       if (completion !== undefined) {
-        return completion.result?.kind === 'Accepted'
+        const kind = completion.result?.kind ?? '(无 kind)'
+        if (kind !== 'Accepted') {
+          // 回执收到但不是受理：把**原样回执**打出来——只回一个 false 会让"被服务端拒了"与
+          // "回执形状变了"分不清，排查只能靠猜（2026-10-06 实测：本装置 4 条红都卡在这个盲区里）。
+          console.error(
+            `[诊断] SubmitResponse 回执不是受理：kind=${kind}；原样=${JSON.stringify(completion.result ?? completion.error)}`,
+          )
+        }
+
+        return kind === 'Accepted'
       }
     }
 

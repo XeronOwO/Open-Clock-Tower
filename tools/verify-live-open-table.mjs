@@ -15,7 +15,8 @@
  *   host      从「我主持的桌」点进主持台：魔典可见、席位数与开桌时一致
  *   setup     一键配板覆盖每一席 → 提交分配被受理
  *   night     开夜被受理 → 槽位由 0 前进（说书人真的主持起来了）
- *   reconnect 刷新页面 → 用同一账号重新登录 → 那张桌还在、点一下接回主持台（桌跟着账号走）
+ *   reconnect 刷新页面 → **自动接回主持台**（M1：不重新登录、不点「进主持台」）；新标签页仍要重新
+ *             登录（关标签页即清），登录后那张桌还在、点一下接回主持台（桌跟着账号走）
  *
  * 用法（在仓库根运行）：
  *   node tools/verify-live-open-table.mjs --base-url http://<主机>/<前缀>/
@@ -56,7 +57,7 @@ const SECTIONS = [
   { id: 'host', title: '点「进主持台」：魔典可见、席位数与开桌一致' },
   { id: 'setup', title: '一键配板 + 提交分配被受理' },
   { id: 'night', title: '开夜被受理 → 槽位由 0 前进（真的主持起来了）' },
-  { id: 'reconnect', title: '刷新页面后用同一账号重新登录并接回这张桌（D-0027：桌跟着账号走）' },
+  { id: 'reconnect', title: '刷新后自动接回这张桌（M1 行 1）+ 新标签页必须重新登录（关标签页即清）' },
 ]
 
 /** 退出码 2 = 参数 / 环境问题（与"断言失败"的 1 分开，部署者一眼能分清该查哪边）。 */
@@ -284,25 +285,43 @@ async function main() {
   await screenshot(page, 'night-started')
 
   if (!runner.begin('reconnect')) return
-  // 账号会话只在内存里（刷新即失效）——所以"回来"这件事必须靠**账号**：刷新 → 重新登录 → 「我的桌」里点回来。
-  // 这正是 D-0027 要证明的：桌跟着账号走，不跟着浏览器里的一串凭据走。
+  // M1（D-0029）：刷新即**自动接回主持台**——凭据进 `sessionStorage`，前端启动时向服务端确认
+  // （`Resume`）并按位置重新进桌：不填登录卡、不点「进主持台」。这正是这一轮要证明的"刷新不掉登录"。
+  // "桌跟着账号走"（D-0027）没有变：位置只是"我刚才在哪"，能不能进去仍由服务端按开桌账号判定。
   await page.goto(`${options.baseUrl}storyteller`, { waitUntil: 'domcontentloaded' })
   await page.reload({ waitUntil: 'domcontentloaded' })
-  await page.getByTestId('account-username').fill(username)
-  await page.getByTestId('account-password').fill(password)
-  await page.getByTestId('account-login').click()
-  const signedBack = await waitForCount(page.getByTestId('account-profile'), 1, options.timeoutMs)
-  check('刷新后用同一账号重新登录成功（换设备也是这条路）', signedBack, signedBack ? '资料区已出现' : '没有登录上')
 
-  const myRow = page.locator(`[data-my-table="${created.gameId}"]`)
-  const stillMine = await waitForCount(myRow, 1, options.timeoutMs)
-  check('那张桌还在「我主持的桌」里（桌不跟着浏览器走）', stillMine, stillMine ? '在列表里' : '列表里没有它')
-  if (stillMine) {
-    await myRow.getByTestId('host-enter').click()
-  }
+  // 刷新后的**第一眼**不许是登录卡：要么"正在恢复登录状态…"，要么已经回到主持台。
+  // 这条比"最终回到了主持台"更贴近用户看到的东西——先闪一张"先登录"再跳回来，正是要消掉的跳变。
+  const firstPaint = await Promise.race([
+    page
+      .getByTestId('account-gate')
+      .waitFor({ timeout: options.timeoutMs })
+      .then(() => 'gate')
+      .catch(() => 'none'),
+    page
+      .getByTestId('account-restoring')
+      .waitFor({ timeout: options.timeoutMs })
+      .then(() => 'restoring')
+      .catch(() => 'none'),
+    page
+      .getByTestId('grimoire')
+      .waitFor({ timeout: options.timeoutMs })
+      .then(() => 'grimoire')
+      .catch(() => 'none'),
+  ])
+  check(
+    'M1 行 1：刷新后第一眼不是登录卡（正在恢复登录态或已直接回到主持台）',
+    firstPaint === 'restoring' || firstPaint === 'grimoire',
+    `刷新后第一眼=${firstPaint}`,
+  )
 
   const backInConsole = await waitForCount(page.getByTestId('grimoire'), 1, options.timeoutMs)
-  check('点一下就接回主持台（魔典可见，不用再抄任何凭据）', backInConsole, backInConsole ? '魔典已渲染' : '没有接回')
+  check(
+    'M1 行 1：刷新后自动接回主持台（不重新登录、不点「进主持台」）',
+    backInConsole,
+    backInConsole ? '魔典已渲染' : '没有自动接回',
+  )
   const seatRowsAfterReload = await page.locator('section', { hasText: '开局分配' }).locator('tbody tr').count()
   check(
     `接回的是同一张桌（席位数仍是 ${options.seats}）`,
@@ -310,6 +329,39 @@ async function main() {
     `UI 席位数=${seatRowsAfterReload}`,
   )
   await screenshot(page, 'reconnected')
+
+  // 反方向 + 换设备（新标签页 = 关掉原标签页重开）：`sessionStorage` 每个标签页一份，
+  // 所以这里**必须重新登录**；登录之后这一桌仍在「我主持的桌」里，点一下就能接回。
+  // M1 的"关标签页即清"与 D-0027 的"桌跟着账号走"在这里同时成立。
+  const freshTab = await context.newPage()
+  freshTab.on('pageerror', (error) => consoleErrors.push(error.message))
+  await openAt(freshTab, `${options.baseUrl}storyteller`)
+  const freshGate = await waitForCount(freshTab.getByTestId('account-gate'), 1, options.timeoutMs)
+  check(
+    'M1 行 1 反方向：新标签页必须重新登录（凭据不跨标签页、不长期驻留设备）',
+    freshGate,
+    freshGate ? '新标签页落在登录卡' : '新标签页没出现登录卡——凭据泄漏到共享存储了？',
+  )
+
+  let freshBack = false
+  if (freshGate) {
+    await freshTab.getByTestId('account-username').fill(username)
+    await freshTab.getByTestId('account-password').fill(password)
+    await freshTab.getByTestId('account-login').click()
+    await waitForCount(freshTab.getByTestId('account-profile'), 1, options.timeoutMs)
+
+    const freshRow = freshTab.locator(`[data-my-table="${created.gameId}"]`)
+    const freshListed = await waitForCount(freshRow, 1, options.timeoutMs)
+    check('换设备回来：那一桌仍在「我主持的桌」里（桌不跟着浏览器走）', freshListed, freshListed ? '在列表里' : '列表里没有它')
+    if (freshListed) {
+      await freshRow.getByTestId('host-enter').click()
+      freshBack = await waitForCount(freshTab.getByTestId('grimoire'), 1, options.timeoutMs)
+    }
+  }
+
+  check('换设备回来：点一下就接回主持台（不用再抄任何凭据）', freshBack, freshBack ? '魔典已渲染' : '没有接回')
+  await screenshot(freshTab, 'reconnected-fresh-tab')
+  await freshTab.close()
 
   check('全过程没有未预期的控制台错误', consoleErrors.length === 0, consoleErrors.slice(0, 3).join(' | ') || '零错误')
 }

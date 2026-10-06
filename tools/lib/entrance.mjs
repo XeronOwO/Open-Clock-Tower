@@ -11,6 +11,10 @@
  *   2. 说书人身份跟着**账号**走，所以"换设备还能回来"从此是被装置持续验证的行为；
  *   3. 席位票据的读法收在一处（`readSeatTickets`）——那张票还没退场，D-0027 明确留给了下一张票。
  *
+ * M1（D-0029）之后"回来"这条路径又变了一次：账号会话进 `sessionStorage`，**刷新即自动回到原席**
+ * （`returnToSeat` 不再重新登录）；而**新标签页**仍必须重新登录（`openFreshTab`）——
+ * 两条合起来才是完整约束：刷新不掉登录，但关掉标签页就清。
+ *
  * 依赖的界面锚点（改界面时以这里为准）：`account-tab-register` / `account-username` /
  * `account-display-name` / `account-password` / `account-register` / `account-profile` /
  * `open-table-name` / `open-table-seats` / `open-table-submit` / `[data-my-table]` /
@@ -154,35 +158,65 @@ export async function seatByInviteCode(page, options) {
 }
 
 /**
- * 换设备 / 刷新回来：**用同一个账号**登录并回到原来那个席位。
+ * 刷新回来：**刷新页面即自动回到原来那一席**（M1 / D-0029）。
  *
- * 判据是界面上的「回到我的座位」真的点得动——服务端本来就允许同一账号选回自己已认领的席位，
- * 界面前一版会在"这一桌已开局"时把整排席位置灰，于是刷新之后玩家回不去（这条就是那次修复的判据）。
+ * 上一版这条路是"刷新 → 用同一个账号重新登录 → 点「回到我的座位」"——账号会话当时只活在网关内存里。
+ * M1 之后凭据进了 `sessionStorage`，刷新时前端自己向服务端确认（`Resume`）并按位置坐回原位；
+ * 装置要跑的正是这条真实路径：**不填登录卡、不点席位**，刷新完就该在原席上。
+ *
+ * 反方向（"关标签页即清"）由 `openFreshTab` 断言——两条合起来才是完整的约束。
  *
  * @param {import('playwright').Page} page
- * @param {{frontUrl: string, username: string, password: string, displayName?: string}} options
+ * @param {{frontUrl: string}} options 账号参数已经不需要了（不再重新登录）；签名保持不变，调用点不动。
  */
 export async function returnToSeat(page, options) {
-  const account = {
-    username: options.username,
-    displayName: options.displayName ?? options.username,
-    password: options.password,
-  }
-
-  // **强制整页重载**：这条路线的语义就是"刷新一次"（会话只活在内存里，刷新即登出，才需要重新登录）。
-  // 目标地址与当前地址往往只差一个路径段（或只差查询串），那时 `goto` 属于同文档导航、文档不重载，
-  // 页面还停在"已连接"的状态上——门根本不会出现。所以显式 reload，不依赖"地址变了"这个假设。
+  // **强制整页重载**：这条路线的语义就是"刷新一次"。
+  // 目标地址与当前地址往往只差一个路径段（或只差查询串），那时 `goto` 可能属于同文档导航、
+  // 文档不重载，页面还停在"已连接"的状态上——那样就根本没验到"刷新之后能不能回来"。
   await page.goto(`${options.frontUrl}/play`, { waitUntil: 'domcontentloaded' })
   await page.reload({ waitUntil: 'domcontentloaded' })
-  await loginOnGate(page, account)
 
-  // 自己的那一格必须**点得动**（不是"点一下试试"）：先等它带着 data-seat-mine 出现。
+  // 主路径（M1）：刷新即自动按位置坐回去（`JoinTable`）——先给它一个有界窗口。
+  const auto = await page
+    .getByTestId('player-seat')
+    .waitFor({ timeout: 8_000 })
+    .then(() => true)
+    .catch(() => false)
+  if (auto) {
+    return
+  }
+
+  // 兜底：位置已经被清掉（上一次入座失败时就该忘掉它）就走 D-0027 那条路——
+  // 大厅里自己那一格**始终点得动**。两条都是真实路径，这里判的是"最终回到了原席"；
+  // "刷新即自动回座"本身的强断言在 `verify-accounts` 与 `verify-live-open-table` 里，不靠这条兜底。
   const mine = page.locator('[data-seat-mine="true"]').first()
   await waitFor(mine, 1)
   await mine.click()
   await waitFor(page.getByTestId('player-seat'), 1)
+}
 
-  return account
+/**
+ * **新标签页**打开玩家面：`sessionStorage` 是每个标签页一份的，所以这里必须重新登录
+ * （M1 / D-0029 的另一半：关标签页即清）。
+ *
+ * 这条断言看着"逆着功能走"，其实是在钉住持久化的边界：凭据没有跨标签页共享，
+ * 也没有落到 `localStorage` 那种长期驻留的地方——"刷新不掉登录"不是靠
+ * "把凭据放进谁都能读的共享存储"换来的。
+ *
+ * @param {import('playwright').BrowserContext} context 与原页面同一个浏览器上下文（cookie 等仍共享）。
+ * @param {{frontUrl: string, username: string, password: string, displayName?: string}} options
+ * @returns {Promise<import('playwright').Page>} 新标签页（已重新登录）。
+ */
+export async function openFreshTab(context, options) {
+  const page = await context.newPage()
+  await page.goto(`${options.frontUrl}/play`, { waitUntil: 'domcontentloaded' })
+  await waitFor(page.getByTestId('account-gate'), 1)
+  await loginOnGate(page, {
+    username: options.username,
+    displayName: options.displayName ?? options.username,
+    password: options.password,
+  })
+  return page
 }
 
 /**

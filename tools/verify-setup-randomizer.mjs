@@ -311,8 +311,10 @@ async function main() {
 
   const slotCounter = await waitForSlotCounter(storytellerPage, 20_000)
   check(
-    '首夜真实建表：槽位计数可读且为 13 槽（与主装置同夹具）',
-    slotCounter !== null && slotCounter.total === 13,
+    // 口径与主装置**同源**（`verify-storyteller-panel.mjs` 的首夜建表断言）：14 槽，含 D5 咖啡师黄昏槽。
+    // 这里的 13 是旅行者 / 咖啡师那一轮之前的旧数字，一直没跟着改（2026-10-06 复核时咬出）。
+    '首夜真实建表：槽位计数可读且为 14 槽（与主装置同口径；含 D5 咖啡师黄昏槽）',
+    slotCounter !== null && slotCounter.total === 14,
     slotCounter === null ? '槽位计数不可读' : `${slotCounter.index + 1} / ${slotCounter.total}`,
   )
 

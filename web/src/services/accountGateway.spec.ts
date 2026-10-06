@@ -176,4 +176,34 @@ describe('账号网关接线与秘密纪律', () => {
     expect(gateway.profile).toBeNull()
     expect(fake.state).toBe(HubConnectionState.Disconnected)
   })
+
+  it('会话恢复（M1）：采纳服务端资料，凭据沿用本地那一份——恢复不是签发，回执不带凭据', async () => {
+    const fake = new FakeConnection()
+    fake.response = account({ accountSession: null, canCreateTable: true })
+    const gateway = gatewayWith(fake)
+
+    const result = await gateway.resume('session-from-storage')
+
+    expect(fake.invocations[0]).toEqual({ method: 'Resume', args: ['session-from-storage'] })
+    expect(result.ok).toBe(true)
+    expect(gateway.profile).toEqual({
+      id: 7,
+      username: 'alice',
+      displayName: '爱丽丝',
+      accountSession: 'session-from-storage',
+      canCreateTable: true,
+    })
+  })
+
+  it('会话恢复被拒（登出 / 改口令 / 过期）→ 不留任何资料，由调用方清掉持久化那份', async () => {
+    const fake = new FakeConnection()
+    fake.response = account({ ok: false, code: 'invalid_session', message: '账号会话无效或已过期，请重新登录' })
+    const gateway = gatewayWith(fake)
+
+    const result = await gateway.resume('session-from-storage')
+
+    expect(result.ok).toBe(false)
+    expect(result.code).toBe('invalid_session')
+    expect(gateway.profile).toBeNull()
+  })
 })

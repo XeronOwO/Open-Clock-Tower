@@ -57,7 +57,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { DatabaseSync } from 'node:sqlite'
 import { readAttributeBounded, readTextBounded } from './lib/bounded-text.mjs'
-import { openTableAndHost, returnToSeat, seatByAccount, seatByInviteCode } from './lib/entrance.mjs'
+import { openFreshTab, openTableAndHost, returnToSeat, seatByAccount, seatByInviteCode } from './lib/entrance.mjs'
 import { describeProfile, ensureServerArtifacts, extractProfileFlags, resolveProfile } from './lib/verify-profile.mjs'
 import { createChecker, createSectionRunner } from './lib/verify-sections.mjs'
 
@@ -80,12 +80,13 @@ const SECTIONS = [
   { id: 'join-b', title: '玩家 B：注册 → 从大厅挑席认领 2 号（公开映射两席一致）' },
   { id: 'guest', title: '玩家 C：注册账号 + 凭邀请码坐 3 号（游客票据路径）+ 线级探针入座' },
   { id: 'rename', title: '改名：A 自己 / B 同桌 / 说书人魔典三处同步 + 线级序号取证' },
-  { id: 'replay', title: '复盘文案口径：上报 1 号死亡 → 步骤文案与刷新' },
+  { id: 'replay', title: '复盘文案口径：上报 1 号死亡 → 步骤文案 + 刷新即自动回席（M1：不重新登录、不点席位）' },
   { id: 'drawer-names', title: '抽屉面姓名口径：状态账 / 最近状态变化 / 开局分配 / 席内注记' },
   { id: 'negative', title: '负向：伪造 / 跨账号 / 二次认领 + 会话信息落库' },
   { id: 'account-panel', title: '收尾：账号面板一次性恢复码' },
   { id: 'onboarding', title: '收尾：说明入口（悬停 / 点按 / Esc）' },
   { id: 'layout', title: '版面量度（内容高 + 整页截图）+ 控制台零错误' },
+  { id: 'fresh-tab', title: 'M1 反方向：新标签页必须重新登录（关标签页即清）+ 换设备回自己那一席' },
 ]
 
 const runner = createSectionRunner(SECTIONS, { only: config.only, from: config.from })
@@ -424,24 +425,19 @@ async function main() {
   // （web/src/services/playerViewMerge.ts：只有 `sequence > seatNamesSequence` 才采用 seatNames）。
   // 客户端丢掉合并态、重新取一次快照：若这时也拿到新名，说明读模型与推送同源
   // （推丢失了也能靠重连补齐；赔付面靠的是服务端读模型，不是那一次推送）。
-  // D-0027 之后"刷新回来"= **重新登录 + 点「回到我的座位」**：账号会话只活在内存里（刷新即失效，不落盘，
-  // 也就没有"自动回到席位"这回事），而开局 / 锁桌之后大厅整排置灰、只剩自己那一格点得动——
-  // `returnToSeat` 走的正是这条真实路径，拿到的也是同一份服务端读模型。
-  await returnToSeat(bobPage, {
-    frontUrl: viteUrl,
-    username: bobAccount.username,
-    displayName: bobAccount.displayName,
-    password: bobAccount.password,
-  })
+  // M1（D-0029）之后"刷新回来"= **刷新即自动回到原席**：凭据进 `sessionStorage`，
+  // 前端启动时向服务端确认（`Resume`）并按位置坐回原位——不填登录卡、不点「回到我的座位」。
+  // `returnToSeat` 跑的正是这条真实路径；账号参数已经不需要了（不再重新登录）。
+  await returnToSeat(bobPage, { frontUrl: viteUrl })
   const bobBackAtSeat = await waitForLocatorContains(
     bobPage.getByTestId('player-roster'),
     `${SEAT_A} 号 · ${RENAMED}`,
     30_000,
   )
   check(
-    '同源兜底：重新登录回到座位后重取快照，玩家端拿到同一份新名（读模型与推送同源，不依赖那一次推送）',
+    'M1 行 1：刷新后不重新登录、不点席位即回到原席，重取快照后拿到同一份新名（读模型与推送同源）',
     bobBackAtSeat.includes(`${SEAT_A} 号 · ${RENAMED}`),
-    `回到座位后 B 的同桌名单「${bobBackAtSeat}」`,
+    `刷新回来 B 的同桌名单「${bobBackAtSeat}」`,
   )
 
   await storytellerPage.getByTestId('storyteller-replay-open').click()
@@ -628,6 +624,62 @@ async function main() {
   await screenshot(storytellerPage, 'accounts-08-layout-storyteller')
 
   check('浏览器控制台没有报错', consoleErrors.length === 0, consoleErrors.slice(0, 3).join(' | '))
+
+  if (!runner.begin('fresh-tab')) return
+  // M1 行 1 的**反方向**：新标签页必须重新登录。`sessionStorage` 是每个标签页一份——
+  // 凭据既不跨标签页共享，也没有落到 `localStorage` 那种长期驻留设备的地方。
+  // 它与上面那条是同一枚硬币："刷新不掉登录"不许用"凭据到处都在"换来。
+  const freshErrors = []
+  const freshTab = await bobPage.context().newPage()
+  freshTab.on('console', (message) => {
+    if (message.type() === 'error') {
+      freshErrors.push(message.text())
+    }
+  })
+  freshTab.on('pageerror', (error) => freshErrors.push(String(error)))
+  await freshTab.goto(`${viteUrl}/play`, { waitUntil: 'domcontentloaded' })
+
+  let freshGate = false
+  try {
+    await freshTab.getByTestId('account-gate').waitFor({ timeout: 20_000 })
+    freshGate = true
+  } catch {
+    freshGate = false
+  }
+
+  check(
+    'M1 行 1 反方向：新标签页必须重新登录（凭据不跨标签页、不长期驻留设备）',
+    freshGate,
+    freshGate ? '新标签页落在登录卡' : '新标签页没出现登录卡——凭据泄漏到共享存储了？',
+  )
+
+  // 换设备那条路还得走得通：新标签页重新登录之后，从大厅点回自己那一格
+  // （服务端按账号给出 MySeatNumbers，D-0027 的"桌跟着账号走"）。
+  let freshSeatBack = false
+  if (freshGate) {
+    try {
+      await freshTab.getByTestId('account-username').fill(bobAccount.username)
+      await freshTab.getByTestId('account-password').fill(bobAccount.password)
+      await freshTab.getByTestId('account-login').click()
+      await freshTab.getByTestId('account-profile').waitFor({ timeout: 20_000 })
+      const mine = freshTab.locator('[data-seat-mine="true"]').first()
+      await mine.waitFor({ timeout: 20_000 })
+      await mine.click()
+      await freshTab.getByTestId('player-seat').waitFor({ timeout: 20_000 })
+      freshSeatBack = true
+    } catch {
+      freshSeatBack = false
+    }
+  }
+
+  check(
+    'M1 行 1 续：换设备路径仍成立——新标签页登录同一账号后能回到自己那一席',
+    freshSeatBack,
+    freshSeatBack ? `新标签页已回到 ${SEAT_B} 号席位` : '新标签页没能回到席位',
+  )
+  await screenshot(freshTab, 'accounts-11-fresh-tab-signin')
+  check('新标签页控制台没有报错', freshErrors.length === 0, freshErrors.slice(0, 3).join(' | ') || '零错误')
+  await freshTab.close()
 }
 
 function rosterItem(page, seat) {

@@ -31,8 +31,8 @@
  *      归因、行 4 当前槽位高亮 + 操作台内完成真实裁定、行 3 死亡帷幕与复活解除、
  *      行 6 下钻表格与牌面同源、行 8 窄视口纵向列表；行 5（视角隔离）沿用玩家端反方向断言；
  *  12) 恢复与重建：干净流重建 → 三项等价；改脏事件流里的原因文本 → 状态账报"不一致"并由重建修回；
- *      停宿主 + 弄坏事件载荷 + 重启 → 说书人**重新登录接回主持台**后看到降级位与原因（D-0027：会话只在
- *      内存里，刷新即退回登录卡）；重建仍失败 → 保持降级、原因更新；
+ *      停宿主 + 弄坏事件载荷 + 重启 → 说书人**刷新即自动接回主持台**（M1 / D-0029）后看到降级位与原因；
+ *      重建仍失败 → 保持降级、原因更新；
  *      修复载荷后重建成功 → 降级清除；玩家端全程没有健康位文案 / 锚点；
  *  13) 重连补齐（快照权威）：隐藏事件不报假缺口、watermark 随快照序号前进（页内「补齐」带非零本地已知）；
  *      断开后从大厅回到自己的席位（新连接 → 本地已知 0），窗口内有其他席位的隐藏状态变化仍无假告警；
@@ -264,7 +264,7 @@ async function main() {
   )
 
   const players = new Map()
-  /** 各席的夹具账号：入场走账号（D-0027），后面「刷新之后接回这一面」要用同一个账号重新登录。 */
+  /** 各席的夹具账号：入场走账号（D-0027）。M1 之后"刷新回来"不再需要重新登录，这份留给换设备类取证。 */
   const seatAccounts = new Map()
   // 并发窗口取证（票据 player-information-resync-race 行 1）：拦截必须装在连接建立之前——
   // Playwright 只拦截安装之后新建的 WebSocket。
@@ -2456,8 +2456,10 @@ async function main() {
   )
   await screenshot(storyteller.page, '25-rebuild-ledger-repaired')
 
-  // 行 2（健康票）：停宿主 → 弄坏首发事件载荷 → 重启：说书人刷新后**重新登录、接回主持台**，
-  // 必须看见降级与原因（D-0027：账号会话只在网关内存里，整页刷新即退回登录卡，不会再自动接回）。
+  // 行 2（健康票）：停宿主 → 弄坏首发事件载荷 → 重启：说书人刷新后接回主持台并看见降级与原因。
+  // **宿主重启会让内存里的账号会话全部失效**（D-0021 第 6 条 / D-0029 口径 6），
+  // 所以这一段走的必然是"重新登录 → 点回主持台"（`reloadHost` 返回 signin）；普通刷新那条
+  // （刷新即自动接回）由 `verify-live-open-table.mjs` 的 reconnect 段专门取证。
   const consoleErrorsBeforeRestart = consoleErrors.length
   await stopServer(server)
   const savedPayload = corruptFirstEventPayload()
@@ -2467,22 +2469,22 @@ async function main() {
   // 重启噪音窗口：迭代档（快节拍）800ms 已覆盖"在途重连撞代理"的窗口；取证档保留 1500ms。
   await sleep(config.slowPacer ? 1500 : 800)
   const consoleErrorsAfterRestartWindow = consoleErrors.length
-  await signInHost(storyteller.page, table)
+  const hostReturn = await reloadHost(storyteller.page, table)
   await healthBanner.waitFor({ state: 'visible', timeout: 30_000 })
   const degradedText = (await healthBanner.innerText()).replace(/\s+/g, ' ')
   check(
     '健康票行 2：恢复失败 → 视图显示降级 + 原因（"数据丢了"看得见）',
     degradedText.includes('恢复失败') && degradedText.includes('事件载荷损坏'),
-    degradedText.slice(0, 240),
+    `${degradedText.slice(0, 200)}｜接回路径=${hostReturn}`,
   )
   await screenshot(storyteller.page, '26-room-health-degraded')
 
-  // 行 5（健康票）强化：降级窗口里真机重载一个玩家页——用**同一个账号**重新登录、从大厅点回自己的席位，
-  // 这次入座必须**显式失败**且文案中性（不出现健康位 / 数据丢失 / 事件载荷字样），
+  // 行 5（健康票）强化：降级窗口里真机重载一个玩家页——刷新会自动尝试回到原席（或会话失效后
+  // 重新登录再点回），这次入座必须**显式失败**且文案中性（不出现健康位 / 数据丢失 / 事件载荷字样），
   // 这才同时证明"服务端不下发"与"前端不外泄"。
   const probeSeat = [...players.keys()][0]
   const probePlayer = players.get(probeSeat)
-  await signInSeat(probePlayer.page, seatAccounts.get(probeSeat))
+  await reloadSeat(probePlayer.page, seatAccounts.get(probeSeat))
   const degradedPlayerText = await waitForLocatorContains(probePlayer.page.locator('.shell'), '加入暂时失败', 20_000)
   const degradedPlayerLeaks = ['降级', '健康位', '数据丢失', '事件载荷'].filter((word) => degradedPlayerText.includes(word))
   check(
@@ -2562,10 +2564,10 @@ async function main() {
   )
   await screenshot(storyteller.page, '42-grimoire-annotation-after-restart')
 
-  // 行 5（健康票）另一面：房间恢复后同一玩家页刷新 + 同一账号回到座位能正常加入，且仍然看不到任何健康位。
+  // 行 5（健康票）另一面：房间恢复后同一玩家页刷新即**自动回到原席**，且仍然看不到任何健康位。
   const joinsBeforeReload = seatJoinLogLines(probeSeat).length
-  // 刷新即丢账号会话（D-0027）：回来靠"重新登录 + 大厅里自己那一格仍点得动"——这条就是那个判据。
-  await returnToSeat(probePlayer.page, { frontUrl, ...seatAccounts.get(probeSeat) })
+  // M1（D-0029）：刷新不再重新登录、也不再点席位——前端自己向服务端确认（`Resume`）并按位置坐回去。
+  await returnToSeat(probePlayer.page, { frontUrl })
   const reloadJoin = await waitForNextSeatJoin(probeSeat, joinsBeforeReload, 20_000)
   const reloadSnapshot = joinLogNumber(reloadJoin, '快照序号')
   const recoveredPlayerText = await probePlayer.page.locator('.shell').innerText()
@@ -2824,31 +2826,62 @@ async function newClient(browser, viewport, consoleErrors) {
   return { context, page }
 }
 
-/** 刷新之后用同一个夹具账号重新登录并回到这一桌的主持台（D-0027：会话只在内存里，刷新即失效）。 */
-async function signInHost(page, table) {
-  // **强制整页重载**：目标地址往往与当前地址只差一个查询串或井号，那时 `goto` 属于同文档导航、
-  // 文档不重载，页面还停在"已连接"的状态上——门根本不会出现。
+/**
+ * 刷新主持台页面（这一段是**宿主重启过**的刷新，两条真实路径都要认）。
+ *
+ * - 会话还在（普通刷新）→ M1（D-0029）之后刷新即自动接回主持台，不用登录、不用点「进主持台」；
+ * - 会话已失效 → 落到登录卡。**宿主重启会让内存里的账号会话全部失效**（D-0021 第 6 条 /
+ *   D-0029 口径 6：会话不落盘、进程重启即全失效），这正是本段要覆盖的那条：重新登录 → 点回主持台。
+ *
+ * 判据是"最终回到了主持台"，而不是"走了哪条路"——返回实际走的那条，写进断言详情。
+ */
+async function reloadHost(page, table) {
+  // **强制整页重载**：目标地址往往与当前地址只差一个查询串或井号，那时 `goto` 可能属于同文档导航、
+  // 文档不重载，页面还停在"已连接"的状态上——那就没验到"刷新之后能不能回来"。
   await page.goto(`${frontUrl}/storyteller`, { waitUntil: 'domcontentloaded' })
   await page.reload({ waitUntil: 'domcontentloaded' })
+
+  const auto = await page
+    .getByTestId('grimoire')
+    .waitFor({ timeout: 8_000 })
+    .then(() => true)
+    .catch(() => false)
+  if (auto) {
+    return 'auto'
+  }
+
   await page.getByTestId('account-username').fill(table.username)
   await page.getByTestId('account-password').fill(table.password)
   await page.getByTestId('account-login').click()
   await page.getByTestId('account-profile').waitFor({ timeout: 30_000 })
   await page.locator(`[data-my-table="${table.gameId}"]`).getByTestId('host-enter').click()
   await page.getByTestId('grimoire').waitFor({ timeout: 30_000 })
+  return 'signin'
 }
 
 /**
- * 刷新之后用同一个夹具账号重新登录，并从大厅点回自己的席位（D-0027：席位不再靠票据）。
+ * 刷新玩家页面（同样是宿主重启过的场景）。
  *
- * 与 `tools/lib/entrance.mjs` 的 `returnToSeat` 分工：那里等席位徽章（正常回座），
- * 这里**不等**——降级窗口里这一桌根本回不去，点下去就该拿到"加入暂时失败"那句显式失败，
- * 等徽章只会白等满超时。所以回座失败的取证用这一条，正常回座直接用 `returnToSeat`。
+ * - 会话还在 → 刷新即自动尝试回到原席（M1）；
+ * - 会话已失效 → 落到登录卡，重新登录后从大厅点回自己那一格。
+ *
+ * 两条路都**不等席位徽章**：降级窗口里这一桌根本回不去，界面会给"没能回到 N 号席位：…"那句
+ * 显式失败，等徽章只会白等满超时。所以回座失败的取证用这一条，正常回座直接用 `returnToSeat`。
  */
-async function signInSeat(page, account) {
+async function reloadSeat(page, account) {
   // 同上：这条路线的语义就是"刷新一次"，同地址的 goto 不算刷新。
   await page.goto(`${frontUrl}/play`, { waitUntil: 'domcontentloaded' })
   await page.reload({ waitUntil: 'domcontentloaded' })
+
+  const gate = await page
+    .getByTestId('account-gate')
+    .waitFor({ timeout: 8_000 })
+    .then(() => true)
+    .catch(() => false)
+  if (!gate) {
+    return
+  }
+
   await page.getByTestId('account-username').fill(account.username)
   await page.getByTestId('account-password').fill(account.password)
   await page.getByTestId('account-login').click()

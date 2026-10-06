@@ -493,18 +493,49 @@ async function main() {
   )
   check('无关席位（2 / 6 号）连接上零信息下发', unrelatedPushes.length === 0, unrelatedPushes.join(', ') || '零条')
 
+  /**
+   * 一帧里**与"谁有什么能力"有关**的那部分。
+   *
+   * 不能拿整个 payload 做子串匹配：`seatNames` 是**公开名单**（D-0021），夹具玩家名里带角色 slug 时
+   * 会把公开信息判成越权——2026-10-06 实测：1 号收到含 `"displayName":"夹具玩家retro-flowergirl"`
+   * 的同桌名单就被判红，而那是它本来就该看到的东西。这条假红在基线（改动前）一样存在。
+   */
+  const abilityBearingText = (frame) => {
+    const args = frame.parsed.arguments ?? null
+    if (frame.parsed.target !== 'ReceivePlayerViewChanged') {
+      return JSON.stringify(args)
+    }
+
+    const view = Array.isArray(args) ? args[1] : null
+    return JSON.stringify({
+      informationResults: view?.informationResults ?? null,
+      exhaustedAbilities: view?.exhaustedAbilities ?? null,
+      pendingRequest: view?.pendingRequest ?? null,
+    })
+  }
+
   const crossSeatLeak = []
+  let leakSample = ''
   for (const [seat, frames] of receivedBySeat.entries()) {
     const owned = Object.entries(expectedRecipients)
       .filter(([, owner]) => owner === seat)
       .map(([ability]) => ability)
     for (const frame of frames) {
+      const payload = abilityBearingText(frame)
       for (const ability of INFO_ABILITIES.filter((candidate) => !owned.includes(candidate))) {
-        if (JSON.stringify(frame.parsed.arguments ?? null).includes(ability)) {
+        if (payload.includes(ability)) {
           crossSeatLeak.push(`${seat} 号收到含 ${ability} 的 ${frame.parsed.target}`)
+          if (leakSample.length === 0) {
+            // 只报"命中"分不清**真泄露**与**扫描口径过宽**：把第一条命中的载荷原样打出来。
+            leakSample = `${seat} 号 / ${frame.parsed.target}：${payload.slice(0, 600)}`
+          }
         }
       }
     }
+  }
+
+  if (leakSample.length > 0) {
+    console.error(`[诊断] 越权扫描首次命中：${leakSample}`)
   }
   check(
     '三个能力 slug 没有出现在其他任何席位的任何推送里',
@@ -536,15 +567,21 @@ async function main() {
 
 /** 一席的连接帧收集器：received 记全部收到的帧，invocations 记发出去的调用。 */
 function createFrameSink() {
-  return { frames: [], invocations: [] }
+  return { frames: [], invocations: [], connectionCount: 0 }
 }
 
 /** 把 page 的 WebSocket 帧接到 sink 上（SignalR 默认 JSON 协议，文本帧）。 */
 function attachFrameSink(page, sink) {
   page.on('websocket', (socket) => {
-    socket.on('framereceived', (frame) => recordFrame(sink, 'received', frame.payload))
+    // **每条连接一个 id**：`invocationId` 只在单条连接内唯一，而一个页面同时挂着两条
+    // （账号 `/hub/account` 与游戏 `/hub/game`）。混在一起按 invocationId 找回执，会把另一条连接上
+    // 同号调用的回执当成自己的（2026-10-06 实测：SubmitResponse 收到了 ListTables 的回执，
+    // 表现为"提交明明成功、装置却判红"）。
+    const connectionId = sink.connectionCount
+    sink.connectionCount += 1
+    socket.on('framereceived', (frame) => recordFrame(sink, connectionId, 'received', frame.payload))
     socket.on('framesent', (frame) => {
-      const entry = recordFrame(sink, 'sent', frame.payload)
+      const entry = recordFrame(sink, connectionId, 'sent', frame.payload)
       if (entry !== null && entry.parsed !== null) {
         sink.invocations.push(entry)
       }
@@ -552,10 +589,10 @@ function attachFrameSink(page, sink) {
   })
 }
 
-function recordFrame(sink, direction, rawPayload) {
+function recordFrame(sink, connectionId, direction, rawPayload) {
   const payload = typeof rawPayload === 'string' ? rawPayload : '<binary>'
   const messages = parseSignalRMessages(payload)
-  const entry = { direction, payload, parsed: messages[0] ?? null, messages }
+  const entry = { connectionId, direction, payload, parsed: messages[0] ?? null, messages }
   sink.frames.push(entry)
   return entry
 }
@@ -946,14 +983,16 @@ async function submitRequestAndAwaitOutcome(page, sink) {
   await page.getByTestId('player-submit').click()
   const deadline = Date.now() + 30_000
   while (Date.now() < deadline) {
-    const invocation = sink.invocations
+    const invocationFrame = sink.invocations
       .slice(before)
-      .flatMap((frame) => frame.messages)
-      .find((message) => message.target === 'SubmitResponse')
-    if (invocation !== undefined) {
+      .find((frame) => frame.messages.some((message) => message.target === 'SubmitResponse'))
+    const invocation = invocationFrame?.messages.find((message) => message.target === 'SubmitResponse')
+    if (invocationFrame !== undefined && invocation !== undefined) {
       const invocationId = String(invocation.invocationId ?? '')
-      // 回执可能与推送同帧到达：必须在**全部消息**里找，不能只看每条帧的第一条。
+      // 回执可能与推送同帧到达：必须在**全部消息**里找，不能只看每条帧的第一条；
+      // 且必须限定**同一条连接**——invocationId 只在单条连接内唯一（页面同时挂着账号与游戏两条连接）。
       const completion = sink.frames
+        .filter((frame) => frame.connectionId === invocationFrame.connectionId)
         .flatMap((frame) => frame.messages)
         .find((message) => message.type === 3 && String(message.invocationId ?? '') === invocationId)
       if (completion !== undefined) {

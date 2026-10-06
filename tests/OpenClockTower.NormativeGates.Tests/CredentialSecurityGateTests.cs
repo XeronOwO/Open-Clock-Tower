@@ -63,21 +63,55 @@ public sealed class CredentialSecurityGateTests
             + string.Join(Environment.NewLine, violations));
     }
 
-    /// <summary>前端网关不得把凭据落盘（票据才持久化）或塞进 DOM（innerHTML）。</summary>
+    /// <summary>
+    /// 前端凭据的**落盘边界**（D-0012 / D-0029）：只有账号会话凭据允许持久化，而且只能经
+    /// `web/src/services/browserSession.ts` 这一个出口；三个网关类与连接级凭据一律只碰内存。
+    /// </summary>
+    /// <remarks>
+    /// 2026-10-06 修订（M1 / D-0029）：原口径是"任何凭据都不落盘"——正是那半句让"刷新即掉登录"
+    /// （需求方当面指为不可接受）。新口径把"能落盘"收窄成**一件东西 + 一个出口**：
+    /// 落盘动作集中在 `browserSession.ts`，其它模块要读写会话必须经它。
+    /// 于是"某个模块顺手把凭据塞进 localStorage / 自建一份 sessionStorage 读写"仍然被这条门禁挡下，
+    /// 而注释里讨论持久化不再误报（先剥注释与字面量再查代码）。
+    /// </remarks>
     [Fact]
-    public void FrontendGateways_DoNotPersistOrRenderCredentials()
+    public void FrontendCredentials_PersistOnlyThroughBrowserSession()
     {
         var violations = new List<string>();
+
+        // 1. 三个网关：注释里可以讨论持久化，**代码**里不许碰存储，也不许进 DOM。
         foreach (var relativePath in new[]
                  {
                      Path.Combine("web", "src", "services", "playerGateway.ts"),
                      Path.Combine("web", "src", "services", "storytellerGateway.ts"),
-                     // 账号会话凭据（D-0021）同一把尺子：只存内存，不落盘、不进 DOM。
                      Path.Combine("web", "src", "services", "accountGateway.ts"),
                  })
         {
-            var code = File.ReadAllText(RepositoryLayout.PathOf(relativePath));
+            var code = SourceText.StripCommentsAndLiterals(
+                File.ReadAllText(RepositoryLayout.PathOf(relativePath)));
             foreach (var token in new[] { "localStorage", "sessionStorage", "innerHTML" })
+            {
+                if (code.Contains(token, StringComparison.Ordinal))
+                {
+                    violations.Add($"{relativePath} → {token}");
+                }
+            }
+        }
+
+        // 2. 整个前端：存储 API 只允许出现在唯一出口里（新增出口必须显式改这条门禁并复核）。
+        var outlet = Path.Combine("web", "src", "services", "browserSession.ts");
+        var frontendFiles = RepositoryLayout.EnumerateFiles("*.ts", "web", "src")
+            .Concat(RepositoryLayout.EnumerateFiles("*.vue", "web", "src"));
+        foreach (var relativePath in frontendFiles)
+        {
+            if (string.Equals(relativePath, outlet, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var code = SourceText.StripCommentsAndLiterals(
+                File.ReadAllText(RepositoryLayout.PathOf(relativePath)));
+            foreach (var token in new[] { "localStorage", "sessionStorage" })
             {
                 if (code.Contains(token, StringComparison.Ordinal))
                 {
@@ -88,7 +122,8 @@ public sealed class CredentialSecurityGateTests
 
         Assert.True(
             violations.Count == 0,
-            "前端网关碰了凭据不该碰的东西：凭据只在内存里，不落盘、不进 DOM（D-0012）。"
+            "前端凭据越过了落盘边界：只有**账号会话凭据**可以持久化，且只能经 "
+            + "`web/src/services/browserSession.ts` 这一个出口（D-0029）。"
             + Environment.NewLine
             + string.Join(Environment.NewLine, violations));
     }

@@ -162,6 +162,67 @@ public sealed class AccountHostTests
         Assert.False(oldCode.Ok);
     }
 
+    /// <summary>
+    /// 会话恢复（M1 / D-0029）：有效会话换回资料与能力位、**不重发凭据**；
+    /// 伪造的、登出后的旧凭据一律被拒——`sessionStorage` 里那一份也不例外。
+    /// </summary>
+    [Fact]
+    public async Task Resume_ReturnsProfileWithoutCredential_AndRejectsRevokedSessions()
+    {
+        await using var host = new TestServerHost(seatCount: 3);
+        var account = await host.ConnectAccountAsync();
+        var registered = await TestServerHost.RegisterAccountAsync(account, "alice", "爱丽丝", "password-123");
+        var session = registered.AccountSession!;
+
+        var resumed = await account.InvokeAsync<AccountDto>("Resume", session);
+        Assert.True(resumed.Ok);
+        Assert.Equal("alice", resumed.Username);
+        Assert.Equal("爱丽丝", resumed.DisplayName);
+        Assert.Equal(registered.CanCreateTable, resumed.CanCreateTable);
+        Assert.Null(resumed.AccountSession);
+        Assert.Null(resumed.RecoveryCode);
+
+        // 反方向：伪造的会话换不到任何资料，也不透露账号是否存在。
+        var forged = await account.InvokeAsync<AccountDto>("Resume", "伪造的账号会话");
+        Assert.False(forged.Ok);
+        Assert.Equal("invalid_session", forged.Code);
+
+        Assert.True((await account.InvokeAsync<AccountDto>("Logout", session)).Ok);
+        var afterLogout = await account.InvokeAsync<AccountDto>("Resume", session);
+        Assert.False(afterLogout.Ok);
+        Assert.Equal("invalid_session", afterLogout.Code);
+    }
+
+    /// <summary>
+    /// 口令重置之后（M1 口径 4）：**旧会话恢复被拒、新会话可恢复**。
+    /// 前端把旧凭据留在 `sessionStorage` 里也没用——撤销由服务端说了算。
+    /// </summary>
+    [Fact]
+    public async Task Resume_AfterPasswordReset_RejectsOldSession_AndAcceptsNewOne()
+    {
+        await using var host = new TestServerHost(seatCount: 3);
+        var account = await host.ConnectAccountAsync();
+        var registered = await TestServerHost.RegisterAccountAsync(account, "alice", "爱丽丝", "password-123");
+        var oldSession = registered.AccountSession!;
+
+        var reset = await account.InvokeAsync<AccountDto>(
+            "ResetPassword",
+            "alice",
+            registered.RecoveryCode!,
+            "password-456");
+        Assert.True(reset.Ok);
+        var newSession = reset.AccountSession!;
+        Assert.NotEqual(oldSession, newSession);
+
+        var rejected = await account.InvokeAsync<AccountDto>("Resume", oldSession);
+        Assert.False(rejected.Ok);
+        Assert.Equal("invalid_session", rejected.Code);
+
+        var accepted = await account.InvokeAsync<AccountDto>("Resume", newSession);
+        Assert.True(accepted.Ok);
+        Assert.Equal("alice", accepted.Username);
+    }
+
     /// <summary>说书人可解除席位绑定（误认领兜底）；解除后名字消失、席位可被其他账号重新认领。</summary>
     [Fact]
     public async Task ReleaseSeatBinding_ClearsName_AndFreesTheSeat()

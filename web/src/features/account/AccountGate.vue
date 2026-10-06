@@ -16,6 +16,14 @@ import * as session from '@/services/accountSession'
 const busy = session.busy
 const notice = session.notice
 
+/**
+ * 正在确认持久化凭据（M1 / D-0029）。
+ *
+ * 这一态**不能和"未登录"合并**：否则每次刷新都会先闪一张"先登录"，再跳回原来的面；
+ * 而"要不要重新登录"必须等 `Resume` 的答复，本地猜不得。
+ */
+const restoring = session.restoring
+
 /** 当前页签：登录 / 注册。默认登录——已经有账号的人比新来的人多。 */
 const tab = ref<'login' | 'register'>('login')
 const username = ref('')
@@ -58,7 +66,13 @@ async function submitReset(): Promise<void> {
 </script>
 
 <template>
-  <section class="panel gate" data-testid="account-gate">
+  <!-- 恢复登录状态期间**不画登录卡**：先闪一张"先登录"再跳回原来的面，正是 M1 要消掉的那种跳变。 -->
+  <section v-if="restoring" class="panel gate" data-testid="account-restoring">
+    <h1>正在恢复登录状态…</h1>
+    <p class="hint">正在向服务端确认这台设备上保存的登录凭据。</p>
+  </section>
+
+  <section v-else class="panel gate" data-testid="account-gate">
     <h1>先登录</h1>
     <p class="hint">
       账号就是你的身份证：换台设备、清掉缓存，登录同一个账号就还认得你。

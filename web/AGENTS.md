@@ -26,7 +26,8 @@ cd web && npm install && npm run dev     # http://localhost:5273
 ```
 
 账号是唯一的身份证（D-0027）：没登录时每个面只有一张登录卡（`features/account/AccountGate.vue`）；
-登录后会话由 `services/accountSession.ts` 的模块级单例持有，三个面共用（换面不重登），票据已整个退场。
+登录后会话由 `services/accountSession.ts` 的模块级单例持有，三个面共用（换面不重登），票据已整个退场；
+刷新不掉登录、关标签页即清（D-0029，边界见第 4 节）。
 
 ## 3. 命令
 
@@ -67,8 +68,9 @@ Node ≥ 22.5 + `npx playwright install chromium` · `--seats` 与 `--assign` �
   坏字段只降级该行，不许白屏。
 - **选项文案只换称呼、不丢语境**：`optionDisplayOf` 对 `seat:` 选项把「N 号玩家」换成「N 号 · 名字」，
   服务端预览的后半句（如「（已死亡）：…」）原样保留——那是玩家做选择的判据。
-- **连接级凭据不进呈现层**（D-0012）：Join 成功后才拿到凭据，只存网关私有字段（内存），
-  每条命令经 `CommandSender`（连接 + 凭据）发出；不渲染、不落盘、不进日志；
+- **凭据的落盘边界**（D-0012 / D-0029）：连接级凭据只存网关私有字段（内存），每条命令经
+  `CommandSender`（连接 + 凭据）发出，不渲染、不进日志；**账号会话凭据**持久化在 `sessionStorage`，
+  唯一出口 `services/browserSession.ts`（启动经 `AccountHub.Resume` 确认后回到原处，关标签页即清）。
   掉线重连重新 Join 换新凭据——旧连接的凭据在新连接上无效。
 - **本地状态只允许是"呈现态"**：选中项、折叠、诊断消息；任何游戏状态一律来自视图推送，
   禁止在前端算出服务端没给的状态。
