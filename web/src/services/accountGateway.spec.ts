@@ -70,6 +70,8 @@ describe('账号回执归一化（不可信输入）', () => {
       displayName: '',
       accountSession: null,
       recoveryCode: null,
+      // 服务端没说是不是管理员 → 一律当"不是"（不猜权限；D-0025 的判定在服务端）。
+      isAdmin: false,
     })
   })
 })
@@ -92,6 +94,7 @@ describe('账号网关接线与秘密纪律', () => {
       username: 'alice',
       displayName: '爱丽丝',
       accountSession: 'session-1',
+      isAdmin: false,
     })
   })
 

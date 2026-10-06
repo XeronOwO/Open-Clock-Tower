@@ -535,6 +535,8 @@ export interface AccountDto {
   displayName: string
   accountSession: string | null
   recoveryCode: string | null
+  /** 是不是管理员（D-0025：只有管理员能开桌）。只决定显不显示"开桌"入口，不是权限。 */
+  isAdmin: boolean
 }
 
 /** 玩家视图：只有他自己的席位、当前大阶段与他自己的挂起请求。 */

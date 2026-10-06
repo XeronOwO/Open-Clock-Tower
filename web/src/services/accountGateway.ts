@@ -15,6 +15,61 @@ export interface AccountProfile {
   username: string
   displayName: string
   accountSession: string
+  /** 是不是管理员（D-0025：只有管理员能开桌）。只用于决定显不显示"开桌"入口，不是权限。 */
+  isAdmin: boolean
+}
+
+/** 大厅里的一桌（D-0025）：挑桌用的公开信息，不含票据与席位归属。 */
+export interface LobbyTable {
+  gameId: string
+  name: string
+  seatCapacity: number
+  takenSeatCount: number
+  started: boolean
+  locked: boolean
+}
+
+/** 建桌结果；`storytellerTicket` 是秘密（成为该桌说书人的凭据），只随事件流转。 */
+export interface LobbyCreateResult {
+  ok: boolean
+  code: string
+  message: string
+  gameId: string
+  storytellerTicket: string | null
+  seatCount: number
+}
+
+/** 未知载荷 → 大厅列表；识别不了的条目直接丢弃（宁可少显示，也不显示坏数据）。 */
+export function normalizeLobbyTables(raw: unknown): LobbyTable[] {
+  if (!Array.isArray(raw)) {
+    return []
+  }
+
+  const tables: LobbyTable[] = []
+  for (const item of raw) {
+    if (item === null || typeof item !== 'object') {
+      continue
+    }
+
+    const value = item as Record<string, unknown>
+    const gameId = value['gameId']
+    if (typeof gameId !== 'string' || gameId.length === 0) {
+      continue
+    }
+
+    const number = (key: string): number => (typeof value[key] === 'number' ? (value[key] as number) : 0)
+    const flag = (key: string): boolean => value[key] === true
+    tables.push({
+      gameId,
+      name: typeof value['name'] === 'string' ? value['name'] : '',
+      seatCapacity: number('seatCapacity'),
+      takenSeatCount: number('takenSeatCount'),
+      started: flag('started'),
+      locked: flag('locked'),
+    })
+  }
+
+  return tables
 }
 
 /** 连接工厂：测试注入假连接以验证接线与顺序（不改变任何线上行为）。 */
@@ -57,6 +112,7 @@ export function normalizeAccount(raw: unknown): AccountDto | null {
       typeof value['recoveryCode'] === 'string' && value['recoveryCode'].length > 0
         ? value['recoveryCode']
         : null,
+    isAdmin: value['isAdmin'] === true,
   }
 }
 
@@ -128,6 +184,29 @@ export class AccountGateway {
     return result
   }
 
+  /** 列出在开的桌（大厅；未登录也能看——它是公开门面）。 */
+  async listTables(): Promise<LobbyTable[]> {
+    return normalizeLobbyTables(await this.invokeRaw('ListTables'))
+  }
+
+  /** 开一张新桌（只有管理员；服务端会拒，这里只负责把结果如实回给界面）。 */
+  async createTable(name: string, seatCount: number): Promise<LobbyCreateResult> {
+    const session = this.requireSession()
+    const raw = await this.invokeRaw('CreateTable', session, name, seatCount)
+    const value = (raw ?? {}) as Record<string, unknown>
+    return {
+      ok: value['ok'] === true,
+      code: typeof value['code'] === 'string' ? value['code'] : 'unknown',
+      message: typeof value['message'] === 'string' ? value['message'] : '',
+      gameId: typeof value['gameId'] === 'string' ? value['gameId'] : '',
+      storytellerTicket:
+        typeof value['storytellerTicket'] === 'string' && value['storytellerTicket'].length > 0
+          ? value['storytellerTicket']
+          : null,
+      seatCount: typeof value['seatCount'] === 'number' ? value['seatCount'] : 0,
+    }
+  }
+
   /** 断开并清掉内存里的账号会话。 */
   async stop(): Promise<void> {
     this.profileValue = null
@@ -147,6 +226,7 @@ export class AccountGateway {
       username: result.username,
       displayName: result.displayName,
       accountSession: result.accountSession,
+      isAdmin: result.isAdmin === true,
     }
   }
 
@@ -156,6 +236,17 @@ export class AccountGateway {
     }
 
     return this.profileValue.accountSession
+  }
+
+  /** 原始调用（大厅那两个方法返回的不是账号回执，不能走 `normalizeAccount`）。 */
+  private async invokeRaw(method: string, ...args: unknown[]): Promise<unknown> {
+    if (this.connection.state === HubConnectionState.Disconnected) {
+      this.onState('connecting')
+      await this.connection.start()
+    }
+
+    this.onState('connected')
+    return await this.connection.invoke<unknown>(method, ...args)
   }
 
   private async invoke(method: string, ...args: unknown[]): Promise<AccountDto> {

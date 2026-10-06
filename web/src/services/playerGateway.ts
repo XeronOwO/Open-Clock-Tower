@@ -65,15 +65,26 @@ export interface PlayerCallbacks {
 }
 
 /** 连接工厂：默认连真宿主；测试注入假连接以验证网关的接线与顺序（不改变任何线上行为）。 */
-export type GameConnectionFactory = () => HubConnection
+export type GameConnectionFactory = (gameId?: string) => HubConnection
 
 /** 默认连接：真 SignalR，自动重连与日志级别与说书人侧同口径。 */
-function createPlayerConnection(): HubConnection {
+function createPlayerConnection(gameId?: string): HubConnection {
   return new HubConnectionBuilder()
-    .withUrl(HUB_PATH)
+    .withUrl(hubUrlFor(gameId))
     .withAutomaticReconnect([0, 1000, 3000, 5000])
     .configureLogging(LogLevel.Warning)
     .build()
+}
+
+/**
+ * Hub 地址：声明**在哪一桌**（多桌，D-0024）。
+ *
+ * 不传就是"本机默认桌"——既有的票据流程与 18 个验收装置因此都不用改。
+ */
+export function hubUrlFor(gameId?: string): string {
+  return gameId === undefined || gameId.length === 0
+    ? HUB_PATH
+    : `${HUB_PATH}?gameId=${encodeURIComponent(gameId)}`
 }
 
 /** 玩家连接网关。 */
@@ -88,9 +99,11 @@ export class PlayerGateway {
 
   constructor(
     private readonly callbacks: PlayerCallbacks,
-    createConnection: GameConnectionFactory = createPlayerConnection,
+    createConnection: GameConnectionFactory = () => createPlayerConnection(),
+    gameId?: string,
   ) {
-    this.connection = createConnection()
+    // 桌在**建连接时**就定下来：`?gameId=` 属于这条连接，之后每条命令都由服务端按它路由。
+    this.connection = createConnection(gameId)
 
     this.connection.on('ReceiveOperationRequest', (payload: unknown) => {
       const request = normalizeRequest(payload)
@@ -200,6 +213,39 @@ export class PlayerGateway {
         ? await this.connection.invoke<unknown>('JoinSeat', ticket, known)
         : await this.connection.invoke<unknown>('JoinSeatWithAccount', ticket, accountSession, known),
     )
+
+    return this.applyJoinResult(joined, known)
+  }
+
+  /**
+   * **自助入座**（D-0025）：登录后选一个空席位坐下，不需要任何票据。
+   * @param seat 要坐的席位号。
+   * @param accountSession 账号会话（必须；未登录时服务端会拒绝）。
+   */
+  async joinTable(seat: number, accountSession: string): Promise<PlayerViewDto> {
+    // 自助入座不持有票据：清掉上一次的，避免后续重连（resync）拿着旧票据去试。
+    this.ticket = ''
+    this.accountSession = accountSession
+    if (this.connection.state === HubConnectionState.Disconnected) {
+      await this.connection.start()
+    }
+
+    this.callbacks.onState('connected')
+    const known = this.merge.eventAt
+    const joined = normalizeSeatJoin(
+      await this.connection.invoke<unknown>('JoinTable', accountSession, seat, known),
+    )
+
+    return this.applyJoinResult(joined, known)
+  }
+
+  /**
+   * 两条加入路径（票据 / 自助入座）的**共同后半段**。
+   *
+   * 放在一处是刻意的：凭据采纳、坏包拒绝、序号回退处理这些判据必须完全一致——
+   * 分成两份实现，等于给其中一条路径留下"少校验一步"的后门。
+   */
+  private applyJoinResult(joined: ReturnType<typeof normalizeSeatJoin>, known: number): PlayerViewDto {
     if (joined === null) {
       throw new Error('服务端没有下发连接凭据：加入结果不可识别（D-0012）')
     }

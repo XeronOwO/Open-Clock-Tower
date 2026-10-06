@@ -18,7 +18,7 @@ import type {
 import { alignmentLabelOf, characterLabelOf, labelOf, voidReasonLabelOf } from '@/display/labels'
 import { optionDisplayOf, seatDisplayOf } from '@/display/format'
 import HelpTip from '@/features/common/HelpTip.vue'
-import { AccountGateway, type AccountProfile } from '@/services/accountGateway'
+import { AccountGateway, type AccountProfile, type LobbyTable } from '@/services/accountGateway'
 import { PlayerGateway, type PlayerCallbacks } from '@/services/playerGateway'
 import { TicketStore } from '@/services/ticketStore'
 import { newIdempotencyKey } from '@/services/idempotency'
@@ -72,6 +72,53 @@ const accountBusy = ref(false)
 const accountNotice = ref('')
 const accountRecoveryCode = ref('')
 let accountGateway: AccountGateway | null = null
+
+/** 大厅（D-0025）：列出在开的桌，让玩家**自己选一个空席位坐下**——不再需要说书人发席位票据。 */
+const tables = ref<LobbyTable[]>([])
+const lobbyBusy = ref(false)
+const lobbyNotice = ref('')
+/** 本连接所在的那一桌；null = 还没选（用默认桌）。 */
+const selectedTable = ref<LobbyTable | null>(null)
+
+async function loadTables(): Promise<void> {
+  lobbyBusy.value = true
+  try {
+    tables.value = await ensureAccountGateway().listTables()
+    lobbyNotice.value = ''
+  } catch (error) {
+    lobbyNotice.value = `读取桌列表失败：${error instanceof Error ? error.message : String(error)}`
+  } finally {
+    lobbyBusy.value = false
+  }
+}
+
+/** 选一个席位坐下：重建连接指向该桌，然后只凭账号入座（不需要票据）。 */
+async function takeSeat(table: LobbyTable, seat: number): Promise<void> {
+  const session = accountProfile.value?.accountSession
+  if (session === undefined) {
+    lobbyNotice.value = '请先注册或登录，再选席位入座'
+    return
+  }
+
+  lobbyBusy.value = true
+  lobbyNotice.value = ''
+  try {
+    // 连接必须指向那一桌：先结束旧网关（它连的是别的桌），再按桌建新的。
+    await gateway?.stop()
+    gateway = null
+    ticket.value = ''
+    clientSequence = 0
+    selectedTable.value = table
+    await ensureGateway().joinTable(seat, session)
+    lobbyNotice.value = `已坐在 ${table.name.length > 0 ? table.name : table.gameId} 的 ${seat} 号席位`
+    // 人数变了：刷新列表，别让大厅停在旧数字上。
+    await loadTables()
+  } catch (error) {
+    lobbyNotice.value = `入座失败：${error instanceof Error ? error.message : String(error)}`
+  } finally {
+    lobbyBusy.value = false
+  }
+}
 
 /** 同桌名单：有玩家名的席位 + 自己（自己还没名字时也列出来，显示回退的席位号）。 */
 const roster = computed(() => {
@@ -204,7 +251,8 @@ const stateText: Record<GatewayState, string> = {
 const connected = computed(() => connectionState.value === 'connected' && view.value !== null)
 
 function ensureGateway(): PlayerGateway {
-  gateway ??= new PlayerGateway(buildCallbacks())
+  // 连到"选中的那一桌"；没选就是本机默认桌（既有票据流程与装置不受影响）。
+  gateway ??= new PlayerGateway(buildCallbacks(), undefined, selectedTable.value?.gameId)
 
   return gateway
 }
@@ -490,6 +538,8 @@ function winnerLabelOf(winner: string): string {
 }
 
 onMounted(() => {
+  // 大厅是公开门面：先把在开的桌列出来（未登录也能看，坐下才需要账号）。
+  void loadTables()
   const remembered = store.read()
   if (remembered.length > 0) {
     ticket.value = remembered
@@ -507,7 +557,44 @@ onBeforeUnmount(() => {
   <div class="shell">
     <section v-if="!connected" class="login panel">
       <h1>玩家端</h1>
-      <p class="hint">席位票据由说书人分发。玩家端只会收到属于你自己的信息。</p>
+      <p class="hint">
+        登录后从下面的桌里直接选一个空席位坐下，不需要说书人发票据。席位票据仍然可用（邀请 / 换设备兜底）。
+      </p>
+
+      <!-- 大厅（D-0025）：公开信息；坐下需要账号。 -->
+      <div class="lobby" data-testid="player-lobby">
+        <div class="row">
+          <strong>在开的桌</strong>
+          <button type="button" :disabled="lobbyBusy" @click="loadTables()">刷新列表</button>
+          <span class="hint">共 {{ tables.length }} 桌</span>
+        </div>
+        <p v-if="lobbyNotice.length > 0" class="hint" data-testid="lobby-notice">{{ lobbyNotice }}</p>
+        <ul v-if="tables.length > 0" class="tables">
+          <li v-for="table in tables" :key="table.gameId" :data-table="table.gameId">
+            <span>{{ table.name.length > 0 ? table.name : table.gameId }}</span>
+            <span class="hint">
+              {{ table.takenSeatCount }} / {{ table.seatCapacity }} 人 · {{ table.started ? '已开局' : '等人' }} ·
+              {{ table.locked ? '已锁定' : '可入座' }}
+            </span>
+            <span class="seats">
+              <button
+                v-for="seat in table.seatCapacity"
+                :key="seat"
+                type="button"
+                class="seat"
+                :disabled="lobbyBusy || table.locked || table.started"
+                :data-seat="`${table.gameId}-${seat}`"
+                @click="takeSeat(table, seat)"
+              >
+                {{ seat }}
+              </button>
+            </span>
+          </li>
+        </ul>
+        <p v-else class="hint">还没有开桌。等管理员开一桌，或先用下面的票据入口。</p>
+      </div>
+
+      <p class="hint">也可以凭席位票据加入（说书人给你的那一串）。玩家端只会收到属于你自己的信息。</p>
       <div class="row">
         <input v-model="ticket" placeholder="席位票据" spellcheck="false" @keyup.enter="join()" />
         <button type="button" class="primary" :disabled="joining" @click="join()">加入</button>
