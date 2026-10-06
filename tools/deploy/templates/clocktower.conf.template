@@ -1,0 +1,40 @@
+# OpenClockTower 的反向代理片段（放到 /etc/nginx/conf.d/）。
+# 由 tools/deploy-prepare.mjs 按你的前缀与端口生成；前缀必须与前端构建时的 VITE_BASE_PATH 一致。
+
+# 长连接必需：有 Upgrade 头就透传 upgrade，否则 close。
+# 缺了这两行，SignalR 的 WebSocket 会退化甚至连不上（表现是"能加入、收不到推送"）。
+map $http_upgrade $clocktower_connection_upgrade {
+    default upgrade;
+    ''      close;
+}
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name _;
+
+    # BEGIN root-path-only
+    # 少了末尾斜杠会与前缀 location 不匹配，于是"前缀本身"404；这条只服务子路径部署。
+    # 注意精确匹配值**不带**末尾斜杠，重定向目标带——写成同一个值会拼出 `//` 而无限重定向。
+    location = {{LOCATION_EXACT}} {
+        return 301 {{LOCATION}};
+    }
+    # END root-path-only
+
+    location {{LOCATION}} {
+        # 子路径部署时末尾的 `/` 是"去掉前缀"的关键：<前缀>/hub/game → /hub/game；
+        # 根路径部署时为空（写成 `/` 会变成 //hub/game）。
+        proxy_pass http://127.0.0.1:{{PORT}}{{PROXY_TAIL}};
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $clocktower_connection_upgrade;
+        # 对局中长连接不能被中途掐断
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+        proxy_buffering off;
+    }
+}

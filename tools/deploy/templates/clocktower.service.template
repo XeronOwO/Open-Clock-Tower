@@ -1,0 +1,20 @@
+[Unit]
+Description=OpenClockTower (Blood on the Clocktower online table)
+After=network.target
+
+[Service]
+Type=simple
+# 必须是应用目录：宿主的页面目录（wwwroot）跟着工作目录走，写错会变成"接口能用、页面 404"
+WorkingDirectory={{APP_DIR}}
+ExecStart={{APP_DIR}}/OpenClockTower.Server
+Restart=always
+RestartSec=3
+Environment=DOTNET_ENVIRONMENT=Production
+# 只监听本机：对外入口收敛到 nginx 一处
+Environment=ASPNETCORE_URLS=http://127.0.0.1:{{PORT}}
+Environment=GameServer__DatabasePath={{APP_DIR}}/data/oct.db
+Environment=GameServer__SeatCount={{SEATS}}
+Environment=GameServer__SlotQuotaSeconds={{SLOT_QUOTA}}
+
+[Install]
+WantedBy=multi-user.target
