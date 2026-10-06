@@ -20,4 +20,45 @@
     <ProjectReference Include="..\OpenClockTower.Contracts\OpenClockTower.Contracts.csproj" />
   </ItemGroup>
 
+  <!--
+    部署形态（一个进程同时提供页面与接口）：把前端构建产物放进 wwwroot，宿主用静态文件中间件直接发页面，
+    浏览器与 Hub 同源，因此不需要 CORS。
+    publish 由 SDK 的静态资源管线负责（会额外带上 .gz / .br 预压缩副本）；
+    这里补的是 **build**：`dotnet build` 不填 wwwroot，于是从 bin/Release 直接跑起来的宿主没有页面——
+    装置的夹具进程正是这么跑的。前端未构建（没有 web/dist）时整个目标跳过，宿主照常启动、只是没有页面；
+    绝不在构建里调用 npm：不把 Node 拉进 .NET 构建链（web/AGENTS.md §3）。
+  -->
+  <Target Name="CopyFrontendToWwwroot" AfterTargets="Build" Condition="Exists('$(MSBuildThisFileDirectory)..\..\web\dist')">
+    <ItemGroup>
+      <FrontendAsset Include="$(MSBuildThisFileDirectory)..\..\web\dist\**\*" />
+    </ItemGroup>
+    <!--
+      先清掉上一次的产物：前端每次构建都会换文件名（内容 hash），只复制不清理会让产物目录无限堆积旧版本。
+      清理范围严格限定在输出目录的 wwwroot 之下（不是源目录、不是别处）。
+    -->
+    <ItemGroup>
+      <StaleFrontendAsset Include="$(OutDir)wwwroot\**\*" />
+    </ItemGroup>
+    <Delete Files="@(StaleFrontendAsset)" />
+    <Copy SourceFiles="@(FrontendAsset)"
+          DestinationFiles="@(FrontendAsset->'$(OutDir)wwwroot\%(RecursiveDir)%(Filename)%(Extension)')" />
+  </Target>
+
+  <!--
+    发布路径同理：SDK 的静态资源管线只在 `Content` 项里找素材，而本项目的素材来自仓库外的 `web/dist`，
+    所以发布产物必须在这里显式铺一次（否则 `dotnet publish` 出来的包没有页面，而 build 出来的是有的）。
+    与上面同一套"先清后复制"，范围限定在发布目录的 wwwroot 下。
+  -->
+  <Target Name="CopyFrontendToPublish" AfterTargets="Publish" Condition="Exists('$(MSBuildThisFileDirectory)..\..\web\dist')">
+    <ItemGroup>
+      <PublishFrontendAsset Include="$(MSBuildThisFileDirectory)..\..\web\dist\**\*" />
+    </ItemGroup>
+    <ItemGroup>
+      <StalePublishFrontendAsset Include="$(PublishDir)wwwroot\**\*" />
+    </ItemGroup>
+    <Delete Files="@(StalePublishFrontendAsset)" />
+    <Copy SourceFiles="@(PublishFrontendAsset)"
+          DestinationFiles="@(PublishFrontendAsset->'$(PublishDir)wwwroot\%(RecursiveDir)%(Filename)%(Extension)')" />
+  </Target>
+
 </Project>

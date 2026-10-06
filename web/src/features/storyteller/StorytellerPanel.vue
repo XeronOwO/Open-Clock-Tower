@@ -13,6 +13,7 @@ import type { ReplayViewDto, StorytellerViewDto } from '@/contracts/game'
 import { clockTimeOf } from '@/display/format'
 import { labelOf } from '@/display/labels'
 import { StorytellerGateway, type GatewayState } from '@/services/storytellerGateway'
+import { readSeatCount, DEFAULT_SEAT_COUNT } from '@/services/serverConfig'
 import { TicketStore } from '@/services/ticketStore'
 import type { CommandOutcome, CommandSender } from '@/services/storytellerCommands'
 import StatusStrip from '@/features/storyteller/StatusStrip.vue'
@@ -31,14 +32,27 @@ import GrimoireDataDrawer from '@/features/storyteller/GrimoireDataDrawer.vue'
 import ReplayPanel from '@/features/replay/ReplayPanel.vue'
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef } from 'vue'
 
-/** 席位名单是会话信息（服务端持有）。真实服务端的席位数量由配置决定，可用 VITE_SEAT_COUNT 覆盖。 */
-function configuredSeatCount(): number {
-  const raw = import.meta.env['VITE_SEAT_COUNT']
-  const parsed = typeof raw === 'string' ? Number.parseInt(raw, 10) : Number.NaN
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 5
-}
+/**
+ * 兜底席位：只在服务端读数取不到时使用（`readSeatCount` 返回 null）。真正的来源是服务端的
+ * `GameServer:SeatCount`——两边分叉会让说书人给不出最后一席的角色，所以不在这里另设配置口径。
+ */
+const seatCount = ref(DEFAULT_SEAT_COUNT)
 
-const seatCount = configuredSeatCount()
+/**
+ * 拉取服务端配置的席位数量。取不到就沿用兜底值并显式告知——绝不静默按 5 席渲染：
+ * 那样服务端配 6 席时会少画一席，说书人给不出角色、最后一名玩家进不了局。
+ */
+async function syncSeatCount(): Promise<void> {
+  const configured = await readSeatCount()
+  if (configured === null) {
+    pushDiagnostic(`没能从服务端读到席位数量，暂按 ${seatCount.value} 席显示；刷新页面可重试`)
+    return
+  }
+
+  if (configured !== seatCount.value) {
+    seatCount.value = configured
+  }
+}
 
 const ticket = ref('')
 const store = new TicketStore()
@@ -180,6 +194,7 @@ function showOutcome(result: CommandOutcome): void {
 }
 
 onMounted(() => {
+  void syncSeatCount()
   const remembered = store.read()
   if (remembered.length > 0) {
     ticket.value = remembered

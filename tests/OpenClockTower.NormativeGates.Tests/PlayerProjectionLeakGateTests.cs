@@ -419,6 +419,11 @@ public sealed partial class PlayerProjectionLeakGateTests
         "@/display/format",
         "@/display/labels",
         "@/services/connectionState",
+        // 部署路径前缀（票据：公网部署）：`basePath` 只做字符串归一化与拼接，`runtimeBase` 只读
+        // 构建期注入的 `import.meta.env.BASE_URL`。两者都不含游戏数据、不引用任何 DTO / 视图类型，
+        // 是两端共用的**纯基础设施**——玩家侧经 `connectionState` 间接依赖它们，故显式登记。
+        "@/services/basePath",
+        "@/services/runtimeBase",
         "@/services/idempotency",
         "@/services/playerGateway",
         "@/services/playerViewMerge",

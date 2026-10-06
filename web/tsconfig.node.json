@@ -11,6 +11,9 @@
     "isolatedModules": true,
     "skipLibCheck": true,
     "noEmit": true,
+    // 允许配置里用 `.ts` 后缀导入源码模块：vite 的 configLoader 在未来的 native 模式下
+    // 要求带后缀（无后缀会产生弃用警告），显式带上对两边都成立。
+    "allowImportingTsExtensions": true,
     "types": ["node"]
   },
   "include": ["vite.config.ts", "vitest.config.ts"]

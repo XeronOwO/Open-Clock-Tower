@@ -69,9 +69,23 @@ builder.Services.AddHostedService<StepPacerHostedService>();
 builder.Services.AddSignalR();
 
 var app = builder.Build();
-app.MapGet("/healthz", () => Results.Ok(new { status = "ok", game = serverOptions.GameId }));
+// 部署形态：前端构建产物随发布带上（见 csproj 的 wwwroot 接线），由宿主直接发页面，
+// 因此页面与 /hub 同源——不需要 CORS，也不需要另起静态站点。开发期仍可继续用 web/ 的 Vite 服务器。
+app.UseDefaultFiles();
+app.UseStaticFiles();
+app.MapGet(
+    "/healthz",
+    () => Results.Ok(new
+    {
+        status = "ok",
+        game = serverOptions.GameId,
+        // 席位数量是服务端配置（说书人面板据此渲染席位）：前端启动时读它，避免与构建期变量分叉。
+        seatCount = serverOptions.SeatCount,
+    }));
 app.MapHub<GameHub>("/hub/game");
 app.MapHub<AccountHub>("/hub/account");
+// SPA 回退：静态文件与既有端点都没匹配上、且路径不像文件时才交给前端路由（`/` 与 `/#player` 同一份构建）。
+app.MapFallbackToFile("{*path:nonfile}", "index.html");
 app.Run();
 
 /// <summary>集成测试用的程序入口标记。</summary>
