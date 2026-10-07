@@ -163,20 +163,20 @@ async function main() {
     seats: ASSIGN.length,
     suffix: 'setup',
   })
-  const seatTickets = table.seatTickets
-  check('席位票据齐备（5 席）', seatTickets.length === ASSIGN.length, `数据库 ${seatTickets.length} 张`)
+  const seatInviteCodes = table.seatInviteCodes
+  check('席位邀请码齐备（5 席）', seatInviteCodes.length === ASSIGN.length, `数据库 ${seatInviteCodes.length} 张`)
   check('说书人加入后看板可见（魔典主视图）', (await storytellerPage.locator('[data-testid="grimoire"]').count()) === 1)
 
   const playerPages = new Map()
   const frameSinks = new Map()
-  for (const seatTicket of seatTickets) {
+  for (const seatInviteCode of seatInviteCodes) {
     const sink = createFrameSink()
     const page = await newPage(browser, { width: 900, height: 1000 }, consoleErrors, sink)
-    await seatByAccount(page, { frontUrl: viteUrl, gameId: table.gameId, seat: seatTicket.seat, suffix: `setup-${seatTicket.seat}` })
-    const badge = await waitForText(page.locator('[data-testid="player-seat"]'), `${seatTicket.seat} 号`, 30_000)
-    check(`玩家 ${seatTicket.seat} 号加入成功`, badge.includes(`${seatTicket.seat} 号`), compact(badge))
-    playerPages.set(seatTicket.seat, page)
-    frameSinks.set(seatTicket.seat, sink)
+    await seatByAccount(page, { frontUrl: viteUrl, gameId: table.gameId, seat: seatInviteCode.seat, suffix: `setup-${seatInviteCode.seat}` })
+    const badge = await waitForText(page.locator('[data-testid="player-seat"]'), `${seatInviteCode.seat} 号`, 30_000)
+    check(`玩家 ${seatInviteCode.seat} 号加入成功`, badge.includes(`${seatInviteCode.seat} 号`), compact(badge))
+    playerPages.set(seatInviteCode.seat, page)
+    frameSinks.set(seatInviteCode.seat, sink)
   }
   check('五席玩家各一条真连接（独立浏览器上下文）', playerPages.size === 5 && frameSinks.size === 5)
 

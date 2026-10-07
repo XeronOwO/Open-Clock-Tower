@@ -179,10 +179,10 @@ async function runPresentGrantScene() {
     seats: ASSIGN.length,
     suffix: 'charchange',
   })
-  const seatTickets = table.seatTickets
+  const seatInviteCodes = table.seatInviteCodes
   // 桌标识属于连接（D-0027 之后不声明就被拒）：线级探针也连到这一桌。
   hubUrl = table.hubUrl
-  check('席位票据齐备（6 席）', seatTickets.length === 6, `数据库 ${seatTickets.length} 张`)
+  check('席位邀请码齐备（6 席）', seatInviteCodes.length === 6, `数据库 ${seatInviteCodes.length} 张`)
   check('说书人加入后看板可见（魔典主视图）', (await storytellerPage.locator('[data-testid="grimoire"]').count()) === 1)
 
   // 席位入座：注册夹具账号 → 从大厅挑空席位（D-0027，不再填票据）。
@@ -202,9 +202,9 @@ async function runPresentGrantScene() {
 
   // 无关玩家（2 号筑梦师 / 4 号理发师 / 6 号畸形秀演员）用 Node 客户端驱动：它们的全部推送进越权扫描。
   const unrelatedSeats = [
-    await connectSeat(seatTickets[DREAMER_SEAT - 1]),
-    await connectSeat(seatTickets[BARBER_SEAT - 1]),
-    await connectSeat(seatTickets[MUTANT_SEAT - 1]),
+    await connectSeat(seatInviteCodes[DREAMER_SEAT - 1]),
+    await connectSeat(seatInviteCodes[BARBER_SEAT - 1]),
+    await connectSeat(seatInviteCodes[MUTANT_SEAT - 1]),
   ]
 
   console.log('=== 4/14 分配 → 开首夜 ===')
@@ -659,8 +659,8 @@ async function runAbsentGrantScene() {
     seats: ASSIGN.length,
     suffix: 'charchange-absent',
   })
-  const seatTickets = table.seatTickets
-  check('第二局：席位票据齐备（6 席）', seatTickets.length === 6, `数据库 ${seatTickets.length} 张`)
+  const seatInviteCodes = table.seatInviteCodes
+  check('第二局：席位邀请码齐备（6 席）', seatInviteCodes.length === 6, `数据库 ${seatInviteCodes.length} 张`)
   check('第二局：说书人加入后看板可见（魔典主视图）', (await storytellerPage.locator('[data-testid="grimoire"]').count()) === 1)
 
   const philosopherPage = await newPage(browser, { width: 900, height: 1100 }, consoleErrors)
@@ -1009,9 +1009,9 @@ async function waitForSeatRequest(seat, timeoutMs) {
 }
 
 /** 连一个真 SignalR 席位：记录每一次请求与每一条推送（供越权扫描）。 */
-async function connectSeat(seatTicket) {
+async function connectSeat(seatInviteCode) {
   // 入座必须登录（D-0037）：每调用一次 = 新席位 → **新夹具账号**（一账号一局只坐一席，共用会被拒）。
-  const probe = await registerProbeAccount(signalR, accountHubUrl, `cc-${seatTicket.seat}`)
+  const probe = await registerProbeAccount(signalR, accountHubUrl, `cc-${seatInviteCode.seat}`)
   const connection = new signalR.HubConnectionBuilder().withUrl(hubUrl).configureLogging(signalR.LogLevel.None).build()
   const requests = []
   const messages = []
@@ -1024,7 +1024,7 @@ async function connectSeat(seatTicket) {
   }
 
   await connection.start()
-  const joined = await connection.invoke('JoinByInviteCode', seatTicket.ticket, probe.accountSession, 0)
+  const joined = await connection.invoke('JoinByInviteCode', seatInviteCode.ticket, probe.accountSession, 0)
   return {
     requests,
     messages,

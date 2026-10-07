@@ -173,11 +173,11 @@ export async function issueSeatInviteCodes(page, seatCount) {
  * 开一桌并以它的开桌账号进主持台（装置的开场动作）。
  *
  * 全程走界面：门 → 注册 → 开一桌 → 「我主持的桌」里点「进主持台」**→ 逐席签发邀请码**（D-0038）。
- * 返回的 `seatTickets` 供装置接着让玩家入座；它是**当场签发出来的**（库里只有哈希，读不回来）。
+ * 返回的 `seatInviteCodes` 供装置接着让玩家入座；它是**当场签发出来的**（库里只有哈希，读不回来）。
  *
  * @param {import('playwright').Page} page 说书人那一页（未打开也行，本函数会打开）。
  * @param {{frontUrl: string, databasePath: string, seats: number, serverUrl?: string, suffix?: string, name?: string}} options
- * @returns {Promise<{gameId: string, name: string, username: string, displayName: string, password: string, seatTickets: {seat: number, ticket: string}[], hubUrl?: string}>}
+ * @returns {Promise<{gameId: string, name: string, username: string, displayName: string, password: string, seatInviteCodes: {seat: number, ticket: string}[], hubUrl?: string}>}
  */
 export async function openTableAndHost(page, options) {
   const suffix = options.suffix ?? 'table'
@@ -209,7 +209,7 @@ export async function openTableAndHost(page, options) {
     username,
     displayName,
     password,
-    seatTickets: await issueSeatInviteCodes(page, options.seats),
+    seatInviteCodes: await issueSeatInviteCodes(page, options.seats),
     // Node SignalR 客户端（装置里的"线级探针"）不再能连"没声明桌"的地址（D-0027），
     // 所以顺手给出这条连接该用的地址——装置把它赋给 hubUrl 即可。
     hubUrl:
@@ -223,7 +223,7 @@ export async function openTableAndHost(page, options) {
  * 用**邀请码**入座（说书人中途签发的席位 / 换设备兜底）。
  *
  * 与 `seatByAccount` 的分工：大厅点得动的桌用它；桌已开局 / 已是邀请制（比如中途到场的旅行者）用这一条——
- * 码就是 `桌标识:席位票据`，与说书人面板上显示的那一串完全一致（`[data-testid="traveller-issued"]`）。
+ * 码就是 `桌标识:席位邀请码`，与说书人面板上显示的那一串完全一致（`[data-testid="traveller-issued"]`）。
  *
  * @param {import('playwright').Page} page
  * @param {{frontUrl: string, code: string, suffix?: string, account?: {username: string, displayName?: string, password: string}}} options

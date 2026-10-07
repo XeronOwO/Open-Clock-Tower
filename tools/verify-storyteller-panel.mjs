@@ -248,12 +248,12 @@ async function main() {
     seats: options.seatCount,
     suffix: 'panel',
   })
-  // 席位票据仍直读库（D-0027 明确留给了下一张票）：开桌之后按桌标识取，供下面各席入座用。
-  const seatTickets = table.seatTickets
+  // 邀请码是**当场签发**出来的（D-0038）：库里只有哈希、读不回来，所以下面各席入座都用这一批。
+  const seatInviteCodes = table.seatInviteCodes
   check(
-    '席位票据齐备且与席位数量一致',
-    seatTickets.length === options.seatCount,
-    `数据库 ${seatTickets.length} 张，配置 ${options.seatCount} 席`,
+    '席位邀请码齐备且与席位数量一致',
+    seatInviteCodes.length === options.seatCount,
+    `已签发 ${seatInviteCodes.length} 枚，配置 ${options.seatCount} 席`,
   )
   const grimoire = storyteller.page.locator('[data-testid="grimoire"]')
   await screenshot(storyteller.page, '01-storyteller-joined')
@@ -274,10 +274,10 @@ async function main() {
   // 各席并行创建 / 加入：每席是独立设备（独立浏览器上下文），服务端本就按多客户端并发加入设计；
   // 串行加入会白等 5 次页面往返，并行后总耗时由最慢的一席决定。
   const joined = await Promise.all(
-    seatTickets.map(async (seatTicket) => {
+    seatInviteCodes.map(async (seatInviteCode) => {
       const client = await newClient(browser, { width: 900, height: 900 }, consoleErrors)
       let hold = null
-      if (seatTicket.seat === raceSeat) {
+      if (seatInviteCode.seat === raceSeat) {
         hold = await installJoinResponseHold(client.page)
       }
 
@@ -287,17 +287,17 @@ async function main() {
       const account = await seatByAccount(client.page, {
         frontUrl,
         gameId: table.gameId,
-        seat: seatTicket.seat,
-        suffix: `panel-${seatTicket.seat}`,
+        seat: seatInviteCode.seat,
+        suffix: `panel-${seatInviteCode.seat}`,
       })
       const seatBadge = client.page.locator('[data-testid="player-seat"]')
       await seatBadge.waitFor({ timeout: 30_000 })
       const badgeText = (await seatBadge.innerText()).trim()
-      check(`玩家 ${seatTicket.seat} 号加入成功`, badgeText.includes(`${seatTicket.seat} 号`), badgeText)
+      check(`玩家 ${seatInviteCode.seat} 号加入成功`, badgeText.includes(`${seatInviteCode.seat} 号`), badgeText)
 
       const initialPhase = (await client.page.locator('[data-testid="player-phase"]').innerText()).trim()
       check(
-        `玩家 ${seatTicket.seat} 号加入时阶段显示中文「未开始」`,
+        `玩家 ${seatInviteCode.seat} 号加入时阶段显示中文「未开始」`,
         initialPhase === '未开始',
         initialPhase,
       )
@@ -307,13 +307,13 @@ async function main() {
         (heading) => shellText.includes(heading),
       )
       check(
-        `玩家 ${seatTicket.seat} 号界面不含说书人面板`,
+        `玩家 ${seatInviteCode.seat} 号界面不含说书人面板`,
         storytellerLeak.length === 0
           && (await client.page.locator('[data-testid="grimoire"]').count()) === 0
           && (await client.page.locator('[data-testid="seat-console"]').count()) === 0,
         storytellerLeak.join(',') || shellText.replace(/\s+/g, ' ').slice(0, 120),
       )
-      return { seat: seatTicket.seat, client, hold, account }
+      return { seat: seatInviteCode.seat, client, hold, account }
     }),
   )
   for (const entry of joined) {

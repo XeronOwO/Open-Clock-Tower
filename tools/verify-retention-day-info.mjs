@@ -192,10 +192,10 @@ async function main() {
     seats: ASSIGN.length,
     suffix: 'retain',
   })
-  const seatTickets = table.seatTickets
+  const seatInviteCodes = table.seatInviteCodes
   // 桌标识属于连接（D-0027 之后不声明就被拒）：线级探针也连到这一桌。
   hubUrl = table.hubUrl
-  check('席位票据齐备（6 席）', seatTickets.length === ASSIGN.length, `数据库 ${seatTickets.length} 张`)
+  check('席位邀请码齐备（6 席）', seatInviteCodes.length === ASSIGN.length, `数据库 ${seatInviteCodes.length} 张`)
   check(
     '说书人加入后看板可见（魔典主视图）',
     (await storytellerPage.locator('[data-testid="grimoire"]').count()) === 1,
@@ -214,8 +214,8 @@ async function main() {
 
   // 1 号（亡骨魔）与 6 号（神谕者）用 Node 客户端驱动：前者是本局唯一的夜间击杀执行者，
   // 后者是"无关席位 + 收包扫描"的载体（每席位只保留一条连接，见 web/AGENTS.md §3.1）。
-  const demonSeat = await connectSeat(seatTickets[DEMON_SEAT - 1])
-  const oracleSeat = await connectSeat(seatTickets[ORACLE_SEAT - 1])
+  const demonSeat = await connectSeat(seatInviteCodes[DEMON_SEAT - 1])
+  const oracleSeat = await connectSeat(seatInviteCodes[ORACLE_SEAT - 1])
 
   console.log('=== 4/8 分配 → 首夜（女巫之外都是空槽）→ 第 1 天 ===')
   const assignmentSelects = storytellerPage.locator('section', { hasText: '开局分配' }).locator('select')
@@ -1257,9 +1257,9 @@ async function informationCount(page) {
 }
 
 /** 连一个真 SignalR 席位：记录每一次请求与每一条推送（供越权扫描）。 */
-async function connectSeat(seatTicket) {
+async function connectSeat(seatInviteCode) {
   // 入座必须登录（D-0037）：每调用一次 = 新席位 → **新夹具账号**（一账号一局只坐一席，共用会被拒）。
-  const probe = await registerProbeAccount(signalR, accountHubUrl, `retain-${seatTicket.seat}`)
+  const probe = await registerProbeAccount(signalR, accountHubUrl, `retain-${seatInviteCode.seat}`)
   const connection = new signalR.HubConnectionBuilder().withUrl(hubUrl).configureLogging(signalR.LogLevel.None).build()
   const requests = []
   const messages = []
@@ -1272,7 +1272,7 @@ async function connectSeat(seatTicket) {
   }
 
   await connection.start()
-  const joined = await connection.invoke('JoinByInviteCode', seatTicket.ticket, probe.accountSession, 0)
+  const joined = await connection.invoke('JoinByInviteCode', seatInviteCode.ticket, probe.accountSession, 0)
   return {
     messages,
     /** 取走"还没处理过"的请求（跨夜复用同一个探针，取走即不再重复处理）。 */

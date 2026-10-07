@@ -179,8 +179,8 @@ async function main() {
     seats: ASSIGN.length,
     suffix: 'retro-info',
   })
-  const seatTickets = table.seatTickets
-  check('席位票据齐备（6 席）', seatTickets.length === 6, `数据库 ${seatTickets.length} 张`)
+  const seatInviteCodes = table.seatInviteCodes
+  check('席位邀请码齐备（6 席）', seatInviteCodes.length === 6, `数据库 ${seatInviteCodes.length} 张`)
   check('说书人加入后看板可见（魔典主视图）', (await storytellerPage.locator('[data-testid="grimoire"]').count()) === 1)
 
   /**

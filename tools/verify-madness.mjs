@@ -154,10 +154,10 @@ async function main() {
     seats: ASSIGN.length,
     suffix: 'madness',
   })
-  const seatTickets = table.seatTickets
+  const seatInviteCodes = table.seatInviteCodes
   // 桌标识属于连接（D-0027 之后不声明就被拒）：线级探针也连到这一桌。
   hubUrl = table.hubUrl
-  check('席位票据齐备（4 席）', seatTickets.length === 4, `数据库 ${seatTickets.length} 张`)
+  check('席位邀请码齐备（4 席）', seatInviteCodes.length === 4, `数据库 ${seatInviteCodes.length} 张`)
   check('说书人加入后看板可见（魔典主视图）', (await storytellerPage.locator('[data-testid="grimoire"]').count()) === 1)
 
   const cerenovusPage = await newPage(browser, { width: 900, height: 1100 }, consoleErrors)
@@ -166,10 +166,10 @@ async function main() {
   check('洗脑师席（1 号）加入玩家端', cerenovusBadge.includes('1'), cerenovusBadge)
 
   // 2 号是目标（收私密告知），3 / 4 号是无关玩家（收包扫描）。
-  const targetSeat = await connectSeat(seatTickets[TARGET_SEAT - 1])
+  const targetSeat = await connectSeat(seatInviteCodes[TARGET_SEAT - 1])
   const unrelatedSeats = [
-    await connectSeat(seatTickets[2]),
-    await connectSeat(seatTickets[MUTANT_SEAT - 1]),
+    await connectSeat(seatInviteCodes[2]),
+    await connectSeat(seatInviteCodes[MUTANT_SEAT - 1]),
   ]
 
   console.log('=== 4/7 分配 → 开首夜 → 洗脑师两维选择（真界面）===')
@@ -337,9 +337,9 @@ async function main() {
 }
 
 /** 连一个真 SignalR 席位：记录每一次请求与每一条推送（供越权扫描）。 */
-async function connectSeat(seatTicket) {
+async function connectSeat(seatInviteCode) {
   // 入座必须登录（D-0037）：每调用一次 = 新席位 → **新夹具账号**（一账号一局只坐一席，共用会被拒）。
-  const probe = await registerProbeAccount(signalR, accountHubUrl, `madness-${seatTicket.seat}`)
+  const probe = await registerProbeAccount(signalR, accountHubUrl, `madness-${seatInviteCode.seat}`)
   const connection = new signalR.HubConnectionBuilder().withUrl(hubUrl).configureLogging(signalR.LogLevel.None).build()
   const requests = []
   const messages = []
@@ -352,7 +352,7 @@ async function connectSeat(seatTicket) {
   }
 
   await connection.start()
-  const joined = await connection.invoke('JoinByInviteCode', seatTicket.ticket, probe.accountSession, 0)
+  const joined = await connection.invoke('JoinByInviteCode', seatInviteCode.ticket, probe.accountSession, 0)
   return {
     requests,
     messages,

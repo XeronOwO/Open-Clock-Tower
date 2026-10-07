@@ -155,10 +155,10 @@ async function main() {
     seats: ASSIGN.length,
     suffix: 'pithag',
   })
-  const seatTickets = table.seatTickets
+  const seatInviteCodes = table.seatInviteCodes
   // 桌标识属于连接（D-0027 之后不声明就被拒）：线级探针也连到这一桌。
   hubUrl = table.hubUrl
-  check('席位票据齐备（5 席）', seatTickets.length === 5, `数据库 ${seatTickets.length} 张`)
+  check('席位邀请码齐备（5 席）', seatInviteCodes.length === 5, `数据库 ${seatInviteCodes.length} 张`)
   check('说书人加入后看板可见（魔典主视图）', (await storytellerPage.locator('[data-testid="grimoire"]').count()) === 1)
 
   const pitHagPage = await newPage(browser, { width: 900, height: 1100 }, consoleErrors)
@@ -167,10 +167,10 @@ async function main() {
   check('麻脸巫婆席（1 号）加入玩家端', pitHagBadge.includes(String(PIT_HAG_SEAT)), pitHagBadge)
 
   // 3 号（会被变成涡流）与 4 号（原本的恶魔）用 Node 客户端驱动：它们是"当夜行动"的执行者。
-  const artistSeat = await connectSeat(seatTickets[ARTIST_SEAT - 1])
-  const demonSeat = await connectSeat(seatTickets[DEMON_SEAT - 1])
+  const artistSeat = await connectSeat(seatInviteCodes[ARTIST_SEAT - 1])
+  const demonSeat = await connectSeat(seatInviteCodes[DEMON_SEAT - 1])
   // 5 号是无关玩家：它的全部推送要接受越权扫描。
-  const klutzSeat = await connectSeat(seatTickets[KLUTZ_SEAT - 1])
+  const klutzSeat = await connectSeat(seatInviteCodes[KLUTZ_SEAT - 1])
 
   console.log('=== 4/8 分配 → 首夜（自动走完）→ 第二夜 ===')
   const assignmentSelects = storytellerPage.locator('section', { hasText: '开局分配' }).locator('select')
@@ -399,9 +399,9 @@ async function waitForSeatRequest(seat, timeoutMs) {
 }
 
 /** 连一个真 SignalR 席位：记录每一次请求与每一条推送（供越权扫描）。 */
-async function connectSeat(seatTicket) {
+async function connectSeat(seatInviteCode) {
   // 入座必须登录（D-0037）：每调用一次 = 新席位 → **新夹具账号**（一账号一局只坐一席，共用会被拒）。
-  const probe = await registerProbeAccount(signalR, accountHubUrl, `pithag-${seatTicket.seat}`)
+  const probe = await registerProbeAccount(signalR, accountHubUrl, `pithag-${seatInviteCode.seat}`)
   const connection = new signalR.HubConnectionBuilder().withUrl(hubUrl).configureLogging(signalR.LogLevel.None).build()
   const requests = []
   const messages = []
@@ -414,7 +414,7 @@ async function connectSeat(seatTicket) {
   }
 
   await connection.start()
-  const joined = await connection.invoke('JoinByInviteCode', seatTicket.ticket, probe.accountSession, 0)
+  const joined = await connection.invoke('JoinByInviteCode', seatInviteCode.ticket, probe.accountSession, 0)
   return {
     requests,
     messages,

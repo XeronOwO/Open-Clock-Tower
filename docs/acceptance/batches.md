@@ -2139,7 +2139,7 @@ NormativeGates 41 · Integration 429）· `dotnet format` 就地通过（无额�
 起宿主的姿势：`Start-Process dotnet -ArgumentList <DLL> -WorkingDirectory <发布输出目录> -NoNewWindow`，
 并用轮询 `/healthz` 等就绪（不要靠 `sleep` 空转）。
 
-- **装置侧修的两条**（都是本轮真机首跑咬出来的**装置自身缺陷**，不是产品缺陷）：
+- **装置侧修的三条**（前两条是本轮真机首跑咬出来的**装置自身缺陷**，不是产品缺陷；第三条是命名债收口）：
   1. `lib/entrance.mjs` 的 `issueInviteCode`：同一席再签一枚时 `invite-issued` 留在原地只换文本，
      "等元素出现"在点下去那一瞬就满足 → 返回**上一枚**（于是"新签的那一枚"被当成旧码）；
      判据改成"读数变了"。
@@ -2147,6 +2147,17 @@ NormativeGates 41 · Integration 429）· `dotnet format` 就地通过（无额�
      无界读会白等满 30 秒 → 判定窗口被吃光 → **假红**（服务端 73ms 就回了"已入座"、界面也切过去了，
      装置却报"新签的那一枚进不来"）。这条坑已有 done 票，本轮是同一形状的第四例，
      因此给 `check-bounded-text` 补了**探针 G**。
+  3. **命名债收口**：`seatTicket` / `seatTickets` → `seatInviteCode` / `seatInviteCodes`
+     （20 个装置文件 130 处；这两个名字现在装的是**签发出来的邀请码**，"票据"那个东西已经不存在了）。
+     顺手修掉 `verify-entrance-usability` 里一条**永远为真**的断言：它拿早已退场的占位符 `席位票据`
+     去数输入框，命中数恒为 0（改名那一轮发现的假绿）；现在数的是当前锚点 `seat-invite-code`，
+     三个面各判一次，真的会红。
+     证据：`node --check` **20/20 通过** · `tools/` 下 `seatTicket` grep 命中 **0** ·
+     **19 台**引用过这个名字的装置逐台复跑**全绿**（accounts 42 · bone-collector-juggler 52 ·
+     butcher 40 · character-change 89 · death-triggers 73 · entrance-usability 34 · full-game 49 ·
+     madness 28 · mathematician 38 · pit-hag 35 · retention-day-info 78 · retro-info 56 ·
+     seamstress-artist 82 · setup-randomizer 58 · storyteller-panel 289（迭代档）· table-access 38 ·
+     winloss 29 · witch 28 · zero-trust 54）。
 - **收尾**：装置在目标机上留下的 **6 张测试桌 + 14 个测试账号**按它打印的清理 SQL 删净
   （停服 → 一个事务里删五张表 → 起服）：回看 **桌 0 · 事件 0 · 席位绑定 0 · 邀请码 0 · 账号 2**
   （只剩部署者自己的两个），站点 200 · `healthz` 正常 · 结构仍 4/4。
@@ -2163,8 +2174,7 @@ NormativeGates 41 · Integration 429）· `dotnet format` 就地通过（无额�
 2. 需要已经在跑的宿主的三台装置本轮跑在**本机直跑宿主**上（传输面 22 · 注销 19 · 风控 24，全绿）；
    **部署实例上**只跑了真机验收那一台——传输面在部署上多一条"反代侧 2 MB 413"的读数（本机 22 项 vs 部署 23 项），
    风控与注销在部署上跑会**建真数据**，留到需要时再跑（编排见批次 E56 的窗口表）。
-3. 装置侧的命名债（`seatTickets` / `seatTicket` 现在装的是邀请码）**仍未改名**。
-4. `verify-replay-scale` 的动作限速那条残余未动。
+3. `verify-replay-scale` 的动作限速那条残余未动。
 
 ## 相关阅读
 

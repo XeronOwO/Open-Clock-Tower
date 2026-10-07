@@ -411,7 +411,9 @@ async function inspectGate(page, label, url, expectation = 'card') {
     tableRows: await page.locator('[data-table]').count(),
     seatButtons: await page.locator('[data-seat]').count(),
     storytellerTicket: await page.getByTestId('storyteller-ticket').count(),
-    seatTicketInput: await page.getByPlaceholder('席位票据').count(),
+    // 锚点必须是**这一版的**邀请码输入框（D-0038）：用旧占位符 `席位票据` 去数，永远是 0，
+    // 这条断言就成了永远为真的空转（改名那一轮发现的假绿）。
+    seatInviteCodeInput: await page.getByTestId('seat-invite-code').count(),
     openTableForm: await page.getByTestId('open-table-submit').count(),
   }
 
@@ -433,9 +435,9 @@ async function inspectGate(page, label, url, expectation = 'card') {
     `席位按钮=${counts.seatButtons}`,
   )
   check(
-    `未登录打开${label}：没有票据输入框`,
-    counts.storytellerTicket === 0 && counts.seatTicketInput === 0,
-    `说书人票据框=${counts.storytellerTicket}；席位票据框=${counts.seatTicketInput}`,
+    `未登录打开${label}：没有凭据输入框（邀请码入口不该出现在登录之前）`,
+    counts.storytellerTicket === 0 && counts.seatInviteCodeInput === 0,
+    `说书人票据框=${counts.storytellerTicket}（锚点已随 D-0027 退场）；邀请码输入框=${counts.seatInviteCodeInput}`,
   )
   check(
     `未登录打开${label}：没有开桌表单`,

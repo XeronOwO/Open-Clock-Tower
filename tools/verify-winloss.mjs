@@ -157,10 +157,10 @@ async function main() {
     seats: ASSIGN.length,
     suffix: 'winloss',
   })
-  const seatTickets = table.seatTickets
+  const seatInviteCodes = table.seatInviteCodes
   // 桌标识属于连接（D-0027 之后不声明就被拒）：线级探针也连到这一桌。
   hubUrl = table.hubUrl
-  check(`席位票据齐备（${ASSIGN.length} 席）`, seatTickets.length === ASSIGN.length, `数据库 ${seatTickets.length} 张`)
+  check(`席位邀请码齐备（${ASSIGN.length} 席）`, seatInviteCodes.length === ASSIGN.length, `数据库 ${seatInviteCodes.length} 张`)
   check('说书人加入后看板可见（魔典主视图）', (await storytellerPage.locator('[data-testid="grimoire"]').count()) === 1)
 
   const klutzPage = await newPage(browser, { width: 900, height: 1100 }, consoleErrors)
@@ -175,7 +175,7 @@ async function main() {
   )
 
   // 投票用真 SignalR 席位客户端（3 / 4 号）；1 号（涡流）与 5 号（筑梦师）本场景不需要动作。
-  const voterSeats = [await connectSeat(seatTickets[2]), await connectSeat(seatTickets[WITCH_SEAT - 1])]
+  const voterSeats = [await connectSeat(seatInviteCodes[2]), await connectSeat(seatInviteCodes[WITCH_SEAT - 1])]
 
   console.log('=== 4/7 分配 → 开首夜 → 过夜（女巫 / 筑梦师的请求由说书人作废）===')
   const assignmentSelects = storytellerPage.locator('section', { hasText: '开局分配' }).locator('select')
@@ -375,9 +375,9 @@ async function main() {
   }
 }
 /** 连一个真 SignalR 席位：记录每一次请求与每一条推送（供越权扫描）。 */
-async function connectSeat(seatTicket) {
+async function connectSeat(seatInviteCode) {
   // 入座必须登录（D-0037）：每调用一次 = 新席位 → **新夹具账号**（一账号一局只坐一席，共用会被拒）。
-  const probe = await registerProbeAccount(signalR, accountHubUrl, `winloss-${seatTicket.seat}`)
+  const probe = await registerProbeAccount(signalR, accountHubUrl, `winloss-${seatInviteCode.seat}`)
   const connection = new signalR.HubConnectionBuilder().withUrl(hubUrl).configureLogging(signalR.LogLevel.None).build()
   const requests = []
   const messages = []
@@ -390,7 +390,7 @@ async function connectSeat(seatTicket) {
   }
 
   await connection.start()
-  const joined = await connection.invoke('JoinByInviteCode', seatTicket.ticket, probe.accountSession, 0)
+  const joined = await connection.invoke('JoinByInviteCode', seatInviteCode.ticket, probe.accountSession, 0)
   return {
     requests,
     messages,

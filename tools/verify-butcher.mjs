@@ -143,10 +143,10 @@ async function main() {
     seats: ASSIGN.length,
     suffix: 'butcher',
   })
-  const seatTickets = table.seatTickets
+  const seatInviteCodes = table.seatInviteCodes
   // 桌标识属于连接（D-0027 之后不声明就被拒）：线级探针也连到这一桌。
   hubUrl = table.hubUrl
-  check('席位票据齐备（5 席）', seatTickets.length === ASSIGN.length, `数据库 ${seatTickets.length} 张`)
+  check('席位邀请码齐备（5 席）', seatInviteCodes.length === ASSIGN.length, `数据库 ${seatInviteCodes.length} 张`)
   check('说书人加入后看板可见（魔典主视图）', (await storyteller.locator('[data-testid="grimoire"]').count()) === 1)
 
   const players = new Map()
@@ -294,7 +294,7 @@ async function main() {
   check('行 1：屠夫本人看到额外提名入口（窗口公开）', (await butcherEntry.count()) >= 1)
 
   // 行 1 的服务端面：非授予席位（4 号呆瓜）绕开 UI 直调 Hub 也不能发起额外提名（零信任命令面）。
-  const rawKlutz = await connectRawSeat(seatTickets[KLUTZ_SEAT - 1])
+  const rawKlutz = await connectRawSeat(seatInviteCodes[KLUTZ_SEAT - 1])
   const notGranted = await rawKlutz.invoke('NominateExtra', CLOCKMAKER_SEAT, 'butcher-fixture-raw-1')
   await rawKlutz.dispose()
   check(
@@ -421,14 +421,14 @@ async function joinSeatPage(players, browser, consoleErrors, gameId, seat) {
 
 /** 直连 Hub 的裸席位客户端（负向探针用：不经浏览器、不经过任何 UI 闸）。
  *  "裸"只指没有界面：入座**同样要登录**（D-0037），所以这里先给这一席注册一个夹具账号。 */
-async function connectRawSeat(seatTicket) {
-  const probe = await registerProbeAccount(signalR, accountHubUrl, `butcher-${seatTicket.seat}`)
+async function connectRawSeat(seatInviteCode) {
+  const probe = await registerProbeAccount(signalR, accountHubUrl, `butcher-${seatInviteCode.seat}`)
   const connection = new signalR.HubConnectionBuilder()
     .withUrl(hubUrl)
     .configureLogging(signalR.LogLevel.None)
     .build()
   await connection.start()
-  const joined = await connection.invoke('JoinByInviteCode', seatTicket.ticket, probe.accountSession, 0)
+  const joined = await connection.invoke('JoinByInviteCode', seatInviteCode.ticket, probe.accountSession, 0)
   return {
     invoke: (method, ...args) => connection.invoke(method, joined.credential, ...args),
     dispose: () => connection.stop(),

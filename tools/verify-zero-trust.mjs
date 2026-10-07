@@ -214,16 +214,16 @@ async function main() {
 
   // D-0038：邀请码只存哈希，**没有任何"从库里掏凭据"的路**——装置与真人一样，
   // 让说书人签发一次（就是面板上那一下按下去的同一个 Hub 方法），明文只在回执里出现这一回。
-  const seatTickets = []
+  const seatInviteCodes = []
   for (const seat of seats) {
-    seatTickets.push(await issueInviteCodeViaHub(storyteller.connection, storyteller.credential, seat))
+    seatInviteCodes.push(await issueInviteCodeViaHub(storyteller.connection, storyteller.credential, seat))
   }
 
-  check('逐席签发邀请码（3 枚）', seatTickets.length === 3, `实际 ${seatTickets.length} 枚`)
+  check('逐席签发邀请码（3 枚）', seatInviteCodes.length === 3, `实际 ${seatInviteCodes.length} 枚`)
 
   const players = new Map()
-  for (const seatTicket of seatTickets) {
-    players.set(seatTicket.seat, await joinAsSeat(seatTicket))
+  for (const seatInviteCode of seatInviteCodes) {
+    players.set(seatInviteCode.seat, await joinAsSeat(seatInviteCode))
   }
   check(
     '各席加入并各自拿到独立凭据',
@@ -242,7 +242,7 @@ async function main() {
   const assigned = await storyteller.connection.invoke(
     'AssignCharacters',
     storyteller.credential,
-    seatTickets.map((seatTicket, index) => ({ seat: seatTicket.seat, character: roles[index] })),
+    seatInviteCodes.map((seatInviteCode, index) => ({ seat: seatInviteCode.seat, character: roles[index] })),
     'zt-assign-1',
   )
   check('开局分配被受理', assigned.kind === 'Accepted', describeOutcome(assigned))
@@ -295,7 +295,7 @@ async function main() {
   )
 
   console.log('=== 4/6 收包扫描：玩家收到的全部消息不得含越权字段或他人角色（行 8）===')
-  const slugBySeat = new Map(seatTickets.map((seatTicket, index) => [seatTicket.seat, roles[index]]))
+  const slugBySeat = new Map(seatInviteCodes.map((seatInviteCode, index) => [seatInviteCode.seat, roles[index]]))
   for (const [seat, player] of players) {
     const text = JSON.stringify(player.inbox)
     const hits = FORBIDDEN_PLAYER_KEYS.filter((key) => text.includes(`"${key}"`))
@@ -386,9 +386,9 @@ async function main() {
 
   // 行 3：同席重连换新凭据；旧连接立即失效，旧凭据在新连接上不被接受。
   // 重连必须用**这一席自己的账号**（一账号一局只坐一席）：换账号会被"席位已经由其他账号认领"挡住。
-  const seat3Ticket = seatTickets.find((seatTicket) => seatTicket.seat === 3)
+  const seat3InviteCode = seatInviteCodes.find((seatInviteCode) => seatInviteCode.seat === 3)
   const staleCredential = player3.credential
-  const reconnected = await joinAsSeat(seat3Ticket, player3.account)
+  const reconnected = await joinAsSeat(seat3InviteCode, player3.account)
   check('行 3：同席重连签发新凭据', reconnected.credential !== staleCredential)
   const superseded = await expectRejected(
     () =>
@@ -560,11 +560,11 @@ async function main() {
   const accounts = await connectTo(accountHubUrl)
   const registered = await accounts.invoke('Register', 'zt-account', '零信任玩家名', 'zt-account-password-1')
   const accountSession = registered.accountSession
-  const seat1Ticket = seatTickets.find((seatTicket) => seatTicket.seat === 1)
+  const seat1InviteCode = seatInviteCodes.find((seatInviteCode) => seatInviteCode.seat === 1)
 
   // 伪造（或已过期）的账号会话：必须显式拒绝，不得静默放行成"未登录的入座"。
   const forgedJoin = await expectRejected(
-    () => anonymous.invoke('JoinByInviteCode', seat1Ticket.ticket, '伪造账号会话-不存在的随机串', 0),
+    () => anonymous.invoke('JoinByInviteCode', seat1InviteCode.ticket, '伪造账号会话-不存在的随机串', 0),
     '账号会话无效',
   )
   check('行 账号：伪造 / 过期账号会话调 JoinByInviteCode 被拒（不静默放行）', forgedJoin.ok, forgedJoin.message)
@@ -604,7 +604,7 @@ async function main() {
   // 已登出（会话已失效）的账号会话同样进不了房。
   const loggedOut = await accounts.invoke('Logout', accountSession)
   const revokedJoin = await expectRejected(
-    () => anonymous.invoke('JoinByInviteCode', seat1Ticket.ticket, accountSession, 0),
+    () => anonymous.invoke('JoinByInviteCode', seat1InviteCode.ticket, accountSession, 0),
     '账号会话无效',
   )
   check(
@@ -645,7 +645,7 @@ async function main() {
   // 顺带把"同一账号在另一条连接上重新登录仍回得到自己那一席"这条真实路径也钉住。
   const seatOneAccount = playerOf(players, 1).account
   const relogin = await accounts.invoke('Login', seatOneAccount.username, seatOneAccount.password)
-  const accountSeat = await joinByInviteCode(seat1Ticket.ticket, relogin.accountSession)
+  const accountSeat = await joinByInviteCode(seat1InviteCode.ticket, relogin.accountSession)
   const ownName = (accountSeat.view.seatNames ?? []).find((entry) => entry.seat === 1)?.displayName ?? ''
   check(
     '行 账号：有效账号会话 + 票据入座成功，且玩家名进入公开席位名投影（正向对照）',
@@ -654,7 +654,7 @@ async function main() {
   )
 
   // 反方向：票据换不来账号身份——拿席位票据去改玩家名（账号 Hub 的账号会话面）必须被拒。
-  const ticketAsSession = await accounts.invoke('ChangeDisplayName', seat1Ticket.ticket, '票据冒充账号会话')
+  const ticketAsSession = await accounts.invoke('ChangeDisplayName', seat1InviteCode.ticket, '票据冒充账号会话')
   check(
     '行 账号：席位票据不能当账号会话用（拿它去改玩家名被账号 Hub 拒绝）',
     ticketAsSession.ok === false && ticketAsSession.code === 'invalid_session',
@@ -674,11 +674,11 @@ async function main() {
   }
 
   const noSessionJoin = await expectRejected(
-    () => unauthenticated.invoke('JoinByInviteCode', seat1Ticket.ticket, '', 0),
+    () => unauthenticated.invoke('JoinByInviteCode', seat1InviteCode.ticket, '', 0),
     '入座需要先登录账号',
   )
   const forgedSessionJoin = await expectRejected(
-    () => unauthenticated.invoke('JoinByInviteCode', seat1Ticket.ticket, '伪造账号会话-随机串-不该被认', 0),
+    () => unauthenticated.invoke('JoinByInviteCode', seat1InviteCode.ticket, '伪造账号会话-随机串-不该被认', 0),
     '账号会话无效或已过期',
   )
   check(
@@ -722,8 +722,8 @@ async function main() {
 /** 记录"玩家客户端收到的全部消息"：join 结果 + 五类推送，一个都不漏。
  *  入座必须登录（D-0037）：默认给这一席**新注册一个夹具账号**；重连同一席时把那一席的账号传进来
  *  （一账号一局只坐一席，换账号会被"席位已经由其他账号认领"挡住）。 */
-async function joinAsSeat(seatTicket, account) {
-  const own = account ?? (await registerProbeAccount(signalR, accountHubUrl, `zt-${seatTicket.seat}`))
+async function joinAsSeat(seatInviteCode, account) {
+  const own = account ?? (await registerProbeAccount(signalR, accountHubUrl, `zt-${seatInviteCode.seat}`))
   const connection = await connect()
   const inbox = []
   for (const method of PUSH_METHODS) {
@@ -734,7 +734,7 @@ async function joinAsSeat(seatTicket, account) {
     })
   }
 
-  const joined = await connection.invoke('JoinByInviteCode', seatTicket.ticket, own.accountSession, 0)
+  const joined = await connection.invoke('JoinByInviteCode', seatInviteCode.ticket, own.accountSession, 0)
   inbox.push({ method: 'JoinByInviteCode', payload: joined })
   return { connection, credential: joined.credential, view: joined.bundle.view, inbox, account: own }
 }

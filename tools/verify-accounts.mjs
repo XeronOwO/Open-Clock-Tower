@@ -243,10 +243,10 @@ async function main() {
     seats: SEAT_COUNT,
     suffix: 'accounts',
   })
-  const seatTickets = table.seatTickets
+  const seatInviteCodes = table.seatInviteCodes
   // 桌标识属于连接（D-0027 之后不声明就被拒）：线级探针也连到这一桌。
   hubUrl = table.hubUrl
-  check(`席位票据齐备（${SEAT_COUNT} 席）`, seatTickets.length === SEAT_COUNT, `数据库 ${seatTickets.length} 张`)
+  check(`席位邀请码齐备（${SEAT_COUNT} 席）`, seatInviteCodes.length === SEAT_COUNT, `数据库 ${seatInviteCodes.length} 张`)
   check('说书人进主持台后看板可见（魔典主视图）', (await storytellerPage.locator('[data-testid="grimoire"]').count()) === 1)
 
   const alicePage = await newPage(browser, { width: 900, height: 1200 }, consoleErrors)
@@ -305,7 +305,7 @@ async function main() {
   // 所以先注册账号、再凭说书人面板那一串「桌标识:席位票据」入座——D-0025 / D-0037 保留的邀请码路径。
   const carolAccount = await seatByInviteCode(carolPage, {
     frontUrl: viteUrl,
-    code: `${table.gameId}:${seatTickets[SEAT_INVITE - 1].ticket}`,
+    code: `${table.gameId}:${seatInviteCodes[SEAT_INVITE - 1].ticket}`,
     suffix: 'accounts-c',
   })
   await waitForLocatorContains(carolPage.getByTestId('player-roster'), `${SEAT_B} 号 · ${bobAccount.displayName}`, 30_000)
@@ -360,7 +360,7 @@ async function main() {
   // ⚠ 每席位只保留一条连接（ConnectionRegistry.IssueForSeat）：探针若和某个浏览器页抢同一席，两边会互相
   // 顶替（E30 实测：探针一条推送都收不到，且宿主日志里的"推送=3/3"只统计**发送尝试**、不代表送达）——
   // 所以这里给它一个浏览器不用的席位，测的才是"服务端到底推没推、序号是多少"。
-  seatProbe = await joinSeatProbe(seatTickets[SEAT_PROBE - 1].ticket)
+  seatProbe = await joinSeatProbe(seatInviteCodes[SEAT_PROBE - 1].ticket)
   const probeSnapshotMark = seatProbe.inbox.length
 
   if (!runner.begin('rename')) return
@@ -530,7 +530,7 @@ async function main() {
   )
 
   probe = await connectHub(hubUrl)
-  const forgedTicketA = seatTickets[SEAT_A - 1].ticket
+  const forgedTicketA = seatInviteCodes[SEAT_A - 1].ticket
 
   // D-0037 的**反方向判据**（取代原先"没有账号、只凭票据入座"那条正向用例：那条路已整个删除）：
   // 同一条裸连接，空账号会话与伪造账号会话都必须被 Hub 显式拒绝，且**文案分开钉**——
@@ -565,7 +565,7 @@ async function main() {
   // 各有一个账号坐着（4 号是线级探针自己的夹具账号），所以本装置特意多开一席（5 号）**空着**——
   // 拿它才测得到"同一账号第二席"（拿 1–4 号只会撞上"席位已被其他账号认领"，测的是另一条判据）。
   const secondSeat = await expectRejected(() =>
-    probe.invoke('JoinByInviteCode', seatTickets[SEAT_SPARE - 1].ticket, bobLogin.accountSession, 0),
+    probe.invoke('JoinByInviteCode', seatInviteCodes[SEAT_SPARE - 1].ticket, bobLogin.accountSession, 0),
   )
   check(
     '同一账号认领第二席被拒（一账号一席）',

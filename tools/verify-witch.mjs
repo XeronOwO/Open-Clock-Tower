@@ -158,10 +158,10 @@ async function main() {
     seats: ASSIGN.length,
     suffix: 'witch',
   })
-  const seatTickets = table.seatTickets
+  const seatInviteCodes = table.seatInviteCodes
   // 桌标识属于连接（D-0027 之后不声明就被拒）：线级探针也连到这一桌。
   hubUrl = table.hubUrl
-  check('席位票据齐备（4 席）', seatTickets.length === 4, `数据库 ${seatTickets.length} 张`)
+  check('席位邀请码齐备（4 席）', seatInviteCodes.length === 4, `数据库 ${seatInviteCodes.length} 张`)
   check('说书人加入后看板可见（魔典主视图）', (await storytellerPage.locator('[data-testid="grimoire"]').count()) === 1)
 
   const cursedPage = await newPage(browser, { width: 900, height: 1000 }, consoleErrors)
@@ -180,11 +180,11 @@ async function main() {
   )
   check('分配 4 个角色被受理', assigned.kind === 'Accepted', assigned.raw)
 
-  const witchSeat = await connectSeat(seatTickets[WITCH_SEAT - 1])
+  const witchSeat = await connectSeat(seatInviteCodes[WITCH_SEAT - 1])
   // 另外两席（钟表匠 / 筑梦师）是**无关玩家**：它们收到的每一条推送同样进越权扫描。
   const unrelatedSeats = [
-    await connectSeat(seatTickets[1]),
-    await connectSeat(seatTickets[2]),
+    await connectSeat(seatInviteCodes[1]),
+    await connectSeat(seatInviteCodes[2]),
   ]
   const nightStarted = await runCommand(storytellerPage, '开夜', () =>
     storytellerPage.getByRole('button', { name: /开夜/ }).click(),
@@ -331,9 +331,9 @@ async function main() {
 }
 
 /** 连一个真 SignalR 席位：记录每一次请求与每一条推送（供越权扫描）。 */
-async function connectSeat(seatTicket) {
+async function connectSeat(seatInviteCode) {
   // 入座必须登录（D-0037）：每调用一次 = 新席位 → **新夹具账号**（一账号一局只坐一席，共用会被拒）。
-  const probe = await registerProbeAccount(signalR, accountHubUrl, `witch-${seatTicket.seat}`)
+  const probe = await registerProbeAccount(signalR, accountHubUrl, `witch-${seatInviteCode.seat}`)
   const connection = new signalR.HubConnectionBuilder().withUrl(hubUrl).configureLogging(signalR.LogLevel.None).build()
   const requests = []
   const messages = []
@@ -346,7 +346,7 @@ async function connectSeat(seatTicket) {
   }
 
   await connection.start()
-  const joined = await connection.invoke('JoinByInviteCode', seatTicket.ticket, probe.accountSession, 0)
+  const joined = await connection.invoke('JoinByInviteCode', seatInviteCode.ticket, probe.accountSession, 0)
   return {
     requests,
     messages,

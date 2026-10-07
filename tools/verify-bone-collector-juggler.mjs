@@ -173,10 +173,10 @@ async function main() {
     seats: ASSIGN.length,
     suffix: 'bone',
   })
-  const seatTickets = table.seatTickets
+  const seatInviteCodes = table.seatInviteCodes
   // 桌标识属于连接（D-0027 之后不声明就被拒）：线级探针也连到这一桌。
   hubUrl = table.hubUrl
-  check('席位票据齐备（5 席）', seatTickets.length === ASSIGN.length, `数据库 ${seatTickets.length} 张`)
+  check('席位邀请码齐备（5 席）', seatInviteCodes.length === ASSIGN.length, `数据库 ${seatInviteCodes.length} 张`)
   check(
     '说书人加入后看板可见（魔典主视图）',
     (await storytellerPage.locator('[data-testid="grimoire"]').count()) === 1,
@@ -195,7 +195,7 @@ async function main() {
   // 已有别的装置覆盖（每席位只保留一条连接，见 web/AGENTS.md §3.1）。
   // 后面两条负向探针也用它——**每个有浏览器页的席位都不能再开第二条连接**（开了会把那一页的凭据顶掉，
   // 之后那一页的断言就全是假绿，本装置踩过一次：无关席位证人的公开面读数读到 null）。
-  const demonSeat = await connectSeat(seatTickets[DEMON_SEAT - 1])
+  const demonSeat = await connectSeat(seatInviteCodes[DEMON_SEAT - 1])
 
   console.log('=== 4/10 配板 → 首夜（只有钟表匠入格）→ 第 1 天 ===')
   const assignmentSelects = storytellerPage.locator('section', { hasText: '开局分配' }).locator('select')
@@ -743,14 +743,14 @@ async function readDecisionPanel(page) {
 }
 
 /** 连一个真 SignalR 席位：记录每一次请求（供夜间探针应答）。 */
-async function connectSeat(seatTicket) {
+async function connectSeat(seatInviteCode) {
   // 入座必须登录（D-0037）：每调用一次 = 新席位 → **新夹具账号**（一账号一局只坐一席，共用会被拒）。
-  const probe = await registerProbeAccount(signalR, accountHubUrl, `bone-${seatTicket.seat}`)
+  const probe = await registerProbeAccount(signalR, accountHubUrl, `bone-${seatInviteCode.seat}`)
   const connection = new signalR.HubConnectionBuilder().withUrl(hubUrl).configureLogging(signalR.LogLevel.None).build()
   const requests = []
   connection.on('ReceiveOperationRequest', (payload) => requests.push(payload))
   await connection.start()
-  const joined = await connection.invoke('JoinByInviteCode', seatTicket.ticket, probe.accountSession, 0)
+  const joined = await connection.invoke('JoinByInviteCode', seatInviteCode.ticket, probe.accountSession, 0)
   return {
     takeRequests: () => requests.splice(0, requests.length),
     invoke: (method, ...args) => connection.invoke(method, joined.credential, ...args),

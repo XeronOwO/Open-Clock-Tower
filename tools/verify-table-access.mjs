@@ -223,7 +223,7 @@ async function main() {
     seats: SEAT_COUNT,
     suffix: 'ta',
   })
-  check(`席位票据齐备（${SEAT_COUNT} 席）`, table.seatTickets.length === SEAT_COUNT, `数据库 ${table.seatTickets.length} 张`)
+  check(`席位邀请码齐备（${SEAT_COUNT} 席）`, table.seatInviteCodes.length === SEAT_COUNT, `数据库 ${table.seatInviteCodes.length} 张`)
   const grimoireCount = await storytellerPage.getByTestId('grimoire').count()
   check('说书人进主持台后看板可见（魔典主视图）', grimoireCount === 1, `grimoire=${grimoireCount}`)
 

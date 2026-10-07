@@ -170,14 +170,14 @@ async function main() {
     seats: ASSIGN.length,
     suffix: 'fullgame',
   })
-  const seatTickets = table.seatTickets
-  check('席位票据齐备（5 席）', seatTickets.length === ASSIGN.length, `数据库 ${seatTickets.length} 张`)
+  const seatInviteCodes = table.seatInviteCodes
+  check('席位邀请码齐备（5 席）', seatInviteCodes.length === ASSIGN.length, `数据库 ${seatInviteCodes.length} 张`)
   check('说书人加入后看板可见（魔典主视图）', (await storyteller.locator('[data-testid="grimoire"]').count()) === 1)
   // 全程把数据抽屉留在展开态：面板读数（当前步骤 / 状态账）都在抽屉里。
   await setDataDrawer(storyteller, true)
 
   const players = new Map()
-  for (const row of seatTickets) {
+  for (const row of seatInviteCodes) {
     const joined = await joinSeatPage(players, browser, consoleErrors, table.gameId, row.seat)
     check(`玩家 ${row.seat} 号加入成功`, joined.badgeText.includes(`${row.seat} 号`), joined.badgeText)
   }
