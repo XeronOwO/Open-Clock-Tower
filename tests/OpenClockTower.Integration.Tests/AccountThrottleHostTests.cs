@@ -5,7 +5,6 @@ using Microsoft.AspNetCore.Http.Connections;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.AspNetCore.TestHost;
-using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -230,7 +229,6 @@ public sealed class AccountThrottleHostTests : IDisposable
         // 这条在加锁之前是看不出来的（旧写法只删库文件，锁文件悄悄留在目录里没人管）。
         _host?.Dispose();
 
-        SqliteConnection.ClearAllPools();
         TestDatabaseFiles.DeleteOrFail(Path.Combine(_contentRoot, "throttle.db"));
         DeleteDirectoryIfEmpty(_contentRoot);
     }

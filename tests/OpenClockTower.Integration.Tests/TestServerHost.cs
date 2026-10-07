@@ -4,7 +4,6 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http.Connections;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.SignalR.Client;
-using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using OpenClockTower.Application;
@@ -556,18 +555,20 @@ public sealed class TestServerHost : IAsyncDisposable
 
         await _factory.DisposeAsync();
 
-        // SQLite 连接池会继续持有临时库文件句柄：清池后再删文件，否则 teardown 会假红
-        SqliteConnection.ClearAllPools();
+        // 放掉**本库**的池内句柄（文件删不删都放：共享库路径的重启类用例也不该把空闲句柄留到进程结束）。
+        // 作用域只有这一个库——这里曾经调进程级的 ClearAllPools，理由与代价见 TestDatabaseFiles.ReleasePool。
+        TestDatabaseFiles.ReleasePool(_databasePath);
 
         // **不能改成"最后一个使用者删"**（试过，19 条重启类用例当场变红）：重启类用例是
         // "第一个宿主 dispose → 第二个宿主起来"，两者并非同时在场，引用计数会在中间归零，
-        // 于是第二个宿主起来时库已经没了。
+        // 于是第二个宿主起来时库已经没了。代价是 `deleteDatabaseOnDispose: false` 的临时库留给收尾
+        // 统一清理（见票据 `done/deployment-verification-cleanup.md` 的"测试卫生"一节）。
         //
-        // 代价是显式共享库路径的用例（`deleteDatabaseOnDispose: false`）会把临时库留在 %TEMP%，
-        // 由收尾统一清理；见票据 `done/deployment-verification-cleanup.md` 的"测试卫生"一节。
+        // 删不掉就**让用例红**（DeleteOrFail）：路径口径一旦对不上（清的是一个空池），
+        // 容忍失败会让它在 %TEMP% 里静默积垃圾。
         if (_deleteDatabaseOnDispose)
         {
-            TestDatabaseFiles.Delete(_databasePath);
+            TestDatabaseFiles.DeleteOrFail(_databasePath);
         }
     }
 

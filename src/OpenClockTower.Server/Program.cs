@@ -95,7 +95,7 @@ builder.Services.AddSingleton(provider => ServerInstanceLock.Acquire(
     databasePath,
     provider.GetRequiredService<ILogger<ServerInstanceLock>>()));
 builder.Services.AddDbContextFactory<GameDbContext>(options => options
-    .UseSqlite($"Data Source={databasePath}")
+    .UseSqlite(SqliteConnectionStrings.ForPath(databasePath))
     .AddInterceptors(new SqlitePragmaInterceptor(sqliteOptions)));
 builder.Services.AddSingleton<IGameStore, EfGameStore>();
 builder.Services.AddSingleton<IGameCatalog, EfGameCatalog>();

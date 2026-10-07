@@ -60,6 +60,7 @@ todo/  →  in-progress/  →  review/  →  done/
 
 ### Todo
 
+- [「先读再写」的并发家族：整行改写会把口令重置静默回滚](todo/check-then-write-concurrency-family.md) — **High** — `EfAccountStore.TryUpdateAsync` 读整行写整行（含口令与恢复码哈希），与口令重置并发时后者被回滚；同族还有邀请码首签非原子 upsert、并发双解除抛并发异常、随机标识撞号当覆盖
 - [开局分配的角色下拉列着 5 名旅行者](todo/assignment-offers-travellers.md) — Low — 下拉遍历整份 `ROSTER`（30 条），而开局分配只覆盖四类型、服务端以 `legality.character_not_assignable` 拒绝旅行者；**改前先按 R-0046 定口径**（过滤掉旅行者，还是把它接到旅行者流程）
 
 ### In progress
@@ -71,6 +72,7 @@ todo/  →  in-progress/  →  review/  →  done/
 
 ### Done
 
+- [集成套件在集合并行下随机红：句柄已释放 / 库锁 / 认领竞态伪装成领域拒绝](done/integration-suite-parallel-flakes.md) — **High** — 门禁的随机红，两类机制：席位认领的两次读之间被写入穿过（同账号同席被误判成冲突）+ 进程级清池回收了**别的宿主正在用**的连接。修法：按库清池（`TestDatabaseFiles.ReleasePool`）+ 一条会红的门禁；修后整方案并行 5/5、集成并行 10/10 全绿
 - [席位邀请码的凭据形态：只存哈希 · 有有效期 · 可轮换](done/seat-invitation-credentials.md) — **High** — 审计 G-A2-2 收口：邀请码不再住在席位名单里，搬进自己的表（只存 SHA-256 + 到期时刻）、默认 24 小时有效、覆盖即轮换、固定时间比较；席位名单只剩席位号（`SeatTicket` 退场）；说书人可为任一席位签发（旅行者加入成功后自动补签一次）；结构 v4 抹掉老库明文并作废旧码（不可逆）；批次 E63 全装置扫描 + 主装置取证档 310
 - [角色转换越过旅行者边界：麻脸巫婆能把玩家变成旅行者（同族：理发师的混合玩家对）](done/character-change-traveller-boundary.md) — **Medium** — 原票（`pit-hag-character-option-count-stale`）判成"装置陈旧断言"，实际是**产品缺陷**：候选表取整张花名册（30 条，含 5 名旅行者），而旅行者不在「角色列表」上、不满足「不在场」的定义（R-0060）。修法：花名册补上「角色列表」概念 · 麻脸巫婆两维都收口 · 理发师混合玩家对不进候选（同为旅行者照旧）· 装置断言改为从花名册派生。先红后绿 7 条；全量 1472 · `verify-pit-hag` 35 · `verify-character-change` 89 · 主装置取证档 310
 

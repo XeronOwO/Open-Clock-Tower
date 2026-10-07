@@ -1,3 +1,4 @@
+using Microsoft.Data.Sqlite;
 using OpenClockTower.Server;
 
 namespace OpenClockTower.Integration.Tests;
@@ -31,9 +32,41 @@ internal static class TestDatabaseFiles
     internal static IReadOnlyList<string> PathsOf(string databasePath) =>
         [databasePath, .. SidecarSuffixes.Select(suffix => databasePath + suffix)];
 
+    /// <summary>
+    /// 释放**这一个库**在连接池里的句柄。
+    /// </summary>
+    /// <param name="databasePath">库文件路径（与宿主配置的 <c>GameServer:DatabasePath</c> 同一个）。</param>
+    /// <remarks>
+    /// <para>
+    /// **刻意不用 <c>SqliteConnection.ClearAllPools()</c>**——它是**进程级**的：按库清池只动一个
+    /// 连接串的池，反向就是"它一次动**全进程所有库**的池"。集成用例默认按集合并行（几十台宿主同进程），
+    /// 于是任何一台宿主收尾都会动到别的用例正在用的池，症状是一批毫不相干的用例随机红：
+    /// <c>ObjectDisposedException: SQLitePCL.sqlite3</c>（句柄在受害者**自己的**操作中途被拆：
+    /// <c>sqlite3_prepare_v2</c> / <c>SqliteConnection.Open()</c> / <c>SaveChangesAsync</c> /
+    /// <c>BackupDatabase</c>）与 <c>SQLite Error 5: 'database is locked'</c>（清池路径自己抛，
+    /// 栈：<c>ClearAllPools → ClearPools → Clear → ReclaimLeakedConnections → Return → Deactivate</c>）。
+    /// </para>
+    /// <para>
+    /// 边界：<c>ReclaimLeakedConnections()</c> 只说明它回收"它认为泄漏的"连接；
+    /// "被回收的正是别的线程**手里正在用**的那条"是推断——一次两线程最小探针没能单独复现，
+    /// 只在整解决方案并行下出现。修法不依赖这条强机制。
+    /// </para>
+    /// <para>
+    /// 按库清池只动这一个连接串的池（实测：清 A 库之后 A 的文件可删、B 库的池内句柄照旧握着），
+    /// 而并行用例之间**库路径互不相同**，于是它不会碰到任何别的用例。
+    /// 连接串取自 <see cref="SqliteConnectionStrings.ForPath"/>——与宿主的连接串是同一处事实，
+    /// 否则清的是一个空池（**池键就是连接串字面量**）。
+    /// </para>
+    /// </remarks>
+    internal static void ReleasePool(string databasePath) =>
+        SqliteConnection.ClearPool(new SqliteConnection(SqliteConnectionStrings.ForPath(databasePath)));
+
     /// <summary>删掉库与它的全部伴随文件；**返回删不掉的那些**（空 = 干净）。</summary>
     internal static IReadOnlyList<string> Delete(string databasePath)
     {
+        // 先放掉池里的句柄：Windows 上句柄还开着就删不掉（那会变成"收尾假红"）。
+        ReleasePool(databasePath);
+
         var remaining = new List<string>();
         foreach (var path in PathsOf(databasePath))
         {

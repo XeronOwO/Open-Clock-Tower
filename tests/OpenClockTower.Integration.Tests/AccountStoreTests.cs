@@ -1,4 +1,3 @@
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using OpenClockTower.Application;
 using OpenClockTower.Kernel;
@@ -32,8 +31,8 @@ public sealed class AccountStoreTests : IDisposable
     /// <inheritdoc />
     public void Dispose()
     {
-        // 释放连接池后再删单文件临时库；失败不静默（测试收尾也要显式）。
-        SqliteConnection.ClearAllPools();
+        // 按**本库**放掉池里的句柄再删单文件临时库；失败不静默（测试收尾也要显式）。
+        TestDatabaseFiles.ReleasePool(_databasePath);
         if (File.Exists(_databasePath))
         {
             File.Delete(_databasePath);

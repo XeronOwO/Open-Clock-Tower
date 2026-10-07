@@ -1,6 +1,5 @@
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.SignalR.Client;
-using Microsoft.Data.Sqlite;
 using OpenClockTower.Contracts;
 using OpenClockTower.Kernel;
 
@@ -320,7 +319,6 @@ public sealed class AccountHostTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             TestDatabaseFiles.Delete(databasePath);
         }
     }

@@ -1,4 +1,3 @@
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -153,43 +152,40 @@ public static class MaintenanceCli
             ? AcquireForWrite(databasePath)
             : null;
 
+        // **`Pooling=False` 就是"别把库文件句柄留在池里"这条口径本身**：本命令是短命进程（命令行工具），
+        // 连接用完即放——Windows 上句柄不放手就删不掉 / 移不动那个库。
+        // 因此这里**不需要**任何清池调用；尤其不能用 `SqliteConnection.ClearAllPools()`：
+        // 它清的是**全进程所有库**的池，而集成用例是在**进程内**调本命令的（见 DatabaseMaintenanceTests），
+        // 那会把并行用例正在用的连接一起动到，随机红成 ObjectDisposedException / database is locked。
         var contextOptions = new DbContextOptionsBuilder<GameDbContext>()
             .UseSqlite($"Data Source={databasePath};Pooling=False")
             .AddInterceptors(new SqlitePragmaInterceptor(sqliteOptions))
             .Options;
 
-        try
+        using var factory = new MaintenanceDbContextFactory(contextOptions);
+        var service = new TableRetirementService(
+            new EfTableRetirementStore(factory),
+            new TableRetirementPolicy(Options.Create(retention)),
+            // 维护进程里没有服务的内存连接表：一桌也没人在用（服务没在跑，这正是锁的意义）。
+            new ConnectionRegistry(),
+            new OfflineTableUnloader(),
+            new SystemClock(),
+            Options.Create(retention),
+            NullLogger<TableRetirementService>.Instance);
+
+        output.WriteLine(
+            $"回收口径：未开局桌保留 {retention.EmptyTableHours} 小时 · 开过局桌保留 {retention.PlayedTableDays} 天"
+            + $" · 模式={(apply ? "执行（--apply）" : "只报告")}");
+
+        var report = service.SweepAsync(apply, CancellationToken.None).GetAwaiter().GetResult();
+        output.WriteLine(report.Describe());
+
+        if (!apply && report.DueCount > 0)
         {
-            using var factory = new MaintenanceDbContextFactory(contextOptions);
-            var service = new TableRetirementService(
-                new EfTableRetirementStore(factory),
-                new TableRetirementPolicy(Options.Create(retention)),
-                // 维护进程里没有服务的内存连接表：一桌也没人在用（服务没在跑，这正是锁的意义）。
-                new ConnectionRegistry(),
-                new OfflineTableUnloader(),
-                new SystemClock(),
-                Options.Create(retention),
-                NullLogger<TableRetirementService>.Instance);
-
-            output.WriteLine(
-                $"回收口径：未开局桌保留 {retention.EmptyTableHours} 小时 · 开过局桌保留 {retention.PlayedTableDays} 天"
-                + $" · 模式={(apply ? "执行（--apply）" : "只报告")}");
-
-            var report = service.SweepAsync(apply, CancellationToken.None).GetAwaiter().GetResult();
-            output.WriteLine(report.Describe());
-
-            if (!apply && report.DueCount > 0)
-            {
-                output.WriteLine($"要真的回收这 {report.DueCount} 张桌，加 --apply 再跑一次。");
-            }
-
-            return 0;
+            output.WriteLine($"要真的回收这 {report.DueCount} 张桌，加 --apply 再跑一次。");
         }
-        finally
-        {
-            // 短命进程：别把库文件句柄留在池里（Windows 上还牵着"这个文件能不能被删/被移"）。
-            SqliteConnection.ClearAllPools();
-        }
+
+        return 0;
     }
 
     /// <summary>拿单实例锁（写操作的独占前提）；拿不到时给一句针对维护场景的话。</summary>

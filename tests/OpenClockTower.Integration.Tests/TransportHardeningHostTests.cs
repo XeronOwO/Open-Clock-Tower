@@ -5,7 +5,6 @@ using Microsoft.AspNetCore.Http.Connections;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.SignalR.Client;
-using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -277,7 +276,6 @@ public sealed class TransportHardeningHostTests : IDisposable
             connection.DisposeAsync().AsTask().GetAwaiter().GetResult();
         }
 
-        SqliteConnection.ClearAllPools();
         DeleteIfExists(Path.Combine(_contentRoot, "wwwroot", "assets", "index-abc.js"));
         DeleteIfExists(Path.Combine(_contentRoot, "wwwroot", "index.html"));
         TestDatabaseFiles.DeleteOrFail(Path.Combine(_contentRoot, "transport.db"));

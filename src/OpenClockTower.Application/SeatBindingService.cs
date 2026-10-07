@@ -8,6 +8,12 @@ namespace OpenClockTower.Application;
 /// <remarks>
 /// 认领只在「登录 + 本局票据」首次加入时发生一次；重复认领幂等（同一账号同一席返回原绑定），
 /// 并发竞态落到存储的唯一索引上，再由这里重新读一次收敛成"幂等"或"明确拒绝"，不静默通过。
+/// <para>
+/// **两次读之间会被别人的写入穿过**（"读倾斜"）：并发下席位那次读可能发生在对方写入之前（看不到），
+/// 账号那次读发生在之后（看得到）。这时读到的"我已经占的席位"就是**本次正要认领的这一席**——
+/// 与开头那条同账号同席的快路径是同一件事，必须给同一个结论（幂等接受），不能当成冲突拒绝。
+/// 现场是集成套件在集合并行下的随机红：四条同账号同席的并发加入里偶有一条被拒。
+/// </para>
 /// </remarks>
 public sealed class SeatBindingService
 {
@@ -33,13 +39,28 @@ public sealed class SeatBindingService
         {
             return existing.AccountId == accountId
                 ? Accept(existing, created: false)
-                : Reject("seat_taken", $"席位 {seat.Value} 已经由其他账号认领");
+                : SeatTaken(seat);
         }
 
         var mine = await _bindings.FindByAccountAsync(gameId, accountId, cancellationToken);
         if (mine is not null)
         {
-            return Reject("account_already_seated", $"这个账号在本局已经认领了席位 {mine.Seat.Value}");
+            // 这一席正是它自己那一席 = 两次读之间夹进了**自己**刚才那次写入（并发下的常态），
+            // 走幂等那条路；只有"占的是别的一席"才可能是真的越界。
+            if (mine.Seat == seat)
+            {
+                return Accept(mine, created: false);
+            }
+
+            // 而"占的是别的一席"本身也可能是一份**过期读**：那一行刚被解除（说书人移人 / 账号注销）。
+            // 按它再读一次席位表，只有那条绑定**现在仍然在**才拒绝；否则继续往下走，由唯一索引收敛。
+            var still = await _bindings.FindBySeatAsync(gameId, mine.Seat, cancellationToken);
+            if (still is not null && still.AccountId == accountId)
+            {
+                return Reject(
+                    "account_already_seated",
+                    $"这个账号在本局已经认领了席位 {still.Seat.Value}，不能再认领席位 {seat.Value}");
+            }
         }
 
         var binding = new SeatBinding
@@ -57,11 +78,18 @@ public sealed class SeatBindingService
 
         // 并发竞态：唯一索引挡下后重新读一次，按结果收敛——幂等成功，或明确拒绝。
         var raced = await _bindings.FindBySeatAsync(gameId, seat, cancellationToken);
-        return raced is not null && raced.AccountId == accountId
-            ? Accept(raced, created: false)
-            : Reject(
-                raced is null ? "account_already_seated" : "seat_taken",
-                "席位认领冲突：这个席位或这个账号刚刚被占用，请重试");
+        if (raced is not null)
+        {
+            return raced.AccountId == accountId ? Accept(raced, created: false) : SeatTaken(seat);
+        }
+
+        // 席位读为空而写入仍被挡下：挡的是"一账号一席"那条唯一索引，把它占的那一席读出来说清楚。
+        var elsewhere = await _bindings.FindByAccountAsync(gameId, accountId, cancellationToken);
+        return elsewhere is not null
+            ? Reject(
+                "account_already_seated",
+                $"这个账号在本局已经认领了席位 {elsewhere.Seat.Value}，不能再认领席位 {seat.Value}")
+            : Reject("conflict", $"席位 {seat.Value} 的认领与另一次写入撞在一起且已各自退场，请重试");
     }
 
     /// <summary>按账号解出本局席位（认领之后的"只凭账号重连"路径）；没有返回 null。</summary>
@@ -82,6 +110,9 @@ public sealed class SeatBindingService
         Binding = binding,
         Created = created,
     };
+
+    private static SeatBindingOutcome SeatTaken(SeatId seat) =>
+        Reject("seat_taken", $"席位 {seat.Value} 已经由其他账号认领");
 
     private static SeatBindingOutcome Reject(string code, string message) => new()
     {

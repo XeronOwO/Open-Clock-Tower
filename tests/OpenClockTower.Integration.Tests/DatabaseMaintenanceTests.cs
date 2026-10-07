@@ -46,7 +46,7 @@ public sealed class DatabaseMaintenanceTests : IDisposable
             Assert.True(File.Exists(databasePath));
         }
 
-        SqliteConnection.ClearAllPools();
+        TestDatabaseFiles.ReleasePool(databasePath);
         await using (var bare = new SqliteConnection($"Data Source={databasePath};Pooling=False"))
         {
             await bare.OpenAsync();
@@ -309,7 +309,7 @@ public sealed class DatabaseMaintenanceTests : IDisposable
             await seeded.RegisterTableAsync(new OpenClockTower.Application.GameId("doomed"), 5);
         }
 
-        SqliteConnection.ClearAllPools();
+        TestDatabaseFiles.ReleasePool(databasePath);
         BackdateTable(databasePath, "doomed", DateTimeOffset.UtcNow.AddDays(-2));
 
         using var output = new StringWriter();
@@ -390,10 +390,18 @@ public sealed class DatabaseMaintenanceTests : IDisposable
     /// <inheritdoc />
     public void Dispose()
     {
-        // 连接池会继续握着库文件句柄：先清池，再按"逐层列文件 → 逐个删 → 回看"的纪律清临时产物。
-        SqliteConnection.ClearAllPools();
+        // 按"逐层列文件 → 逐个删 → 回看"的纪律清临时产物；删之前按**本库**放掉池里的句柄
+        // （进程级清池会拆掉并行用例正在用的连接，见 TestDatabaseFiles.ReleasePool）。
         var backups = Path.Combine(_root, "backups");
         var pending = new List<string> { _root, backups };
+
+        foreach (var directory in pending.Where(Directory.Exists))
+        {
+            foreach (var database in Directory.GetFiles(directory, "*.db"))
+            {
+                TestDatabaseFiles.ReleasePool(database);
+            }
+        }
 
         // 先删文件（两层：临时根 / backups），再自下而上删空目录——不做递归删除。
         foreach (var directory in pending)

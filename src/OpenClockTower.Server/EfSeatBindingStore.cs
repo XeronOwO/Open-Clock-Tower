@@ -88,7 +88,7 @@ public sealed class EfSeatBindingStore : ISeatBindingStore
             await db.SaveChangesAsync(cancellationToken);
             return true;
         }
-        catch (DbUpdateException)
+        catch (DbUpdateException exception)
         {
             // 唯一约束挡下的竞态：确认是"席位或账号已被占用"才按业务拒绝，其他数据库错误原样抛。
             await using var verify = await _factory.CreateDbContextAsync(cancellationToken);
@@ -99,6 +99,14 @@ public sealed class EfSeatBindingStore : ISeatBindingStore
                             && (item.Seat == binding.Seat.Value || item.AccountId == binding.AccountId.Value),
                     cancellationToken);
             if (occupied)
+            {
+                return false;
+            }
+
+            // 复核读不到占用，但**错误码说这次写是被约束挡下的**：占用方在复核之前退场了
+            // （并发解除 / 注销）。这仍然是"撞上了约束"，按业务返回 false，让上层收敛成可重试的
+            // conflict——抛出去的话，那条交错会变成 Hub 上的未预期异常，上层连重试的机会都没有。
+            if (SqliteConstraintViolations.IsConstraintViolation(exception))
             {
                 return false;
             }

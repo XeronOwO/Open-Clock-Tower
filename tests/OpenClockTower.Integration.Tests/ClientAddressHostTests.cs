@@ -4,7 +4,6 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
-using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -182,7 +181,6 @@ public sealed class ClientAddressHostTests : IDisposable
 
     public void Dispose()
     {
-        SqliteConnection.ClearAllPools();
         DeleteIfExists(Path.Combine(_contentRoot, "wwwroot", "index.html"));
         TestDatabaseFiles.DeleteOrFail(Path.Combine(_contentRoot, "address.db"));
         DeleteDirectoryIfEmpty(Path.Combine(_contentRoot, "wwwroot"));

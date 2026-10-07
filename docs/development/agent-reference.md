@@ -15,6 +15,16 @@ dotnet format OpenClockTower.slnx
   先冻结被验证的工作树，再验证。
 - 出现"红了几次又莫名其妙好了"时，先查有没有并发构建或残留进程在写同一产物，
   再按**可重复性**判定；原因未定之前不要急着改产品代码，也不要宣称已修复。
+- **集成用例的随机红必须在"整解决方案并行"下复现。** 集成项目**单独**跑时负载不够，
+  竞态经常一次都不出现（实测：同一个缺陷，单跑集成 3/3 绿、整解决方案并行 2/3 红）。
+  复现时把每次红的那一条与**完整栈**留下来分类，不要只记一句消息。
+- **测试里不许用进程级清池**（`SqliteConnection.ClearAllPools()`）：它是**进程级**的——一次动
+  **全进程所有库**的池（按库清池只动一个连接串的池），而并行时别的用例正在用那些池；
+  清池路径自己也会抛（`SQLite Error 5: 'database is locked'`）。并行用例因此随机红成
+  "句柄已释放 / database is locked"。要释放句柄就**按库**清：
+  产品侧 `SqliteConnection.ClearPool(...)`，测试侧 `TestDatabaseFiles.ReleasePool(库路径)`
+  （连接串取自 `SqliteConnectionStrings.ForPath`，与宿主同一个分池键——**池键就是连接串字面量**）。
+  这条由门禁 `SqlitePoolScopeGateTests` 兜底（见 `backlog/done/integration-suite-parallel-flakes.md`）。
 
 ## 2. 提交
 

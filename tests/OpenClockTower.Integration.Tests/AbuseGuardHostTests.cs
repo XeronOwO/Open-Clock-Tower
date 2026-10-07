@@ -457,7 +457,6 @@ public sealed class AbuseGuardHostTests : IDisposable
     public void Dispose()
     {
         StopHostAsync().GetAwaiter().GetResult();
-        SqliteConnection.ClearAllPools();
         TestDatabaseFiles.DeleteOrFail(_databasePath);
         DeleteDirectoryIfEmpty(_contentRoot);
     }

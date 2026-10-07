@@ -2176,6 +2176,59 @@ NormativeGates 41 · Integration 429）· `dotnet format` 就地通过（无额�
    风控与注销在部署上跑会**建真数据**，留到需要时再跑（编排见批次 E56 的窗口表）。
 3. `verify-replay-scale` 的动作限速那条残余未动。
 
+## 批次 E65（2026-10-08，集成套件并行随机红的根因与收口）
+
+冻结版本：`main` @ `be48226` + 本轮改动（取证连跑与提交之间代码未再改）。
+
+- 票：`done/integration-suite-parallel-flakes.md`（E64 残余 1）。
+- **本批不是玩法批次**：没有装置会话，判的是**门禁自己的可信度**——"全绿才可提交"这条纪律
+  在"随机红"之下不成立，于是它既产假红、也把真红淹进噪声。证据因此是**连跑记录与栈**，不是截图。
+- **两类机制**（互不相干）：
+
+| 症状 | 机制 | 结论 |
+|---|---|---|
+| `ZeroTrustHostTests.Row3_…` 报"这个账号在本局已经认领了席位 1" | `SeatBindingService.ClaimAsync` 的两次读之间被别人的写入穿过：席位读是旧快照、账号读是新快照，于是把**幂等那一路**当成冲突拒绝 | **产品缺陷**；三条同族一起收：同席幂等接受 · "占着别的一席"先确认那一行仍在才拒绝 · `TryBind` 失败后的收敛补全（`conflict` 这个码此前从未被产生过，为此给存储层补了 `SqliteConstraintViolations` 的约束类判定）。确定性用例 3 条，**先红后绿** |
+| `ObjectDisposedException: SQLitePCL.sqlite3` · `SQLite Error 5: 'database is locked'` | `SqliteConnection.ClearAllPools()` 是**进程级**的：它一次动**全进程所有库**的池（按库清池只动一个连接串的池——同一支探针的反向读数），而并行时别的用例正在用那些池；清池路径自己也会抛（`Clear → ReclaimLeakedConnections → Return → Deactivate → SQLite Error 5`）。受害方的栈更直白：句柄是在它们**自己的操作中途**被拆的（`sqlite3_prepare_v2` / `Open()` / `SaveChangesAsync` / `BackupDatabase`） | **测试侧缺陷 + 一处产品侧**；**15 处调用 / 13 个文件**：测试侧 14 处（10 处连清池那句一起删、4 处换成 `TestDatabaseFiles.ReleasePool`，`Delete` / `DeleteOrFail` 先释放再删），产品侧 `MaintenanceCli` 那句**直接删掉**（它自己的上下文是 `Pooling=False`，那句清的是**别人的**池）。连接串收成 `SqliteConnectionStrings.ForPath` 一处事实（池键就是连接串字面量） |
+
+- **机制二的边界（不许写成已证）**：栈里的 `ReclaimLeakedConnections()` 只说明它回收"它认为泄漏的"
+  连接；"被回收的正是别的线程**手里正在用**的那条"是**推断**——一次两线程最小探针
+  （400 次清池 + 另一线程 8500 次开合用循环）没能单独复现，只在整解决方案并行下出现。
+  修法不依赖这条强机制："进程级作用域"本身就足以判它出局。
+
+
+- **读数**（同一台机器、同一口径；整解决方案并行 = 4 个测试项目同时压，集成单独跑 = 只跑集成项目）：
+
+| 阶段 | 口径 | 读数 |
+|---|---|---|
+| 修前 | 集成项目单独并行 3 次 | **3/3 绿**（负载不够，复现不出——"单跑全绿"不能用来否证并行随机红） |
+| 修前 | 整解决方案并行 3 次 | **2/3 红**，两次都是 `Row3_…`（读倾斜） |
+| 只修机制一 | 整解决方案并行 5 次 | **5/5 红**（每次 1–3 条）：句柄已释放 ×6 · 库被锁 ×2 · `JoinByInviteCode` 的 HubException ×1 |
+| 两类都修 | 整解决方案并行 **5 次** | **5/5 绿**（30–44s / 次） |
+| 两类都修 | 集成项目单独并行 **10 次** | **10/10 绿**（28–39s / 次，`--no-build` 冻结产物） |
+
+- 其中"库被锁"的两条里有一条来自**临时探针**（一条线程反复开连接查一句、另一条循环清池）：
+  它单跑全绿（3 支探针全过，500 次清池零报错）、放进整解决方案并行就红，栈直接指到
+  `ClearAllPools → ClearPools → Clear → ReclaimLeakedConnections → Return → Deactivate`。
+  探针已删（它留在树里就违反新门禁），形状记在票里。
+- **新增门禁**：`NormativeGates.Tests/SqlitePoolScopeGateTests` 禁掉 `src/` 与 `tests/` 里的
+  `ClearAllPools(` 调用（先过注释与字面量清洗，注释里写这个名字不算违规）。**先红后绿**：
+  加门禁时它只点名了那支临时探针，探针删除后 1/1 绿。
+- **独立对抗性复核**（提交前，新上下文）：11 条意见，本轮修掉 9 条——其中两条是**本批自己的错**
+  （`MaintenanceCli` 清的是别人的池；把"回收正在用的连接"写成了已证机制，已降级为推断）。
+  剩 2 条是窄窗口残留与同形不同族的落点，已立票 `todo/check-then-write-concurrency-family.md`。
+- 门禁：build **0 警告 0 错误** · `dotnet format` 就地通过 · 规范门禁 **42/42** ·
+  集成 **442**（含本批新增 **8** 条）· 前端未改（未跑）。
+  本批改动一度把 `TestServerHost.cs` 顶到 602 行，被架构门禁（≤600 行）拦下——
+  删掉与 `TestDatabaseFiles.ReleasePool` 重复的解释后通过。
+
+**残余**：
+1. 同账号同席在极窄窗口仍可能吃到一次 `conflict` 拒绝（`TryBind` 看到占用 → 冲突行在两次重读之间
+   被释放）；`conflict` 的语义就是"请重试"，但服务端没有自旋重试。
+2. 复核另找出的 4 处"同形不同族"的 check-then-write（含 `EfAccountStore.TryUpdateAsync` 的整行写回
+   会静默回滚口令重置）已立票 `todo/check-then-write-concurrency-family.md`。
+3. E64 残余 3（`verify-replay-scale` 撞动作限速）仍归 `done/seat-invitation-credentials.md`。
+4. 读数强度：连跑 15 次未复现**不等于**"不存在残存随机性"；残余风险 = 未被覆盖的交错。
+
 ## 相关阅读
 
 - 验收规程：`docs/acceptance/AGENTS.md`

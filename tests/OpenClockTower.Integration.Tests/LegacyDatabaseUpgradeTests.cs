@@ -528,9 +528,6 @@ public sealed class LegacyDatabaseUpgradeTests : IDisposable
 
         _host?.Dispose();
 
-        // 宿主停了，但本进程的 SQLite 连接池还可能握着库文件句柄（Windows 上就删不掉）。
-        SqliteConnection.ClearAllPools();
-
         TestDatabaseFiles.Delete(Path.Combine(_contentRoot, "legacy.db"));
         TestDatabaseFiles.Delete(Path.Combine(_contentRoot, "fresh.db"));
 

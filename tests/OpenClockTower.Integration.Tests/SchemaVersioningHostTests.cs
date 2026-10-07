@@ -271,9 +271,8 @@ public sealed class SchemaVersioningHostTests : IDisposable
     /// <inheritdoc />
     public void Dispose()
     {
-        SqliteConnection.ClearAllPools();
-
         // 逐层清：先删库与伴随文件（-wal / -shm / .lock），再删空目录（不做递归删除）。
+        // 删之前按**本库**放掉池里的句柄——Delete → ReleasePool（进程级清池会拆并行用例的连接）。
         foreach (var file in Directory.GetFiles(_root))
         {
             TestDatabaseFiles.Delete(file);

@@ -102,6 +102,72 @@ public sealed class SeatBindingTests
         Assert.False(outcome.Created);
     }
 
+    /// <summary>
+    /// 并发读倾斜：同账号同席的两条加入同时进来时，席位那次读发生在对方写入**之前**（看不到），
+    /// 账号那次读发生在**之后**（看得到自己刚才那一次绑定）。两次读合起来指向的其实是
+    /// **自己正要认领的这一席**——那就是幂等那一路，不是冲突，不许拒绝。
+    /// </summary>
+    /// <remarks>
+    /// 现场是集成套件在集合并行下的随机红（票 <c>todo/integration-suite-parallel-flakes.md</c>）：
+    /// 四条同账号同席的并发加入里有一条会吃 <c>account_already_seated</c> 而被 Hub 抛回客户端。
+    /// </remarks>
+    [Fact]
+    public async Task Claim_OnTornReadOfOwnSeat_IsIdempotentNotRejected()
+    {
+        var landed = new SeatBinding
+        {
+            GameId = Game,
+            Seat = new SeatId(1),
+            AccountId = new AccountId(1),
+            BoundAt = Now,
+        };
+        var store = new TornSeatReadBindingStore(landed);
+        var service = new SeatBindingService(store, new FixedClock(Now));
+
+        var outcome = await service.ClaimAsync(Game, new SeatId(1), new AccountId(1), CancellationToken.None);
+
+        Assert.True(
+            outcome.Accepted,
+            $"同账号同席的重复认领必须幂等接受（并发下这条路径才是常态），实际被拒：{outcome.Code} / {outcome.Message}");
+        Assert.False(outcome.Created);
+        Assert.Equal(new SeatId(1), outcome.Binding!.Seat);
+        Assert.Equal(new AccountId(1), outcome.Binding.AccountId);
+    }
+
+    /// <summary>
+    /// 过期读的另一面：账号那次读看到的"我已经占的席位"可能**刚被解除**
+    /// （说书人移人 / 账号注销）。只有那条绑定**现在仍然在**，才允许按"占着别的一席"拒绝。
+    /// </summary>
+    [Fact]
+    public async Task Claim_OnStaleAccountRead_OfAReleasedSeat_IsNotRejected()
+    {
+        var service = new SeatBindingService(new StaleAccountReadBindingStore(), new FixedClock(Now));
+
+        var outcome = await service.ClaimAsync(Game, new SeatId(2), new AccountId(1), CancellationToken.None);
+
+        Assert.True(
+            outcome.Accepted,
+            $"那一席已经被解除，不该再挡新认领，实际被拒：{outcome.Code} / {outcome.Message}");
+        Assert.True(outcome.Created);
+        Assert.Equal(new SeatId(2), outcome.Binding!.Seat);
+    }
+
+    /// <summary>
+    /// 撞上唯一索引、但复核那一刻占用**已经退场**（并发解除 / 注销）⇒ 收敛成**可重试**的
+    /// <c>conflict</c>，而不是把一个未预期异常抛给 Hub。
+    /// </summary>
+    [Fact]
+    public async Task Claim_WhenOccupancyVanishesBeforeTheReRead_ConvergesToConflict()
+    {
+        var service = new SeatBindingService(new VanishingOccupancyBindingStore(), new FixedClock(Now));
+
+        var outcome = await service.ClaimAsync(Game, new SeatId(3), new AccountId(1), CancellationToken.None);
+
+        Assert.False(outcome.Accepted);
+        Assert.Equal("conflict", outcome.Code);
+        Assert.False(outcome.Created);
+    }
+
     /// <summary>绑定按对局隔离：同一账号在下一局要重新认领，旧局绑定不影响新局（D-0021 跨局口径）。</summary>
     [Fact]
     public async Task Claim_IsScopedPerGame()
@@ -212,6 +278,118 @@ public sealed class SeatBindingTests
         /// <inheritdoc />
         public Task<bool> TryReleaseAsync(GameId gameId, SeatId seat, CancellationToken cancellationToken) =>
             _inner.TryReleaseAsync(gameId, seat, cancellationToken);
+    }
+
+    /// <summary>
+    /// 读倾斜假存储：席位那次读是**旧快照**（那一刻这一席还没人），账号那次读是新快照
+    /// （看得到刚落地的那条绑定）。真实并发里这两次读之间夹着的就是对方那次写入。
+    /// </summary>
+    private sealed class TornSeatReadBindingStore : ISeatBindingStore
+    {
+        private readonly FakeBindingStore _inner = new();
+
+        public TornSeatReadBindingStore(SeatBinding landed) =>
+            _ = _inner.TryBindAsync(landed, CancellationToken.None);
+
+        /// <inheritdoc />
+        public Task<SeatBinding?> FindBySeatAsync(GameId gameId, SeatId seat, CancellationToken cancellationToken) =>
+            Task.FromResult<SeatBinding?>(null);
+
+        /// <inheritdoc />
+        public Task<SeatBinding?> FindByAccountAsync(GameId gameId, AccountId accountId, CancellationToken cancellationToken) =>
+            _inner.FindByAccountAsync(gameId, accountId, cancellationToken);
+
+        /// <inheritdoc />
+        public Task<IReadOnlyList<SeatBinding>> ListByGameAsync(GameId gameId, CancellationToken cancellationToken) =>
+            _inner.ListByGameAsync(gameId, cancellationToken);
+
+        /// <inheritdoc />
+        public Task<IReadOnlyList<SeatBinding>> ListByGamesAsync(
+            IReadOnlyCollection<GameId> gameIds,
+            CancellationToken cancellationToken) => _inner.ListByGamesAsync(gameIds, cancellationToken);
+
+        /// <inheritdoc />
+        public Task<bool> TryBindAsync(SeatBinding binding, CancellationToken cancellationToken) =>
+            _inner.TryBindAsync(binding, cancellationToken);
+
+        /// <inheritdoc />
+        public Task<bool> TryReleaseAsync(GameId gameId, SeatId seat, CancellationToken cancellationToken) =>
+            _inner.TryReleaseAsync(gameId, seat, cancellationToken);
+    }
+
+    /// <summary>
+    /// 过期读假存储：账号那次读看到一条**已经不在表里**的绑定（席位 7 刚被解除），
+    /// 而席位表里什么也没有。真实并发里"解除"就发生在两次读之间。
+    /// </summary>
+    private sealed class StaleAccountReadBindingStore : ISeatBindingStore
+    {
+        private static readonly SeatBinding Released = new()
+        {
+            GameId = Game,
+            Seat = new SeatId(7),
+            AccountId = new AccountId(1),
+            BoundAt = Now,
+        };
+
+        private readonly FakeBindingStore _inner = new();
+
+        /// <inheritdoc />
+        public Task<SeatBinding?> FindBySeatAsync(GameId gameId, SeatId seat, CancellationToken cancellationToken) =>
+            _inner.FindBySeatAsync(gameId, seat, cancellationToken);
+
+        /// <inheritdoc />
+        public Task<SeatBinding?> FindByAccountAsync(GameId gameId, AccountId accountId, CancellationToken cancellationToken) =>
+            Task.FromResult<SeatBinding?>(
+                Released.GameId == gameId && Released.AccountId == accountId ? Released : null);
+
+        /// <inheritdoc />
+        public Task<IReadOnlyList<SeatBinding>> ListByGameAsync(GameId gameId, CancellationToken cancellationToken) =>
+            _inner.ListByGameAsync(gameId, cancellationToken);
+
+        /// <inheritdoc />
+        public Task<IReadOnlyList<SeatBinding>> ListByGamesAsync(
+            IReadOnlyCollection<GameId> gameIds,
+            CancellationToken cancellationToken) => _inner.ListByGamesAsync(gameIds, cancellationToken);
+
+        /// <inheritdoc />
+        public Task<bool> TryBindAsync(SeatBinding binding, CancellationToken cancellationToken) =>
+            _inner.TryBindAsync(binding, cancellationToken);
+
+        /// <inheritdoc />
+        public Task<bool> TryReleaseAsync(GameId gameId, SeatId seat, CancellationToken cancellationToken) =>
+            _inner.TryReleaseAsync(gameId, seat, cancellationToken);
+    }
+
+    /// <summary>
+    /// 占用刚退场假存储：写入被挡下（<c>false</c>），而两次复核读都读不到占用——
+    /// 真实存储里这对应"唯一索引挡下、占用方在复核之前已消失"。
+    /// </summary>
+    private sealed class VanishingOccupancyBindingStore : ISeatBindingStore
+    {
+        /// <inheritdoc />
+        public Task<SeatBinding?> FindBySeatAsync(GameId gameId, SeatId seat, CancellationToken cancellationToken) =>
+            Task.FromResult<SeatBinding?>(null);
+
+        /// <inheritdoc />
+        public Task<SeatBinding?> FindByAccountAsync(GameId gameId, AccountId accountId, CancellationToken cancellationToken) =>
+            Task.FromResult<SeatBinding?>(null);
+
+        /// <inheritdoc />
+        public Task<IReadOnlyList<SeatBinding>> ListByGameAsync(GameId gameId, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<SeatBinding>>([]);
+
+        /// <inheritdoc />
+        public Task<IReadOnlyList<SeatBinding>> ListByGamesAsync(
+            IReadOnlyCollection<GameId> gameIds,
+            CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<SeatBinding>>([]);
+
+        /// <inheritdoc />
+        public Task<bool> TryBindAsync(SeatBinding binding, CancellationToken cancellationToken) =>
+            Task.FromResult(false);
+
+        /// <inheritdoc />
+        public Task<bool> TryReleaseAsync(GameId gameId, SeatId seat, CancellationToken cancellationToken) =>
+            Task.FromResult(false);
     }
 
     /// <summary>固定时钟：绑定时刻断言不依赖真实时间。</summary>

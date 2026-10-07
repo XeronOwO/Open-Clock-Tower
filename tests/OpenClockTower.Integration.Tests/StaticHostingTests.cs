@@ -1,7 +1,6 @@
 using System.Net;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
-using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.DependencyInjection;
 using OpenClockTower.Server;
 
@@ -147,9 +146,8 @@ public sealed class StaticHostingTests : IDisposable
 
     public void Dispose()
     {
-        // 宿主已随 await using 停掉，但本进程的 SQLite 连接池可能还握着库文件的句柄（Windows 上就删不掉）。
-        // 这里显式清池而不是"删不掉就算了"：清了还失败才算真的有残留，那时清单一并交给收尾处理。
-        SqliteConnection.ClearAllPools();
+        // 宿主已随 await using 停掉；库的池内句柄由 DeleteOrFail → ReleasePool 按**本库**放掉。
+        // 清了还删不掉才算真的有残留，那时清单一并交给收尾处理。
 
         // 逐项清掉测试自己造的文件，不做递归删除。
         DeleteIfExists(Path.Combine(_contentRoot, "wwwroot", "assets", "index-abc.js"));
