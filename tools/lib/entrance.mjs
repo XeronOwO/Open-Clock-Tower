@@ -42,6 +42,7 @@
  * 入口地址：说书人面 `/storyteller`（空地址是首页）、玩家面 `/play`。
  */
 import { DatabaseSync } from 'node:sqlite'
+import { readTextBounded } from './bounded-text.mjs'
 
 /** 主路径动作的超时（注册 / 开桌 / 入座都是一次服务端往返，本机实测 < 1s）。 */
 const ACTION_TIMEOUT_MS = 20_000
@@ -99,18 +100,36 @@ export function readSeatNumbers(databasePath, gameId) {
  * @returns {Promise<string>} 完整邀请码（含桌标识）。
  */
 export async function issueInviteCode(page, seat) {
+  const issued = page.locator(`[data-testid="invite-issued"][data-seat="${seat}"]`)
+
+  // 点之前先记下这一席**当前**的读数。同一席再签一次是"轮换"：元素留在原地、只换里面的文本，
+  // 所以"等元素出现"会在点下去的**瞬间**就满足条件并返回**上一枚**（真机实测踩到：装置于是把
+  // "新签的那一枚"判成了旧码，自己造出一条假红）。判据取"读数变了"。
+  //
+  // 读法走 `readTextBounded`：轮询里的无界读会白等满 Playwright 的 30 秒默认超时
+  // （见 `lib/bounded-text.mjs` 与 done/device-poll-innertext-unbounded-wait.md）。
+  const before = (await issued.count()) > 0 ? (await readTextBounded(issued.locator('.mono'), 500)).trim() : ''
+
   await page.getByTestId('invite-seat').fill(String(seat))
   await page.getByTestId('invite-issue').click()
 
-  // 按 `data-seat` 定位：这样读到的一定是**这一席刚签的那一枚**，不会捡到上一席的读数。
-  const issued = page.locator(`[data-testid="invite-issued"][data-seat="${seat}"]`)
-  await issued.waitFor({ timeout: ACTION_TIMEOUT_MS })
-  const code = (await issued.locator('.mono').innerText()).trim()
-  if (code.length === 0) {
-    throw new Error(`面板没有给出 ${seat} 号席的邀请码`)
-  }
+  const deadline = Date.now() + ACTION_TIMEOUT_MS
+  for (;;) {
+    if ((await issued.count()) > 0) {
+      const code = (await readTextBounded(issued.locator('.mono'), 500)).trim()
+      if (code.length > 0 && code !== before) {
+        return code
+      }
+    }
 
-  return code
+    if (Date.now() >= deadline) {
+      throw new Error(
+        `面板没有给出 ${seat} 号席的邀请码：${ACTION_TIMEOUT_MS / 1000}s 内读数没有变（上一枚「${before}」）`,
+      )
+    }
+
+    await sleep(120)
+  }
 }
 
 /**

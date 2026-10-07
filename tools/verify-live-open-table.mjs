@@ -15,6 +15,8 @@
  *   host      从「我主持的桌」点进主持台：魔典可见、席位数与开桌时一致
  *   setup     一键配板覆盖每一席 → 提交分配被受理
  *   night     开夜被受理 → 槽位由 0 前进（说书人真的主持起来了）
+ *   invite    说书人签发邀请码 → **覆盖即轮换**（旧的一枚当场作废）→ 旅行者（另一台设备、另一个账号）
+ *             凭新的一枚入座（D-0038 的凭据路径在**部署形态**下的判据；库里只有哈希，读不回来）
  *   reconnect 刷新页面 → **自动接回主持台**（M1：不重新登录、不点「进主持台」）；新标签页仍要重新
  *             登录（关标签页即清），登录后那张桌还在、点一下接回主持台（桌跟着账号走）
  *
@@ -24,12 +26,15 @@
  *   node tools/verify-live-open-table.mjs --base-url ... --timeout 60   # 单步超时（秒，默认 30）
  *   node tools/verify-live-open-table.mjs --list-sections               # 只列段名，不跑
  *   node tools/verify-live-open-table.mjs --base-url ... --only night   # 执行到该段为止，且只判该段
+ *   node tools/verify-live-open-table.mjs --base-url ... --legacy-code '桌标识:席位邀请码'
+ *                                                                       # 迁移现场：升级前那一版签发的
+ *                                                                       # 旧码必须进不来（§6.6 / §9.3）
  *
  * 分段口径与其它装置一致：`--only X` 执行到 X 为止（前面的段作为必要前置照样跑，只有 X 的断言计入判定）；
  * `--from X` 全程照跑、从该段起计入判定；两者互斥。**远程一次红跑很贵**（每次都在真服务器上留数据），
  * 所以迭代期优先用 `--only` 定点，并靠收尾打印的清理 SQL 收干净。
  *
- * **它会真的在目标服务器上留下**：一个测试账号 + 一张测试桌（外加这一桌的事件）。
+ * **它会真的在目标服务器上留下**：两个测试账号（开桌的那个 + 旅行者）+ 一张测试桌（外加这一桌的事件）。
  * 装置不能替你连 SSH，所以收尾会把这批数据的**清理 SQL** 原样打印出来，由部署者执行
  * （**先停服务再删**：开着的桌活在宿主内存里，不停服务就删会被写回来）。
  * 账号名 / 桌名都带本次运行的时间戳，一眼能认出是验收残留。
@@ -42,6 +47,7 @@ import { createRequire } from 'node:module'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { readTextBounded } from './lib/bounded-text.mjs'
+import { issueInviteCode } from './lib/entrance.mjs'
 import { createChecker, createSectionRunner } from './lib/verify-sections.mjs'
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -57,6 +63,10 @@ const SECTIONS = [
   { id: 'host', title: '点「进主持台」：魔典可见、席位数与开桌一致' },
   { id: 'setup', title: '一键配板 + 提交分配被受理' },
   { id: 'night', title: '开夜被受理 → 槽位由 0 前进（真的主持起来了）' },
+  {
+    id: 'invite',
+    title: '邀请码：说书人签发 → 覆盖即轮换（旧的一枚当场作废）→ 旅行者凭新的一枚入座（D-0038）',
+  },
   { id: 'reconnect', title: '刷新后自动接回这张桌（M1 行 1）+ 新标签页必须重新登录（关标签页即清）' },
 ]
 
@@ -109,8 +119,8 @@ const displayName = `开桌验收${stamp}`
 const password = `pw-${stamp}-oct`
 const tableName = `e2e验收桌${stamp}`
 
-/** 装置自己产生的数据，收尾用它打印清理 SQL。 */
-const created = { username, gameId: null, tableName }
+/** 装置自己产生的数据，收尾用它打印清理 SQL（账号是**两个**：开桌的说书人 + 凭码入座的旅行者）。 */
+const created = { username, gameId: null, tableName, accounts: [username] }
 
 let browser = null
 
@@ -284,6 +294,75 @@ async function main() {
   )
   await screenshot(page, 'night-started')
 
+  if (!runner.begin('invite')) return
+  // D-0038：邀请码是**签发出来的**——库里只有哈希，明文只在签发那一次出现（"直读库里的票据"那条路已退场）。
+  // 这一段必须在**部署形态**下跑：真 nginx 前缀 + 真宿主 + 真持久库，"装上去还成立吗"只有这里回答得了。
+  const inviteSeat = options.seats
+  const firstCode = await issueInviteCode(page, inviteSeat)
+  check(
+    `说书人面板为 ${inviteSeat} 号席签发邀请码（形态「桌标识:席位邀请码」）`,
+    firstCode.startsWith(`${created.gameId}:`),
+    `码指纹 ${briefCode(firstCode)}`,
+  )
+
+  // 覆盖即轮换：同一席再签一枚，上一枚当场作废（码发错人时的收场动作）。
+  const secondCode = await issueInviteCode(page, inviteSeat)
+  check(
+    '同一席重新签发即轮换：新的一枚与上一枚不同（旧的当场作废）',
+    secondCode !== firstCode && secondCode.startsWith(`${created.gameId}:`),
+    `旧 ${briefCode(firstCode)} → 新 ${briefCode(secondCode)}`,
+  )
+  await screenshot(page, 'invite-issued')
+
+  // 旅行者是**另一台设备**：另一个浏览器上下文 + 另一个账号（一账号一局只坐一席，也不能共用说书人那一个）。
+  const travellerContext = await browser.newContext({ viewport: { width: 1280, height: 900 } })
+  const travellerPage = await travellerContext.newPage()
+  travellerPage.on('pageerror', (error) => consoleErrors.push(error.message))
+  const traveller = `e2e-trav-${stamp}`
+  created.accounts.push(traveller)
+  await openAt(travellerPage, `${options.baseUrl}play`)
+  await revealRegisterTab(travellerPage)
+  await travellerPage.getByTestId('account-username').fill(traveller)
+  await travellerPage.getByTestId('account-display-name').fill(`旅行者${stamp}`)
+  await travellerPage.getByTestId('account-password').fill(password)
+  await travellerPage.getByTestId('account-register').click()
+  const travellerReady = await waitForCount(travellerPage.getByTestId('account-profile'), 1, options.timeoutMs)
+  check(
+    `旅行者（另一台设备）注册并登录成功（${traveller}）`,
+    travellerReady,
+    travellerReady ? '资料区已出现' : '没有登录成功',
+  )
+
+  if (options.legacyCode !== null) {
+    // 结构 v4 的迁移现场（部署文档 §6.6 / §9.3）：升级前那一版把邀请码**明文**存在 `Games.SeatsJson` 里，
+    // 迁移把它们抹掉之后服务端只剩一张哈希表，而表里没有它——于是这枚"当年有效"的码必须进不来。
+    const legacy = await joinWithCode(travellerPage, options.legacyCode)
+    check(
+      '升级前那一版签发的旧邀请码进不来（v4 迁移已把它从库里抹掉）',
+      !legacy.seated && legacy.notice.length > 0,
+      legacy.seated ? '竟然坐进去了——迁移没生效？' : legacy.notice || joinDiagnostic(legacy),
+    )
+  } else {
+    console.log('  （未给 --legacy-code：跳过「升级前的旧码进不来」这一条）')
+  }
+
+  const stale = await joinWithCode(travellerPage, firstCode)
+  check(
+    '被轮换掉的那一枚进不来（当场被拒，席位没有被占）',
+    !stale.seated && stale.notice.length > 0,
+    stale.seated ? '竟然坐进去了' : stale.notice || joinDiagnostic(stale),
+  )
+
+  const fresh = await joinWithCode(travellerPage, secondCode)
+  const seatTag = fresh.seated ? compact(await readTextBounded(travellerPage.getByTestId('player-seat'))) : ''
+  check(
+    `新签发的那一枚进得来：旅行者坐到 ${inviteSeat} 号席`,
+    fresh.seated && seatTag.includes(`${inviteSeat} 号`),
+    fresh.seated ? `席位标签「${seatTag}」` : fresh.notice || joinDiagnostic(fresh),
+  )
+  await screenshot(travellerPage, 'invite-traveller-seated')
+  await travellerContext.close()
+
   if (!runner.begin('reconnect')) return
   // M1（D-0029）：刷新即**自动接回主持台**——凭据进 `sessionStorage`，前端启动时向服务端确认
   // （`Resume`）并按位置重新进桌：不填登录卡、不点「进主持台」。这正是这一轮要证明的"刷新不掉登录"。
@@ -408,6 +487,85 @@ async function revealRegisterTab(page) {
   await waitForCount(page.getByTestId('account-display-name'), 1, options.timeoutMs)
 }
 
+/**
+ * 在玩家面**用一枚邀请码试着入座**，把成败如实报回来（不抛错）。
+ *
+ * 正路与拒绝路径都要用它：`lib/entrance.mjs` 的 `seatByInviteCode` 只服务前者（失败即抛），
+ * 而"旧的一枚进不来"这类**否定判据**必须读到界面上那句拒绝理由才算数——
+ * 只判"没有 seat 元素"会把连接错误、页面没加载也算成通过。
+ *
+ * @returns {Promise<{seated: boolean, notice: string}>} `notice` 是界面给出的那句话（成功时为空）。
+ */
+async function joinWithCode(page, code) {
+  const invite = page.getByTestId('seat-invite')
+  if ((await invite.count()) === 0) {
+    throw new Error('玩家面上没有邀请码入口（seat-invite）——目标站点的界面版本不对？')
+  }
+
+  const opened = await invite.evaluate((element) => element.hasAttribute('open')).catch(() => false)
+  if (!opened) {
+    await invite.locator('summary').click()
+  }
+
+  await page.getByTestId('seat-invite-code').fill(code)
+  await page.getByTestId('seat-invite-join').click()
+
+  // 红的时候要当场留下够查的东西（与 runCommand 同一个姿态）：把"界面在这 30 秒里到底停在哪一步"
+  // 记成一条轨迹，结尾连同 DOM 概览一起带回去——否则只剩一句"既没入座也没理由"，查不动。
+  //
+  // ⚠️ 轮询里的读取**必须走有界读**（`readTextBounded`，见 `lib/bounded-text.mjs`）：入座成功后
+  // `seat-invite` 整块会从 DOM 里消失，那时无界的 `innerText()` 会白等满 Playwright 的 30 秒默认
+  // 超时，把整个判定窗口吃光——真机实测踩到：服务端 73ms 就回了"已入座"、界面也切过去了，
+  // 装置却报"新签的那一枚进不来"（这条陷阱在 done/device-poll-innertext-unbounded-wait.md 里
+  // 已经记过一次，本处是同一个坑的第四例）。
+  const trace = []
+  const deadline = Date.now() + options.timeoutMs
+  while (Date.now() < deadline) {
+    if ((await page.getByTestId('player-seat').count()) > 0) {
+      return { seated: true, notice: '', trace }
+    }
+
+    const notice = compact(await readTextBounded(page.getByTestId('seat-invite-notice'), 500))
+    const step = notice.length > 0 ? notice.slice(0, 80) : '（没有任何提示）'
+    if (trace.at(-1) !== step) {
+      trace.push(step)
+    }
+
+    // 成功那一刻也会先写一句「已凭邀请码入座」——它不是拒绝，继续等席位视图。
+    if (notice.length > 0 && !notice.includes('已凭邀请码入座')) {
+      return { seated: false, notice, trace }
+    }
+
+    await sleep(150)
+  }
+
+  const diag = {
+    lobby: (await page.getByTestId('player-lobby').count()) > 0,
+    invite: (await page.getByTestId('seat-invite').count()) > 0,
+    seat: (await page.getByTestId('player-seat').count()) > 0,
+    gate: (await page.getByTestId('account-gate').count()) > 0,
+  }
+
+  return { seated: false, notice: '', trace, diag }
+}
+
+/** 邀请码只留**短指纹**进日志（桌标识 + 尾巴 6 位）：明文是凭据，而且轮换前后靠尾巴才分得清。 */
+function briefCode(code) {
+  const separator = code.indexOf(':')
+  if (separator < 0) {
+    return `${code.slice(0, 6)}…`
+  }
+
+  return `${code.slice(0, separator + 1)}…${code.slice(-6)}`
+}
+
+/** 超时那一档的现场描述：界面轨迹 + DOM 概览（红的判据必须自带可查的东西）。 */
+function joinDiagnostic(outcome) {
+  const trace = outcome.trace.length > 0 ? outcome.trace.join(' → ') : '（一次状态都没读到）'
+  const diag = outcome.diag === undefined || outcome.diag === null ? '（DOM 概览读不到）' : JSON.stringify(outcome.diag)
+  return `超时：界面轨迹 ${trace}｜DOM ${diag}`
+}
+
 /** 收尾：只关浏览器。服务器的数据由部署者按报告里的 SQL 清理。 */
 async function cleanup() {
   if (browser !== null) {
@@ -417,25 +575,34 @@ async function cleanup() {
 
 function reportLeftovers() {
   console.log('\n=== 本次在目标服务器上留下的数据（请按需清理）===')
-  console.log(`  测试账号：${created.username}（Users 表）`)
+  console.log(`  测试账号：${created.accounts.join('、')}（Users 表）`)
   console.log(`  测试桌　：${created.gameId ?? '（没有开成）'}（Games 表，桌名「${created.tableName}」）`)
   if (created.gameId !== null) {
     console.log('  在目标机上执行（把 <DB> 换成库文件路径；先确认这个桌标识不是你要保留的）：')
     console.log('    systemctl stop clocktower            # 必做：开着的桌活在宿主内存里，不停服务就删会被写回来')
     console.log(
-      `    sqlite3 <DB> "DELETE FROM SeatBindings WHERE GameId='${created.gameId}';` +
+      `    sqlite3 <DB> "DELETE FROM SeatInvitations WHERE GameId='${created.gameId}';` +
+        ` DELETE FROM SeatBindings WHERE GameId='${created.gameId}';` +
         ` DELETE FROM Events WHERE GameId='${created.gameId}';` +
         ` DELETE FROM Snapshots WHERE GameId='${created.gameId}';` +
         ` DELETE FROM Receipts WHERE GameId='${created.gameId}';` +
         ` DELETE FROM Games WHERE GameId='${created.gameId}';` +
-        ` DELETE FROM Users WHERE Username='${created.username}';"`,
+        ` DELETE FROM Users WHERE Username IN (${created.accounts.map((name) => `'${name}'`).join(', ')});"`,
     )
     console.log('    systemctl start clocktower')
   }
 }
 
 function parseArguments(argv) {
-  const parsed = { baseUrl: null, seats: 7, timeoutMs: 30_000, only: [], from: undefined, listSections: false }
+  const parsed = {
+    baseUrl: null,
+    seats: 7,
+    timeoutMs: 30_000,
+    only: [],
+    from: undefined,
+    listSections: false,
+    legacyCode: null,
+  }
   for (let index = 0; index < argv.length; index += 1) {
     const flag = argv[index]
     const value = argv[index + 1]
@@ -480,6 +647,16 @@ function parseArguments(argv) {
         }
 
         parsed.timeoutMs = seconds * 1000
+        index += 1
+        break
+      }
+      case '--legacy-code': {
+        // 迁移现场用（§6.6 / §9.3）：升级前那一版签发的码，升级后必须进不来。
+        if (value === undefined || !value.includes(':')) {
+          throw new Error('--legacy-code 需要「桌标识:席位邀请码」形态的一串')
+        }
+
+        parsed.legacyCode = value
         index += 1
         break
       }

@@ -15,6 +15,10 @@
  *   探针 F（守卫后脱离·属性版）：同一竞态读的是属性——守卫式属性读（readPlayerInformationCount /
  *     informationCount / waitForAttribute / readPlayerLifeOf 等）的真实窗口；readAttributeBounded
  *     应返回 null（约 0.5s），旧写法裸 getAttribute 同样等满 30s。
+ *   探针 G（轮询目标中途消失）：轮询**已经开始**、目标在循环中途被移除（例如入座成功那一刻邀请码
+ *     整块撤下、面板换成席位视图）。消失之后的每一次读取都必须立刻返回 ''，循环才听自己的 deadline；
+ *     旧写法会在消失后的首读白等 30s，把 3s 档拖成 30s+ ——真机实测踩到：部署后真机验收的邀请码段里
+ *     服务端 73ms 就回了"已入座"、界面也切过去了，装置却报"新签的那一枚进不来"（第四次踩同一个坑）。
  *
  * 用法（仓库根）：node tools/check-bounded-text.mjs
  * 退出码：0 = 探针全过；1 = 有探针失败；2 = 缺 Playwright / Chromium。
@@ -144,6 +148,22 @@ try {
     'F 守卫后脱离：有界属性读取返回 null',
     guardedAttrCount === 1 && vanishedAttr === null && elapsedF < 1_000,
     `守卫 count=${guardedAttrCount}・返回「${String(vanishedAttr)}」· ${elapsedF}ms（旧写法裸 getAttribute 等满 30s）`,
+  )
+
+  // 探针 G：轮询目标在循环中途消失——轮询已经跑起来、目标随后被移除（失败提示被撤下 / 面板换视图）。
+  // 与 E 的差别：E 是"守卫→单读"的一次性竞态，这里是**循环里的每一次读取**；消失后的首读若走无界
+  // 写法，助手自己的 deadline 会被白等的 30s 突破，循环在超时前根本转不了第二轮。
+  await page.setContent('<html><body><div id="poll-vanish">失败提示</div></body></html>')
+  setTimeout(() => {
+    void page
+      .evaluate(() => document.querySelector('#poll-vanish')?.remove())
+      .catch(() => {})
+  }, 800)
+  const pollG = await pollForText(page.locator('#poll-vanish'), '永远不出现', 3_000)
+  record(
+    'G 轮询目标中途消失：放弃时刻仍听自己的 deadline',
+    !pollG.found && pollG.elapsedMs >= 2_700 && pollG.elapsedMs <= 4_500,
+    `放弃于 ${(pollG.elapsedMs / 1000).toFixed(1)}s（无界写法：消失后的首读白等 30s）`,
   )
 } finally {
   await browser.close()
