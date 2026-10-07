@@ -63,6 +63,8 @@ public static class DatabaseInspector
             CountOf(connection, tables, "Receipts"),
             CountOf(connection, tables, "SeatBindings"));
 
+        var games = ReadGames(connection, tables);
+
         return new DatabaseReport(
             path,
             new FileInfo(path).Length,
@@ -75,7 +77,9 @@ public static class DatabaseInspector
             pageCount,
             freelistCount,
             counts,
-            ReadGames(connection, tables));
+            games,
+            // 体积（M5 / G-A6-5）：每一局的载荷字节加起来就是总量，不必再查一遍。
+            games.Sum(game => game.PayloadBytes));
     }
 
     /// <summary>
@@ -116,12 +120,43 @@ public static class DatabaseInspector
         return writable;
     }
 
-    /// <summary>逐局读数：桌名 / 席位数 / 事件条数 / 最后序号——"这一局的复盘还在不在"就是这几列。</summary>
+    /// <summary>
+    /// 逐局读数：桌名 / 席位数 / 事件条数 / 最后序号 / 载荷字节——"这一局的复盘还在不在、有多大"就是这几列。
+    /// </summary>
+    /// <remarks>
+    /// 事件那几列走**一条 <c>GROUP BY</c>**（不是逐桌查一遍）：体检会在服务跑着的时候做，
+    /// 桌数一多，逐桌查就是拿运维动作去压生产库（审计 G-A5-5 的 N+1 是同一个病）。
+    /// 载荷按**字节**量（<c>CAST AS BLOB</c>）：中文载荷一个字三字节，按字符数量会低估三倍。
+    /// </remarks>
     private static IReadOnlyList<DatabaseReport.GameLine> ReadGames(SqliteConnection connection, HashSet<string> tables)
     {
         if (!tables.Contains("Games"))
         {
             return [];
+        }
+
+        var metrics = new Dictionary<string, (int Events, long Last, long Bytes)>(StringComparer.Ordinal);
+        if (tables.Contains("Events"))
+        {
+            try
+            {
+                using var aggregate = connection.CreateCommand();
+                aggregate.CommandText =
+                    "SELECT GameId, COUNT(*), COALESCE(MAX(Sequence), 0), COALESCE(SUM(LENGTH(CAST(Payload AS BLOB))), 0) "
+                    + "FROM Events GROUP BY GameId;";
+                using var reader = aggregate.ExecuteReader();
+                while (reader.Read())
+                {
+                    metrics[reader.GetString(0)] = (reader.GetInt32(1), reader.GetInt64(2), reader.GetInt64(3));
+                }
+            }
+            catch (SqliteException)
+            {
+                // **坏库也要读得出读数**：体检的价值恰恰在"这份备份还能不能用"，
+                // 那一刻它多半已经坏了。事件那几列读不出来就按 0 报，别的读数照给——
+                // 真相由「体检：完整性=…」那一行承担，不靠这里抛异常（实测：拿一个被灌了垃圾的
+                // 备份来体检，逐页扫描的 integrity_check 能报出问题，而这张表的聚合查询会直接失败）。
+            }
         }
 
         var lines = new List<DatabaseReport.GameLine>();
@@ -134,25 +169,14 @@ public static class DatabaseInspector
                 var gameId = reader.GetString(0);
                 var name = reader.IsDBNull(1) ? string.Empty : reader.GetString(1);
                 var seatCount = reader.IsDBNull(2) ? 0 : CountSeats(reader.GetString(2));
-                lines.Add(new DatabaseReport.GameLine(gameId, name, seatCount, 0, 0));
-            }
-        }
-
-        for (var index = 0; index < lines.Count; index++)
-        {
-            var line = lines[index];
-            if (!tables.Contains("Events"))
-            {
-                break;
-            }
-
-            using var command = connection.CreateCommand();
-            command.CommandText = "SELECT COUNT(*), COALESCE(MAX(Sequence), 0) FROM Events WHERE GameId = $gameId;";
-            command.Parameters.AddWithValue("$gameId", line.GameId);
-            using var reader = command.ExecuteReader();
-            if (reader.Read())
-            {
-                lines[index] = line with { Events = reader.GetInt32(0), LastSequence = reader.GetInt64(1) };
+                var metric = metrics.GetValueOrDefault(gameId);
+                lines.Add(new DatabaseReport.GameLine(
+                    gameId,
+                    name,
+                    seatCount,
+                    metric.Events,
+                    metric.Last,
+                    metric.Bytes));
             }
         }
 

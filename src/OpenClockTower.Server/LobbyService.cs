@@ -41,6 +41,7 @@ public sealed class LobbyService
     private readonly IGameCatalog _catalog;
     private readonly ISeatBindingStore _bindings;
     private readonly GameRegistry _registry;
+    private readonly TableRetirementService _retirement;
     private readonly TableCreationPolicy _tableCreation;
     private readonly TableQuotaOptions _quota;
     private readonly ILogger<LobbyService> _logger;
@@ -50,6 +51,7 @@ public sealed class LobbyService
         IGameCatalog catalog,
         ISeatBindingStore bindings,
         GameRegistry registry,
+        TableRetirementService retirement,
         TableCreationPolicy tableCreation,
         IOptions<TableQuotaOptions> quota,
         ILogger<LobbyService> logger)
@@ -57,6 +59,7 @@ public sealed class LobbyService
         _catalog = catalog;
         _bindings = bindings;
         _registry = registry;
+        _retirement = retirement;
         _tableCreation = tableCreation;
         _quota = quota.Value;
         _logger = logger;
@@ -69,17 +72,25 @@ public sealed class LobbyService
     /// 人数从席位绑定表现算：它可能在玩家加入后变化，不缓存在内存里（"状态属于所有者"——
     /// 绑定表才是所有者，不做第二份事实）。归属同理，直接读会话目录的 `CreatedByAccountId`，
     /// 服务端算好"这张桌是不是你开的"，不让前端自己拼事实（D-0027）。
+    /// <para>
+    /// **查询次数与桌数无关**（M5 / G-A5-5）：绑定一次 <c>IN (...)</c> 拿全后按桌分组，
+    /// 不再是"每桌两次查询"的 N+1——大厅是未登录也能看的公开面，它自己不该成为负载。
+    /// </para>
     /// </remarks>
     public async Task<IReadOnlyList<LobbyTableDto>> ListAsync(
         AccountId? viewer,
         CancellationToken cancellationToken)
     {
         var setups = await _catalog.ListAsync(cancellationToken);
+        var bindings = await _bindings.ListByGamesAsync([.. setups.Select(setup => setup.GameId)], cancellationToken);
+        var bindingsByGame = bindings
+            .GroupBy(binding => binding.GameId.Value, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => (IReadOnlyList<SeatBinding>)[.. group], StringComparer.Ordinal);
 
         var tables = new List<LobbyTableDto>(setups.Count);
         foreach (var setup in setups)
         {
-            var bindings = await _bindings.ListByGameAsync(setup.GameId, cancellationToken);
+            var seated = bindingsByGame.GetValueOrDefault(setup.GameId.Value, []);
             var started = await HasStartedAsync(setup.GameId, cancellationToken);
 
             tables.Add(new LobbyTableDto
@@ -87,18 +98,18 @@ public sealed class LobbyService
                 GameId = setup.GameId.Value,
                 Name = setup.Name,
                 SeatCapacity = setup.Seats.Count,
-                TakenSeatCount = bindings.Count,
+                TakenSeatCount = seated.Count,
                 Started = started,
                 Locked = setup.IsLocked,
                 CreatedByMe = viewer is { } account && setup.CreatedByAccountId == account,
                 // 我自己已经认领的席位：界面据此让"回到我的座位"在开局 / 锁桌之后仍然点得动。
                 MySeatNumbers = viewer is { } me
-                    ? [.. bindings.Where(binding => binding.AccountId == me)
+                    ? [.. seated.Where(binding => binding.AccountId == me)
                         .Select(binding => binding.Seat.Value)
                         .OrderBy(value => value)]
                     : [],
                 // 已占席位号：前端据此把按钮置灰，玩家不必"点一下试试"才知道被占。
-                OccupiedSeatNumbers = [.. bindings.Select(binding => binding.Seat.Value).OrderBy(value => value)],
+                OccupiedSeatNumbers = [.. seated.Select(binding => binding.Seat.Value).OrderBy(value => value)],
             });
         }
 
@@ -207,9 +218,13 @@ public sealed class LobbyService
     /// <returns>超配额时的拒绝结果；都在额度内时返回 null。</returns>
     /// <remarks>
     /// <para>
-    /// 数的是**会话目录里在册的桌**（首版不回收，见 <see cref="TableQuotaOptions"/>）：
-    /// 一次性列出目录即可同时得到"全局几张"与"这个账号几张"，不需要第二份计数事实
-    /// （"状态属于所有者"——目录才是所有者）。
+    /// 数的是**会话目录里在册的桌**：一次性列出目录即可同时得到"全局几张"与"这个账号几张"，
+    /// 不需要第二份计数事实（"状态属于所有者"——目录才是所有者）。
+    /// </para>
+    /// <para>
+    /// **到顶时先回收一轮再判**（M5 / G-A5-5 容量半边）：上限的用处是挡住无限堆积，
+    /// 而不是"连没人玩的空壳也算数"。少了这一步，到顶之后谁都开不出新桌，只能等运维盯数字手工清库
+    /// ——那正是配额半边修完之后剩下的那个硬顶。
     /// </para>
     /// <para>
     /// **并发下允许超出 1–2 张**：判定与写入之间没有锁，两个并发请求可能都看到"还差一张"。
@@ -222,6 +237,10 @@ public sealed class LobbyService
         CancellationToken cancellationToken)
     {
         var setups = await _catalog.ListAsync(cancellationToken);
+        if (setups.Count >= _quota.MaxTablesGlobal)
+        {
+            setups = await RetireIdleTablesAsync(setups, cancellationToken);
+        }
 
         if (setups.Count >= _quota.MaxTablesGlobal)
         {
@@ -252,10 +271,41 @@ public sealed class LobbyService
             return Fail(
                 "table_quota_account",
                 $"你名下已经有 {mine} 张在册的桌（每人最多 {_quota.MaxTablesPerAccount} 张）："
-                    + "本版不自动回收旧桌，请联系运维清理后再开");
+                    + "空闲的桌到保留期后会自动回收（见部署文档 §9.4），也可以请运维提前清掉");
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// 撞上全局桌数上限时先扫一轮空闲桌，返回**扫完之后**的在册列表。
+    /// </summary>
+    /// <remarks>
+    /// 走的是与定时清扫**同一个** <see cref="TableRetirementService"/>：口径只有一处，
+    /// 不会出现"自动回收按 24 小时、开桌自愈按别的数"这种分叉。回收关掉时原样返回（不越权删数据）。
+    /// </remarks>
+    private async Task<IReadOnlyList<GameSetup>> RetireIdleTablesAsync(
+        IReadOnlyList<GameSetup> setups,
+        CancellationToken cancellationToken)
+    {
+        if (!_retirement.AutomaticSweepEnabled)
+        {
+            return setups;
+        }
+
+        var report = await _retirement.SweepAsync(apply: true, cancellationToken);
+        if (report.RetiredCount == 0)
+        {
+            return setups;
+        }
+
+        var remaining = await _catalog.ListAsync(cancellationToken);
+        _logger.LogInformation(
+            "开桌撞上全局桌数上限：先回收了 {Retired} 张空闲桌（在册 {Before} → {After}）",
+            report.RetiredCount,
+            setups.Count,
+            remaining.Count);
+        return remaining;
     }
 
     /// <summary>

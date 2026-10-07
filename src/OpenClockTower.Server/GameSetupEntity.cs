@@ -28,4 +28,15 @@ public sealed class GameSetupEntity
 
     /// <summary>是否锁定（不再接受新入座）。</summary>
     public bool IsLocked { get; set; }
+
+    /// <summary>
+    /// 建桌时刻（结构 v2 起；M5 / G-A6-5 用它算"这一桌空了多久"）。
+    /// </summary>
+    /// <remarks>
+    /// 老库（v2 之前）没有这一列，由迁移**按首条事件回填**；从未开局的桌因此可能仍是 null——
+    /// 那时"空了多久"没有依据，回收一律不碰它（见 <c>TableRetirementPolicy</c>）。
+    /// 只有 <c>SaveAsync</c> 的**插入**路径会写它：更新桌名 / 锁定状态不该刷新"建桌时刻"，
+    /// 否则一桌只要被改一次名就永远不会到期。
+    /// </remarks>
+    public DateTimeOffset? CreatedAt { get; set; }
 }

@@ -48,8 +48,35 @@ public static class SchemaMigrationCatalog
         IsIrreversible: true,
         Apply: ApplyBaselineAsync);
 
+    /// <summary>
+    /// v2 · 桌的建桌时刻：<c>Games</c> 加一列 <c>CreatedAt</c>，并按该桌**首条事件**回填老数据。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 为什么需要它（M5 / G-A6-5）：空闲桌回收要回答"这一桌空了多久"，而空桌的定义恰恰是
+    /// **没有任何事件**——没有事件就没有时间戳，于是"刚开出来五分钟"与"挂了半年"长得一模一样。
+    /// 建桌时刻是唯一能区分它们的事实。
+    /// </para>
+    /// <para>
+    /// **回填取首条事件（MIN）而不是末条**：活跃度是"建桌 / 末条事件 / 末次绑定"三者的最大值，
+    /// 而首条 ≤ 末条，所以回填值不可能把任何一张桌推早到期（它只是让报表有个数）。
+    /// 从未开过局的老桌回填后仍是空——**没有依据就不删**，这是有意的（见 <c>TableRetirementPolicy</c>）。
+    /// </para>
+    /// <para>
+    /// 加一列**可逆**：回滚到旧版时这一列既不会被读、也不是 <c>NOT NULL</c>，结构核对把它算作
+    /// "多出来的东西 = 回滚后的正常形态"（<see cref="SchemaComparer"/> 的第 3 档）。
+    /// 要回滚只需要把版本号改回去（部署文档 §9.3）。
+    /// </para>
+    /// </remarks>
+    private static readonly SchemaMigration TableCreationTime = new(
+        Version: 2,
+        Description: "桌的建桌时刻：Games 加一列 CreatedAt（可为空）+ 按该桌首条事件回填"
+                     + "（从未开局的老桌留空 = 空闲多久无法判定，回收不碰它）",
+        IsIrreversible: false,
+        Apply: ApplyTableCreationTimeAsync);
+
     /// <summary>本版认识的迁移，**按版本升序**。</summary>
-    public static IReadOnlyList<SchemaMigration> All { get; } = [Baseline];
+    public static IReadOnlyList<SchemaMigration> All { get; } = [Baseline, TableCreationTime];
 
     /// <summary>本版支持到哪一版（库的版本比它大 = 程序被回滚过，拒绝启动）。</summary>
     public static int LatestVersion => All[^1].Version;
@@ -186,4 +213,30 @@ public static class SchemaMigrationCatalog
     /// <summary>清掉退场列的语句（SQLite 的原地 <c>DROP COLUMN</c>：不碰别列的数据）。</summary>
     private static readonly string DropRetiredTicketColumnSql =
         $"ALTER TABLE Games DROP COLUMN {RetiredTicketColumn};";
+
+    /// <summary>建桌时刻的列名（实体、迁移与回填语句共用同一个字符串）。</summary>
+    public const string TableCreationColumn = "CreatedAt";
+
+    /// <summary>v2 的动作：补列（先看现状）+ 回填（只填空的那些行）。</summary>
+    private static async Task ApplyTableCreationTimeAsync(
+        SchemaMigrationContext context,
+        CancellationToken cancellationToken)
+    {
+        // 空库跑到这里时列还不存在（v1 的建表语句是**冻结**的：已经应用过的迁移不许再改），
+        // 老库跑到这里时列也不存在——两条路径都由这一句补上，于是它们得到同一个形状。
+        var schema = await context.ReadSchemaAsync(cancellationToken);
+        if (!schema.HasColumn("Games", TableCreationColumn))
+        {
+            await context.ExecuteAsync(
+                $"ALTER TABLE Games ADD COLUMN {TableCreationColumn} TEXT NULL;",
+                cancellationToken);
+        }
+
+        // 幂等：只填还没值的行。没有事件的桌子查询给出 NULL，正好保持"无法判定"这个语义。
+        await context.ExecuteAsync(
+            "UPDATE Games SET CreatedAt = "
+            + "(SELECT MIN(RecordedAt) FROM Events WHERE Events.GameId = Games.GameId) "
+            + "WHERE CreatedAt IS NULL;",
+            cancellationToken);
+    }
 }

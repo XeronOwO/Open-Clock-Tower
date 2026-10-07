@@ -5,7 +5,7 @@ using OpenClockTower.Contracts;
 namespace OpenClockTower.Server;
 
 /// <summary>
-/// 账号自助 Hub（D-0021）：注册 / 登录 / 登出 / 改玩家名 / 恢复码重置。
+/// 账号自助 Hub（D-0021）：注册 / 登录 / 登出 / 改玩家名 / 恢复码重置 / **注销账号**。
 /// </summary>
 /// <remarks>
 /// <para>
@@ -29,6 +29,7 @@ public sealed class AccountHub : Hub
     private readonly AccountRevocationService _revocation;
     private readonly AccountAttemptLimiter _limiter;
     private readonly RegistrationPolicy _registration;
+    private readonly IAccountErasureStore _erasures;
     private readonly GameRegistry _games;
     private readonly NotificationDispatcher _dispatcher;
     private readonly LobbyService _lobby;
@@ -53,6 +54,7 @@ public sealed class AccountHub : Hub
         AccountRevocationService revocation,
         AccountAttemptLimiter limiter,
         RegistrationPolicy registration,
+        IAccountErasureStore erasures,
         GameRegistry games,
         NotificationDispatcher dispatcher,
         LobbyService lobby,
@@ -64,6 +66,7 @@ public sealed class AccountHub : Hub
         _revocation = revocation;
         _limiter = limiter;
         _registration = registration;
+        _erasures = erasures;
         _games = games;
         _dispatcher = dispatcher;
         _lobby = lobby;
@@ -381,6 +384,123 @@ public sealed class AccountHub : Hub
             Client,
             revoked);
         return Accept(outcome.Account, session.Value, outcome.RecoveryCode);
+    }
+
+    /// <summary>
+    /// 注销账号（M5 / G-A1-6）：**口令二次确认**之后把自己从库里抹掉，并当场撤掉全部会话与连接。
+    /// </summary>
+    /// <param name="accountSession">账号会话（必须有效）。</param>
+    /// <param name="password">当事人重新输入的口令——注销不可逆，光有会话不够（见 <see cref="AccountService.VerifyPasswordAsync"/>）。</param>
+    /// <remarks>
+    /// <para>
+    /// 删除面（口径见 <see cref="IAccountErasureStore"/>）：账号行（登录名 / 玩家名 / 口令哈希 /
+    /// 恢复码哈希）、该账号在**所有桌**的席位绑定、以及它开的桌的归属；**事件流不动**——
+    /// 那是这一局的记录、属于所有参与者，而且它里面没有玩家名（名字是会话层的读时解析数据，D-0021），
+    /// 所以账号一删，公开面上就不再出现这个名字。
+    /// </para>
+    /// <para>
+    /// 顺序：先抹库、再撤会话与连接、最后刷新受影响桌的席位名读模型并推送。
+    /// "会话还有效但账号已经没了"是安全的中间态（<see cref="ResolveAccountAsync"/> 会拒），
+    /// 反过来"账号还在、会话没了"则会让用户看到自己还登着、却什么都做不了。
+    /// </para>
+    /// </remarks>
+    public async Task<AccountDto> DeleteAccount(string accountSession, string password)
+    {
+        if (!_sessions.TryResolve(accountSession, out var accountId))
+        {
+            _logger.LogWarning(
+                "注销被拒（会话无效）：connection={ConnectionId} 客户端={Client} 会话指纹={Fingerprint}",
+                Context.ConnectionId,
+                Client,
+                AccountSessionCredential.FingerprintOf(accountSession));
+            return InvalidSession();
+        }
+
+        var account = await _accounts.FindAsync(accountId, Context.ConnectionAborted);
+        if (account is null)
+        {
+            // 会话有效、账号却没了：另一个标签页刚注销过。
+            return InvalidSession();
+        }
+
+        var usernameKey = UsernameKeyOf(account.Username);
+        var decision = _limiter.Check(ThrottleAction.DeleteAccount, Client, usernameKey);
+        if (!decision.Allowed)
+        {
+            _logger.LogWarning(
+                "注销被限速：connection={ConnectionId} 客户端={Client} 登录名={UsernameKey} 建议重试={RetryAfterSeconds}s",
+                Context.ConnectionId,
+                Client,
+                usernameKey,
+                decision.RetryAfterSeconds);
+            return Throttled(decision);
+        }
+
+        var verified = await _accounts.VerifyPasswordAsync(accountId, password, Context.ConnectionAborted);
+        if (!verified.Accepted)
+        {
+            _limiter.RecordAttempt(ThrottleAction.DeleteAccount, Client, usernameKey);
+            _logger.LogWarning(
+                "注销被拒（口令不符）：account={AccountId} username={Username} 客户端={Client} 连接={ConnectionId}",
+                accountId.Value,
+                account.Username,
+                Client,
+                Context.ConnectionId);
+            return Reject(verified);
+        }
+
+        _limiter.RecordSuccess(ThrottleAction.DeleteAccount, Client, usernameKey);
+
+        var erased = await _erasures.EraseAsync(accountId, Context.ConnectionAborted);
+        var revoked = _revocation.RevokeAllForAccount(
+            accountId,
+            CallerContext.Of(Context.GetHttpContext(), Context.ConnectionId));
+        var refreshed = await RefreshSeatNamesAsync(erased.AffectedTables);
+
+        // 账号安全事件的审计（M4 / G-A5-10）：只写标识与计数，不写口令，也不写任何凭据。
+        _logger.LogWarning(
+            "账号已注销：account={AccountId} username={Username} 删除席位绑定={Bindings} 解除归属的桌={OwnedTables} "
+            + "受影响的桌={Affected} 已刷新读模型={Refreshed} 已撤销会话={Revoked} 客户端={Client} 连接={ConnectionId}",
+            accountId.Value,
+            account.Username,
+            erased.SeatBindings,
+            erased.OwnedTablesReleased,
+            erased.AffectedTables.Count,
+            refreshed,
+            revoked,
+            Client,
+            Context.ConnectionId);
+
+        return new AccountDto
+        {
+            Ok = true,
+            Code = "ok",
+            Message = "账号已注销：登录名、玩家名与席位认领已从库里删除",
+        };
+    }
+
+    /// <summary>
+    /// 受影响桌的席位名读模型**重新装载并推送**（注销必须当场生效，不能等到下次重启）。
+    /// </summary>
+    /// <remarks>尚未装载 / 已被回收的桌跳过：那种桌下次装载读到的本来就是新事实，没有可推的对象。</remarks>
+    private async Task<int> RefreshSeatNamesAsync(IReadOnlyList<GameId> tables)
+    {
+        var refreshed = 0;
+        foreach (var gameId in tables)
+        {
+            if (!await _games.ReloadSeatNamesAsync(gameId, Context.ConnectionAborted))
+            {
+                continue;
+            }
+
+            if (await _games.FindAsync(gameId, Context.ConnectionAborted) is { } game)
+            {
+                await _dispatcher.PushSeatNamesChangedAsync(game, Context.ConnectionAborted);
+                refreshed++;
+            }
+        }
+
+        return refreshed;
     }
 
     /// <summary>限速用的登录名键：能归一就用归一后的（有界、大小写同一把尺），不能归一就用空串（只按客户端计数）。</summary>

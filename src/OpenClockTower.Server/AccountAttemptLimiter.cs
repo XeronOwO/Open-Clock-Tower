@@ -119,6 +119,10 @@ public sealed class AccountAttemptLimiter
         [
             new BucketKey($"reset:user|{client}|{username}", _options.ResetFailuresPerUsername),
         ],
+        ThrottleAction.DeleteAccount =>
+        [
+            new BucketKey($"delete:user|{client}|{username}", _options.DeleteFailuresPerUsername),
+        ],
         _ => [],
     };
 

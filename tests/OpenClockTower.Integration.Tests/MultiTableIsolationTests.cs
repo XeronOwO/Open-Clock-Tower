@@ -185,6 +185,10 @@ public sealed class MultiTableIsolationTests
             GameId gameId,
             CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<SeatBinding>>([]);
 
+        public Task<IReadOnlyList<SeatBinding>> ListByGamesAsync(
+            IReadOnlyCollection<GameId> gameIds,
+            CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<SeatBinding>>([]);
+
         public Task<bool> TryBindAsync(SeatBinding binding, CancellationToken cancellationToken) =>
             Task.FromResult(true);
 

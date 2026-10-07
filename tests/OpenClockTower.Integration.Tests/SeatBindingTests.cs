@@ -144,6 +144,15 @@ public sealed class SeatBindingTests
                 [.. Bindings.Where(binding => binding.GameId == gameId).OrderBy(binding => binding.Seat.Value)]);
 
         /// <inheritdoc />
+        public Task<IReadOnlyList<SeatBinding>> ListByGamesAsync(
+            IReadOnlyCollection<GameId> gameIds,
+            CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<SeatBinding>>(
+                [.. Bindings.Where(binding => gameIds.Contains(binding.GameId))
+                    .OrderBy(binding => binding.GameId.Value)
+                    .ThenBy(binding => binding.Seat.Value)]);
+
+        /// <inheritdoc />
         public Task<bool> TryBindAsync(SeatBinding binding, CancellationToken cancellationToken)
         {
             if (_bySeat.ContainsKey((binding.GameId, binding.Seat))
@@ -181,6 +190,11 @@ public sealed class SeatBindingTests
         /// <inheritdoc />
         public Task<IReadOnlyList<SeatBinding>> ListByGameAsync(GameId gameId, CancellationToken cancellationToken) =>
             _inner.ListByGameAsync(gameId, cancellationToken);
+
+        /// <inheritdoc />
+        public Task<IReadOnlyList<SeatBinding>> ListByGamesAsync(
+            IReadOnlyCollection<GameId> gameIds,
+            CancellationToken cancellationToken) => _inner.ListByGamesAsync(gameIds, cancellationToken);
 
         /// <inheritdoc />
         public Task<bool> TryBindAsync(SeatBinding binding, CancellationToken cancellationToken)

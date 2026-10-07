@@ -18,10 +18,13 @@ namespace OpenClockTower.Application;
 /// 注册表只负责"按标识给对的那一束"。
 /// </para>
 /// <para>
-/// 首版不做空闲桌回收：小圈子自用、桌数有限；要回收时在这里加计时即可。
+/// 空闲桌回收（M5 / G-A5-5 容量半边）在**宿主那侧**：判定与删除是
+/// <c>TableRetirementService</c>（Server 层），本类只提供"把一桌从注册表里摘掉"这一步
+/// （<see cref="Unload"/>）与"按库里的事实重新装载席位名"（<see cref="ReloadSeatNamesAsync"/>）。
+/// 计时器不在这里——回收要读库、要看在线连接，那是宿主的事，本类是"一局"这一层的组合根。
 /// </para>
 /// </remarks>
-public sealed class GameRegistry
+public sealed class GameRegistry : ITableUnloader
 {
     private readonly ConcurrentDictionary<GameId, Lazy<Task<GameInstance>>> _instances = new();
     private readonly IGameStore _store;
@@ -113,6 +116,38 @@ public sealed class GameRegistry
 
     /// <summary>该局是否已在册。</summary>
     public bool Contains(GameId gameId) => _instances.ContainsKey(gameId);
+
+    /// <summary>
+    /// 把一局从注册表里摘掉（M5 / G-A6-5：空闲桌回收）；返回它原本在不在册。
+    /// </summary>
+    /// <remarks>
+    /// 摘掉之后 <see cref="FindAsync"/> 返回 null、<see cref="GetOrCreateAsync"/> 会**重新从库里造一个**——
+    /// 所以调用方必须先让那一桌在库里不存在（回收是"删库 + 摘表"两步，顺序见 <c>TableRetirementService</c>）。
+    /// 只摘表不删库 = 把一桌重新装载一遍，什么都没变。
+    /// </remarks>
+    public bool Unload(GameId gameId) => _instances.TryRemove(gameId, out _);
+
+    /// <summary>
+    /// 按库里的事实**重新装载**某一桌的席位名读模型（M5 / G-A1-6：账号注销后名字必须当场消失）。
+    /// </summary>
+    /// <param name="gameId">哪一桌。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>这一桌已在册并装载完成时 true；尚未装载（或已回收）时 false——那种桌下次装载读到的本来就是新事实。</returns>
+    /// <remarks>
+    /// 放在注册表里而不是让调用方自己去读两张表：注册表本来就是"一局"这一层的组合根，
+    /// 装载席位名要的那两个存储（绑定表、账号表）已经在它手上。调用方少两个依赖，也不会读错表。
+    /// </remarks>
+    public async Task<bool> ReloadSeatNamesAsync(GameId gameId, CancellationToken cancellationToken)
+    {
+        if (!_instances.TryGetValue(gameId, out var lazy))
+        {
+            return false;
+        }
+
+        var instance = await lazy.Value.WaitAsync(cancellationToken);
+        await instance.SeatNames.ReloadAsync(gameId, _bindings, _accounts, cancellationToken);
+        return true;
+    }
 
     /// <summary>
     /// 启动时装载**全部在册的桌**并各自恢复（幂等：重复调用只做一次）。

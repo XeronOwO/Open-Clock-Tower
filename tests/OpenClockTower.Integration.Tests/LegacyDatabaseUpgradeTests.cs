@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 using OpenClockTower.Contracts;
 using OpenClockTower.Server;
 
@@ -223,6 +224,56 @@ public sealed class LegacyDatabaseUpgradeTests : IDisposable
         Assert.True(schema.TableNamed("Users")?.IndexNamed("IX_Users_UsernameKey")?.IsUnique);
     }
 
+    /// <summary>
+    /// v2 迁移给老库补上**建桌时刻**（M5 / G-A6-5）：开过局的按首条事件回填，从未开局的留空。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 回收要回答"这一桌空了多久"，而空桌的定义恰恰是**没有任何事件**——没有事件就没有时间戳，
+    /// 于是"刚开出来五分钟"与"挂了半年"长得一模一样。这一列是唯一能区分它们的事实。
+    /// </para>
+    /// <para>
+    /// 回填取**首条**事件而不是末条：活跃度是"建桌 / 末条事件 / 末次绑定"三者的最大值，
+    /// 而首条 ≤ 末条，所以回填值不可能把任何一张桌推早到期（它只是让报表有个数）。
+    /// 从未开局的老桌回填后仍是空 —— **没有依据就不删**，这是有意的。
+    /// </para>
+    /// <para>
+    /// 不启宿主直接跑迁移：这里判的是**迁移本身**（列补上没有、回填值对不对），
+    /// 而老库那两条 <c>Type='t'</c> 的假事件会让宿主在恢复时走降级路径——那噪音不属于这条判据。
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task LegacyDatabase_V2Migration_BackfillsCreationTimeFromTheFirstEvent()
+    {
+        await CreateLegacyDatabaseAsync();
+        await ExecuteSqlAsync(
+            _legacyDatabasePath,
+            """
+            INSERT INTO "Games" ("GameId", "SeatsJson", "StorytellerTicket", "Name", "IsLocked")
+            VALUES ('never-played', '[]', 'storyteller-legacy', '', 0);
+            """);
+        await ExecuteSqlAsync(
+            _legacyDatabasePath,
+            """
+            INSERT INTO "Events" ("GameId", "Sequence", "Type", "Payload", "RecordedAt") VALUES
+                ('default', 1, 't', '{}', '2026-01-01 00:00:00+00:00'),
+                ('default', 2, 't', '{}', '2026-03-01 00:00:00+00:00');
+            """);
+
+        await using var db = new GameDbContext(
+            new DbContextOptionsBuilder<GameDbContext>()
+                .UseSqlite($"Data Source={_legacyDatabasePath}")
+                .Options);
+        var version = await DatabaseSchemaUpgrader.UpgradeAsync(
+            db,
+            NullLogger.Instance,
+            CancellationToken.None);
+
+        Assert.Equal(SchemaMigrationCatalog.LatestVersion, version);
+        Assert.Equal("2026-01-01 00:00:00+00:00", await ReadCreatedAtAsync(_legacyDatabasePath, "default"));
+        Assert.Null(await ReadCreatedAtAsync(_legacyDatabasePath, "never-played"));
+    }
+
     /// <summary>把真机老库的结构与那一桌灌进临时库（用例自己造老库，不依赖任何外部数据）。</summary>
     private async Task CreateLegacyDatabaseAsync()
     {
@@ -298,6 +349,18 @@ public sealed class LegacyDatabaseUpgradeTests : IDisposable
         await using var connection = new SqliteConnection($"Data Source={databasePath};Pooling=False");
         await connection.OpenAsync();
         return await SqliteUserVersion.ReadAsync(connection, CancellationToken.None);
+    }
+
+    /// <summary>某一桌的建桌时刻（<c>null</c> = 老库里的空桌：空闲多久无法判定）。</summary>
+    private static async Task<string?> ReadCreatedAtAsync(string databasePath, string gameId)
+    {
+        await using var connection = new SqliteConnection($"Data Source={databasePath};Pooling=False");
+        await connection.OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT CreatedAt FROM Games WHERE GameId = $id;";
+        command.Parameters.AddWithValue("$id", gameId);
+        var value = await command.ExecuteScalarAsync();
+        return value is null or DBNull ? null : (string)value;
     }
 
     /// <summary>对库跑一条 SQL（用例用它把老库改成某个具体形态，例如丢掉账号表）。</summary>

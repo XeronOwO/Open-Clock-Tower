@@ -92,8 +92,8 @@ public sealed class DatabaseMaintenanceTests : IDisposable
         Assert.Equal(source.Tables.Users, backup.Tables.Users);
         Assert.Equal(source.Tables.SeatBindings, backup.Tables.SeatBindings);
         Assert.Equal(
-            source.Games.Select(game => (game.GameId, game.Events, game.LastSequence)),
-            backup.Games.Select(game => (game.GameId, game.Events, game.LastSequence)));
+            source.Games.Select(game => (game.GameId, game.Events, game.LastSequence, game.PayloadBytes)),
+            backup.Games.Select(game => (game.GameId, game.Events, game.LastSequence, game.PayloadBytes)));
         // 事件流真的有内容：空库上比"两边都是 0"证明不了任何事。
         Assert.True(backup.Tables.Events > 0, "夹具该造出事件来，否则这条判据是空转的");
         Assert.NotEqual(source.Sha256, backup.Sha256);
@@ -266,11 +266,125 @@ public sealed class DatabaseMaintenanceTests : IDisposable
         Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite, File.GetUnixFileMode(backup.Path));
     }
 
+    /// <summary>
+    /// 体积读数（M5 / G-A6-5）：体检要给出"事件载荷多少字节、平均每条多少"，容量才有依据。
+    /// </summary>
+    /// <remarks>
+    /// 审计的原话是"库层无任何体积估算"，于是"再放半年会不会撑爆磁盘"只能靠猜。
+    /// 这条判据同时钉住两件事：**量的是字节不是字符**（中文载荷一个字三字节，按字符数量会低估三倍），
+    /// 以及那一行真的出现在给人看的输出里（运维只看 journal，不看返回对象）。
+    /// </remarks>
+    [Fact]
+    public async Task Report_ShowsVolumeReadingAsCapacityEvidence()
+    {
+        await using var host = new TestServerHost();
+        var report = DatabaseInspector.Inspect(host.DatabasePath, new SqliteOptions());
+
+        Assert.True(report.Tables.Events > 0, "夹具该造出事件来，否则这条判据是空转的");
+        Assert.True(report.EventPayloadBytes > 0, "事件载荷字节数必须是真量出来的");
+        Assert.True(report.BytesPerEvent > 0);
+        // 每一个字符都是 ASCII 或中文：载荷字节数必然**不小于**条数（一条事件至少一个字节）。
+        Assert.True(report.EventPayloadBytes >= report.Tables.Events);
+
+        var text = report.Describe();
+        Assert.Contains("体积：事件载荷=", text, StringComparison.Ordinal);
+        Assert.Contains("平均每事件", text, StringComparison.Ordinal);
+        Assert.Contains("载荷=", text, StringComparison.Ordinal);
+        Assert.Contains("最重一局=", text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// 空闲桌回收命令（M5 / G-A6-5）：默认**只报告**，加 <c>--apply</c> 才真的删，删完五张表都干净。
+    /// </summary>
+    /// <remarks>
+    /// 停机状态下跑（<c>--apply</c> 要拿单实例锁）：这条路径正是"运维手工清理"的替代品，
+    /// 它必须能在**没有服务**的时候把一张桌删干净，否则运维还得回到手工五表联删的老路。
+    /// </remarks>
+    [Fact]
+    public async Task RetireTables_DryRunReports_ApplyDeletes()
+    {
+        var databasePath = Path.Combine(_root, "retire.db");
+        await using (var seeded = new TestServerHost(databasePath: databasePath, deleteDatabaseOnDispose: false))
+        {
+            await seeded.RegisterTableAsync(new OpenClockTower.Application.GameId("doomed"), 5);
+        }
+
+        SqliteConnection.ClearAllPools();
+        BackdateTable(databasePath, "doomed", DateTimeOffset.UtcNow.AddDays(-2));
+
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+
+        // 默认档：只报告，一个字节都不动。
+        Assert.Equal(0, MaintenanceCli.Run(["retire-tables", "--db", databasePath], output, error));
+        Assert.Contains("模式=只报告", output.ToString(), StringComparison.Ordinal);
+        Assert.Contains("标识=doomed", output.ToString(), StringComparison.Ordinal);
+        Assert.Equal(1, CountGames(databasePath, "doomed"));
+
+        // --apply：真的删，且五张表都不再留着它的行。
+        using var applyOutput = new StringWriter();
+        Assert.Equal(
+            0,
+            MaintenanceCli.Run(
+                ["retire-tables", "--apply", "--empty-hours", "0", "--db", databasePath],
+                applyOutput,
+                error));
+        Assert.Contains("已回收=1", applyOutput.ToString(), StringComparison.Ordinal);
+        Assert.Equal(0, CountGames(databasePath, "doomed"));
+        foreach (var table in new[] { "Events", "Snapshots", "Receipts", "SeatBindings" })
+        {
+            Assert.Equal(0, CountRows(databasePath, table, "doomed"));
+        }
+    }
+
+    /// <summary>
+    /// <c>--apply</c> 在服务跑着的时候**拿不到锁**：两个进程同改一个库是必须挡住的事，
+    /// 而"服务跑着时它会自己回收"正是给运维的那句人话。
+    /// </summary>
+    [Fact]
+    public async Task RetireTables_ApplyIsRefusedWhileTheServiceHoldsTheLock()
+    {
+        await using var host = new TestServerHost();
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+
+        var exitCode = MaintenanceCli.Run(["retire-tables", "--apply", "--db", host.DatabasePath], output, error);
+
+        Assert.Equal(1, exitCode);
+        Assert.Contains("服务正在运行", error.ToString(), StringComparison.Ordinal);
+        Assert.Contains("停服", error.ToString(), StringComparison.Ordinal);
+    }
+
     private static async Task<object?> ScalarAsync(System.Data.Common.DbConnection connection, string sql)
     {
         await using var command = connection.CreateCommand();
         command.CommandText = sql;
         return await command.ExecuteScalarAsync();
+    }
+
+    /// <summary>把一桌的建桌时刻改到过去（"这一桌空了多久"是时间这一维的输入，夹具只能直接改库）。</summary>
+    private static void BackdateTable(string databasePath, string gameId, DateTimeOffset createdAt)
+    {
+        using var connection = new SqliteConnection($"Data Source={databasePath};Pooling=False");
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "UPDATE Games SET CreatedAt = $when WHERE GameId = $id;";
+        command.Parameters.AddWithValue("$when", createdAt);
+        command.Parameters.AddWithValue("$id", gameId);
+        command.ExecuteNonQuery();
+    }
+
+    private static long CountGames(string databasePath, string gameId) =>
+        CountRows(databasePath, "Games", gameId);
+
+    private static long CountRows(string databasePath, string table, string gameId)
+    {
+        using var connection = new SqliteConnection($"Data Source={databasePath};Pooling=False");
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = $"SELECT COUNT(*) FROM \"{table}\" WHERE GameId = $id;";
+        command.Parameters.AddWithValue("$id", gameId);
+        return Convert.ToInt64(command.ExecuteScalar(), System.Globalization.CultureInfo.InvariantCulture);
     }
 
     /// <inheritdoc />

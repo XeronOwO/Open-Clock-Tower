@@ -5,14 +5,24 @@ using OpenClockTower.Application;
 namespace OpenClockTower.Server;
 
 /// <summary>EF Core + SQLite 实现的会话票据目录（多桌：每桌一行，D-0024）。</summary>
+/// <remarks>
+/// 建桌时刻在**插入**那一支写一次（<see cref="GameSetupEntity.CreatedAt"/>）：它是这一行的事实，
+/// 由持久化层拿时钟盖一次章最省事，也不必让"建桌"这个领域动作多背一个时间参数。
+/// 更新（改名 / 锁桌 / 重存票据）一律不碰它——否则一桌改一次名就不会到期。
+/// </remarks>
 public sealed class EfGameCatalog : IGameCatalog
 {
     private static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.Web);
 
     private readonly IDbContextFactory<GameDbContext> _factory;
+    private readonly IClock _clock;
 
     /// <summary>构造目录。</summary>
-    public EfGameCatalog(IDbContextFactory<GameDbContext> factory) => _factory = factory;
+    public EfGameCatalog(IDbContextFactory<GameDbContext> factory, IClock clock)
+    {
+        _factory = factory;
+        _clock = clock;
+    }
 
     /// <inheritdoc />
     public async Task<GameSetup?> FindAsync(GameId gameId, CancellationToken cancellationToken)
@@ -41,6 +51,7 @@ public sealed class EfGameCatalog : IGameCatalog
                 CreatedByAccountId = setup.CreatedByAccountId?.Value,
                 Name = setup.Name,
                 IsLocked = setup.IsLocked,
+                CreatedAt = _clock.UtcNow,
             });
         }
         else

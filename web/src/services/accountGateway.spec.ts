@@ -206,4 +206,34 @@ describe('账号网关接线与秘密纪律', () => {
     expect(result.code).toBe('invalid_session')
     expect(gateway.profile).toBeNull()
   })
+
+  it('注销账号（M5）：带会话与口令；成功后本地资料立即清空，不给下一次刷新留废票', async () => {
+    const fake = new FakeConnection()
+    fake.response = account()
+    const gateway = gatewayWith(fake)
+    await gateway.login('alice', 'password-123')
+
+    fake.response = { ok: true, code: 'ok', message: '账号已注销：登录名、玩家名与席位认领已从库里删除' }
+    const result = await gateway.deleteAccount('password-123')
+
+    expect(result.ok).toBe(true)
+    expect(fake.invocations.at(-1)).toEqual({
+      method: 'DeleteAccount',
+      args: ['session-1', 'password-123'],
+    })
+    expect(gateway.profile).toBeNull()
+  })
+
+  it('注销被拒（口令不符）：登录态原样保留，用户还能继续用这个账号', async () => {
+    const fake = new FakeConnection()
+    fake.response = account()
+    const gateway = gatewayWith(fake)
+    await gateway.login('alice', 'password-123')
+
+    fake.response = { ok: false, code: 'invalid_credentials', message: '登录名或口令不正确' }
+    const result = await gateway.deleteAccount('猜的口令')
+
+    expect(result.ok).toBe(false)
+    expect(gateway.profile?.accountSession).toBe('session-1')
+  })
 })

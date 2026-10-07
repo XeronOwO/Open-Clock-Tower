@@ -49,6 +49,29 @@ public sealed class EfSeatBindingStore : ISeatBindingStore
     }
 
     /// <inheritdoc />
+    public async Task<IReadOnlyList<SeatBinding>> ListByGamesAsync(
+        IReadOnlyCollection<GameId> gameIds,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(gameIds);
+        if (gameIds.Count == 0)
+        {
+            // 一桌都没有时不该退化成 `WHERE 1=0` 之外的东西，更不该白开一次连接。
+            return [];
+        }
+
+        var ids = gameIds.Select(id => id.Value).ToArray();
+        await using var db = await _factory.CreateDbContextAsync(cancellationToken);
+        var rows = await db.SeatBindings
+            .AsNoTracking()
+            .Where(item => ids.Contains(item.GameId))
+            .OrderBy(item => item.GameId)
+            .ThenBy(item => item.Seat)
+            .ToListAsync(cancellationToken);
+        return [.. rows.Select(ToBinding)];
+    }
+
+    /// <inheritdoc />
     public async Task<bool> TryBindAsync(SeatBinding binding, CancellationToken cancellationToken)
     {
         await using var db = await _factory.CreateDbContextAsync(cancellationToken);

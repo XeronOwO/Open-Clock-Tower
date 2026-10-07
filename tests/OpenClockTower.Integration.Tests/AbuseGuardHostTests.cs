@@ -367,6 +367,39 @@ public sealed class AbuseGuardHostTests : IDisposable
         Assert.Contains("account=", logoutLine, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// 全局额度**到顶之后先回收空闲桌再判**（M5 / G-A5-5 容量半边）：上限是"挡住无限堆积"，
+    /// 不是"连没人玩的空壳也算数"。
+    /// </summary>
+    /// <remarks>
+    /// 这条判据的两半同样重要：新桌**开得出来**（容量自愈真的发生了），
+    /// 而被收掉的是**那一张空闲的老桌**（不是"配额被绕过"、也不是把新桌自己删了）。
+    /// 判据取库里的读数与大厅列表，不取回执——回执只证明走到了那一行。
+    /// </remarks>
+    [Fact]
+    public async Task TableQuota_Global_ReclaimsIdleTables_InsteadOfStayingStuck()
+    {
+        StartHost(new Settings(MaxTablesGlobal: 1, MaxTablesPerAccount: 10));
+        var account = await ConnectAccountAsync();
+        var first = await RegisterAsync(account, "first-owner");
+        var idle = await CreateTableAsync(account, first.AccountSession);
+        Assert.True(idle.Ok, idle.Message);
+
+        // 把这一桌改成"两天前开的、没人动过"：它是空桌（没有事件），保留期是 24 小时。
+        BackdateTable(idle.GameId, DateTimeOffset.UtcNow.AddDays(-2));
+
+        var second = await RegisterAsync(account, "second-owner");
+        var allowed = await CreateTableAsync(account, second.AccountSession);
+        Assert.True(allowed.Ok, $"{allowed.Code}：{allowed.Message}");
+
+        Assert.Equal(0, CountRows("Games", idle.GameId));
+        Assert.Equal(0, CountRows("Events", idle.GameId));
+
+        var tables = await account.InvokeAsync<IReadOnlyList<LobbyTableDto>>("ListTables", second.AccountSession);
+        Assert.DoesNotContain(tables, table => table.GameId == idle.GameId);
+        Assert.Contains(tables, table => table.GameId == allowed.GameId);
+    }
+
     /// <summary>等一条日志出现（日志是异步写的；额度与判据都不变，只是等它落进收集器）。</summary>
     private async Task<string> WaitForLogAsync(Func<string, bool> predicate)
     {
@@ -383,6 +416,29 @@ public sealed class AbuseGuardHostTests : IDisposable
 
         Assert.Fail($"日志里没有匹配的行。已收集：{string.Join(" | ", _logs)}");
         return string.Empty;
+    }
+
+    /// <summary>把一桌的建桌时刻改到过去（"这一桌多久没人动了"是时间这一维的输入，夹具只能直接改库）。</summary>
+    private void BackdateTable(string gameId, DateTimeOffset createdAt)
+    {
+        using var connection = new SqliteConnection($"Data Source={_databasePath};Pooling=False");
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "UPDATE Games SET CreatedAt = $when WHERE GameId = $id;";
+        command.Parameters.AddWithValue("$when", createdAt);
+        command.Parameters.AddWithValue("$id", gameId);
+        command.ExecuteNonQuery();
+    }
+
+    /// <summary>这一桌在某张表里还剩几行（回收"删干净了没有"的判据）。</summary>
+    private long CountRows(string table, string gameId)
+    {
+        using var connection = new SqliteConnection($"Data Source={_databasePath};Pooling=False");
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = $"SELECT COUNT(*) FROM \"{table}\" WHERE GameId = $id;";
+        command.Parameters.AddWithValue("$id", gameId);
+        return Convert.ToInt64(command.ExecuteScalar(), CultureInfo.InvariantCulture);
     }
 
     /// <summary>换一个宿主（同一个库）：用于"关掉自助注册"这类需要改配置的两段式用例。</summary>

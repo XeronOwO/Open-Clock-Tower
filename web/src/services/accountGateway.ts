@@ -223,6 +223,22 @@ export class AccountGateway {
     return result
   }
 
+  /**
+   * 注销账号（M5 / G-A1-6）：**不可逆**，所以除会话外还要当事人重新给一次口令。
+   *
+   * 成功后本地立即清干净（资料）：服务端已经把这个账号与它的全部会话撤掉了，
+   * 留着那份凭据只会在下一次刷新时拿一串废票去试（D-0029 的"撤销性不退步"）。
+   */
+  async deleteAccount(password: string): Promise<AccountDto> {
+    const session = this.requireSession()
+    const result = await this.invoke('DeleteAccount', session, password)
+    if (result.ok) {
+      this.profileValue = null
+    }
+
+    return result
+  }
+
   /** 列出在开的桌（大厅）：未登录也能看；带会话时附带"这张桌是不是我开的"（D-0027）。 */
   async listTables(): Promise<LobbyTable[]> {
     return normalizeLobbyTables(

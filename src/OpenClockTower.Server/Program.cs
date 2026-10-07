@@ -32,6 +32,10 @@ var actionThrottleOptions = builder.Configuration
 var tableQuotaOptions = builder.Configuration
     .GetSection(TableQuotaOptions.SectionName)
     .Get<TableQuotaOptions>() ?? new TableQuotaOptions();
+// 桌的保留期限（M5 / G-A5-5 容量半边 · G-A6-5）：空闲桌回收与隐私说明里的"留多久"是同一组数字。
+var tableRetentionOptions = builder.Configuration
+    .GetSection(TableRetentionOptions.SectionName)
+    .Get<TableRetentionOptions>() ?? new TableRetentionOptions();
 
 builder.Services.Configure<GameServerOptions>(
     builder.Configuration.GetSection(GameServerOptions.SectionName));
@@ -43,6 +47,8 @@ builder.Services.Configure<ActionThrottleOptions>(
     builder.Configuration.GetSection(ActionThrottleOptions.SectionName));
 builder.Services.Configure<TableQuotaOptions>(
     builder.Configuration.GetSection(TableQuotaOptions.SectionName));
+builder.Services.Configure<TableRetentionOptions>(
+    builder.Configuration.GetSection(TableRetentionOptions.SectionName));
 
 // 传输面上限（M3 / G-A3-4）：**显式取值**，不吃框架默认（30 MB 请求体 / 无上限连接 / 30 秒请求头超时）。
 builder.WebHost.ConfigureKestrel(kestrel =>
@@ -91,6 +97,10 @@ builder.Services.AddSingleton<IGameCatalog, EfGameCatalog>();
 builder.Services.AddSingleton<IPasswordHasher, Pbkdf2PasswordHasher>();
 builder.Services.AddSingleton<IAccountStore, EfAccountStore>();
 builder.Services.AddSingleton<ISeatBindingStore, EfSeatBindingStore>();
+// 删除路径（M5 / G-A6-5）：桌退役（活跃度读数 + 五表联删）与账号注销（账号行 + 席位绑定 + 归属）。
+// 从前全仓一个删除方法都没有，清一张桌只能停服手工五表联删（部署文档 §9.4 的旧写法）。
+builder.Services.AddSingleton<ITableRetirementStore, EfTableRetirementStore>();
+builder.Services.AddSingleton<IAccountErasureStore, EfAccountErasureStore>();
 builder.Services.AddSingleton<AccountService>();
 builder.Services.AddSingleton<SeatBindingService>();
 builder.Services.AddSingleton<AccountSessionRegistry>();
@@ -109,6 +119,11 @@ builder.Services.AddSingleton(provider => new RegistrationPolicy(
     provider.GetRequiredService<ILogger<RegistrationPolicy>>()));
 // 大厅用例（D-0025）：列桌 / 开桌。
 builder.Services.AddSingleton<LobbyService>();
+// 空闲桌回收（M5 / G-A5-5 容量半边）：判定与阈值单独一处，三个触发点（定时 / 开桌自愈 / 维护命令）共用。
+// 摘表那一步走 ITableUnloader：宿主里就是注册表本身，维护进程里是"没有注册表"的显式空实现。
+builder.Services.AddSingleton<ITableUnloader>(provider => provider.GetRequiredService<GameRegistry>());
+builder.Services.AddSingleton<TableRetirementPolicy>();
+builder.Services.AddSingleton<TableRetirementService>();
 // 规则层的角色契约：提示目录与结算目录指向同一批实现（NightActions），常驻效果来源单列。
 builder.Services.AddSingleton<IAbilityResolutionCatalog>(NightActions.Resolutions);
 builder.Services.AddSingleton<IReadOnlyList<IStandingEffectSource>>(NightActions.StandingEffects);
@@ -167,6 +182,9 @@ builder.Services.AddSingleton(provider => new SeatJoinCoordinator(
     provider.GetRequiredService<ILogger<SeatJoinCoordinator>>()));
 builder.Services.AddHostedService<GameBootstrapHostedService>();
 builder.Services.AddHostedService<StepPacerHostedService>();
+// 顺序要紧：空闲桌回收排在启动装载**之后**，否则第一轮会拿一份还没装好的注册表去判定
+// （它启动时先扫一轮，为的是把停机期间到期的桌当场收掉）。
+builder.Services.AddHostedService<TableRetirementHostedService>();
 // SignalR 的上限也**显式写出**（M3 / G-A3-4）：默认 32 KB 消息会随框架版本变，项目对此无感知。
 builder.Services.AddSignalR(options =>
 {
@@ -218,6 +236,16 @@ app.Logger.LogInformation(
     actionThrottleOptions.WindowSeconds,
     actionThrottleOptions.WriteTextCallsPerActor,
     actionThrottleOptions.WindowSeconds);
+
+// 数据保留的启动读数（M5 / D-0036）：这一组数字同时是"库里的数据留多久"这个问题的答案，
+// 它只活在配置里，所以必须自报——隐私说明与运维判断都以此为准。
+app.Logger.LogInformation(
+    "数据保留：空闲桌回收={Retention} · 未开局{EmptyHours}小时/已开局{PlayedDays}天 · 清扫间隔={SweepMinutes}分钟 · "
+    + "账号注销=口令二次确认后删账号行与该账号全部席位认领（事件流不动）",
+    tableRetentionOptions.Enabled ? "开" : "关（数据只进不出，全局桌数上限变成硬顶）",
+    tableRetentionOptions.EmptyTableHours,
+    tableRetentionOptions.PlayedTableDays,
+    tableRetentionOptions.SweepIntervalMinutes);
 
 // 部署形态：前端构建产物随发布带上（见 csproj 的 wwwroot 接线），由宿主直接发页面，
 // 因此页面与 /hub 同源——不需要 CORS，也不需要另起静态站点。开发期仍可继续用 web/ 的 Vite 服务器。

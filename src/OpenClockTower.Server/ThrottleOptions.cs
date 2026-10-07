@@ -53,6 +53,15 @@ public sealed class ThrottleOptions
     public int ResetFailuresPerUsername { get; set; } = 5;
 
     /// <summary>
+    /// 同一（客户端 + 登录名）的**账号注销确认口令**失败上限，默认 5（M5 / G-A1-6）。
+    /// </summary>
+    /// <remarks>
+    /// 注销要口令二次确认，而那次确认也要跑一遍 PBKDF2——不给它一道闸，
+    /// "偷到会话再慢慢猜口令"就是一条免费的爆破路径。额度与登录 / 重置取同一个数。
+    /// </remarks>
+    public int DeleteFailuresPerUsername { get; set; } = 5;
+
+    /// <summary>
     /// 内存里最多跟踪多少个计数桶，默认 10000。
     /// </summary>
     /// <remarks>

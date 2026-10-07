@@ -49,6 +49,17 @@ public sealed class ConnectionRegistry
                 && gameId == game)
             .Select(pair => pair.Key)];
 
+    /// <summary>
+    /// 这一桌当前有没有连接的痕迹（席位或主持台）——空闲桌回收据此判"正在被使用"（M5 / G-A6-5）。
+    /// </summary>
+    /// <remarks>
+    /// 看的是**所有签名过的连接**（<c>_connectionGames</c>），不是只有已路由的席位：
+    /// 一条刚建立、刚进主持台的连接与一条已入座的连接一样，都意味着"这一桌有人"。
+    /// 连接上限是 512（M3 / G-A5-7），所以这里的一次线性扫描是常数级的小事
+    /// ——为它单立一份"每桌连接计数"等于再养一份会和事实分叉的账。
+    /// </remarks>
+    public bool IsOccupied(GameId game) => _connectionGames.Values.Contains(game);
+
     /// <summary>玩家加入 / 重连：为这条连接签发凭据；同桌同席旧连接与同连接旧凭据立即作废。</summary>
     /// <param name="session">授权这次入座的账号会话（M2 / G-A2-1）；只凭票据的游客为 null。</param>
     public ConnectionCredential IssueForSeat(GameId game, SeatId seat, string connectionId, AccountSessionRef? session)

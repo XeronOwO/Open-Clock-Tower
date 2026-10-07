@@ -110,6 +110,43 @@ public sealed class AccountService
         return new AccountOutcome { Accepted = true, Code = "ok", Account = account };
     }
 
+    /// <summary>
+    /// 按**已知的账号标识**核对口令（M5 / G-A1-6：注销这类不可逆动作的二次确认）。
+    /// </summary>
+    /// <param name="accountId">已经由会话确认过的账号。</param>
+    /// <param name="password">当事人重新输入的口令。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <remarks>
+    /// <para>
+    /// 与 <see cref="AuthenticateAsync"/> 的分工：那条按登录名找人（登录入口，不透露账号是否存在），
+    /// 这条是"账号已经在手里，再证明一次是你本人"。会话可能是从一台没锁屏的机器上拿到的，
+    /// 而注销**不可逆**，所以它比其余账号入口多要一道口令。
+    /// </para>
+    /// <para>
+    /// 账号不存在或口令为空时同样跑一次假哈希：与登录入口同一条时序口径（不让"快 = 没这个账号"）。
+    /// </para>
+    /// </remarks>
+    public async Task<AccountOutcome> VerifyPasswordAsync(
+        AccountId accountId,
+        string? password,
+        CancellationToken cancellationToken)
+    {
+        var secret = password ?? string.Empty;
+        var account = await _accounts.FindByIdAsync(accountId, cancellationToken);
+        if (account is null || secret.Length == 0)
+        {
+            _hasher.Verify(secret, _dummyHash.Value);
+            return InvalidCredentials();
+        }
+
+        if (!_hasher.Verify(secret, account.PasswordHash))
+        {
+            return InvalidCredentials();
+        }
+
+        return new AccountOutcome { Accepted = true, Code = "ok", Account = account };
+    }
+
     /// <summary>改玩家名：账号设置里随时可改；运行期由 Server 推给该账号已绑定的席位。</summary>
     public async Task<AccountOutcome> ChangeDisplayNameAsync(
         AccountId accountId,

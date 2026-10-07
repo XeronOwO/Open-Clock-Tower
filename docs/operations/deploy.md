@@ -73,7 +73,9 @@ sudo chmod 755 <APP_DIR>/OpenClockTower.Server
 sudo chown -R root:<运行用户> <APP_DIR>
 sudo chown -R <运行用户>:<运行用户> <APP_DIR>/data <备份目录>
 sudo chmod 700 <APP_DIR>/data <备份目录>
-sudo chmod 600 <APP_DIR>/data/oct.db        # 老库升级上来时做一次；新库由单元的 UMask=0077 直接建成 600
+# 库与它的伴随文件一起收权限（`-wal` / `-shm` / `.lock`）：上面那条 `chmod -R` 会把它们一起放开成 644
+# （实测：升级后 `oct.db.lock` 就是 644），而 700 的目录虽然护得住它们，权限位本身还是收一次更干净。
+sudo chmod 600 <APP_DIR>/data/oct.db*        # 老库升级上来时做一次；新库由单元的 UMask=0077 直接建成 600
 ```
 
 > 运行用户不存在时 systemd 会以 `status=217/USER` 拒绝启动——先建用户，再 `enable`。
@@ -135,8 +137,13 @@ Environment=GameServer__SlotQuotaSeconds=10
 # Environment=GameServer__Throttle__RegisterCallsGlobal=30             # 默认 30 次（**整个部署**的注册额度；换 IP 刷注册只有它拦得住）
 # 滥用与风控（M4 / D-0033）：
 # Environment=GameServer__AllowSelfRegistration=false                  # 默认 true；**关掉之后没有任何入口能开新账号**（首版没有邀请码与管理台）
-# Environment=GameServer__TableQuota__MaxTablesPerAccount=12           # 默认 12 张（单个账号名下**在册**的桌；首版不回收，所以这是硬上限）
-# Environment=GameServer__TableQuota__MaxTablesGlobal=64               # 默认 64 张（整个部署在册的桌；到顶后谁都开不出新桌，清理见 §9.4）
+# Environment=GameServer__TableQuota__MaxTablesPerAccount=12           # 默认 12 张（单个账号名下**在册**的桌）
+# Environment=GameServer__TableQuota__MaxTablesGlobal=64               # 默认 64 张（整个部署在册的桌；到顶时宿主会先回收一轮空闲桌，见 §9.4）
+# 数据保留（M5 / D-0036）：这三行同时是**隐私说明里"数据留多久"的答案**（§9.4 有完整口径）。
+# Environment=GameServer__TableRetention__Enabled=true                  # 默认 true；关掉 = 数据只进不出，全局桌数上限变成硬顶
+# Environment=GameServer__TableRetention__EmptyTableHours=24            # 默认 24 小时（**从未开局**的桌：没人坐下、没有事件）
+# Environment=GameServer__TableRetention__PlayedTableDays=90            # 默认 90 天（**开过局**的桌：含整局事件流与复盘）
+# Environment=GameServer__TableRetention__SweepIntervalMinutes=60       # 默认 60 分钟一轮（启动时也会先扫一轮）
 # Environment=GameServer__ActionThrottle__WindowSeconds=300            # 默认 5 分钟
 # Environment=GameServer__ActionThrottle__JoinCallsPerClientAndGame=60 # 默认 60 次（同一来源在同一桌的入座 / 重连）
 # Environment=GameServer__ActionThrottle__JoinCallsPerClient=120       # 默认 120 次（同一来源跨桌）
@@ -172,16 +179,21 @@ journalctl -u clocktower-backup -n 20 --no-pager             # 这一次的读�
 
 ### 3.2 启动读数
 
-启动时会打印三行读数（传输上限 / 可信代理 / 账号限速；风控配额与频率；数据库口径），出问题时先看它们——
-**配置真的生效了没有，看这三行**：
+启动时会打印几行读数（传输上限 / 可信代理 / 账号限速；风控配额与频率；数据保留；数据库口径），
+出问题时先看它们——**配置真的生效了没有，看这几行**：
 
 ```
 传输面：请求体≤262144B · SignalR消息≤65536B · 连接≤512 · 请求头超时=15s · 可信代理=回环（默认） · 登录限速=5次/300s
 风控面：自助注册=开 · 注册额度=每来源10次/全局30次每300s · 在册桌上限=每账号12张/全局64张 · 入座额度=每桌60次每300s · 写文本额度=每身份120次每300s
-数据库口径：库=<APP_DIR>/data/oct.db · 大小=…B · 日志模式=wal · 同步级别=FULL · 写锁等待=5000ms
+数据保留：空闲桌回收=开 · 未开局24小时/已开局90天 · 清扫间隔=60分钟 · 账号注销=口令二次确认后删账号行与该账号全部席位认领（事件流不动）
+数据库口径：库=<APP_DIR>/data/oct.db · 大小=…B · 结构版本=2/2 · 日志模式=wal · 同步级别=FULL · 写锁等待=5000ms
 ```
 
-第三行是 M5 新加的（G-A6-8）：**日志模式必须是 `wal`**，不再是默认的 `delete`。
+"数据保留"那一行是 M5 新加的（D-0036）：**它同时是"库里的数据留多久"这个问题的答案**，
+所以必须自报——隐私说明与运维判断都以此为凭（口径见 §9.4）。之后每小时还会有一行
+`空闲桌清扫：…`，那是自动回收在跑的证据。
+
+"数据库口径"那一行里**日志模式必须是 `wal`**（M5 / G-A6-8），不再是默认的 `delete`。
 它不是"设过了就算"——那是读回实际生效的值；只读文件系统或库被别的连接独占时，
 `PRAGMA journal_mode=wal` 会静默不生效，这一行会变成 `实际 delete` 外加一条告警（§8 有排查行）。
 
@@ -458,6 +470,7 @@ chmod -R u=rwX,go=rX <APP_DIR>                # 归档权限来自构建机，�
 chmod 755 <APP_DIR>/OpenClockTower.Server     # 入口程序的执行位要给运行用户（丢了会 203/EXEC）
 chown -R root:<运行用户> <APP_DIR>            # 程序文件归 root、运行用户只读（§3）
 chown -R <运行用户>:<运行用户> <APP_DIR>/data && chmod 700 <APP_DIR>/data
+chmod 600 <APP_DIR>/data/oct.db*              # 库与伴随文件（-wal / -shm / .lock）一起收：chmod -R 会把它们放开成 644
 sudo systemctl start clocktower
 journalctl -u clocktower -n 20 --no-pager     # 确认起来了、库还是原来那一个、日志模式=wal
 ```
@@ -465,18 +478,18 @@ journalctl -u clocktower -n 20 --no-pager     # 确认起来了、库还是原�
 `data/` 不在包里，**升级不会动你的对局数据**。反过来：换新库（删掉 `oct.db` 重启）等于
 **开新的一局**。
 
-**从"有默认桌"的旧版升级上来时**（D-0027 之后）：库里过去那张 `default` 桌会**补列成"没有房主"**
-——它照旧出现在大厅里，但谁也进不去它的主持台（没有归属就没有说书人）。这是如实反映
-"升级前那一桌本来就没有开桌账号"，不是故障。要清掉它就按下面的 SQL 删（**先停服务再删**：
-开着的桌活在宿主内存里，不停服务就删会被写回来）：
+**升级后先看一眼保留策略会动到哪些桌**（D-0036：空闲桌回收默认开着，服务起来之后它就会按
+24 小时 / 90 天两档自己跑）：
 
 ```bash
-systemctl stop clocktower
-sqlite3 <APP_DIR>/data/oct.db "DELETE FROM SeatBindings WHERE GameId='default'; \
-  DELETE FROM Events WHERE GameId='default'; DELETE FROM Snapshots WHERE GameId='default'; \
-  DELETE FROM Receipts WHERE GameId='default'; DELETE FROM Games WHERE GameId='default';"
-systemctl start clocktower
+# 只报告，不动库；确认列表里没有你还想留的桌
+sudo -u <运行用户> <APP_DIR>/OpenClockTower.Server retire-tables --db <APP_DIR>/data/oct.db
 ```
+
+**从"有默认桌"的旧版升级上来时**（D-0027 之后）：库里过去那张 `default` 桌会**补列成"没有房主"**
+——它照旧出现在大厅里，但谁也进不去它的主持台（没有归属就没有说书人）。这是如实反映
+"升级前那一桌本来就没有开桌账号"，不是故障。要清掉它就按 §9.4 的 `retire-tables` 停机回收
+（`--empty-hours 0` 可让它立刻到期）。
 
 **旧库里的 `StorytellerTicket` 列会在启动时被清掉**（说书人票据时代的凭据，D-0027）：本版不再映射它，
 而它是 `NOT NULL` 且**没有默认值**——留着会让**开新桌**的写入被 SQLite 拒掉
@@ -500,8 +513,10 @@ systemctl start clocktower
 | 请求返 `429` | 反代限流：`limit_req`（速率）或 `limit_conn`（并发连接），见 §4 |
 | 提示"尝试过于频繁，请 N 秒后再试" | 入口 / 动作限速生效了（D-0032 / D-0033）：登录失败、注册额度、入座次数或写文本次数用尽。阈值见 §3 的 `GameServer__Throttle__*` 与 `GameServer__ActionThrottle__*` |
 | 提示"本服当前不开放自助注册" | `GameServer__AllowSelfRegistration=false`（§3）：要开新账号就把它改回 true 并重启 |
-| 提示"本服在册的桌已达上限" | 全局桌数到顶（§9.4）：清掉不再使用的桌，或调 `GameServer__TableQuota__MaxTablesGlobal` |
-| 提示"你名下已经有 N 张在册的桌" | 单账号桌数到顶（§9.4）：清掉旧桌，或调 `GameServer__TableQuota__MaxTablesPerAccount` |
+| 提示"本服在册的桌已达上限" | 全局桌数到顶（§9.4）：宿主已经先回收过一轮空闲桌，说明连空闲桌都没有了——看日志 `空闲桌清扫` 那一行的"在线跳过 / 无法判定"，或调 `GameServer__TableQuota__MaxTablesGlobal` |
+| 提示"你名下已经有 N 张在册的桌" | 单账号桌数到顶（§9.4）：等空闲桌到保留期自动回收，或调 `GameServer__TableQuota__MaxTablesPerAccount` |
+| 某一桌**不见了**（大厅里没了、复盘打不开） | 多半是空闲回收删掉的（§9.4）：`journalctl -u clocktower \| grep 空闲桌已回收` 能看到桌名、原因与逐表行数；7 天内的备份里还有（§6.3） |
+| 日志里"空闲桌清扫"每小时一行 | 正常（§9.4）：那是自动回收的读数，静默反而说明它没在跑 |
 | `systemctl status` 报 `status=217/USER` | 运行用户不存在（§3 第 1 步）：`useradd --system` 建出来再 `enable` |
 | 页面 500 / 库打不开 | `data/` 或 `oct.db` 的属主与权限不对（§3 第 3 步）：应归运行用户、`data/` 700、库 600 |
 | 启动日志出现"日志模式没有生效"告警 | 库所在文件系统只读、或库被别的连接独占（§3.2 · §6.5）：这一行会给出实际模式 |
@@ -523,9 +538,10 @@ systemctl start clocktower
    审计口径：这条对应 `G-A3-1`（Critical），**在 TLS 落地前一直算未清零**，不许当成"已经加固过了"。
 2. **单进程多桌**（D-0024）：一个宿主按 `GameId` 维护多张桌，共享账号与连接设施；同时开几桌不需要多开进程。
    代价是 SQLite 单写者——多桌同时写入会排队（小圈子 2–5 桌可接受）。
-3. **开桌有配额、但没有回收**：默认谁都能开桌（D-0026），配额是单账号 12 张 / 全局 64 张（D-0033，可配）；
-   首版**不自动回收空闲桌**，到顶后需要人工清理（§9.4）。公开部署怕被刷桌时仍建议配
-   `GameServer__AllowPlayerTables=false` 收紧到运维名单。
+3. **开桌有配额，桌到保留期会自动回收**：默认谁都能开桌（D-0026），配额是单账号 12 张 / 全局 64 张
+   （D-0033，可配）；空闲桌按 **24 小时（从未开局）/ 90 天（开过局）** 自动回收，到顶时宿主会先回收一轮
+   （D-0036，§9.4）。公开部署怕被刷桌时仍建议配 `GameServer__AllowPlayerTables=false` 收紧到运维名单。
+   **代价是删除不可逆**：回收掉的桌只能从 7 天内的备份里捞回（§6.3 / §9.4）。
 4. **结构变更走迁移，不再"换新库"**：库结构有版本号（`user_version`），启动时自动升级（§6.6）；
    版本比程序新时**拒绝启动**（迁移只进不退），比程序旧则自动补齐。缺表 / 缺列 / 索引丢了都有机制兜住
    ——但这不等于"随便改结构都安全"：**不可逆的变更（删列这类）一旦跑过，就只能连库一起回**（§9.3）。
@@ -593,24 +609,47 @@ sudo systemctl start clocktower
 
 版本号改回去之后，**下次再升回新版时同一条迁移会再跑一遍**——所以迁移都写成守卫式的（§6.6 最后一条）。
 
-### 9.4 清理不再使用的桌（首版没有关桌功能）
+### 9.4 数据保留与空闲桌回收
 
-在册桌数是**有上限的**（默认单账号 12 张 / 全局 64 张，见 D-0033），而首版**不回收空闲桌**：
-上限一到，谁都开不出新桌。清理就是**从库里删掉那些桌的行**，操作前先停服务
-（开着的桌活在宿主内存里，不停服务就删会被写回来）：
+在册桌数是**有上限的**（默认单账号 12 张 / 全局 64 张，见 D-0033），而桌会**自动回收**——
+上限因此只是"挡住无限堆积"，到顶时宿主会先回收一轮空闲桌再判（见 D-0036）。
+
+**留多久**（默认值；`GameServer__TableRetention__*` 可改）：
+
+| 数据 | 默认保留 | 说明 |
+|---|---|---|
+| **从未开局的桌**（没人坐下、没有任何事件） | **24 小时** | 它只是个占着额度的壳 |
+| **开过局的桌**（含整局事件流与复盘） | **90 天** | 里面是别人的对局记录，所以给得宽 |
+| 事件流 / 快照 / 回执 / 席位绑定 | 随它所属的桌一起删 | 一张桌横跨五张表，回收是一个事务 |
+| 账号（登录名 / 玩家名 / 口令哈希 / 恢复码） | **注销即删** | 见 §9.6 |
+| 备份 | 每天一份、保留 7 份（§6.1） | **回收唯一后悔药**：7 天内可以从备份捞回 |
+
+口径（三条都会影响"这张桌会不会被删"，值得读完）：
+
+- **"多久没动"** 取三者里**最近**的那个：建桌时刻 · 最后一条事件的记录时刻 · 最后一次认领席位的时刻。
+- **有在线连接**（有人坐在席位上说书人在主持）→ **一律不回收**，哪怕它的最后一条事件在一年前。
+  正在打的对局不会被删。
+- **没有依据就不删**：三个时刻全空的老桌（v2 迁移之前建的、又从未开局的）判**无法判定**，不动它。
+- **回收不可逆**：五张表里属于这一桌的行一个事务删干净，顺手清掉属于已不存在的桌的孤儿行。
+  删之前宿主会记一行 `空闲桌已回收`（含桌名、原因、逐表行数），事后查得到"哪一桌什么时候没的"。
+
+**服务跑着的时候不用你动手**：宿主启动时扫一轮，之后每小时一轮；开桌撞上全局上限时也会先扫一轮。
+要**看一眼**会回收哪些桌、或者**停机**时手工回收，用维护命令：
 
 ```bash
+# 只报告，不动库（默认档）
+sudo -u <运行用户> <APP_DIR>/OpenClockTower.Server retire-tables --db <APP_DIR>/data/oct.db
+# 真的回收：**要求服务没在跑**（它会去拿单实例锁，拿不到就报"服务正在运行"）
 sudo systemctl stop clocktower
-# 先看一眼有哪些桌（桌名与开桌账号一眼能认出来）
-sudo -u <运行用户> sqlite3 <APP_DIR>/data/oct.db "SELECT g.GameId, g.Name, u.Username FROM Games g LEFT JOIN Users u ON u.Id = g.CreatedByAccountId;"
-# 确认 GameId 之后逐个删（<ID> 换成上面查到的那一个）：
-sudo -u <运行用户> sqlite3 <APP_DIR>/data/oct.db "DELETE FROM SeatBindings WHERE GameId='<ID>'; DELETE FROM Events WHERE GameId='<ID>'; DELETE FROM Snapshots WHERE GameId='<ID>'; DELETE FROM Receipts WHERE GameId='<ID>'; DELETE FROM Games WHERE GameId='<ID>';"
+sudo -u <运行用户> <APP_DIR>/OpenClockTower.Server retire-tables --apply --db <APP_DIR>/data/oct.db
 sudo systemctl start clocktower
 ```
 
-删桌会**一并删掉那一局的全部事件与席位绑定**（复盘也就没了）——只删确定不要的。
-空闲桌回收（按时间自动归档）排在 M5 的后续批次；在那之前上面这套就是运营路径。
-**删之前先备一份**（§6.1）：这套 SQL 不可逆。
+`--empty-hours N` / `--played-days N` 可以只对这一次运行改保留期（`0` = 立即到期），
+用来演练或回答"如果我把期限改成 30 天会删掉哪些桌"。**回收之前先备一份**（§6.1）。
+
+想彻底关掉自动回收就配 `GameServer__TableRetention__Enabled=false`——但那就回到"数据只进不出"：
+全局桌数上限重新变成不可自愈的硬顶，隐私说明里的保留期限也不成立（启动日志会告警说明这一点）。
 
 ### 9.5 单实例：库旁边那个 `.lock` 文件
 
@@ -621,8 +660,30 @@ sudo systemctl start clocktower
   一份库只允许一个服务进程：两个进程同写一个 SQLite 库，写坏的是一整局事件流。
 - **停机之后这个文件还在，是正常的**：它只是个空壳，内容写着上次持锁的进程号与时刻（排查用）。
   **不要删它**——锁靠的是"被打开着"这件事，不是"文件在不在"；删掉它反而会让两个实例同时进来。
-- `backup` 与 `db-report` 两条命令**不拿这把锁**：热备份与只读体检本来就该在服务跑着的时候做。
+- **只读命令不拿这把锁**：`backup` 与 `db-report` 本来就该在服务跑着的时候做。
+- **写命令拿这把锁**：`retire-tables --apply` 会先拿锁再动库，服务跑着时它连锁都拿不到
+  ——于是"两个进程同改一个库"从"小心别撞"变成了"撞不上"（口径见 D-0036）。
 - 误开第二个实例的现场，因此从"库坏了、请换新库"变成了一句明确的话（这是审计 G-A6-3 要的判据）。
+
+### 9.6 注销账号
+
+玩家在账号区里点「注销账号」并**再输一次口令**即可（`AccountHub.DeleteAccount`）。
+它是全站**唯一不可逆**的自助动作，所以界面上先把"会删掉什么、会留下什么"说清楚才让人动手。
+
+**删掉**：账号行（登录名、玩家名、口令哈希、恢复码哈希）· 该账号在**所有桌**的席位认领 ·
+它开的桌的**归属**（那些桌留在库里，但从此没有主持台）；同时撤销它的全部会话与在线连接。
+
+**不删**：对局事件流（那一局属于所有参与者）。事件流里**本来就没有玩家名**——名字是会话层的
+读时解析数据（D-0021），所以账号一删，大厅与视图里就不再出现这个名字；名字也不会出现在复盘里。
+
+两条要提前知道的边界：
+
+- **登录名会被释放**：注销后同一个登录名可以被重新注册（账号行真的删了）。要防止别人抢注，
+  就在注销后自己用别的名字注册回来。
+- **他开的桌会留下**：如果那桌上还有别人的对局，连带删掉会毁掉一桌人的记录。这些桌没有主持台，
+  不会再产生新事件，到保留期（§9.4）后由回收兜底；想立刻清掉就按 §9.4 的 `retire-tables` 停机回收。
+
+误删了怎么办：**备份是唯一的后悔药**（§6.1 / §6.3），7 天窗口内可以整库恢复。
 
 ## 依据
 

@@ -223,6 +223,35 @@ export async function resetPassword(
   }
 }
 
+/**
+ * 注销账号（M5 / G-A1-6）：**不可逆**，成功即回到未登录。
+ *
+ * 三样一起清：内存资料、`sessionStorage` 里那份凭据与位置。服务端已经把账号与它的全部会话
+ * 撤掉了，"本机还留着一份"只会让下一次刷新拿一串废票去试（D-0029 的撤销性不退步）。
+ */
+export async function deleteAccount(password: string): Promise<boolean> {
+  busyValue.value = true
+  try {
+    const result = await gateway.deleteAccount(password)
+    if (!result.ok) {
+      noticeValue.value = failureText(result.code, result.message)
+      return false
+    }
+
+    profileValue.value = null
+    recoveryCodeValue.value = ''
+    store.clear()
+    activeTableValue.value = null
+    noticeValue.value = '账号已注销：登录名、玩家名与席位认领都已删除'
+    return true
+  } catch (error) {
+    noticeValue.value = `注销失败：${describe(error)}`
+    return false
+  } finally {
+    busyValue.value = false
+  }
+}
+
 /** 大厅桌列表（公开信息；带"是不是我开的"）。 */
 export async function listTables(): Promise<LobbyTable[]> {
   return await gateway.listTables()
