@@ -205,6 +205,72 @@ public sealed class BarberNightTriggerTests
             issued.Request.Prompt.Options.Select(option => option.Value).ToArray());
     }
 
+    /// <summary>
+    /// 旅行者与非旅行者不能互换角色：**混合玩家对不进候选**，只给「同为旅行者」或「同为非旅行者」的对；
+    /// 「不交换」照旧（R-0060 / 百科《旅行者》· 2026-10-04 抓取 · 旅行者运作方式：
+    /// 「非旅行者角色也不能在游戏过程中变成旅行者角色……对他摇头示意让他们重新进行选择」）。
+    /// </summary>
+    [Fact]
+    public void SlotEntryWithFact_TravellerInPlay_OmitsMixedPairs()
+    {
+        var state = State(
+            Row(1, "barber", LifeState.Dead),
+            Row(2, "butcher"),
+            Row(3, "clockmaker"),
+            Row(5, "vortox"));
+
+        var produced = Trigger.Evaluate(Context(
+            state,
+            Machine(PlanAtBarberSlot(), barberNight: Fact()),
+            SlotEntered()));
+
+        var issued = Assert.Single(produced.OfType<OperationRequestIssuedEvent>());
+        Assert.Equal(
+            ["pair:1+3", "pair:1+5", "pair:3+5", "decline"],
+            issued.Request.Prompt.Options.Select(option => option.Value).ToArray());
+    }
+
+    /// <summary>
+    /// 也别收得太狠：两名旅行者互换角色**不产生**旅行者 ↔ 非旅行者的转变，照旧可选
+    /// （R-0060 只封"跨越旅行者这条线"的对）。
+    /// </summary>
+    [Fact]
+    public void SlotEntryWithFact_TwoTravellers_StillSwappableWithEachOther()
+    {
+        var state = State(
+            Row(1, "barber", LifeState.Dead),
+            Row(2, "butcher"),
+            Row(3, "clockmaker"),
+            Row(4, "deviant"),
+            Row(5, "vortox"));
+
+        var produced = Trigger.Evaluate(Context(
+            state,
+            Machine(PlanAtBarberSlot(), barberNight: Fact()),
+            SlotEntered()));
+
+        var issued = Assert.Single(produced.OfType<OperationRequestIssuedEvent>());
+        Assert.Equal(
+            ["pair:1+3", "pair:1+5", "pair:2+4", "pair:3+5", "decline"],
+            issued.Request.Prompt.Options.Select(option => option.Value).ToArray());
+    }
+
+    /// <summary>答案里跨了旅行者这条线 → 整条命令失败（可重选），不写状态。</summary>
+    [Fact]
+    public void AnswerMixedTravellerPair_Throws()
+    {
+        var state = State(
+            Row(1, "barber", LifeState.Dead),
+            Row(2, "butcher"),
+            Row(5, "vortox"));
+        var answer = new OperationRequestAnswer { OptionValue = "pair:2+5", Source = ResponseSource.Player };
+
+        Assert.Throws<InvalidOperationException>(() => Trigger.Evaluate(Context(
+            state,
+            Machine(PlanAtBarberSlot(), barberNight: Fact()),
+            new OperationRequestAnsweredEvent { RequestId = RequestId(), Answer = answer })));
+    }
+
     /// <summary>两名以上存活恶魔：先说书人裁定用哪名恶魔，再向它开请求（机制 4）。</summary>
     [Fact]
     public void SlotEntryWithFact_MultipleDemons_RaisesDecision_ThenIssuesRequest()

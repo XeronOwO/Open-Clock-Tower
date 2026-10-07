@@ -40,6 +40,7 @@ internal sealed class PitHagNightAction : INightAction, IAbilityResolution
         ArgumentNullException.ThrowIfNull(context);
 
         var seats = context.Seats
+            .Where(seat => !TravellerBoundary.IsTravellerSeat(context.State, seat))
             .OrderBy(seat => seat.Value)
             .Select(seat => new DecisionOption
             {
@@ -58,8 +59,12 @@ internal sealed class PitHagNightAction : INightAction, IAbilityResolution
 
         return new ChoicePrompt
         {
+            // 「旅行者不在候选里」是规则后果而非平台取舍：旅行者在旅行者列表上、不在角色列表上，
+            // 不满足「不在场」的定义（R-0060）。文案面向玩家，只写规则、不带裁定号。
             Context = "麻脸巫婆选择一名玩家和一个角色：该角色不在场时他变成该角色（阵营不变）；"
-                + "如果该角色已在场则无事发生（可选自己与已死亡玩家，依《重要细节》三-1）",
+                + "如果该角色已在场则无事发生（可选自己与已死亡玩家，依《重要细节》三-1）。"
+                + "旅行者不在角色列表上：她既不能把谁变成旅行者，也不能把旅行者变成别的角色——"
+                + "旅行者玩家与旅行者角色因此都不在候选里",
             Options = seats,
             SecondaryOptions = characters,
             OnNoOption = NoOptionBehavior.BlockAndAlert,
@@ -81,7 +86,7 @@ internal sealed class PitHagNightAction : INightAction, IAbilityResolution
             return null;
         }
 
-        var (target, character) = ParseChoice(context.Choice);
+        var (target, character) = ParseChoice(context.State, context.Choice);
 
         if (character != EvilTwinAbility.Character || IsInPlay(context.State, character))
         {
@@ -117,7 +122,7 @@ internal sealed class PitHagNightAction : INightAction, IAbilityResolution
             return [];
         }
 
-        var (target, character) = ParseChoice(context.Choice);
+        var (target, character) = ParseChoice(context.State, context.Choice);
 
         // 「如果她选择的角色在场，无事发生」——能力照常记「已使用且生效」，只是没有任何状态变化；
         // 这与"能力未生效"是两回事，不写失效账本（R-0004 的口径里没有这一项）。
@@ -219,8 +224,8 @@ internal sealed class PitHagNightAction : INightAction, IAbilityResolution
     private static bool IsInPlay(GameState state, CharacterId character) =>
         state.Seats.Any(entry => entry.CharacterValue == character);
 
-    /// <summary>解析两维答案（<c>seat:3|clockmaker</c>）；形状不对或角色不在表上一律显式抛错。</summary>
-    private static (SeatId Target, CharacterId Character) ParseChoice(string? choice)
+    /// <summary>解析两维答案（<c>seat:3|clockmaker</c>）；形状不对、角色不在角色列表上、目标越界一律显式抛错。</summary>
+    private static (SeatId Target, CharacterId Character) ParseChoice(GameState state, string? choice)
     {
         if (!ChoicePrompt.TrySplitAnswer(choice, out var primary, out var secondary) || secondary.Length == 0)
         {
@@ -229,10 +234,16 @@ internal sealed class PitHagNightAction : INightAction, IAbilityResolution
 
         var target = SeatChoice.Parse(primary)
             ?? throw new InvalidOperationException($"麻脸巫婆的结算缺少合法目标席位：{choice}");
+        if (TravellerBoundary.IsTravellerSeat(state, target))
+        {
+            throw new InvalidOperationException(
+                $"麻脸巫婆不能把旅行者（{target.Value} 号）变成别的角色：旅行者不能变成非旅行者（R-0060）");
+        }
+
         var character = new CharacterId(secondary);
         if (!PitHagAbility.SelectableCharacters().Contains(character))
         {
-            throw new InvalidOperationException($"麻脸巫婆选择的角色不在角色表上：{character.Value}");
+            throw new InvalidOperationException($"麻脸巫婆选择的角色不在角色列表上：{character.Value}");
         }
 
         return (target, character);

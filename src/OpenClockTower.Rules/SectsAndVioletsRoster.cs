@@ -68,9 +68,31 @@ public static class SectsAndVioletsRoster
     private static Profile Plain(string id, CharacterType type, string displayName) =>
         new(new CharacterId(id), type, displayName, []);
 
-    /// <summary>全部 30 个角色（按术语表顺序；含 5 名旅行者）。</summary>
+    /// <summary>全部角色（按术语表顺序；含 5 名旅行者）。要「角色列表上的角色」用 <see cref="CharacterList"/>。</summary>
     public static IReadOnlyList<CharacterId> All { get; } =
         Array.AsReadOnly(Profiles.Select(profile => profile.Id).ToArray());
+
+    /// <summary>
+    /// **角色列表**上的角色：镇民 / 外来者 / 爪牙 / 恶魔四个类型（按术语表顺序，**不含旅行者**）。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 「角色列表」是百科的定义术语：「一叠罗列出对应剧本中可能出现的所有角色及角色能力的纸张」；
+    /// 旅行者列在**旅行者列表**上，不在角色列表上（百科《术语汇总》· 2026-10-04 抓取 ·
+    /// 「角色列表」/「旅行者列表」/「不在场」）。因此「不在场」= 出现在角色列表上而当前不在游戏中——
+    /// **旅行者天然不满足这个定义**。
+    /// </para>
+    /// <para>
+    /// 规则后果（R-0060）：能力既不能把玩家变成旅行者，也不能把旅行者变成非旅行者。
+    /// 凡是「指向一个角色 / 让某人变成某角色」的候选表都取这里，别各自按类型过滤——
+    /// 麻脸巫婆曾因此把旅行者放进候选（百科《哪些是“可以但不建议”》· 2026-10-04 抓取 ·
+    /// 基础规则部分「旅行者的角色转换」）。
+    /// </para>
+    /// </remarks>
+    public static IReadOnlyList<CharacterId> CharacterList { get; } =
+        Array.AsReadOnly(Profiles.Where(profile => profile.Type != CharacterType.Traveller)
+            .Select(profile => profile.Id)
+            .ToArray());
 
     /// <summary>该角色是否在首版花名册里。</summary>
     public static bool Contains(CharacterId character) =>

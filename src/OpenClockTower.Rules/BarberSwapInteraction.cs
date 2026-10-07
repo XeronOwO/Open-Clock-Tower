@@ -325,6 +325,13 @@ internal static class BarberSwapInteraction
                     continue;
                 }
 
+                // 旅行者与非旅行者不能互换角色：跨这条线的对不进候选（R-0060）——
+                // 与百科「对他摇头示意让他们重新进行选择」等价，只是把"摇头"提前到候选表这一层。
+                if (!TravellerBoundary.IsSameSide(context.State, seats[first], seats[second]))
+                {
+                    continue;
+                }
+
                 options.Add(new DecisionOption
                 {
                     Value = BarberChoice.FormatPair(seats[first], seats[second]),
@@ -342,7 +349,9 @@ internal static class BarberSwapInteraction
         return new ChoicePrompt
         {
             Context = "理发师死亡触发：恶魔选择两名玩家交换角色（阵营不变；可选自己与已死亡玩家，"
-                + "不能选另一名恶魔）——「不交换」是摇头的等价物（百科《理发师》· 2026-10-01 抓取 · 运作方式）",
+                + "不能选另一名恶魔）——「不交换」是摇头的等价物（百科《理发师》· 2026-10-01 抓取 · 运作方式）。"
+                + "旅行者与非旅行者之间不能互换角色（旅行者不能变成非旅行者，反之亦然），"
+                + "因此跨这条线的玩家对不在候选里",
             Options = options,
             OnNoOption = NoOptionBehavior.BlockAndAlert,
         };
@@ -406,9 +415,19 @@ internal static class BarberSwapInteraction
             OnNoOption = NoOptionBehavior.BlockAndAlert,
         };
 
-    /// <summary>校验迟到的答案仍是合法玩家对：两名玩家都在账上，且没有「另一名恶魔」。</summary>
+    /// <summary>
+    /// 校验迟到的答案仍是合法玩家对：两名玩家都在账上、没有「另一名恶魔」，
+    /// 且**没有跨过旅行者这条线**（旅行者 ↔ 非旅行者的互换不是合法角色转换，R-0060）。
+    /// </summary>
     private static void ValidatePair(EventTriggerContext context, (SeatId First, SeatId Second) pair, SeatId demon)
     {
+        if (!TravellerBoundary.IsSameSide(context.State, pair.First, pair.Second))
+        {
+            throw new InvalidOperationException(
+                $"理发师不能在旅行者与非旅行者之间交换角色（{pair.First.Value} 号 ↔ {pair.Second.Value} 号）："
+                + "这条答案无效，请重新选择（R-0060）");
+        }
+
         foreach (var seat in new[] { pair.First, pair.Second })
         {
             var entry = context.State.Seat(seat)

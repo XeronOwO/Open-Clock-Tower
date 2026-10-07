@@ -45,7 +45,7 @@ internal sealed class DreamerNightAction : INightAction, IAbilityResolution
 
         var options = context.Seats
             .Where(seat => seat != context.Actor)
-            .Where(seat => !IsTravellerSeat(context.State, seat))
+            .Where(seat => !TravellerBoundary.IsTravellerSeat(context.State, seat))
             .OrderBy(seat => seat.Value)
             .Select(seat => new DecisionOption
             {
@@ -192,15 +192,6 @@ internal sealed class DreamerNightAction : INightAction, IAbilityResolution
         string.IsNullOrWhiteSpace(decision)
             ? throw new InvalidOperationException("筑梦师的裁定没有给出错误项角色")
             : new CharacterId(decision);
-
-    /// <summary>该席位此刻是不是旅行者（《筑梦师》规则细节 4：不能选择自己和旅行者）。</summary>
-    /// <remarks>
-    /// 角色未观测时按"不是旅行者"处理：候选集合的完整性由夜间建表（每席角色已观测）保证，
-    /// 这里只做类型过滤，不额外抛错。
-    /// </remarks>
-    private static bool IsTravellerSeat(GameState state, SeatId seat) =>
-        state.Seat(seat)?.CharacterValue is { } character
-        && SectsAndVioletsRoster.TypeOf(character) == CharacterType.Traveller;
 
     private static IReadOnlyList<CharacterId> GoodCharacters() =>
     [

@@ -16,6 +16,8 @@
  *   9) 收包扫描：无关玩家（5 号）的全部推送里没有窗口 / 待定死亡字段（D-0012 §4.3）。
  *
  * 与主批次的分工：主批次跑五席固定花名册的通用玩法回归；本装置只跑这条能力链路。
+ * 断言口径：候选角色表**从花名册派生**（`tools/lib/roster.mjs`；角色列表 = 镇民 / 外来者 / 爪牙 / 恶魔，
+ * **不含旅行者**，R-0060），不写死条数——本装置曾把「整张角色列表」写死成 25，旅行者进册后假红。
  * 前置：Node >= 22.5（node:sqlite）、本机已构建 web/node_modules（playwright + @microsoft/signalr）。
  * 用法（在仓库根运行；默认迭代档 = 快节拍 + 不落盘截图 + 复用产物）：
  *   node tools/verify-pit-hag.mjs                                        # 迭代档
@@ -34,6 +36,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { readAttributeBounded, readTextBounded } from './lib/bounded-text.mjs'
 import { openTableAndHost, registerProbeAccount, seatByAccount } from './lib/entrance.mjs'
+import { characterList, travellers } from './lib/roster.mjs'
 import { describeProfile, ensureServerArtifacts, extractProfileFlags, resolveProfile } from './lib/verify-profile.mjs'
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -191,14 +194,37 @@ async function main() {
     '[data-testid="player-request-secondary-options"] [data-option-value]',
   )
   await primaryOptions.first().waitFor({ timeout: 90_000 })
-  check('第一维渲染 5 个席位选项', (await primaryOptions.count()) === 5, `渲染 ${await primaryOptions.count()} 个`)
-  check(
-    '第二维渲染 25 个角色选项（整张角色列表）',
-    (await secondaryOptions.count()) === 25,
-    `渲染 ${await secondaryOptions.count()} 个`,
+
+  // 期望值从花名册**派生**（tools/lib/roster.mjs），不写死条数：写死的那份不会随花名册更新——
+  // 本装置曾把「第二维渲染的角色」写死成 25，旅行者进册后读数变 30，红了整整一轮才查清
+  // （E60 记下的读数 / 票 pit-hag-character-option-count-stale）。
+  const characterListSlugs = characterList().map((entry) => entry.slug)
+  const travellerSlugs = travellers().map((entry) => entry.slug)
+
+  const primaryValues = await primaryOptions.evaluateAll((nodes) =>
+    nodes.map((node) => node.getAttribute('data-option-value')),
   )
+  check(
+    `第一维渲染 ${ASSIGN.length} 个席位选项（夹具席位，旅行者席位不在其中）`,
+    sameStrings(
+      primaryValues,
+      ASSIGN.map((_, index) => `seat:${index + 1}`),
+    ),
+    `渲染 ${primaryValues.join(',')}`,
+  )
+
   const secondaryValues = await secondaryOptions.evaluateAll((nodes) =>
     nodes.map((node) => node.getAttribute('data-option-value')),
+  )
+  check(
+    '第二维 = 角色列表上的全部角色（一个不少、顺序不变）',
+    sameStrings(secondaryValues, characterListSlugs),
+    `渲染 ${secondaryValues.length} 个 / 角色列表 ${characterListSlugs.length} 个`,
+  )
+  check(
+    '第二维一个旅行者都没有（旅行者不在角色列表上，R-0060）',
+    travellerSlugs.length > 0 && !secondaryValues.some((value) => travellerSlugs.includes(value)),
+    `花名册旅行者 ${travellerSlugs.join(',')}；渲染 ${secondaryValues.length} 个`,
   )
   check(
     '角色表含恶魔（麻脸巫婆能创造恶魔），且不因在场而被过滤',
@@ -521,6 +547,11 @@ function report() {
 
 function compact(text) {
   return String(text ?? '').replace(/\s+/g, ' ').trim()
+}
+
+/** 两个字符串数组逐位相等（顺序也算）：选项顺序是服务端定的（席位升序 / 花名册顺序）。 */
+function sameStrings(actual, expected) {
+  return actual.length === expected.length && actual.every((value, index) => value === expected[index])
 }
 
 async function startServer() {

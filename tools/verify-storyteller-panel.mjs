@@ -89,6 +89,7 @@ import { fileURLToPath } from 'node:url'
 import { DatabaseSync } from 'node:sqlite'
 import { readAttributeBounded, readTextBounded } from './lib/bounded-text.mjs'
 import { openTableAndHost, returnToSeat, seatByAccount, seatByInviteCode } from './lib/entrance.mjs'
+import { nameOf } from './lib/roster.mjs'
 import { describeProfile, ensureServerArtifacts, extractProfileFlags, resolveProfile } from './lib/verify-profile.mjs'
 import { createChecker, createSectionRunner } from './lib/verify-sections.mjs'
 
@@ -348,8 +349,8 @@ async function main() {
   check(`分配 ${options.assign.length} 个角色被受理`, assigned.kind === 'Accepted', assigned.raw)
   for (const slug of options.assign) {
     check(
-      `状态账里出现角色 ${slug}（${characterNameOf(slug)}）`,
-      (await storyteller.page.getByText(characterNameOf(slug)).count()) > 0,
+      `状态账里出现角色 ${slug}（${nameOf(slug)}）`,
+      (await storyteller.page.getByText(nameOf(slug)).count()) > 0,
     )
   }
 
@@ -357,7 +358,7 @@ async function main() {
   // 双向判（验收规程 §4「不该看见的人确实没看见」）：本人页含自己的「中文名（slug）」标注，
   // 不含任何其他席位的同款标注——用带 slug 的标注而不是光秃秃的中文名，避免与「呆瓜的公开选择」
   // 这类**标题**里的角色名混淆。
-  const ownLabels = options.assign.map((slug) => `${characterNameOf(slug)}（${slug}）`)
+  const ownLabels = options.assign.map((slug) => `${nameOf(slug)}（${slug}）`)
   for (const [index, slug] of options.assign.entries()) {
     const seat = index + 1
     const page = players.get(seat).page
@@ -459,8 +460,8 @@ async function main() {
   )
   const clockmakerCardText = (await cardOf(clockmakerSeat).innerText()).replace(/\s+/g, ' ')
   check(
-    `行 1：${clockmakerSeat} 号牌面直接显示角色（${characterNameOf(options.assign[0])}）`,
-    clockmakerCardText.includes(characterNameOf(options.assign[0])),
+    `行 1：${clockmakerSeat} 号牌面直接显示角色（${nameOf(options.assign[0])}）`,
+    clockmakerCardText.includes(nameOf(options.assign[0])),
     clockmakerCardText.slice(0, 140),
   )
   check(
@@ -1047,7 +1048,7 @@ async function main() {
   for (const slug of travellerOrder) {
     const seat = travellerSeats.get(slug)
     const cardText = (await cardOf(seat).innerText()).replace(/\s+/g, ' ')
-    travellerCardText.push(`${seat}:${cardText.includes(characterNameOf(slug)) ? 'OK' : cardText.slice(0, 40)}`)
+    travellerCardText.push(`${seat}:${cardText.includes(nameOf(slug)) ? 'OK' : cardText.slice(0, 40)}`)
   }
   check(
     '行 1：说书人魔典按公开宣告渲染五名旅行者（席位 + 角色）',
@@ -1687,7 +1688,7 @@ async function main() {
   )
   check(
     '行 9（流莺）：真实角色只到本人（不含阵营）',
-    harlotInfo.includes(`「${characterNameOf('dreamer')}」`),
+    harlotInfo.includes(`「${nameOf('dreamer')}」`),
     harlotInfo.replace(/\s+/g, ' ').slice(0, 200),
   )
   check(
@@ -2155,7 +2156,7 @@ async function main() {
   await setDataDrawer(storyteller.page, true)
   const ledgerText = await panelText(storyteller.page, '状态账')
   const sameSource = options.assign.map((slug, index) =>
-    linesOf(ledgerText, `${index + 1} 号`).includes(characterNameOf(slug)),
+    linesOf(ledgerText, `${index + 1} 号`).includes(nameOf(slug)),
   )
   check(
     '行 6：每席牌面角色与下钻状态账里的角色一一对应（同一次视图推送）',
@@ -2175,7 +2176,7 @@ async function main() {
     '行 8：窄视口下席位牌自上而下纵向排列，角色信息不丢',
     stackedBoxes.every((box) => box !== null)
       && stackedBoxes.every((box, index) => index === 0 || box.y > stackedBoxes[index - 1].y)
-      && (await cardOf(1).innerText()).includes(characterNameOf(options.assign[0])),
+      && (await cardOf(1).innerText()).includes(nameOf(options.assign[0])),
     stackedBoxes.map((box) => (box === null ? 'null' : Math.round(box.y))).join(','),
   )
   await screenshot(storyteller.page, '23-grimoire-narrow')
@@ -3792,44 +3793,6 @@ async function stopServer(child) {
   if (child.exitCode === null && child.signalCode === null) {
     throw new Error(`宿主进程未能在 10s 内退出：pid=${child.pid}`)
   }
-}
-
-function characterNameOf(slug) {
-  const roster = {
-    clockmaker: '钟表匠',
-    dreamer: '筑梦师',
-    'snake-charmer': '舞蛇人',
-    mathematician: '数学家',
-    flowergirl: '卖花女孩',
-    'town-crier': '城镇公告员',
-    oracle: '神谕者',
-    savant: '博学者',
-    seamstress: '女裁缝',
-    philosopher: '哲学家',
-    artist: '艺术家',
-    juggler: '杂耍艺人',
-    sage: '贤者',
-    mutant: '畸形秀演员',
-    sweetheart: '心上人',
-    barber: '理发师',
-    klutz: '呆瓜',
-    'evil-twin': '镜像双子',
-    witch: '女巫',
-    cerenovus: '洗脑师',
-    'pit-hag': '麻脸巫婆',
-    'fang-gu': '方古',
-    vigormortis: '亡骨魔',
-    'no-dashii': '诺-达鲺',
-    vortox: '涡流',
-    // 旅行者（票据 traveller-and-exile D1 花名册；主装置在 day1 段一次加入五名）。
-    butcher: '屠夫',
-    deviant: '怪咖',
-    barista: '咖啡师',
-    harlot: '流莺',
-    'bone-collector': '集骨者',
-  }
-
-  return roster[slug] ?? slug
 }
 
 function parseArguments(argv) {

@@ -218,10 +218,90 @@ public sealed class PitHagNightActionTests
             Contract().Resolve(Context(state, "seat:3|evil-twin", decision: "seat:2")));
     }
 
+    /// <summary>
+    /// 候选角色表 = **角色列表**上的角色（镇民 / 外来者 / 爪牙 / 恶魔）：旅行者不在角色列表上、
+    /// 不满足「不在场」的定义，所以她一个旅行者都不能变（R-0060）。
+    /// 来源：百科《哪些是“可以但不建议”》· 2026-10-04 抓取 · 基础规则部分「旅行者的角色转换」
+    /// （「麻脸巫婆也仍无法将玩家变成旅行者，因为旅行者角色不满足“不在场”的定义」）；
+    /// 《术语汇总》· 2026-10-04 抓取 ·「不在场」/「角色列表」；《麻脸巫婆》· 2026-10-04 抓取 · 运作方式。
+    /// </summary>
+    [Fact]
+    public void PromptCharacters_ExcludeTravellers()
+    {
+        var state = NightLedger((1, "pit-hag"), (2, "clockmaker"), (3, "dreamer"));
+
+        var values = PromptContract()
+            .BuildPrompt(PromptContext(state))
+            .SecondaryOptions
+            .Select(option => option.Value)
+            .ToArray();
+
+        // 阴性方向：旅行者一个都不许在（旅行者在旅行者列表上，不在角色列表上）。
+        Assert.DoesNotContain(
+            values,
+            value => SectsAndVioletsRoster.TypeOf(new CharacterId(value)) == CharacterType.Traveller);
+
+        // 完整方向：角色列表上的角色一个不少、顺序不变（其余类型全部在内）。
+        Assert.Equal(
+            SectsAndVioletsRoster.All
+                .Where(character => SectsAndVioletsRoster.TypeOf(character) != CharacterType.Traveller)
+                .Select(character => character.Value)
+                .ToArray(),
+            values);
+    }
+
+    /// <summary>
+    /// 目标维也排除旅行者：旅行者玩家**不能变成非旅行者**（反方向的同一条边界，R-0060）——
+    /// 与筑梦师的「选择除你及旅行者以外的一名玩家」同款收口（百科《筑梦师》· 2026-10-04 抓取 · 角色能力）。
+    /// </summary>
+    [Fact]
+    public void PromptSeats_ExcludeTravellers()
+    {
+        var state = NightLedger((1, "pit-hag"), (2, "clockmaker"), (3, "butcher"));
+
+        var values = PromptContract()
+            .BuildPrompt(PromptContext(state))
+            .Options
+            .Select(option => option.Value)
+            .ToArray();
+
+        Assert.Equal(["seat:1", "seat:2"], values);
+    }
+
+    /// <summary>提交旅行者 = 旅行者不在角色列表上 → 显式抛错（不是「把她变成旅行者」）。</summary>
+    [Fact]
+    public void TransformIntoTraveller_Throws()
+    {
+        var state = NightLedger((1, "pit-hag"), (2, "clockmaker"), (3, "dreamer"));
+
+        Assert.Throws<InvalidOperationException>(() => Contract().Resolve(Context(state, "seat:2|butcher")));
+    }
+
+    /// <summary>把旅行者当目标 → 同样越界（旅行者 → 非旅行者）→ 显式抛错，不写状态。</summary>
+    [Fact]
+    public void TransformTravellerTarget_Throws()
+    {
+        var state = NightLedger((1, "pit-hag"), (2, "clockmaker"), (3, "butcher"));
+
+        Assert.Throws<InvalidOperationException>(() => Contract().Resolve(Context(state, "seat:3|sage")));
+    }
+
     /// <summary>从公开目录取结算契约（角色实现是 internal，测试只走注册表）。</summary>
     private static IAbilityResolution Contract() =>
         NightActions.Resolutions.Find(PitHag)
         ?? throw new InvalidOperationException("麻脸巫婆没有注册结算契约");
+
+    /// <summary>从公开目录取提示契约——与运行时取的是同一个对象（D-0008）。</summary>
+    private static INightAction PromptContract() =>
+        NightActions.Default.Find(PitHag)
+        ?? throw new InvalidOperationException("麻脸巫婆没有注册提示契约");
+
+    private static NightActionContext PromptContext(GameState state) => new()
+    {
+        Actor = new SeatId(1),
+        Seats = [.. state.Seats.Select(entry => entry.Seat)],
+        State = state,
+    };
 
     private static AbilityResolutionContext Context(
         GameState state,
