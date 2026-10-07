@@ -54,7 +54,8 @@ D-0037 只收窄了**用它的"人"**（必须登录、只出现在邀请制桌�
    且改完必须**逐台跑一遍**才敢说没破；本轮刻意没做（改名 + 全装置扫描 = 一个独立的小工作项）。
 2. **`verify-replay-scale` 在本轮扫描里红**：`ReportSeatState` 撞上"写文本每窗口 120 次"的动作限速。
    与本票无关（没碰限速与那条命令），是装置的用量与阈值交互——需要装置侧放宽或分段。
-3. 需要**已经在跑的宿主**的四台装置里，`verify-live-open-table` 已在批次 **E64** 补跑（真部署，判定 31 项全过）；
-   其余三台（`verify-transport-hardening` / `verify-abuse-guard` / `verify-retention-and-erasure`）仍未跑。
+3. 需要**已经在跑的宿主**的四台装置已在批次 **E64** 补齐：`verify-live-open-table` 打**真部署**
+   （判定 31 项全过），其余三台（`verify-transport-hardening` 22 · `verify-retention-and-erasure` 19 ·
+   `verify-abuse-guard` 24）跑在**本机直跑宿主**上，全绿。
 4. 被盗码者**先到先得**这条边界有意保留（见 D-0038 口径 4）。
 5. 部署实例已于批次 **E64** 升到结构 v4（旧码现场作废的那一步已在真机上跑过并按 §7 留了升级前备份与旧程序回滚包）。

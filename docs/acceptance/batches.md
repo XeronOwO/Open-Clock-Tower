@@ -2129,6 +2129,15 @@ NormativeGates 41 · Integration 429）· `dotnet format` 就地通过（无额�
 | `verify-live-open-table`（真部署 · `--legacy-code`） | **判定 31 项全过 · 跳过 0**（16.2s）：新增 `invite` 段 6 项——签发 · 轮换（旧尾 `…5p9UVg` → 新尾 `…0e8iM4`）· 旅行者注册 · **旧码进不来** · 被轮换的码进不来 · **新码坐进 7 号席** |
 | `verify-table-access`（本机；共享取码助手改动的回归） | **38 项全过** |
 | `check-bounded-text`（最小复现；新增探针 G） | **7 探针全过**（G：轮询目标中途消失时 3.6s 放弃；无界写法 30s+） |
+| `verify-transport-hardening`（**本机直跑宿主**） | **22 项全过 · 跳过 0**：五个响应头逐条 · CSP 含百科图与本站 ws/wss · HSTS 只在 HTTPS · `Server` 无版本号 · 缓存两类口径（带哈希 `immutable` / 外壳 `no-cache`）· 300 KB 应用侧 413 · 连续 5 次错口令后第 6 次被拒且换登录名不受牵连 |
+| `verify-retention-and-erasure --verify-erasure`（本机） | **19 项全过**：注册 → 开桌 → 凭账号入座 → **错口令被拒且账号照旧可用** → 注销成功 → `Resume` 回 `invalid_session` → 已进门的席位连接被凭据闸拒 → 他开的桌还在但"我开的桌"不再认他 → 同一登录名可重新注册 → 收尾把第二个账号也注销 |
+| `verify-abuse-guard`（本机，**5 个窗口**） | **24 项全过**（跳过 2 条前置探活）：text **8** · registration **5** · tables **3** · frequency **5** · closed **3**。额度段按批次 E56 的编排把额度临时调小——本机用环境变量而不是 systemd drop-in，**每段之间重启**（重启同时清空进程内的计数桶）：`RegisterCallsPerClient=2` · `MaxTablesPerAccount=1` · `WriteTextCallsPerActor=3` · `AllowSelfRegistration=false`；每个窗口的启动读数都留了日志（`风控面：…`） |
+
+**本机直跑宿主的一条操作口径**（E64 踩到）：`dotnet <发布目录>/OpenClockTower.Server.dll` 的**内容根是当前工作目录**，
+不是 DLL 所在目录。工作目录若不设成发布输出目录，`wwwroot` 就落在仓库根上、静态文件全部 404——
+传输面装置会在探活那一步以**退出码 2** 收场（"环境问题"，不是断言失败）。
+起宿主的姿势：`Start-Process dotnet -ArgumentList <DLL> -WorkingDirectory <发布输出目录> -NoNewWindow`，
+并用轮询 `/healthz` 等就绪（不要靠 `sleep` 空转）。
 
 - **装置侧修的两条**（都是本轮真机首跑咬出来的**装置自身缺陷**，不是产品缺陷）：
   1. `lib/entrance.mjs` 的 `issueInviteCode`：同一席再签一枚时 `invite-issued` 留在原地只换文本，
@@ -2151,8 +2160,9 @@ NormativeGates 41 · Integration 429）· `dotnet format` 就地通过（无额�
    （`ObjectDisposedException: SQLitePCL.sqlite3` · `SQLite Error 5: database is locked` ·
    认领竞态伪装成领域拒绝），而**关掉集合并行的同一套件 434/434 全绿**（3m54s）。
    本批改动只在 `tools/*.mjs` 与 `docs/`，与这些用例无交集。
-2. 需要已经在跑的宿主的另外三台装置（`verify-transport-hardening` / `verify-abuse-guard` /
-   `verify-retention-and-erasure`）本轮仍未跑。
+2. 需要已经在跑的宿主的三台装置本轮跑在**本机直跑宿主**上（传输面 22 · 注销 19 · 风控 24，全绿）；
+   **部署实例上**只跑了真机验收那一台——传输面在部署上多一条"反代侧 2 MB 413"的读数（本机 22 项 vs 部署 23 项），
+   风控与注销在部署上跑会**建真数据**，留到需要时再跑（编排见批次 E56 的窗口表）。
 3. 装置侧的命名债（`seatTickets` / `seatTicket` 现在装的是邀请码）**仍未改名**。
 4. `verify-replay-scale` 的动作限速那条残余未动。
 
