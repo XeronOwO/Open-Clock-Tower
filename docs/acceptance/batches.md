@@ -1942,7 +1942,8 @@ publish 目录）已按纪律移入回收站；MSBuild 复用节点已关。
 
 - `verify-pit-hag`：`第二维渲染 25 个角色选项` 实测 **30**（25 名非旅行者 + 5 名旅行者，旅行者早就在花名册里）。
   归因：在**本批之前的 HEAD `8ba2776`** 上跑同一装置，同样 `失败 1 / 34`、同一读数。
-  → 票 `docs/backlog/todo/pit-hag-character-option-count-stale.md`。
+  → 票 `pit-hag-character-option-count-stale`——**E62 结案：装置读数是对的，红的是产品**，见
+  `docs/backlog/done/character-change-traveller-boundary.md`。
 - `verify-character-change`：复盘逐步回放走到最后一步（52/52）都找不到「恶魔击杀」与「换手」两个标记。
   归因：同一个 HEAD 上跑，同样 `失败 2 / 80`、同一步数、同一序号（本批工作树上连跑两次也一样）。
   → 票 `docs/backlog/todo/character-change-replay-marker-missing.md`（可能是某批让复盘真的少了这两步——
@@ -2004,6 +2005,50 @@ publish 目录）已按纪律移入回收站；MSBuild 复用节点已关。
   （本批实测踩到过一次：红检查挂住）。
 - 结论：**通过**。`verify-pit-hag` 那条陈旧条数断言是另一张票（`pit-hag-character-option-count-stale`），
   不在本批。
+
+## 批次 E62（2026-10-07，角色转换与旅行者的边界：麻脸巫婆候选 / 理发师玩家对）
+
+冻结版本：`main` @ `c2889c4`（代码与装置；结案文档在其后一次 docs 提交里，不影响产物）。
+
+- 票 `character-change-traveller-boundary`（原票 `pit-hag-character-option-count-stale`，
+  **E60 咬出的那条红判回来了**）：装置读数 30 一直是对的，**红的是产品**——麻脸巫婆的候选角色表取的是
+  整张花名册（30 条，含 5 名旅行者），于是她能把玩家变成旅行者、也能把旅行者变成普通角色；
+  理发师的玩家对同病（没排除"一侧旅行者、一侧非旅行者"）。依据：百科《哪些是“可以但不建议”》·
+  2026-10-04 抓取 · 基础规则部分「旅行者的角色转换」——「麻脸巫婆也仍无法将玩家变成旅行者，
+  因为旅行者角色不满足“不在场”的定义」；《术语汇总》·「角色列表」/「不在场」；《旅行者》·
+  旅行者运作方式。登记为 **R-0060**。
+- 修法：花名册补上缺的概念「角色列表」（`SectsAndVioletsRoster.CharacterList` = 四类型，不含旅行者）·
+  麻脸巫婆两维都收口（候选表 + 目标席位）且越界答案显式抛错 · 理发师混合对不进候选（同为旅行者照旧）·
+  旅行者这条线收进 `TravellerBoundary` 一处（筑梦师原私有实现并入，行为不变）。
+- **先红后绿**：新增 7 条用例改动前全红（`失败 7 / 通过 30`；第二维实测渲染 30 条含
+  `deviant / bone-collector / barista …`，第一维实测多出旅行者席 `seat:3`），修好后同 7 条转绿。
+- **整族逐条核过**：舞蛇人（只在目标是恶魔时交换，旅行者不可能是恶魔）· 方古（外来者 → 方古，按类型）·
+  哲学家 / 洗脑师（镇民 / 外来者，按类型）· 筑梦师（本就排除旅行者）都不受影响；
+  说书人**手工上报换角**不受约束（《旅行者》页允许的家规形态，R-0060 第 5 条）。
+
+装置读数（本批实测）：
+
+| 装置 | 档位 | 读数 |
+|---|---|---|
+| `verify-pit-hag` | 迭代档（`--build`） | **35 项全过**：第二维 = 角色列表上的全部角色（渲染 25 / 角色列表 25）· 第二维一个旅行者都没有（花名册旅行者 5 名，渲染 25）· 第一维 `seat:1…seat:5` |
+| `verify-character-change` | 迭代档（`--build`） | **89 项全过**（理发师换角链路在册） |
+| 主装置 `verify-storyteller-panel` | **取证档**（`--quota 2 --screenshots-all --build`） | **310 项全过 · 跳过 0**（分段全绿：annotation 16 / night1 19+21+9+4 / day1 48 / traveller 31 / night2-3 70 / vortox 14 / rebuild 13 / reconnect 10 / final 3） |
+
+门禁：build **0 警告 0 错误** · 全量 **1472 通过**（原 1465 + 本批新增 7；Kernel 501 · Rules 501 ·
+NormativeGates 41 · Integration 429）· `dotnet format` 就地通过（无额外改动）。
+
+**装置侧的顺带收口（同族）**：新增 `tools/lib/roster.mjs`——装置从
+`web/src/display/labels.ts`（`RosterMirrorGateTests` 逐条对账过的镜像）读花名册；
+`verify-pit-hag` 的候选条数断言改为**从花名册派生 + 旅行者阴性**（不再写死条数），
+主装置里手抄的那份 30 条花名册一并退场（迁移前做过逐条对照：30 条、**0 处不一致**）。
+
+**残余**：
+1. 「旅行者席位不进麻脸巫婆的第一维」只有单测与结算侧抛错兜住，没有真机读数——两个相关装置的夹具里
+   都没有在场旅行者；下次做"在场旅行者 + 麻脸巫婆"的夹具时补一行。
+2. 开局分配的角色下拉仍列着 5 名旅行者（服务端会拒），另立票
+   `docs/backlog/todo/assignment-offers-travellers.md`（Low；改前先按 R-0046 定口径）。
+3. E60 的其余残余（邀请码形态 G-A2-2 · `GameStateComparer` 的 `Activity` / `VigormortisKills` ·
+   手机端与 7 真人同局）本批未动。
 
 ## 相关阅读
 
