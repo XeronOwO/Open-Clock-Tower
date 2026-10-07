@@ -516,7 +516,7 @@ sudo -u <运行用户> <APP_DIR>/OpenClockTower.Server retire-tables --db <APP_D
 | 提示"本服在册的桌已达上限" | 全局桌数到顶（§9.4）：宿主已经先回收过一轮空闲桌，说明连空闲桌都没有了——看日志 `空闲桌清扫` 那一行的"在线跳过 / 无法判定"，或调 `GameServer__TableQuota__MaxTablesGlobal` |
 | 提示"你名下已经有 N 张在册的桌" | 单账号桌数到顶（§9.4）：等空闲桌到保留期自动回收，或调 `GameServer__TableQuota__MaxTablesPerAccount` |
 | 某一桌**不见了**（大厅里没了、复盘打不开） | 多半是空闲回收删掉的（§9.4）：`journalctl -u clocktower \| grep 空闲桌已回收` 能看到桌名、原因与逐表行数；7 天内的备份里还有（§6.3） |
-| 日志里"空闲桌清扫"每小时一行 | 正常（§9.4）：那是自动回收的读数，静默反而说明它没在跑 |
+| 日志里"空闲桌清扫"每小时一行 | 正常（§9.4）：那是自动回收的读数；其中"无法判定"那一档若是**老库里的空桌**（v2 之前建的、从未开局），工具刻意不动它，要清就按 §9.4 的手工 SQL 走 |
 | `systemctl status` 报 `status=217/USER` | 运行用户不存在（§3 第 1 步）：`useradd --system` 建出来再 `enable` |
 | 页面 500 / 库打不开 | `data/` 或 `oct.db` 的属主与权限不对（§3 第 3 步）：应归运行用户、`data/` 700、库 600 |
 | 启动日志出现"日志模式没有生效"告警 | 库所在文件系统只读、或库被别的连接独占（§3.2 · §6.5）：这一行会给出实际模式 |
@@ -647,6 +647,28 @@ sudo systemctl start clocktower
 
 `--empty-hours N` / `--played-days N` 可以只对这一次运行改保留期（`0` = 立即到期），
 用来演练或回答"如果我把期限改成 30 天会删掉哪些桌"。**回收之前先备一份**（§6.1）。
+
+**一种工具刻意不碰的桌：判"无法判定"的老空桌。** 从 v2 之前的版本升上来的库里，
+如果有一张**从未开局、也没有人坐过**的桌，它没有任何时间依据（没有建桌时刻、没有事件、没有席位
+认领）——判定会把它列成 `无法判定` 并**一律不动**（"不知道"不等于"很久没动"，猜错的代价是删掉一张
+刚导进来还没用的桌）。`retire-tables` 的报告里能看见它（`无法判定=N`），
+要清掉就**停服后手工删**（这是唯一需要手工 SQL 的地方）：
+
+```bash
+sudo systemctl stop clocktower
+# 先看是哪几张（CreatedAt 为空、又没有任何事件的那些）
+sudo -u <运行用户> sqlite3 <APP_DIR>/data/oct.db \
+  "SELECT g.GameId, g.Name FROM Games g WHERE g.CreatedAt IS NULL \
+   AND NOT EXISTS (SELECT 1 FROM Events e WHERE e.GameId = g.GameId);"
+# 确认 GameId 之后逐个删（<ID> 换成上面查到的那一个）——五张表一起删才干净
+sudo -u <运行用户> sqlite3 <APP_DIR>/data/oct.db \
+  "DELETE FROM SeatBindings WHERE GameId='<ID>'; DELETE FROM Events WHERE GameId='<ID>'; \
+   DELETE FROM Snapshots WHERE GameId='<ID>'; DELETE FROM Receipts WHERE GameId='<ID>'; \
+   DELETE FROM Games WHERE GameId='<ID>';"
+sudo systemctl start clocktower
+# 起来之后回收命令会把"属于不存在的桌"的残渣顺手清掉（漏删哪张表都不怕）
+sudo -u <运行用户> <APP_DIR>/OpenClockTower.Server retire-tables --apply --db <APP_DIR>/data/oct.db
+```
 
 想彻底关掉自动回收就配 `GameServer__TableRetention__Enabled=false`——但那就回到"数据只进不出"：
 全局桌数上限重新变成不可自愈的硬顶，隐私说明里的保留期限也不成立（启动日志会告警说明这一点）。
