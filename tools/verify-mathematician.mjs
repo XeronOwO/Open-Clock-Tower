@@ -34,7 +34,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { readAttributeBounded, readTextBounded } from './lib/bounded-text.mjs'
-import { openTableAndHost, seatByAccount } from './lib/entrance.mjs'
+import { loginProbeAccount, openTableAndHost, registerProbeAccount, seatByAccount } from './lib/entrance.mjs'
 import { describeProfile, ensureServerArtifacts, extractProfileFlags, resolveProfile } from './lib/verify-profile.mjs'
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -70,6 +70,8 @@ const serverUrl = `http://localhost:${options.port}`
 const viteUrl = `http://localhost:${options.vitePort}`
 /** Hub 地址：桌标识在开桌之后才定得下来，所以这里是 `let`（见下面的赋值）。 */
 let hubUrl = `${serverUrl}/hub/game`
+/** 账号 Hub：线级探针入座前要先有账号会话（D-0037：入座必须登录）。 */
+const accountHubUrl = `${serverUrl}/hub/account`
 
 /** 六个席位（与 web/src/display/labels.ts 的花名册一致）：4 号白天被上报为涡流，用于摆出「涡流在场」（R-0028）。 */
 const ASSIGN = ['no-dashii', 'dreamer', 'mathematician', 'mutant', 'klutz', 'clockmaker']
@@ -179,7 +181,8 @@ async function main() {
   )
 
   const bystanderPage = await newPage(browser, { width: 900, height: 1000 }, consoleErrors)
-  await seatByAccount(bystanderPage, { frontUrl: viteUrl, gameId: table.gameId, seat: BYSTANDER_SEAT, suffix: 'math-bystander' })
+  // 这一席的账号要留给下面的线级探针：探针与这一页共用 5 号席，必须用**同一个账号**才坐得上（D-0037）。
+  const bystanderAccount = await seatByAccount(bystanderPage, { frontUrl: viteUrl, gameId: table.gameId, seat: BYSTANDER_SEAT, suffix: 'math-bystander' })
   const bystanderBadge = await waitForText(
     bystanderPage.locator('[data-testid="player-seat"]'),
     String(BYSTANDER_SEAT),
@@ -203,10 +206,12 @@ async function main() {
   check('分配 6 个角色被受理', assigned.kind === 'Accepted', assigned.raw)
 
   // 四个真 SignalR 席位：诺-达鲺 / 涡流（第二夜击杀）/ 筑梦师（作答 + 收自己的信息）/ 无关席位（越权扫描）。
+  // 最后那个坐的就是**浏览器无关席自己那一席**（5 号）：一账号一席，所以它用那一席的账号登录后入座——
+  // 与那一页共用同一席是这套装置本来的形态（每席位只保留一条连接，见 web/AGENTS.md §3.1）。
   const demonSeat = await connectSeat(seatTickets[DEMON_SEAT - 1])
   const vortoxSeat = await connectSeat(seatTickets[VORTOX_SEAT - 1])
   const dreamerSeat = await connectSeat(seatTickets[DREAMER_SEAT - 1])
-  const unrelatedSeat = await connectSeat(seatTickets[UNRELATED_SEAT - 1])
+  const unrelatedSeat = await connectSeat(seatTickets[UNRELATED_SEAT - 1], bystanderAccount)
 
   const nightStarted = await runCommand(storytellerPage, '开夜', () =>
     storytellerPage.getByRole('button', { name: /开夜/ }).click(),
@@ -427,8 +432,15 @@ async function main() {
   await browser.close()
 }
 
-/** 连一个真 SignalR 席位：记录每一次请求与每一条推送（供越权扫描）。 */
-async function connectSeat(seatTicket) {
+/** 连一个真 SignalR 席位：记录每一次请求与每一条推送（供越权扫描）。
+ *  入座必须登录（D-0037）。默认给这一席注册**一个新夹具账号**；但当这一席已经有浏览器页
+ *  （`account` 传了那个页的账号）时必须**用同一个账号登录**——一账号一局只坐一席，
+ *  另注册一个账号来坐这一席会被"席位已经由其他账号认领"挡住。 */
+async function connectSeat(seatTicket, account) {
+  const probe =
+    account === undefined
+      ? await registerProbeAccount(signalR, accountHubUrl, `math-${seatTicket.seat}`)
+      : await loginProbeAccount(signalR, accountHubUrl, account)
   const connection = new signalR.HubConnectionBuilder().withUrl(hubUrl).configureLogging(signalR.LogLevel.None).build()
   const requests = []
   const messages = []
@@ -441,7 +453,7 @@ async function connectSeat(seatTicket) {
   }
 
   await connection.start()
-  const joined = await connection.invoke('JoinSeat', seatTicket.ticket, 0)
+  const joined = await connection.invoke('JoinByInviteCode', seatTicket.ticket, probe.accountSession, 0)
   return {
     requests,
     messages,

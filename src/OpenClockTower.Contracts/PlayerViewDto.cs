@@ -63,4 +63,25 @@ public sealed record PlayerViewDto
 
     /// <summary>本人已经用尽的一次性能力 slug（R-0040）；只列本人的。</summary>
     public string[] ExhaustedAbilities { get; init; } = [];
+
+    /// <summary>
+    /// 本人是否已经以旅行者身份离场（D-0037）：界面据此说"你已离场"，
+    /// 而不是显示成"还没有分配角色"（那会把一个明确事实说成未知）。
+    /// </summary>
+    public bool Departed { get; init; }
+
+    /// <summary>本人此刻能不能提出离场申请（在座的旅行者且没有待批申请；D-0037）。只对本人生效。</summary>
+    public bool CanRequestDeparture { get; init; }
+
+    /// <summary>
+    /// 本人此刻**有没有待批的离场申请**（D-0037）。界面拿它决定等待态显不显示——
+    /// 理由是可选字段，不能用"理由是不是 null"代替这件事。
+    /// </summary>
+    public bool HasPendingDeparture { get; init; }
+
+    /// <summary>本人待批的离场申请理由；null = 没有待批申请**或**申请里没写理由（D-0037）。只对本人生效。</summary>
+    public string? PendingDepartureNote { get; init; }
+
+    /// <summary>最近一次**本人**离场裁定的结论；null = 还没有裁定过（D-0037）。只下发给申请人本人。</summary>
+    public DepartureRulingDto? LastDepartureRuling { get; init; }
 }

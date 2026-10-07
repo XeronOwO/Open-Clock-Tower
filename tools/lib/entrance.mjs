@@ -20,6 +20,20 @@
  * `open-table-name` / `open-table-seats` / `open-table-submit` / `[data-my-table]` /
  * `host-enter` / `grimoire` / `player-lobby` / `[data-table]` / `[data-seat]` / `player-seat`。
  *
+ * 访问模式与旅行者离场那一批（D-0037）的锚点也登记在这里——`docs/acceptance/devices.md` §3 指明
+ * "锚点如改名要同步本清单"，而它们不归本模块使用（用它们的是 `verify-table-access.mjs`，本模块只当登记处）：
+ * 玩家侧 `player-table-access`（`data-invite-only`）/ `player-departed` / `departure-request` /
+ * `departure-note` / `departure-pending` / `departure-ruling`（`data-approved`）；
+ * 说书人侧 `table-access`（`data-invite-only`）/ `table-access-toggle` / `traveller-character` /
+ * `traveller-join` / `traveller-issued`（`data-seat`）/ `traveller-departures` 与逐行的
+ * `[data-departure-seat="N"]` / `departure-approve` / `departure-reject`；
+ * 大厅行 `li[data-table][data-invite-only]`（席位按钮仍是 `[data-seat]`，`disabled` 即点不动）。
+ *
+ * 线级探针（不经界面的 Node SignalR 客户端）另有两条入口，都只走账号 Hub 的公开方法：
+ * `registerProbeAccount`（`Register`）与 `loginProbeAccount`（`Login`）——它们拿到的账号会话要交给
+ * **`JoinByInviteCode`**（`/hub/game`）才坐得进席位；"没有账号、只凭票据入座"的 `JoinSeat` 已随 D-0037
+ * 整个删除，探针也不例外。
+ *
  * 入口地址：说书人面 `/storyteller`（空地址是首页）、玩家面 `/play`。
  */
 import { DatabaseSync } from 'node:sqlite'
@@ -118,7 +132,7 @@ export async function openTableAndHost(page, options) {
 /**
  * 用**邀请码**入座（说书人中途签发的席位 / 换设备兜底）。
  *
- * 与 `seatByAccount` 的分工：大厅点得动的桌用它；桌已开局 / 已锁桌（比如中途到场的旅行者）用这一条——
+ * 与 `seatByAccount` 的分工：大厅点得动的桌用它；桌已开局 / 已是邀请制（比如中途到场的旅行者）用这一条——
  * 码就是 `桌标识:席位票据`，与说书人面板上显示的那一串完全一致（`[data-testid="traveller-issued"]`）。
  *
  * @param {import('playwright').Page} page
@@ -240,8 +254,101 @@ export async function seatByAccount(page, options) {
   return account
 }
 
-/** 在这张登录卡上注册并登录（登录 / 注册是两个页签，新用户先切到「注册」）。 */
-async function registerOnGate(page, account) {
+/**
+ * 为线级探针注册一个夹具账号并登录，返回账号会话（D-0037：入座必须登录，探针也不例外）。
+ * 每个席位一个账号：服务端"一账号一局只坐一席"，共用账号会被拒。
+ * @param {object} signalR 调用方已加载的 @microsoft/signalr 模块（各装置自己 requireFromWeb 得来）
+ * @param {string} accountHubUrl `${serverUrl}/hub/account`
+ * @param {string} suffix 夹具后缀（登录名会带序号，见 fixtureAccount）
+ * @returns {Promise<{username: string, displayName: string, password: string, accountSession: string}>}
+ */
+export async function registerProbeAccount(signalR, accountHubUrl, suffix) {
+  return issueProbeSession(
+    signalR,
+    accountHubUrl,
+    fixtureAccount('probe-', suffix),
+    (connection, account) => connection.invoke('Register', account.username, account.displayName, account.password),
+    '注册',
+  )
+}
+
+/**
+ * 为线级探针**登录一个既有夹具账号**，返回账号会话。
+ *
+ * 为什么需要这一条：一席只属于一个账号，所以当探针要坐的席位**已经被某个浏览器页认领**时
+ * （`verify-mathematician` 的无关席位就是这种：页与探针共用 5 号），探针不能另注册一个账号——
+ * 那会被"席位已经由其他账号认领"挡住。用原账号再登录一次即可：同一账号多会话并存，
+ * 探针这条连接与页那条是同一账号的两台"设备"，入的还是自己那一席。
+ *
+ * @param {object} signalR 调用方已加载的 @microsoft/signalr 模块。
+ * @param {string} accountHubUrl `${serverUrl}/hub/account`
+ * @param {{username: string, displayName?: string, password: string}} account 既有夹具账号（如 `seatByAccount` 的返回值）。
+ * @returns {Promise<{username: string, displayName: string, password: string, accountSession: string}>}
+ */
+export async function loginProbeAccount(signalR, accountHubUrl, account) {
+  return issueProbeSession(
+    signalR,
+    accountHubUrl,
+    {
+      username: account.username,
+      displayName: account.displayName ?? account.username,
+      password: account.password,
+    },
+    (connection, own) => connection.invoke('Login', own.username, own.password),
+    '登录',
+  )
+}
+
+/**
+ * 注册 / 登录的公共部分：连账号 Hub → 调用 → **断言成功** → 关连接。
+ *
+ * 失败一律抛错并带上服务端回的 code / message：若静默返回空会话，装置会拿着空串去入座，
+ * 最后以"某条断言红了"的形式出现——那是把配置错误藏进了别处（与 `fixtureAccount` 同一个理由）。
+ *
+ * 连接用完即关：注册 / 登录是一次性动作，账号会话不绑连接（`AccountSessionRegistry`），
+ * 留着它只会让装置收尾时多一条要关的东西。
+ */
+async function issueProbeSession(signalR, accountHubUrl, account, call, action) {
+  const connection = new signalR.HubConnectionBuilder()
+    .withUrl(accountHubUrl)
+    .configureLogging(signalR.LogLevel.None)
+    .build()
+  try {
+    await connection.start()
+    const result = await call(connection, account)
+    if (result?.ok !== true || typeof result.accountSession !== 'string' || result.accountSession.length === 0) {
+      throw new Error(
+        `夹具账号${action}失败：code=${result?.code ?? '未知'} message=${result?.message ?? '（无）'}（${account.username}）`,
+      )
+    }
+
+    return {
+      username: account.username,
+      // 玩家名以**服务端回执**为准：席位名投影用的是服务端那一份，装置拿它对断言才同源。
+      displayName:
+        typeof result.displayName === 'string' && result.displayName.length > 0
+          ? result.displayName
+          : account.displayName,
+      password: account.password,
+      accountSession: result.accountSession,
+    }
+  } finally {
+    await connection.stop().catch(() => {})
+  }
+}
+
+/**
+ * 在这张登录卡上注册并登录（登录 / 注册是两个页签，新用户先切到「注册」）。
+ *
+ * **导出给"注册完就停在大厅"的场景**（`verify-table-access.mjs` 的大厅观察员）：本模块其余入口
+ * 全都是"注册 / 登录之后立刻入座"，而"大厅里这一桌长什么样"只有停在登录后大厅的人才看得到
+ * （邀请制那一行仍然列出、席位按钮点不动）。复用它而不是在装置里重写一遍：注册这条路的锚点
+ * 只有一个事实来源，重写必然与这里漂移。
+ *
+ * @param {import('playwright').Page} page 玩家面（本函数不做跳转，调用方自己 goto）。
+ * @param {{username: string, displayName: string, password: string}} account 夹具账号。
+ */
+export async function registerOnGate(page, account) {
   const registerTab = page.getByTestId('account-tab-register')
   if ((await registerTab.count()) > 0) {
     await registerTab.click()

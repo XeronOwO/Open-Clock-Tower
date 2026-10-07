@@ -699,7 +699,7 @@ async function main() {
   await screenshot(storyteller.page, '04-clockmaker-decision')
 
   // —— 并发窗口取证（票据 player-information-resync-race 行 1）——
-  // ① 扣住这次「补齐」的 JoinSeat 响应：快照（序号 N）已生成，客户端还没应用；
+  // ① 扣住这次「补齐」的入座响应（`JoinTable` / `JoinByInviteCode` 的回执，含快照与凭据）：快照（序号 N）已生成，客户端还没应用；
   // ② 说书人完成钟表匠裁定 → 信息推送（N+1）先到玩家页，补齐仍在等响应；
   // ③ 放行响应 → 修复前信息会被 N 快照整体覆盖丢弃，修复后按序号合并保留且不重复。
   const raceHold = raceHolds.get(clockmakerSeat)
@@ -2913,7 +2913,7 @@ async function informationCount(page) {
 }
 
 /**
- * 扣住下一条 JoinSeat 响应帧（票据 player-information-resync-race 行 1 的并发窗口取证）。
+ * 扣住下一条**入座响应帧**（`JoinTable` / `JoinByInviteCode` 的回执；票据 player-information-resync-race 行 1 的并发窗口取证）。
  *
  * 平时全透传；`arm()` 后下一条含 credential / bundle 的服务端帧被扣住，`waitForHeld()` 等它到达，
  * `release()` 放行——窗口内到达的定向推送正好落在"快照已生成、客户端尚未应用"之间。

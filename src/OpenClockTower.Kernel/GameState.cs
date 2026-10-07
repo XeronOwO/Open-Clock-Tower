@@ -24,6 +24,17 @@ public sealed record GameState
     /// </summary>
     public IReadOnlyList<SeatId> DepartedSeats { get; init; } = [];
 
+    /// <summary>
+    /// 待说书人裁定的旅行者离场申请，按提出顺序（D-0037）。
+    /// </summary>
+    /// <remarks>
+    /// 与 <see cref="Seats"/> / <see cref="DepartedSeats"/> 同一族：席位级的事实，不属于六维度与效果。
+    /// 折在账里而不是步骤机状态里，是因为申请可以发生在任何阶段之外（含开局前），
+    /// 且要说书人隔夜才裁定——那两条都要求它不依赖步骤机是否存在（见
+    /// <see cref="TravellerDepartureRequest"/> 的说明）。
+    /// </remarks>
+    public IReadOnlyList<TravellerDepartureRequest> DepartureRequests { get; init; } = [];
+
     /// <summary>持续型效果（含已终止的），按施加顺序。</summary>
     public IReadOnlyList<PersistentEffect> PersistentEffects { get; init; } = [];
 
@@ -60,6 +71,10 @@ public sealed record GameState
 
     /// <summary>该席位是否已经离场（离场者不在席位账里，也不再计任何人数口径）。</summary>
     public bool HasDeparted(SeatId seat) => DepartedSeats.Contains(seat);
+
+    /// <summary>该席位待批的离场申请；没有则返回 null（D-0037）。</summary>
+    public TravellerDepartureRequest? DepartureRequestOf(SeatId seat) =>
+        DepartureRequests.FirstOrDefault(request => request.Seat == seat);
 
     /// <summary>席位五维度齐全时的完整状态；有维度未观测时返回 null（不猜）。</summary>
     public SeatState? KnownStateOf(SeatId seat) => Seat(seat)?.ToSeatState();

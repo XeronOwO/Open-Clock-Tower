@@ -11,7 +11,8 @@ namespace OpenClockTower.Kernel;
 /// </para>
 /// <para>
 /// 覆盖 <see cref="GameState"/> 的全部集合：席位账（逐维度值 / 原因 / 导致方 / 效果链接）、
-/// 离场账（按离场顺序）、持续型效果（含终止事实）、即时型效果、能力使用账、失效账（含黎明窗口起点）。
+/// 离场账（按离场顺序）、待批的离场申请（D-0037）、持续型效果（含终止事实）、即时型效果、
+/// 能力使用账、失效账（含黎明窗口起点）。
 /// 任何一个不同都算分叉——重建报告回答的是"整本账是否与事件流一致"，不能只比其中几张表。
 /// </para>
 /// <para>
@@ -36,6 +37,11 @@ public static class GameStateComparer
 
         return GroupwiseEquivalent(left.Seats, right.Seats, entry => entry.Seat, SeatEntryEquivalent)
                && left.DepartedSeats.SequenceEqual(right.DepartedSeats)
+               && GroupwiseEquivalent(
+                   left.DepartureRequests,
+                   right.DepartureRequests,
+                   request => request.Seat,
+                   DepartureRequestEquivalent)
                && GroupwiseEquivalent(
                    left.PersistentEffects,
                    right.PersistentEffects,
@@ -136,6 +142,11 @@ public static class GameStateComparer
 
         return true;
     }
+
+    /// <summary>一条待批的离场申请逐字段比较（D-0037）：席位与理由都算——它们都进事件流。</summary>
+    private static bool DepartureRequestEquivalent(TravellerDepartureRequest left, TravellerDepartureRequest right) =>
+        left.Seat == right.Seat
+        && string.Equals(left.Note, right.Note, StringComparison.Ordinal);
 
     private static bool SeatEntryEquivalent(SeatStateEntry left, SeatStateEntry right) =>
         left.Seat == right.Seat

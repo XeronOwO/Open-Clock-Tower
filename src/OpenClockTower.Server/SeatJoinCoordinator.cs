@@ -14,9 +14,10 @@ namespace OpenClockTower.Server;
 /// 只做"身份 → 席位 → 凭据 + 快照"的编排；推送与请求重投仍由 Hub 完成。
 /// </para>
 /// <para>
-/// 三条路径：①带票据 + 账号 → 票据定位席位并首次认领；②只带账号（票据为空）→ 按绑定解出席位；
-/// ③只带票据 → 游客入座，没有玩家名。客户端声明一律不认（D-0012）：票据与会话只用于**定位**，
-/// 授权仍由服务端签发的凭据链判定。
+/// **两条路径**（D-0037）：①凭邀请码 + 账号会话 → 票据定位席位并认领（邀请制桌与旅行者的唯一入口）；
+/// ②只带账号 → 按绑定解出席位（认领之后的重连）。"没有账号、只凭票据入座"那条路整个删除：
+/// 入座必须登录，账号会话从此**不是可空参数**。客户端声明一律不认（D-0012）：
+/// 票据与会话只用于**定位**，授权仍由服务端签发的凭据链判定。
 /// </para>
 /// </remarks>
 public sealed class SeatJoinCoordinator
@@ -52,6 +53,11 @@ public sealed class SeatJoinCoordinator
 
     /// <summary>执行一次加入：定位席位、按需认领、签发凭据并取回重连包。</summary>
     /// <param name="game">本次加入落在哪一桌（多桌，D-0024）。</param>
+    /// <param name="ticket">席位票据（邀请码里冒号之后那一段）；空 = 只凭账号回到已认领席位。</param>
+    /// <param name="accountSession">账号会话（必须；入座必须登录，D-0037）。</param>
+    /// <param name="lastSequence">客户端已见序号。</param>
+    /// <param name="connectionId">连接标识。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
     public async Task<SeatJoinOutcome> JoinAsync(
         GameInstance game,
         string ticket,
@@ -64,28 +70,30 @@ public sealed class SeatJoinCoordinator
 
         var setup = await LoadSetupAsync(game, connectionId, cancellationToken);
         var session = ResolveAccountSession(accountSession, connectionId);
-        var accountId = session?.Account;
+        var accountId = session.Account;
         var seat = await ResolveSeatAsync(game, setup, ticket, accountId, connectionId, cancellationToken);
-        var claimed = accountId is { } claimedBy
-            && await ClaimSeatAsync(game, seat, claimedBy, connectionId, cancellationToken);
+        RecordDepartedSeat(game, seat, connectionId, _logger);
+        var claimed = await ClaimSeatAsync(game, seat, accountId, connectionId, cancellationToken);
 
         return await CompleteJoinAsync(game, seat, session, claimed, lastSequence, connectionId, cancellationToken);
     }
 
     /// <summary>
-    /// **自助入座**（D-0025）：凭账号选一个空席位坐下，不需要任何票据。
+    /// **自助入座**（D-0025 / D-0037）：凭账号选一个空席位坐下，不需要任何票据。
     /// </summary>
     /// <remarks>
     /// <para>
-    /// 三条前置判定，缺一不可：桌未锁定、席位号在本桌范围内、席位未被**别人**占用。
-    /// 第三条按账号判定——自己选自己已经坐着的席位是"回到座位"，不是抢占。
+    /// 四条前置判定，缺一不可：席位号在本桌范围内、席位未被**别人**占用、桌不在邀请制、
+    /// 桌**没有开局**。第三条按账号判定——自己选自己已经坐着的席位是"回到座位"，不是抢占；
+    /// 同理，**本人已认领的那一席在邀请制 / 已开局的桌上照样回得去**（刷新回座不能被开局吃掉）。
     /// </para>
     /// <para>
-    /// 说书人票据仍然存在，但它只用于**成为说书人**；玩家这一侧从此不需要等发票据。
+    /// "已开局"这一条此前只在前端拦（开局后不显示座位按钮），服务端从不判——那是"前端不显示按钮
+    /// 不算鉴权"的反面案例（审计 G-A4-2 的第二半）。本批把它补在服务端，口径与大厅的置灰规则同源。
     /// </para>
     /// </remarks>
     /// <param name="game">要坐下的那一桌。</param>
-    /// <param name="accountSession">账号会话（必须；游客仍走票据路径）。</param>
+    /// <param name="accountSession">账号会话（必须——入座必须登录，D-0037）。</param>
     /// <param name="seat">要坐的席位号。</param>
     /// <param name="lastSequence">客户端已见序号（重连补齐用）。</param>
     /// <param name="connectionId">连接标识。</param>
@@ -101,8 +109,7 @@ public sealed class SeatJoinCoordinator
         ArgumentNullException.ThrowIfNull(game);
 
         var setup = await LoadSetupAsync(game, connectionId, cancellationToken);
-        var session = ResolveAccountSession(accountSession, connectionId)
-            ?? throw new HubException("自助入座需要先登录账号");
+        var session = ResolveAccountSession(accountSession, connectionId);
         var accountId = session.Account;
 
         var seatId = new SeatId(seat);
@@ -116,20 +123,33 @@ public sealed class SeatJoinCoordinator
             throw new HubException($"这一桌没有 {seat} 号席位（共 {setup.Seats.Count} 席）");
         }
 
-        // 锁桌只挡**新的**入座：已经坐在这张椅子上的人（含断线回来）不受影响——
-        // 否则"锁桌"会变成"把在座玩家挡在门外"，那不是它的语义（D-0025）。
-        if (setup.IsLocked)
+        RecordDepartedSeat(game, seatId, connectionId, _logger);
+
+        // 「回到我的座位」是**始终放行**的一格：邀请制与开局都只挡"新的入座"，不挡本人那一席。
+        // 判据只有一条——这个账号是不是已经认领了它（与大厅的 `mySeatNumbers` 同源）。
+        var binding = await _bindings.ResolveSeatAsync(game.GameId, accountId, cancellationToken);
+        if (binding?.Seat != seatId)
         {
-            var binding = await _bindings.ResolveSeatAsync(game.GameId, accountId, cancellationToken);
-            if (binding?.Seat != seatId)
+            if (setup.IsInviteOnly)
             {
                 _logger.LogWarning(
-                    "自助入座被拒（桌已锁定）：game={GameId} seat={Seat} account={AccountId} connection={ConnectionId}",
+                    "自助入座被拒（邀请制桌）：game={GameId} seat={Seat} account={AccountId} connection={ConnectionId}",
                     game.GameId.Value,
                     seat,
                     accountId.Value,
                     connectionId);
-                throw new HubException("这一桌已经锁定，暂时不能再入座");
+                throw new HubException("这一桌是邀请制：请向说书人要一个邀请码");
+            }
+
+            if (game.Session.HasStarted)
+            {
+                _logger.LogWarning(
+                    "自助入座被拒（已开局）：game={GameId} seat={Seat} account={AccountId} connection={ConnectionId}",
+                    game.GameId.Value,
+                    seat,
+                    accountId.Value,
+                    connectionId);
+                throw new HubException("这一桌已经开局：迟到的人请向说书人要一个邀请码");
             }
         }
 
@@ -148,11 +168,11 @@ public sealed class SeatJoinCoordinator
     }
 
     /// <summary>两条加入路径的共同后半段：签发凭据 + 取重连包。</summary>
-    /// <param name="session">授权这次入座的账号会话（游客为 null）：凭据把它记在身上，撤销才打得着（M2 / G-A2-1）。</param>
+    /// <param name="session">授权这次入座的账号会话：凭据把它记在身上，撤销才打得着（M2 / G-A2-1）。</param>
     private async Task<SeatJoinOutcome> CompleteJoinAsync(
         GameInstance game,
         SeatId seat,
-        AccountSessionRef? session,
+        AccountSessionRef session,
         bool claimed,
         long lastSequence,
         string connectionId,
@@ -177,12 +197,12 @@ public sealed class SeatJoinCoordinator
                 bundle.Sequence,
                 lastSequence,
                 bundle.View.PendingRequest is not null,
-                session?.Account.Value);
+                session.Account.Value);
 
             return new SeatJoinOutcome
             {
                 Seat = seat,
-                AccountId = session?.Account,
+                AccountId = session.Account,
                 Credential = credential,
                 Bundle = bundle,
                 Claimed = claimed,
@@ -277,18 +297,22 @@ public sealed class SeatJoinCoordinator
     }
 
     /// <summary>
-    /// 账号会话凭据 → **会话引用**（D-0021 / M2 G-A2-1）：没带（游客）返回 null；带了但无效显式拒绝，
-    /// 不静默降级。客户端声明一律不认——这里只信服务端自己签发的会话（D-0012）。
+    /// 账号会话凭据 → **会话引用**（D-0021 / M2 G-A2-1）：缺失或无效一律显式拒绝，不静默降级。
+    /// 客户端声明一律不认——这里只信服务端自己签发的会话（D-0012）。
     /// </summary>
     /// <remarks>
-    /// 返回会话引用而不是账号：连接凭据要记住"是哪条会话授权了这次入座"，撤销才打得着——
-    /// 登出只该踢那一条会话建立的连接，不能牵连同账号在别的设备上的登录。
+    /// **不再是可空返回**（D-0037）：入座必须登录，所以"没带会话"与"会话无效"是同一类拒绝，
+    /// 只是文案不同。返回会话引用而不是账号：连接凭据要记住"是哪条会话授权了这次入座"，
+    /// 撤销才打得着——登出只该踢那一条会话建立的连接，不能牵连同账号在别的设备上的登录。
     /// </remarks>
-    private AccountSessionRef? ResolveAccountSession(string? accountSession, string connectionId)
+    private AccountSessionRef ResolveAccountSession(string? accountSession, string connectionId)
     {
         if (string.IsNullOrEmpty(accountSession))
         {
-            return null;
+            _logger.LogWarning(
+                "加入被拒：没有账号会话（入座必须登录）connection={ConnectionId}",
+                connectionId);
+            throw new HubException("入座需要先登录账号");
         }
 
         if (_sessions.TryResolveSession(accountSession, out var session))
@@ -303,12 +327,33 @@ public sealed class SeatJoinCoordinator
         throw new HubException("账号会话无效或已过期，请重新登录（D-0021）");
     }
 
+    /// <summary>
+    /// 已离场的席位：**仍然接受重连**（席位与票据保留，R-0044 第 6 条），只是账上没有角色与生命标记。
+    /// </summary>
+    /// <remarks>
+    /// 这里刻意**不**拒绝离场席位：本批曾经想"顺手"把"离场席位不能再进"补成一条闸，但那条口径
+    /// 与已经登记的 R-0044 第 6 条（离场保留席位与票据，重连 / 复盘语义不动）相冲突，
+    /// 而且已有用例锁着它（<c>TravellerHostTests.RemoveTraveller_KeepsTicket_…</c>）。
+    /// 离场者重连后本人视图里的 <c>Departed</c> 为 true，界面据此说"你已离场"——不需要靠拒绝入座表达。
+    /// </remarks>
+    private static void RecordDepartedSeat(GameInstance game, SeatId seat, string connectionId, ILogger logger)
+    {
+        if (game.Session.HasDeparted(seat))
+        {
+            logger.LogInformation(
+                "已离场席位重连：game={GameId} seat={Seat} connection={ConnectionId}（席位与票据保留：本人视图会明说已离场）",
+                game.GameId.Value,
+                seat,
+                connectionId);
+        }
+    }
+
     /// <summary>定位席位：票据优先；没有票据时按账号绑定解出（认领之后的"只凭账号重连"路径）。</summary>
     private async Task<SeatId> ResolveSeatAsync(
         GameInstance game,
         GameSetup setup,
         string? ticket,
-        AccountId? accountId,
+        AccountId accountId,
         string connectionId,
         CancellationToken cancellationToken)
     {
@@ -320,30 +365,24 @@ public sealed class SeatJoinCoordinator
                 item => string.Equals(item.Ticket, ticket, StringComparison.Ordinal));
             if (seatTicket is null)
             {
-                _logger.LogWarning("加入被拒：席位票据无效 connection={ConnectionId}", connectionId);
-                throw new HubException("会话票据无效");
+                _logger.LogWarning("加入被拒：邀请码里的席位票据无效 connection={ConnectionId}", connectionId);
+                throw new HubException("邀请码无效：这一桌没有这个席位票据");
             }
 
             return seatTicket.Seat;
         }
 
-        if (accountId is { } account)
+        var binding = await _bindings.ResolveSeatAsync(game.GameId, accountId, cancellationToken);
+        if (binding is not null)
         {
-            var binding = await _bindings.ResolveSeatAsync(game.GameId, account, cancellationToken);
-            if (binding is not null)
-            {
-                return binding.Seat;
-            }
-
-            _logger.LogWarning(
-                "加入被拒：账号还没有认领席位 connection={ConnectionId} account={AccountId}",
-                connectionId,
-                account);
-            throw new HubException("这个账号还没有认领席位：请带上会话票据加入一次");
+            return binding.Seat;
         }
 
-        _logger.LogWarning("加入被拒：既没有票据也没有账号会话 connection={ConnectionId}", connectionId);
-        throw new HubException("缺少会话票据：请用票据加入");
+        _logger.LogWarning(
+            "加入被拒：账号还没有认领席位 connection={ConnectionId} account={AccountId}",
+            connectionId,
+            accountId);
+        throw new HubException("这个账号还没有认领席位：请用邀请码加入一次，或从大厅挑一个空席位");
     }
 
     /// <summary>认领席位并更新席位名读模型；返回 true = 本次**新建**了绑定（需要推送新名字）。</summary>

@@ -100,7 +100,7 @@ public sealed class LobbyService
                 SeatCapacity = setup.Seats.Count,
                 TakenSeatCount = seated.Count,
                 Started = started,
-                Locked = setup.IsLocked,
+                InviteOnly = setup.IsInviteOnly,
                 CreatedByMe = viewer is { } account && setup.CreatedByAccountId == account,
                 // 我自己已经认领的席位：界面据此让"回到我的座位"在开局 / 锁桌之后仍然点得动。
                 MySeatNumbers = viewer is { } me
@@ -309,26 +309,31 @@ public sealed class LobbyService
     }
 
     /// <summary>
-    /// 改桌名 / 锁桌（说书人）。锁桌后**不再接受新的入座**，已在座的玩家不受影响。
+    /// 改桌名 / 换访问模式（说书人）。邀请制桌**不接受自助入座**，必须凭邀请码（D-0037）。
     /// </summary>
     /// <param name="gameId">哪一桌。</param>
     /// <param name="name">新桌名；null = 不改名。</param>
-    /// <param name="isLocked">新的锁定状态；null = 不改。</param>
+    /// <param name="isInviteOnly">新的访问模式；null = 不改。</param>
     /// <param name="caller">发起这次调用的客户端地址与连接（审计用）。</param>
     /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>本次是否真的改了东西（没改时 false——调用方据此决定要不要推送，别推空包）。</returns>
     /// <remarks>
     /// <para>
     /// 元数据进会话目录（不进事件流）：它不影响任何规则判定，也不该出现在复盘里（D-0015）。
     /// </para>
     /// <para>
-    /// **审计带操作者**（M4 / G-A5-10）：锁桌与改桌名只有这一桌的开桌账号做得了，所以"谁下的手"
+    /// **审计带操作者**（M4 / G-A5-10）：换访问模式与改桌名只有这一桌的开桌账号做得了，所以"谁下的手"
     /// 就是会话目录里的 <c>CreatedByAccountId</c>；日志同时写连接与客户端地址，出事能追到来源。
     /// </para>
+    /// <para>
+    /// **返回值不表示"改了没改"之外的任何东西**：本次调用是否生效由 <see cref="GameSetup.IsInviteOnly"/>
+    /// 的落库结果说了算，调用方不要自己再拼一份判断。
+    /// </para>
     /// </remarks>
-    public async Task UpdateLobbyAsync(
+    public async Task<bool> UpdateLobbyAsync(
         GameId gameId,
         string? name,
-        bool? isLocked,
+        bool? isInviteOnly,
         CallerContext caller,
         CancellationToken cancellationToken)
     {
@@ -350,33 +355,35 @@ public sealed class LobbyService
         }
 
         var nextName = trimmed ?? setup.Name;
-        var nextLocked = isLocked ?? setup.IsLocked;
-        if (nextName == setup.Name && nextLocked == setup.IsLocked)
+        var nextInviteOnly = isInviteOnly ?? setup.IsInviteOnly;
+        if (nextName == setup.Name && nextInviteOnly == setup.IsInviteOnly)
         {
-            return;
+            return false;
         }
 
-        await _catalog.UpdateLobbyAsync(gameId, nextName, nextLocked, cancellationToken);
+        await _catalog.UpdateLobbyAsync(gameId, nextName, nextInviteOnly, cancellationToken);
         _logger.LogInformation(
-            "桌元数据已更新：game={GameId} 桌名={Name} 锁定={Locked} 操作者账号={AccountId} 连接={ConnectionId} 客户端={Client}",
+            "桌元数据已更新：game={GameId} 桌名={Name} 访问模式={AccessMode} 操作者账号={AccountId} 连接={ConnectionId} 客户端={Client}",
             gameId.Value,
             LogText.Clamp(nextName.Length == 0 ? "(未命名)" : nextName),
-            nextLocked,
+            nextInviteOnly ? "邀请制" : "公开",
             setup.CreatedByAccountId?.Value,
             caller.ConnectionId,
             caller.Client);
+        return true;
     }
 
     /// <summary>这一桌是否已开局（已产生过夜晚或白天）。</summary>
     /// <remarks>
-    /// 从注册表里**已装载**的会话问；未装载的桌按"未开局"处理——大厅列表不应该为了显示一个标记
+    /// 从注册表里**已装载**的会话问（<see cref="GameSession.HasStarted"/>——步骤机一旦有状态就是开过局）；
+    /// 未装载的桌按"未开局"处理——大厅列表不应该为了显示一个标记
     /// 就把每一桌都恢复一遍（那会让"看一眼大厅"变成"把所有桌装进内存"）。
     /// 一桌一旦被打开过就会留在注册表里，所以这个判断对"正在被使用的桌"是准确的。
     /// </remarks>
     private async Task<bool> HasStartedAsync(GameId gameId, CancellationToken cancellationToken)
     {
         var game = await _registry.FindAsync(gameId, cancellationToken);
-        return game is not null && game.Session.GetStorytellerView().Phase is not null;
+        return game is not null && game.Session.HasStarted;
     }
 
     private static LobbyCreateResultDto Fail(string code, string message) => new()

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+﻿import { describe, expect, it } from 'vitest'
 import type { InformationResultDto, OperationRequestDto, PlayerDayDto, PlayerViewDto } from '@/contracts/game'
 import { PlayerViewMerge, type PlayerPush } from '@/services/playerViewMerge'
 
@@ -74,6 +74,11 @@ function snapshotView(overrides: Partial<PlayerViewDto> = {}): PlayerViewDto {
     canAskSavantQuestion: false,
     awaitingSavantQuestion: false,
     exhaustedAbilities: [],
+    departed: false,
+    canRequestDeparture: false,
+    hasPendingDeparture: false,
+  pendingDepartureNote: null,
+    lastDepartureRuling: null,
     ...overrides,
   }
 }
@@ -166,13 +171,13 @@ describe('补齐往返窗口：推送与快照按序号合并', () => {
     expect(merge.snapshot().informationResults.map((item) => item.sequence)).toEqual([5, 6, 7])
   })
 
-  it('事件窗口水位只由快照推进：读时推送不把 JoinSeat 的已知序号推高', () => {
+  it('事件窗口水位只由快照推进：读时推送不把加入命令的已知序号推高', () => {
     const merge = new PlayerViewMerge()
     merge.applySnapshot(snapshotView(), 5)
     merge.applyPush(infoPush(9, 'oracle'))
 
     // 推送 9 落在字段 / 信息取舍里，但事件窗口水位仍是 5：
-    // 否则下一条 JoinSeat(known=9) 会把 (5, 9] 的可见事件整段截断（架构 §5 的"快照 + 缺口事件"）。
+    // 否则下一条加入命令(known=9) 会把 (5, 9] 的可见事件整段截断（架构 §5 的"快照 + 缺口事件"）。
     expect(merge.snapshot().informationResults.map((item) => item.sequence)).toEqual([9])
     expect(merge.eventAt).toBe(5)
   })

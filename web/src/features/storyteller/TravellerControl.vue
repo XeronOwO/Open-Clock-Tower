@@ -1,11 +1,15 @@
 <script setup lang="ts">
 /**
- * 旅行者管理（D1 / D7）：说书人把旅行者加入本局（任意时刻，含开局前与阶段中）或移出。
+ * 旅行者管理（D1 / D7 / D-0037）：说书人把旅行者加入本局（任意时刻，含开局前与阶段中）或移出，
+ * 并**裁定**玩家自己提出的离场申请（D-0037：玩家发起 → 说书人裁定）。
  *
  * 加入 = 新席位：`seat` 留空时服务端**追加席位**并签发新票据（回执里的 issuedSeat /
  * issuedSeatTicket，说书人转交给新到场的玩家）；指定席位 = 落在本局尚未分配的高号席。
  * 阵营由说书人私下裁定（不进任何公开投影）；邪恶旅行者的揭示目标由说书人指定（一名或全部）。
  * 平台只校验与转达（D-0002）；真正的拒绝在服务端，这里只做"别让你点空"的呈现（web/AGENTS §4）。
+ *
+ * 「移出」是**始终保留**的直接通道：玩家申请是给玩家的路，不是收走说书人的权限——
+ * 训练有素的旅行者要临时走人时，说书人不必先等谁提申请。
  */
 import type { StorytellerViewDto } from '@/contracts/game'
 import { seatTextOf } from '@/display/format'
@@ -15,6 +19,7 @@ import {
   joinTraveller,
   localFailure,
   removeTraveller,
+  resolveTravellerDeparture,
   type CommandOutcome,
   type CommandSender,
 } from '@/services/storytellerCommands'
@@ -111,6 +116,34 @@ async function remove(): Promise<void> {
     removeTraveller(props.sender, seat, removeNote.value.trim() || null, newIdempotencyKey('remove-traveller')),
   )
 }
+
+/**
+ * 待批离场申请（D-0037），按提出顺序；没有申请时整块不渲染（不留空壳标题）。
+ * 理由只说书人与申请人本人可见——它不在任何公开投影里（D-0012 §4.3）。
+ */
+const departureRequests = computed(() => props.view.departureRequests)
+
+/** 逐行的裁定说明（可选，会进事件流）：按席位分开存，免得相邻两行的说明串台。 */
+const rulingNotes = ref<Record<number, string>>({})
+
+/** 批准 = 执行离场（席位与票据保留，不再计入任何人数口径）；驳回 = 本局继续。 */
+async function resolveDeparture(seat: number, approved: boolean): Promise<void> {
+  const note = (rulingNotes.value[seat] ?? '').trim()
+  const outcome = await run(() =>
+    resolveTravellerDeparture(
+      props.sender,
+      seat,
+      approved,
+      note.length > 0 ? note : null,
+      newIdempotencyKey('resolve-departure'),
+    ),
+  )
+
+  if (outcome.ok) {
+    // 这条申请已经有结论了：清掉这一行的字，免得下一条申请沿用上一行的说明。
+    delete rulingNotes.value[seat]
+  }
+}
 </script>
 
 <template>
@@ -182,6 +215,44 @@ async function remove(): Promise<void> {
       <button type="button" :disabled="busy" data-testid="traveller-remove" @click="remove()">移出</button>
     </div>
     <p class="hint">移出保留席位与票据，但不再计入任何人数口径（流放分母 / 胜负 / 投票；R-0044 第 6 条）。</p>
+
+    <!-- 待批离场申请（D-0037）：玩家发起、说书人裁定。没有申请时整块不渲染。 -->
+    <div v-if="departureRequests.length > 0" class="departures" data-testid="traveller-departures">
+      <p class="hint">
+        有人申请离场：批准即执行离场（席位与票据保留，不再计入任何人数口径），驳回则本局继续。
+      </p>
+      <div
+        v-for="request in departureRequests"
+        :key="request.seat"
+        class="departure"
+        :data-departure-seat="request.seat"
+      >
+        <span class="who">{{ seatText(request.seat) }}</span>
+        <span v-if="request.note !== null" class="reason">理由：{{ request.note }}</span>
+        <span v-else class="hint">（没有写理由）</span>
+        <input
+          v-model="rulingNotes[request.seat]"
+          placeholder="裁定说明（可选，会进事件流）"
+          data-testid="departure-ruling-note"
+        />
+        <button
+          type="button"
+          :disabled="busy"
+          data-testid="departure-approve"
+          @click="resolveDeparture(request.seat, true)"
+        >
+          批准
+        </button>
+        <button
+          type="button"
+          :disabled="busy"
+          data-testid="departure-reject"
+          @click="resolveDeparture(request.seat, false)"
+        >
+          驳回
+        </button>
+      </div>
+    </div>
   </section>
 </template>
 
@@ -210,5 +281,29 @@ async function remove(): Promise<void> {
 
 .ticket .mono {
   word-break: break-all;
+}
+
+/* 待批离场申请：一行一条，说明与两个裁定按钮同排（说书人要一眼看全"谁、为什么、怎么办"）。 */
+.departures {
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px solid var(--line);
+}
+
+.departure {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin: 6px 0;
+}
+
+.departure .who {
+  font-weight: 600;
+}
+
+.departure .reason {
+  font-size: 13px;
+  color: var(--ink-soft);
 }
 </style>

@@ -9,14 +9,18 @@ import {
   forceAdvance,
   invokeCommand,
   joinTraveller,
+  localFailure,
+  localSuccess,
   normalizeOutcome,
   pitHagCasualty,
   proposeSetup,
   removeTraveller,
   resolveDayProtection,
   resolveDeferredDeath,
+  resolveTravellerDeparture,
   resumeExileSweep,
   resumeVoteSweep,
+  setTableInviteOnly,
   startDay,
   startExileSweep,
   startVoteSweep,
@@ -184,6 +188,27 @@ describe('命令必须出示连接凭据（D-0012）', () => {
     await removeTraveller(sender, 16, '玩家离席', 'key-leave')
     expect(invoke).toHaveBeenCalledWith('RemoveTraveller', credential, 16, '玩家离席', 'key-leave')
 
+    // 离场改成「玩家发起 → 说书人裁定」（D-0037）：裁定命令与直接移出是两条并存的通道。
+    await resolveTravellerDeparture(sender, 16, true, '家里有事', 'key-depart-approve')
+    expect(invoke).toHaveBeenCalledWith(
+      'ResolveTravellerDeparture',
+      credential,
+      16,
+      true,
+      '家里有事',
+      'key-depart-approve',
+    )
+
+    await resolveTravellerDeparture(sender, 16, false, null, 'key-depart-reject')
+    expect(invoke).toHaveBeenCalledWith(
+      'ResolveTravellerDeparture',
+      credential,
+      16,
+      false,
+      null,
+      'key-depart-reject',
+    )
+
     await resolveDayProtection(sender, 5, true, '有趣', 'key-protect')
     expect(invoke).toHaveBeenCalledWith('ResolveDayProtection', credential, 5, true, '有趣', 'key-protect')
 
@@ -195,6 +220,64 @@ describe('命令必须出示连接凭据（D-0012）', () => {
 
     await countExileVotes(sender, 1, 'key-exile-count')
     expect(invoke).toHaveBeenCalledWith('CountExileVotes', credential, 1, 'key-exile-count')
+  })
+})
+
+describe('桌的访问模式不是命令（D-0037）', () => {
+  const credential = 'C'.repeat(43)
+
+  it('按 Hub 方法名与参数顺序发出，并把服务端确认的新值交还界面', async () => {
+    // 假服务端照实回新值（真实契约也是"回新值本身"），两次调用因此拿到各自的结果。
+    const invoke = vi.fn(async (_method: string, _credential: string, inviteOnly: boolean) => inviteOnly)
+    const sender: CommandSender = { connection: { invoke } as unknown as HubConnection, credential }
+
+    expect(await setTableInviteOnly(sender, true)).toBe(true)
+    expect(invoke).toHaveBeenCalledWith('SetTableInviteOnly', credential, true)
+
+    // 关掉也一样：回执是布尔本身，不走命令回执的规范化（形状对不上）。
+    expect(await setTableInviteOnly(sender, false)).toBe(false)
+    expect(invoke).toHaveBeenLastCalledWith('SetTableInviteOnly', credential, false)
+  })
+
+  it('没有凭据就不发；传输异常 / 回执不是布尔都收敛成 null（界面据此说"没确认"）', async () => {
+    const unauthorized = vi.fn()
+    expect(
+      await setTableInviteOnly(
+        { connection: { invoke: unauthorized } as unknown as HubConnection, credential: '' },
+        true,
+      ),
+    ).toBeNull()
+    expect(unauthorized).not.toHaveBeenCalled()
+
+    const broken = vi.fn(async () => {
+      throw new Error('connection lost')
+    })
+    expect(
+      await setTableInviteOnly({ connection: { invoke: broken } as unknown as HubConnection, credential }, true),
+    ).toBeNull()
+
+    // 旧服务端 / 坏回执：不是布尔就不采纳——绝不把"没听清"当成"已切换"。
+    const shaped = vi.fn(async () => ({ kind: 'Accepted' }))
+    expect(
+      await setTableInviteOnly({ connection: { invoke: shaped } as unknown as HubConnection, credential }, true),
+    ).toBeNull()
+  })
+})
+
+describe('本地合成回执（非命令方法也走同一套展示路径）', () => {
+  it('成功 / 失败两种形态字段齐备且 ok 与 kind 一致', () => {
+    const ok = localSuccess('本桌已改为邀请制')
+    expect(ok.ok).toBe(true)
+    expect(ok.kind).toBe('Accepted')
+    expect(ok.message).toBe('本桌已改为邀请制')
+    expect(ok.rebuild).toBeNull()
+    expect(ok.issuedSeat).toBeNull()
+    expect(ok.issuedSeatTicket).toBeNull()
+
+    const bad = localFailure('没能切换访问模式', 'Failed')
+    expect(bad.ok).toBe(false)
+    expect(bad.kind).toBe('Failed')
+    expect(bad.sequence).toBeNull()
   })
 })
 

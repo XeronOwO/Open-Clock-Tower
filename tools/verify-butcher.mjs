@@ -39,7 +39,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { DatabaseSync } from 'node:sqlite'
 import { readAttributeBounded, readTextBounded } from './lib/bounded-text.mjs'
-import { openTableAndHost, seatByAccount, seatByInviteCode } from './lib/entrance.mjs'
+import { openTableAndHost, registerProbeAccount, seatByAccount, seatByInviteCode } from './lib/entrance.mjs'
 import { describeProfile, ensureServerArtifacts, extractProfileFlags, resolveProfile } from './lib/verify-profile.mjs'
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -78,6 +78,8 @@ const serverUrl = `http://localhost:${options.port}`
 const viteUrl = `http://localhost:${options.vitePort}`
 /** Hub 地址：桌标识在开桌之后才定得下来，所以这里是 `let`（见下面的赋值）。 */
 let hubUrl = `${serverUrl}/hub/game`
+/** 账号 Hub：线级探针入座前要先注册一个夹具账号（D-0037：入座必须登录）。 */
+const accountHubUrl = `${serverUrl}/hub/account`
 
 /** 五席基础花名册（与集成 ButcherHostTests.FiveAssignments 同款：夜晚契约齐备、不卡建表）。 */
 const ASSIGN = ['clockmaker', 'dreamer', 'artist', 'klutz', 'no-dashii']
@@ -417,14 +419,16 @@ async function joinSeatPage(players, browser, consoleErrors, gameId, seat) {
   return { page, badgeText }
 }
 
-/** 直连 Hub 的裸席位客户端（负向探针用：不经浏览器、不经过任何 UI 闸）。 */
+/** 直连 Hub 的裸席位客户端（负向探针用：不经浏览器、不经过任何 UI 闸）。
+ *  "裸"只指没有界面：入座**同样要登录**（D-0037），所以这里先给这一席注册一个夹具账号。 */
 async function connectRawSeat(seatTicket) {
+  const probe = await registerProbeAccount(signalR, accountHubUrl, `butcher-${seatTicket.seat}`)
   const connection = new signalR.HubConnectionBuilder()
     .withUrl(hubUrl)
     .configureLogging(signalR.LogLevel.None)
     .build()
   await connection.start()
-  const joined = await connection.invoke('JoinSeat', seatTicket.ticket, 0)
+  const joined = await connection.invoke('JoinByInviteCode', seatTicket.ticket, probe.accountSession, 0)
   return {
     invoke: (method, ...args) => connection.invoke(method, joined.credential, ...args),
     dispose: () => connection.stop(),

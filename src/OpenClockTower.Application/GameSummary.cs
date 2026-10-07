@@ -16,6 +16,6 @@ public sealed record GameSummary
     /// <summary>席位数。</summary>
     public required int SeatCount { get; init; }
 
-    /// <summary>是否已锁定（锁桌后不再接受新的入座）。</summary>
-    public required bool IsLocked { get; init; }
+    /// <summary>是否邀请制（邀请制桌不接受自助入座，要凭邀请码；D-0037）。</summary>
+    public required bool IsInviteOnly { get; init; }
 }

@@ -10,11 +10,15 @@
  * 覆盖行：2（未加入的连接）、3（旧连接凭据）、1（他人请求归属）、4（玩家调说书人命令）、
  *         5（白天提交夜间行动：完成首夜 → 开白天 → 提交被阶段闸拒绝）、6（非法选项）、
  *         8（收包不含越权信息）、9 的在线面（无关玩家零活动）、11（拒绝审计）、
- *         账号面（D-0021 / D-0027：伪造 / 已登出的账号会话进不去，旧协议 `JoinStoryteller` 已删除）。
+ *         账号面（D-0021 / D-0037：伪造 / 已登出的账号会话进不去；**入座必须登录**，所以
+ *         没有账号会话的连接凭票据也进不去——"没有账号、只凭票据入座"那条路已整个删除；
+ *         旧协议 `JoinStoryteller` 同样已删除）。
  * 行 6 的"僧侣"依赖尚未落地的角色，已在集成测试里用等价反例覆盖。
  *
  * 说书人进场走**真实用法**（D-0027）：账号 Hub 注册夹具账号 → 由它开一桌 → 游戏连接声明该桌的
  * `?gameId=` 并出示账号会话。票据已整个退场，宿主也不再自动建默认桌。
+ * 玩家侧（含本装置这些线级探针）走 `JoinByInviteCode`：**每一席一个自己的夹具账号**
+ * （服务端"一账号一局只坐一席"），票据只负责定位席位，账号会话负责授权。
  *
  * 前置：Node >= 22.5（node:sqlite，读席位票据）、本机已构建。
  * 用法（在仓库根运行；默认迭代档 = 快节拍 + 复用产物）：
@@ -32,7 +36,7 @@ import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { readSeatTickets } from './lib/entrance.mjs'
+import { readSeatTickets, registerProbeAccount } from './lib/entrance.mjs'
 import { describeProfile, ensureServerArtifacts, extractProfileFlags, resolveProfile } from './lib/verify-profile.mjs'
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -372,9 +376,10 @@ async function main() {
   )
 
   // 行 3：同席重连换新凭据；旧连接立即失效，旧凭据在新连接上不被接受。
+  // 重连必须用**这一席自己的账号**（一账号一局只坐一席）：换账号会被"席位已经由其他账号认领"挡住。
   const seat3Ticket = seatTickets.find((seatTicket) => seatTicket.seat === 3)
   const staleCredential = player3.credential
-  const reconnected = await joinAsSeat(seat3Ticket)
+  const reconnected = await joinAsSeat(seat3Ticket, player3.account)
   check('行 3：同席重连签发新凭据', reconnected.credential !== staleCredential)
   const superseded = await expectRejected(
     () =>
@@ -539,21 +544,21 @@ async function main() {
     dayPushTexts.map(({ text }) => text.slice(0, 160)).join(' | ') || '没有客户端收到白天推送',
   )
 
-  console.log('=== 5.8/6 账号会话负向（D-0021 / D-0027）：账号会话不是游戏凭据，席位票据才是入座授权 ===')
+  console.log('=== 5.8/6 账号会话负向（D-0021 / D-0037）：入座要**票据 + 账号会话**两样，缺一不可 ===')
   // 账号会话与连接凭据是**两套**凭据面（D-0012 / D-0021）：这一段取证"账号会话既不能当连接凭据，
-  // 也不能被伪造 / 过期后蒙混过关"，反方向取证"席位票据仍然是唯一的入座授权"（D-0027 之后
-  // 说书人这一侧不看票据了——看的是"你是不是开这一桌的账号"，见下面两条负向）。
+  // 也不能被伪造 / 过期后蒙混过关"；D-0037 之后入座**必须登录**，所以票据单独也进不去（见本段末尾那条
+  // 「未登录的连接凭票据入座被拒」）；说书人那一侧则不看票据——看的是"你是不是开这一桌的账号"。
   const accounts = await connectTo(accountHubUrl)
   const registered = await accounts.invoke('Register', 'zt-account', '零信任玩家名', 'zt-account-password-1')
   const accountSession = registered.accountSession
   const seat1Ticket = seatTickets.find((seatTicket) => seatTicket.seat === 1)
 
-  // 伪造（或已过期）的账号会话：必须显式拒绝，不得静默降级成游客入座。
+  // 伪造（或已过期）的账号会话：必须显式拒绝，不得静默放行成"未登录的入座"。
   const forgedJoin = await expectRejected(
-    () => anonymous.invoke('JoinSeatWithAccount', seat1Ticket.ticket, '伪造账号会话-不存在的随机串', 0),
+    () => anonymous.invoke('JoinByInviteCode', seat1Ticket.ticket, '伪造账号会话-不存在的随机串', 0),
     '账号会话无效',
   )
-  check('行 账号：伪造 / 过期账号会话调 JoinSeatWithAccount 被拒（不静默降级成游客）', forgedJoin.ok, forgedJoin.message)
+  check('行 账号：伪造 / 过期账号会话调 JoinByInviteCode 被拒（不静默放行）', forgedJoin.ok, forgedJoin.message)
 
   // 被拒的连接不得因此进房：1 号的原连接凭据仍然有效（没被顶替），被拒的连接也拿不到任何凭据。
   const afterForged = await player1.connection.invoke(
@@ -590,7 +595,7 @@ async function main() {
   // 已登出（会话已失效）的账号会话同样进不了房。
   const loggedOut = await accounts.invoke('Logout', accountSession)
   const revokedJoin = await expectRejected(
-    () => anonymous.invoke('JoinSeatWithAccount', seat1Ticket.ticket, accountSession, 0),
+    () => anonymous.invoke('JoinByInviteCode', seat1Ticket.ticket, accountSession, 0),
     '账号会话无效',
   )
   check(
@@ -627,13 +632,16 @@ async function main() {
   )
 
   // 正向对照：带**有效**账号会话 + 票据才能入座并拿到玩家名——证明上面的拒绝不是"路径没实现"。
-  const relogin = await accounts.invoke('Login', 'zt-account', 'zt-account-password-1')
-  const accountSeat = await joinSeatWithAccount(seat1Ticket.ticket, relogin.accountSession)
+  // 用的是 1 号席**自己的账号**重新登录（D-0037 之后一席只有一个账号，换账号会被"席位已经由其他账号认领"挡住）：
+  // 顺带把"同一账号在另一条连接上重新登录仍回得到自己那一席"这条真实路径也钉住。
+  const seatOneAccount = playerOf(players, 1).account
+  const relogin = await accounts.invoke('Login', seatOneAccount.username, seatOneAccount.password)
+  const accountSeat = await joinByInviteCode(seat1Ticket.ticket, relogin.accountSession)
   const ownName = (accountSeat.view.seatNames ?? []).find((entry) => entry.seat === 1)?.displayName ?? ''
   check(
     '行 账号：有效账号会话 + 票据入座成功，且玩家名进入公开席位名投影（正向对照）',
-    accountSeat.view.seat === 1 && ownName === '零信任玩家名',
-    `seat=${accountSeat.view.seat} seatNames=${JSON.stringify(accountSeat.view.seatNames)}`,
+    accountSeat.view.seat === 1 && ownName === seatOneAccount.displayName,
+    `seat=${accountSeat.view.seat} 期望玩家名=${seatOneAccount.displayName} seatNames=${JSON.stringify(accountSeat.view.seatNames)}`,
   )
 
   // 反方向：票据换不来账号身份——拿席位票据去改玩家名（账号 Hub 的账号会话面）必须被拒。
@@ -644,27 +652,48 @@ async function main() {
     `ok=${ticketAsSession.ok} code=${ticketAsSession.code} message=${ticketAsSession.message}`,
   )
 
-  // 同一张票据、但没有账号会话的第三方：入座成功也只是**游客连接**——入座结果里不含任何账号会话
-  // （拿不到账号凭据），窗口内零定向推送。席位名是**公开映射**（D-0021「姓名是公开信息」），
-  // 第三方照样看得见 1 号的名字：它改变的是"看得见"，不是"拿得到"——所以这里断言凭据与推送面，不断言"看不见名字"。
-  const guestThird = await joinAsSeat(seat1Ticket)
-  const guestMark = guestThird.inbox.length
+  // **反方向**（D-0037 之前这里是"没有账号会话的第三方入座"那条正向用例）：入座必须登录，
+  // "只凭票据入座"那条路整个删除，所以同一张票据 + **未登录的连接**现在必须被显式拒绝——
+  // 空会话与伪造会话两条都要拒，且两种文案分开钉（缺会话 / 会话无效）。
+  // 票据仍是入座的**定位**凭据（正向对照在上面那条），但它换不来身份：下面还要钉住
+  // "被拒的连接此后拿不到任何凭据、窗口内也收不到任何推送"。
+  const unauthenticated = await connect()
+  const unauthenticatedInbox = []
+  for (const method of PUSH_METHODS) {
+    // 处理器必须返回 undefined（见 joinAsSeat 的同款说明）。
+    unauthenticated.on(method, (payload) => unauthenticatedInbox.push({ method, payload }))
+  }
+
+  const noSessionJoin = await expectRejected(
+    () => unauthenticated.invoke('JoinByInviteCode', seat1Ticket.ticket, '', 0),
+    '入座需要先登录账号',
+  )
+  const forgedSessionJoin = await expectRejected(
+    () => unauthenticated.invoke('JoinByInviteCode', seat1Ticket.ticket, '伪造账号会话-随机串-不该被认', 0),
+    '账号会话无效或已过期',
+  )
+  check(
+    '行 账号：未登录的连接凭票据入座被拒（空会话「入座需要先登录账号」/ 伪造会话「账号会话无效或已过期」）',
+    noSessionJoin.ok && forgedSessionJoin.ok,
+    `空会话：${noSessionJoin.message}｜伪造会话：${forgedSessionJoin.message}`,
+  )
+
+  // 被拒的连接不得因此拿到任何身份：它连"我进了哪个席位"都答不出来（没有凭据可用），
+  // 窗口内也没有任何推送——推送只发给**坐进席位**的连接。
   await sleep(600)
-  const guestTargeted = guestThird.inbox
-    .slice(guestMark)
+  const unauthenticatedPushes = unauthenticatedInbox
     .filter((message) => TARGETED_METHODS.includes(message.method))
     .map((message) => message.method)
-  const joinPayload = JSON.stringify(guestThird.inbox.find((message) => message.method === 'JoinSeat')?.payload ?? {})
-  check(
-    '行 账号：没有账号会话的第三方入座结果里没有账号凭据、窗口内零定向推送（票据 ≠ 账号身份）',
-    guestThird.view.seat === 1
-      && relogin.accountSession.length > 0
-      && !joinPayload.includes(relogin.accountSession)
-      && guestTargeted.length === 0,
-    `seat=${guestThird.view.seat}；入座结果含账号会话=${joinPayload.includes(relogin.accountSession)}`
-      + `；窗口内定向推送=${guestTargeted.join('|') || '无'}；公开席位名=${JSON.stringify(guestThird.view.seatNames)}`,
+  const noCredential = await expectRejected(
+    () => unauthenticated.invoke('GetStorytellerView', '被拒连接凭空捏造的凭据'),
+    '连接凭据无效',
   )
-  await guestThird.connection.stop()
+  check(
+    '行 账号：被拒的连接拿不到任何凭据（再造凭据仍被凭据闸拒绝）、窗口内零定向推送（票据 ≠ 账号身份）',
+    noCredential.ok && unauthenticatedPushes.length === 0,
+    `凭据闸：${noCredential.message}；窗口内定向推送=${unauthenticatedPushes.join('|') || '无'}`,
+  )
+  await unauthenticated.stop()
   await accountSeat.connection.stop()
   await accounts.stop()
 
@@ -681,8 +710,11 @@ async function main() {
   check('行 11：服务端日志不含任何凭据明文（只有短指纹）', leaked.length === 0, `${leaked.length} 条泄露`)
 }
 
-/** 记录"玩家客户端收到的全部消息"：join 结果 + 五类推送，一个都不漏。 */
-async function joinAsSeat(seatTicket) {
+/** 记录"玩家客户端收到的全部消息"：join 结果 + 五类推送，一个都不漏。
+ *  入座必须登录（D-0037）：默认给这一席**新注册一个夹具账号**；重连同一席时把那一席的账号传进来
+ *  （一账号一局只坐一席，换账号会被"席位已经由其他账号认领"挡住）。 */
+async function joinAsSeat(seatTicket, account) {
+  const own = account ?? (await registerProbeAccount(signalR, accountHubUrl, `zt-${seatTicket.seat}`))
   const connection = await connect()
   const inbox = []
   for (const method of PUSH_METHODS) {
@@ -693,13 +725,14 @@ async function joinAsSeat(seatTicket) {
     })
   }
 
-  const joined = await connection.invoke('JoinSeat', seatTicket.ticket, 0)
-  inbox.push({ method: 'JoinSeat', payload: joined })
-  return { connection, credential: joined.credential, view: joined.bundle.view, inbox }
+  const joined = await connection.invoke('JoinByInviteCode', seatTicket.ticket, own.accountSession, 0)
+  inbox.push({ method: 'JoinByInviteCode', payload: joined })
+  return { connection, credential: joined.credential, view: joined.bundle.view, inbox, account: own }
 }
 
-/** 带账号会话的入座（D-0021）：票据用于首次认领；返回视图供"玩家名是否进投影"取证。 */
-async function joinSeatWithAccount(ticket, accountSession) {
+/** 凭邀请码 + 账号会话入座（D-0021 / D-0037）：票据负责**定位**席位，账号会话负责**授权**；
+ *  返回视图供"玩家名是否进投影"取证。 */
+async function joinByInviteCode(ticket, accountSession) {
   const connection = await connect()
   const inbox = []
   for (const method of PUSH_METHODS) {
@@ -708,8 +741,8 @@ async function joinSeatWithAccount(ticket, accountSession) {
     })
   }
 
-  const joined = await connection.invoke('JoinSeatWithAccount', ticket, accountSession, 0)
-  inbox.push({ method: 'JoinSeatWithAccount', payload: joined })
+  const joined = await connection.invoke('JoinByInviteCode', ticket, accountSession, 0)
+  inbox.push({ method: 'JoinByInviteCode', payload: joined })
   return { connection, credential: joined.credential, view: joined.bundle.view, inbox }
 }
 

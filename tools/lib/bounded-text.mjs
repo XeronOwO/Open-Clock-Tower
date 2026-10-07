@@ -8,7 +8,8 @@
  * （读取前先等元素附着）。轮询助手在元素缺失时每个周期都会白等满 30 秒再被 `.catch` 吞成空值——
  * 助手自己的 deadline（15s / 30s）被悄悄突破；元素**晚到**时更糟：首读就吃满 30 秒，
  * 循环第一轮即判超时 → 断言假红。
- * 实测：账号装置 guest 段 30.4s → 0.4s，整装置 37.3s → 7.3s（见 done/accounts-device-section-selector.md）。
+ * 实测：账号装置 guest 段（该段的 id 已随 D-0037 正名为 `invite`）30.4s → 0.4s，整装置 37.3s → 7.3s
+ * （见 done/accounts-device-section-selector.md）。
  *
  * 口径：读不到（不存在 / 读取期间脱离 / 严格模式冲突）返回调用方约定的空值——文本 `''`、
  * 属性 `null`；读到返回**原文**。文本归一化（compact / trim / 空白折叠）与 `null` → `''`

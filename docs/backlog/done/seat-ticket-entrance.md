@@ -1,8 +1,13 @@
 # 席位票据的界面入口：游客还要不要入座
 
-- Status: Todo
+- Status: Done
 - Priority: Medium（产品问题，不是缺陷；入场重做把它的入口撤掉了，得有个了断）
 - Depends on: 无
+- **已收口（2026-10-07，D-0037）**：需求方当面定调——**选项 A 不做**（不给游客入口，登录是唯一入座入口），
+  选项 B 做**一半**：`JoinSeat(ticket)` 那条无账号路径整个删除，但 `Games.SeatsJson` **保留**——
+  席位票据改作**邀请码**，只出现在邀请制桌与旅行者中途入场的两条路径上。
+  落地与证据见 `docs/backlog/in-progress/table-access-and-traveller-departure.md`（批次 E60）。
+  于是这张票问的两个选项都不再是候选：**没有游客入口，票据也没有退场**。
 
 ## 要解决的问题
 

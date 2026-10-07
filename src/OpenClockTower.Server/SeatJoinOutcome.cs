@@ -9,8 +9,8 @@ public sealed record SeatJoinOutcome
     /// <summary>定位到的席位。</summary>
     public required SeatId Seat { get; init; }
 
-    /// <summary>本次加入携带的账号（游客为 null）。</summary>
-    public required AccountId? AccountId { get; init; }
+    /// <summary>本次加入携带的账号（**必需**：入座必须登录，D-0037；游客概念已随本批消失）。</summary>
+    public required AccountId AccountId { get; init; }
 
     /// <summary>为这条连接签发的连接级凭据。</summary>
     public required ConnectionCredential Credential { get; init; }

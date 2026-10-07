@@ -1,4 +1,4 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 /**
  * 玩家视图（同一 SPA 的另一套视图，D-0004）。
  *
@@ -10,6 +10,7 @@
  * 入座只有一条实现（`enterSeat`）——大厅点席位与刷新自动回座走的是同一条路。
  */
 import type {
+  DepartureRulingDto,
   GameOutcomeDto,
   InformationResultDto,
   JugglerGuessDto,
@@ -65,6 +66,16 @@ const canAskSavantQuestion = ref(false)
 const awaitingSavantQuestion = ref(false)
 const savantSubmitting = ref(false)
 
+/** 旅行者离场（D-0037）：本人已离场 / 此刻能不能申请 / 待批申请的理由 / 最近一次裁定。 */
+const departed = ref(false)
+const canRequestDeparture = ref(false)
+const hasPendingDeparture = ref(false)
+const pendingDepartureNote = ref<string | null>(null)
+const lastDepartureRuling = ref<DepartureRulingDto | null>(null)
+const departureNote = ref('')
+const departureNotice = ref('')
+const departureSubmitting = ref(false)
+
 let gateway: PlayerGateway | null = null
 let clientSequence = 0
 /** 自动回座只做一次（M1）：成功或失败都不再重试，免得每次登录态变化都重放一遍失败。 */
@@ -84,6 +95,41 @@ const lobbyNotice = ref('')
 /** 本连接所在的那一桌：入座时定下来（D-0027 之后没有"默认桌"可回落）。 */
 const selectedTable = ref<LobbyTable | null>(null)
 
+/** 本连接所在那一桌的标识：访问模式推送按它匹配（D-0037）。 */
+const playerTableGameId = ref<string | undefined>(undefined)
+
+/**
+ * 本桌的访问模式（D-0037）：null = 还不知道。
+ *
+ * 权威读取口是大厅列表那一行的 `inviteOnly`（补全初始条件的正路）；`ReceiveTableAccessChanged`
+ * 只负责"说书人一切换，在场的人不刷新不重连就变"。不知道时界面说"—"，绝不写成"公开桌"。
+ */
+const tableInviteOnly = ref<boolean | null>(null)
+
+/** 本桌标识：优先当前连接，其次大厅里选中的那一行，最后是记住的位置（刷新回座时还没连上）。 */
+function currentTableGameId(): string | undefined {
+  if (playerTableGameId.value !== undefined) {
+    return playerTableGameId.value
+  }
+
+  const selected = selectedTable.value?.gameId
+  if (selected !== undefined) {
+    return selected
+  }
+
+  const remembered = session.activeTable.value
+  return remembered !== null && remembered.surface === 'player' ? remembered.gameId : undefined
+}
+
+/** 从大厅列表取访问模式初值；列表里没有这一桌就留 null（宁可说"—"，不猜一个值写上去）。 */
+function syncTableAccessFromLobby(): void {
+  const gameId = currentTableGameId()
+  tableInviteOnly.value =
+    gameId === undefined
+      ? null
+      : (tables.value.find((table) => table.gameId === gameId)?.inviteOnly ?? null)
+}
+
 async function loadTables(): Promise<void> {
   if (accountProfile.value === null) {
     // 没登录就没有"我"，也就没有可挑的桌：大厅是登录之后才出现的东西（D-0027）。
@@ -94,6 +140,8 @@ async function loadTables(): Promise<void> {
   lobbyBusy.value = true
   try {
     tables.value = await session.listTables()
+    // 列表是访问模式的权威读取口（D-0037）：刷新列表顺带把本桌那一行的读数对齐。
+    syncTableAccessFromLobby()
     lobbyNotice.value = ''
   } catch (error) {
     lobbyNotice.value = `读取桌列表失败：${error instanceof Error ? error.message : String(error)}`
@@ -114,6 +162,7 @@ async function enterSeat(gameId: string, seat: number): Promise<void> {
     throw new Error('尚未登录：没有账号会话')
   }
 
+  playerTableGameId.value = gameId
   // 换桌 = 换连接：先让旧网关**停干净**再建新的（`stop()` 会等到状态真的 Disconnected）。
   // 顺序很要紧：若先建新连接，旧连接的关闭还在进行中，SignalR 会报
   // "Failed to start the HttpConnection before stop() was called"（实测踩到）。
@@ -124,6 +173,8 @@ async function enterSeat(gameId: string, seat: number): Promise<void> {
   }
 
   clientSequence = 0
+  // 换桌即换读数：新桌的访问模式从列表取初值，别把上一桌的「邀请制」留在屏幕上。
+  syncTableAccessFromLobby()
   const current = new PlayerGateway(buildCallbacks(), undefined, gameId)
   gateway = current
   try {
@@ -198,13 +249,20 @@ const inviteBusy = ref(false)
 const inviteNotice = ref('')
 
 /**
- * 用邀请码入座：**这是给"大厅点不动"的场合留的一条路**——桌已开局 / 已锁桌时，
+ * 用邀请码入座：**这是给"大厅点不动"的场合留的一条路**——桌是邀请制（或已开局）时，
  * 说书人新签发的旅行者席位、以及换设备的兜底，都走这里。
  *
  * 码写成 `桌标识:席位票据`（说书人面板显示的就是这个形态）：桌标识属于连接，
- * 光有票据不知道连哪一桌。
+ * 光有票据不知道连哪一桌。**入座必须登录**（D-0037）：没有账号就没有"你是哪一席"，
+ * 所以未登录时这里直接拦下并说明，绝不把 null 当账号会话发出去。
  */
 async function joinByInviteCode(): Promise<void> {
+  const current = accountProfile.value
+  if (current === null) {
+    inviteNotice.value = '请先登录，再凭邀请码入座'
+    return
+  }
+
   const raw = inviteCode.value.trim()
   const separator = raw.indexOf(':')
   if (separator <= 0 || separator === raw.length - 1) {
@@ -225,11 +283,14 @@ async function joinByInviteCode(): Promise<void> {
 
     clientSequence = 0
     selectedTable.value = null
+    playerTableGameId.value = gameId
+    // 邀请码进来的人也看得到本桌的访问模式：大厅列表里那一行就是初值（读不到就等推送）。
+    syncTableAccessFromLobby()
     gateway = new PlayerGateway(buildCallbacks(), undefined, gameId)
-    const joined = await gateway.joinSeat(ticket, accountProfile.value?.accountSession ?? null)
+    const joined = await gateway.joinSeat(ticket, current.accountSession)
     inviteNotice.value = `已凭邀请码入座（${gameId}）`
     // 邀请码也是入座：位置照样记住（M1），否则刷新之后这条路径进来的人回不去。
-    if (accountProfile.value !== null && joined.seat > 0) {
+    if (joined.seat > 0) {
       session.rememberTable({ surface: 'player', gameId, seat: joined.seat })
     }
   } catch (error) {
@@ -241,18 +302,21 @@ async function joinByInviteCode(): Promise<void> {
 }
 
 /**
- * 这个席位按钮能不能点（D-0027）。
+ * 这个席位按钮能不能点（D-0027 / D-0037）。
  *
- * 「回到我的座位」是**始终可点**的一格：它不能被"已开局 / 已锁桌"的整排置灰吃掉——
+ * 「回到我的座位」是**始终可点**的一格：它不能被"邀请制 / 已开局"的整排置灰吃掉——
  * 只按旧口径禁用，换设备回来（或清掉浏览器登录态）的玩家就再也回不到自己的位置。
  * 服务端本来就允许同一账号选回自己已认领的席位，界面不该比服务端更严。
+ *
+ * 另外两种点不动都是**服务端的闸**在界面上的映射：邀请制桌（要凭邀请码）与已开局的桌
+ * （一开局自助入座就关了，迟到的旅行者由说书人发邀请码进来）。前端不判规则，只是不显示入口。
  */
 function seatDisabled(table: LobbyTable, seat: number): boolean {
   if (table.mySeatNumbers.includes(seat)) {
     return false
   }
 
-  return table.locked || table.started || table.occupiedSeatNumbers.includes(seat)
+  return table.inviteOnly || table.started || table.occupiedSeatNumbers.includes(seat)
 }
 
 function seatTitle(table: LobbyTable, seat: number): string {
@@ -264,7 +328,9 @@ function seatTitle(table: LobbyTable, seat: number): string {
     return '这个席位已经有人了'
   }
 
-  return table.started || table.locked ? '这一桌已经开局 / 已锁定，需要邀请码' : `坐 ${seat} 号席`
+  return table.inviteOnly || table.started
+    ? '这一桌是邀请制（或已开局），需要邀请码'
+    : `坐 ${seat} 号席`
 }
 
 /** 同桌名单：有玩家名的席位 + 自己（自己还没名字时也列出来，显示回退的席位号）。 */
@@ -339,6 +405,13 @@ function buildCallbacks(): PlayerCallbacks {
     onState: (state) => {
       connectionState.value = state
     },
+    // 桌的访问模式变了（D-0037）：说书人一切换就推给该桌全部连接，界面当场改读数——
+    // 不用刷新、不用重连，也不用重读大厅列表。只认本桌：别的桌的读数不该改这一行。
+    onTableAccess: (access) => {
+      if (access.gameId === currentTableGameId()) {
+        tableInviteOnly.value = access.inviteOnly
+      }
+    },
     onDiagnostic: (message) => pushDiagnostic(message),
   }
 }
@@ -361,6 +434,11 @@ function applyView(next: PlayerViewDto): void {
   pendingQuestion.value = next.pendingQuestion
   canAskSavantQuestion.value = next.canAskSavantQuestion
   awaitingSavantQuestion.value = next.awaitingSavantQuestion
+  departed.value = next.departed
+  canRequestDeparture.value = next.canRequestDeparture
+  hasPendingDeparture.value = next.hasPendingDeparture
+  pendingDepartureNote.value = next.pendingDepartureNote
+  lastDepartureRuling.value = next.lastDepartureRuling
 
   if (next.pendingRequest === null) {
     selectedOption.value = ''
@@ -522,6 +600,55 @@ async function submit(): Promise<void> {
   }
 }
 
+/**
+ * 玩家命令回执 → 可展示的说明（服务端文案原样显示，不吞、不改写）。
+ * 界面只关心"受理了没有"与"服务端说了什么"——真正的拒绝理由在服务端（前端不判规则）。
+ */
+function commandReplyOf(raw: unknown): { ok: boolean; message: string } {
+  if (raw === null || typeof raw !== 'object') {
+    return { ok: false, message: '回执形状不可识别' }
+  }
+
+  const result = raw as Record<string, unknown>
+  const kind = result['kind']
+  const parts = [result['rejectionCode'], result['rejectionMessage'], result['failure']].filter(
+    (part): part is string => typeof part === 'string' && part.length > 0,
+  )
+  return { ok: kind === 'Accepted' || kind === 'Duplicate', message: parts.join('：') }
+}
+
+/**
+ * 提出离场申请（D-0037）：玩家发起、说书人裁定。
+ *
+ * 受理之后不进"已离场"——状态由服务端随后推送的本人视图给出（`hasPendingDeparture` 为真即等待态）；
+ * 这里只把失败的服务端文案显示出来，绝不自己先把界面改成"已提交"。
+ */
+async function requestDeparture(): Promise<void> {
+  departureSubmitting.value = true
+  departureNotice.value = ''
+  try {
+    const note = departureNote.value.trim()
+    const reply = commandReplyOf(
+      await ensureGateway().requestTravellerDeparture(
+        note.length > 0 ? note : null,
+        newIdempotencyKey('departure-request'),
+      ),
+    )
+    if (!reply.ok) {
+      departureNotice.value =
+        reply.message.length > 0 ? `申请未成功：${reply.message}` : '申请未成功：服务端没有受理'
+      return
+    }
+
+    // 已受理：等待态由服务端随后推回的 hasPendingDeparture / pendingDepartureNote 表达，输入框随之清空。
+    departureNote.value = ''
+  } catch (error) {
+    departureNotice.value = `申请失败：${error instanceof Error ? error.message : String(error)}`
+  } finally {
+    departureSubmitting.value = false
+  }
+}
+
 async function resync(): Promise<void> {
   try {
     // 视图由网关合并后经 onView 下发（迟到的快照不会覆盖窗口内到达的推送）。
@@ -536,6 +663,9 @@ async function disconnect(): Promise<void> {
   await gateway?.stop()
   // 主动离开就是主动离开（M1）：位置一起忘掉，别让下一次刷新又把人送回这一席。
   session.forgetTable()
+  // 访问模式的读数属于"本桌"：断开就清掉，别把上一桌的「邀请制」留在下一屏。
+  playerTableGameId.value = undefined
+  tableInviteOnly.value = null
   view.value = null
   pending.value = null
   day.value = null
@@ -546,6 +676,13 @@ async function disconnect(): Promise<void> {
   artistQuestion.value = ''
   canAskSavantQuestion.value = false
   awaitingSavantQuestion.value = false
+  departed.value = false
+  canRequestDeparture.value = false
+  hasPendingDeparture.value = false
+  pendingDepartureNote.value = null
+  lastDepartureRuling.value = null
+  departureNote.value = ''
+  departureNotice.value = ''
 }
 
 /** 胜方文案：未知取值原样回显（服务端数据是不可信输入，不猜、不吞）。 */
@@ -586,7 +723,9 @@ onBeforeUnmount(() => {
 
     <section v-else-if="!connected" class="home panel">
       <h1>加入一桌</h1>
-      <p class="hint">挑一个空席位坐下就行——说书人不需要给你发任何东西。</p>
+      <p class="hint">
+        公开桌挑一个空席位坐下就行，不需要说书人给你发任何东西；邀请制桌与已开局的桌要凭邀请码。
+      </p>
 
       <div class="lobby" data-testid="player-lobby">
         <div class="row">
@@ -596,11 +735,16 @@ onBeforeUnmount(() => {
         </div>
         <p v-if="lobbyNotice.length > 0" class="hint" data-testid="lobby-notice">{{ lobbyNotice }}</p>
         <ul v-if="tables.length > 0" class="tables">
-          <li v-for="table in tables" :key="table.gameId" :data-table="table.gameId">
+          <li
+            v-for="table in tables"
+            :key="table.gameId"
+            :data-table="table.gameId"
+            :data-invite-only="String(table.inviteOnly)"
+          >
             <span>{{ table.name.length > 0 ? table.name : table.gameId }}</span>
             <span class="hint">
               {{ table.takenSeatCount }} / {{ table.seatCapacity }} 人 · {{ table.started ? '已开局' : '等人' }} ·
-              {{ table.locked ? '已锁定' : '可入座' }}
+              {{ table.inviteOnly ? '邀请制' : '公开' }}
             </span>
             <span class="seats">
               <button
@@ -624,11 +768,13 @@ onBeforeUnmount(() => {
         </p>
       </div>
 
-      <!-- 邀请码（D-0025 的兜底路径，D-0027 之后撤下主路径但保留出口）：
-           桌已开局 / 已锁桌时大厅点不动——中途到场的旅行者、换设备的兜底都走这里。 -->
+      <!-- 邀请码：邀请制桌与已开局的桌在大厅点不动——中途到场的旅行者、换设备的兜底都走这里。
+           入座必须登录（D-0037），所以未登录时这里只说明一句，不发命令。 -->
       <details class="invite" data-testid="seat-invite">
         <summary>有邀请码？凭邀请码入座</summary>
-        <p class="hint">说书人给你的那一串，形态是「桌标识:席位票据」（他面板上显示的就是它）。</p>
+        <p class="hint">
+          说书人给你的那一串，形态是「桌标识:席位票据」（他面板上显示的就是它）；要先登录才能入座。
+        </p>
         <div class="row">
           <input v-model="inviteCode" data-testid="seat-invite-code" placeholder="桌标识:席位票据" spellcheck="false" />
           <button type="button" :disabled="inviteBusy" data-testid="seat-invite-join" @click="joinByInviteCode()">
@@ -654,6 +800,10 @@ onBeforeUnmount(() => {
             labelOf(view!.phase) === '—' ? '阶段未知' : labelOf(view!.phase)
           }}</strong>
           <HelpTip topic="phase" />
+          <!-- 本桌的访问模式（D-0037）：说书人一切换就推过来，不刷新不重连也变；不知道时说「—」。 -->
+          <span class="hint" data-testid="player-table-access" :data-invite-only="String(tableInviteOnly)"
+            >本桌：{{ tableInviteOnly === null ? '—' : tableInviteOnly ? '邀请制' : '公开桌' }}</span
+          >
         </div>
         <div class="row">
           <button type="button" @click="resync()">补齐</button>
@@ -684,6 +834,64 @@ onBeforeUnmount(() => {
             data-testid="player-own-character-alignment"
             >{{ alignmentLabelOf(view!.alignment) }}</span
           >
+        </p>
+      </section>
+
+      <!-- 旅行者离场（D-0037）：玩家发起 → 说书人裁定。四个位都空时整块不渲染（不留空壳）。 -->
+      <section
+        v-if="departed || canRequestDeparture || hasPendingDeparture || lastDepartureRuling !== null"
+        class="panel"
+        data-testid="player-departure"
+      >
+        <h2>离场</h2>
+        <p class="block-question">想以旅行者身份离开本局时由你提出，说书人裁定；批准后座位从本局移除。</p>
+
+        <p v-if="departed" class="context" data-testid="player-departed">
+          你已经离场（座位已从本局移除，不再计入任何人数口径）
+        </p>
+
+        <!-- 等待态看 hasPendingDeparture，**不是**"理由非 null"：理由是可选字段，
+             拿它当判据会让"没写理由"这条默认路径下整块界面消失（装置咬出来的真缺陷）。 -->
+        <p v-if="hasPendingDeparture" class="context" data-testid="departure-pending">
+          已提出离场申请，等说书人裁定<template v-if="pendingDepartureNote !== null && pendingDepartureNote.length > 0">
+            （你写的理由：{{ pendingDepartureNote }}）
+          </template>
+        </p>
+
+        <template v-if="canRequestDeparture && !departed">
+          <input
+            v-model="departureNote"
+            :maxlength="200"
+            placeholder="离场理由（可选，只说给说书人）"
+            spellcheck="false"
+            data-testid="departure-note"
+          />
+          <button
+            type="button"
+            class="primary"
+            :disabled="departureSubmitting"
+            data-testid="departure-request"
+            @click="requestDeparture()"
+          >
+            申请离场
+          </button>
+        </template>
+
+        <p
+          v-if="lastDepartureRuling !== null"
+          class="context"
+          data-testid="departure-ruling"
+          :data-approved="String(lastDepartureRuling.approved)"
+        >
+          说书人已{{ lastDepartureRuling.approved ? '批准' : '驳回' }}了你的离场申请<template
+            v-if="lastDepartureRuling.note !== null"
+          >
+            （{{ lastDepartureRuling.note }}）
+          </template>
+        </p>
+
+        <p v-if="departureNotice.length > 0" class="hint" data-testid="departure-notice">
+          {{ departureNotice }}
         </p>
       </section>
 

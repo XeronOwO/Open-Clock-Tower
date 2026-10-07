@@ -6,8 +6,12 @@ namespace OpenClockTower.Integration.Tests;
 
 /// <summary>
 /// 连接登记表的撤销面（M2 / G-A2-1）：按会话撤、按账号撤，以及"撤干净"的边界——
-/// 凭据不再被受理、席位 / 主持路由一起消失（推送跟着停）、游客不受账号撤销牵连。
+/// 凭据不再被受理、席位 / 主持路由一起消失（推送跟着停），且只撤该撤的那一条。
 /// </summary>
+/// <remarks>
+/// D-0037 起入座必须登录：**每条连接背后都有一条账号会话可撤**，"只凭票据入座的游客"
+/// 已整个删除，因此本表里不再有"撤不到"的连接。
+/// </remarks>
 public sealed class ConnectionRegistryTests
 {
     private static readonly GameId FirstTable = new("default");
@@ -90,15 +94,28 @@ public sealed class ConnectionRegistryTests
         Assert.True(registry.Validate(strangerSeat, "conn-stranger").Accepted);
     }
 
-    /// <summary>反方向：游客连接（只凭票据、没有账号会话）不受任何账号级撤销牵连。</summary>
+    /// <summary>
+    /// 反方向：撤销只按会话精确匹配——**别的会话**（同账号或别的账号）一条都不受牵连。
+    /// </summary>
+    /// <remarks>
+    /// 这一条的前身是"游客连接不受账号级撤销牵连"：入座必须登录之后（D-0037）游客这个概念
+    /// 已整个消失，每条连接背后都有一条会话可撤。判据换成同族的**隔离**判据，覆盖面没有缩小：
+    /// 撤一条会话不能碰到另一条会话的连接。
+    /// </remarks>
     [Fact]
-    public void RevokeAccount_LeavesGuestConnectionAlone()
+    public void RevokeSession_LeavesOtherSessionsAlone()
     {
         var registry = new ConnectionRegistry();
-        var guest = registry.IssueForSeat(FirstTable, new SeatId(3), "conn-guest", session: null);
+        var account = new AccountId(7);
+        var mine = AccountSessionRef.CreateNew(account);
+        var other = AccountSessionRef.CreateNew(account);
 
-        Assert.Empty(registry.RevokeAccount(new AccountId(7)));
-        Assert.True(registry.Validate(guest, "conn-guest").Accepted);
+        var mineCredential = registry.IssueForSeat(FirstTable, new SeatId(1), "conn-mine", mine);
+        var otherCredential = registry.IssueForSeat(FirstTable, new SeatId(3), "conn-other", other);
+
+        Assert.Equal(["conn-mine"], registry.RevokeSession(mine));
+        Assert.False(registry.Validate(mineCredential, "conn-mine").Accepted);
+        Assert.True(registry.Validate(otherCredential, "conn-other").Accepted);
     }
 
     /// <summary>边界：撤一条不存在的会话（或重复撤）是空操作，不报错也不误伤别人。</summary>

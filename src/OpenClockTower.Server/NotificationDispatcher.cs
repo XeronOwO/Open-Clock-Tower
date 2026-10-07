@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.SignalR;
 using OpenClockTower.Application;
+using OpenClockTower.Contracts;
 using OpenClockTower.Kernel;
 
 namespace OpenClockTower.Server;
@@ -280,6 +281,54 @@ public sealed class NotificationDispatcher
     {
         await PushPlayerViewChangedAsync(game, seat: null, cancellationToken);
         await PushStorytellerViewAsync(game, cancellationToken);
+    }
+
+    /// <summary>
+    /// 访问模式变化（D-0037）：把新状态推给**本桌全部连接**——说书人与在场玩家各一条，
+    /// 界面据此不刷新不重连就跟着变。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 覆盖面刻意用"这一桌有连接痕迹的人"（<see cref="ConnectionRegistry.StorytellerConnectionsOf"/>
+    /// 与本桌已绑定席位），与席位名推送同一把尺子：访问模式是**桌级**事实，本桌之内没有秘密。
+    /// </para>
+    /// <para>
+    /// 新进门的连接从权威读取口拿同一个值（大厅列表的 <c>InviteOnly</c>），所以这条推送
+    /// 不是唯一事实来源，只是"当场变"的那一半（补全初始条件的那条正路，D-0010）。
+    /// </para>
+    /// </remarks>
+    public async Task PushTableAccessChangedAsync(
+        GameInstance game,
+        bool inviteOnly,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(game);
+
+        var dto = new TableAccessDto { GameId = game.GameId.Value, InviteOnly = inviteOnly };
+        var pushed = 0;
+
+        foreach (var connectionId in _registry.StorytellerConnectionsOf(game.GameId))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            await _hub.Clients.Client(connectionId).ReceiveTableAccessChanged(dto);
+            pushed++;
+        }
+
+        foreach (var seat in _registry.SeatsOf(game.GameId))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (_registry.TryGetSeatConnection(game.GameId, seat, out var connectionId))
+            {
+                await _hub.Clients.Client(connectionId).ReceiveTableAccessChanged(dto);
+                pushed++;
+            }
+        }
+
+        _logger.LogInformation(
+            "已广播访问模式：game={GameId} 邀请制={InviteOnly} 推送={Pushed}",
+            game.GameId.Value,
+            inviteOnly,
+            pushed);
     }
 
     private async Task PushStorytellerViewAsync(GameInstance game, CancellationToken cancellationToken)

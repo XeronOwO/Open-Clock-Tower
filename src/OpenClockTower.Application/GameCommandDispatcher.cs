@@ -55,10 +55,20 @@ internal static class GameCommandDispatcher
             return AnnotationCommandDispatch.Dispatch(envelope.Command, machine, annotations);
         }
 
-        // 旅行者加入 / 离场（D1）：任意时刻可用，不能落到下面的 kernel.not_started。
-        if (envelope.Command is JoinTravellerCommand or RemoveTravellerCommand)
+        // 旅行者加入 / 离场 / 离场申请（D1 / D-0037）：任意时刻可用，不能落到下面的 kernel.not_started。
+        if (envelope.Command is JoinTravellerCommand or RemoveTravellerCommand
+            or RequestTravellerDepartureCommand or ResolveTravellerDepartureCommand)
         {
-            return setup is null ? MissingSetup() : TravellerCommandDispatch.Dispatch(envelope.Command, machine, setup, settlement.State, gameId, logger);
+            return setup is null
+                ? MissingSetup()
+                : TravellerCommandDispatch.Dispatch(
+                    envelope.Command,
+                    envelope.Actor,
+                    machine,
+                    setup,
+                    settlement.State,
+                    gameId,
+                    logger);
         }
 
         if (envelope.Command is StartNightCommand startNight)

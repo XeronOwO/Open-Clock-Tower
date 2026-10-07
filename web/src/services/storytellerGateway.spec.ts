@@ -1,6 +1,6 @@
 import { HubConnectionState, type HubConnection } from '@microsoft/signalr'
 import { describe, expect, it } from 'vitest'
-import type { StorytellerViewDto } from '@/contracts/game'
+import type { StorytellerViewDto, TableAccessDto } from '@/contracts/game'
 import { normalizeStorytellerView } from '@/display/format'
 import { StorytellerGateway, newerView } from '@/services/storytellerGateway'
 
@@ -134,5 +134,48 @@ describe('说书人网关接线：视图只进不更旧的那份', () => {
     expect(fake.invocations).toEqual([
       { method: 'JoinStorytellerWithAccount', args: ['account-session'] },
     ])
+  })
+
+  it('访问模式推送（D-0037）：切换即达回调，不改视图；坏载荷不惊动界面', async () => {
+    const fake = new FakeConnection()
+    const views: StorytellerViewDto[] = []
+    const accesses: TableAccessDto[] = []
+    const gateway = new StorytellerGateway(
+      {
+        onView: (next) => views.push(next),
+        onTableAccess: (access) => accesses.push(access),
+        onState: () => {},
+        onDiagnostic: () => {},
+      },
+      () => fake as unknown as HubConnection,
+    )
+
+    fake.response = { credential: 'C'.repeat(43), view: { sequence: 9, phase: 'FirstNight' } }
+    await gateway.joinWithAccount('account-session')
+    const viewsBefore = views.length
+
+    fake.receive('ReceiveTableAccessChanged', { gameId: 'table-x', inviteOnly: true })
+    expect(accesses).toEqual([{ gameId: 'table-x', inviteOnly: true }])
+
+    // 它不参与视图替换：说书人的看板一次都不该被这条推送动过。
+    expect(views.length).toBe(viewsBefore)
+
+    // 坏载荷（缺桌标识 / 布尔位不是布尔）不采纳：宁可少更新一次，也不改界面上的读数。
+    fake.receive('ReceiveTableAccessChanged', { inviteOnly: false })
+    fake.receive('ReceiveTableAccessChanged', { gameId: 'table-x', inviteOnly: 'no' })
+    fake.receive('ReceiveTableAccessChanged', null)
+    expect(accesses).toHaveLength(1)
+  })
+
+  it('没接 onTableAccess 的调用方也不炸：这条回调是可选接线', async () => {
+    const fake = new FakeConnection()
+    const gateway = gatewayWith(fake, [])
+
+    fake.response = { credential: 'C'.repeat(43), view: { sequence: 1, phase: 'FirstNight' } }
+    await gateway.joinWithAccount('account-session')
+
+    expect(() =>
+      fake.receive('ReceiveTableAccessChanged', { gameId: 'table-x', inviteOnly: true }),
+    ).not.toThrow()
   })
 })

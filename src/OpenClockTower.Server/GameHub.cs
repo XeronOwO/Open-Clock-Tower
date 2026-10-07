@@ -10,15 +10,10 @@ namespace OpenClockTower.Server;
 /// 游戏 Hub：会话绑定、命令入口、定向推送。
 /// </summary>
 /// <remarks>
-/// <para>
-/// 本层只做"翻译"：票据 / 凭据 → 身份、wire 参数 → 命令、结果 → DTO / 推送；
+/// 本层只做"翻译"：邀请码 / 凭据 → 身份、wire 参数 → 命令、结果 → DTO / 推送；
 /// 一切领域判定都在 Application / Kernel（架构 §1：Server 不做领域判断）。
-/// </para>
-/// <para>
-/// 零信任（D-0012 §4.1）：Join 下发**连接级凭据**，此后每条命令的第一个参数都是它；
-/// 凭据只在签发它的那条连接上有效——旧连接的凭据在新连接上会被拒，必须重新出示票据加入。
-/// 凭据明文不进日志，只记短指纹；身份完全由服务端持有的凭据记录推导，客户端声明的身份一律不认。
-/// </para>
+/// 零信任（D-0012 §4.1）：加入时下发**连接级凭据**，此后每条命令的第一个参数都是它；
+/// 凭据只在签发它的那条连接上有效，明文不进日志（只记短指纹），客户端声明的身份一律不认。
 /// </remarks>
 public sealed class GameHub : Hub<IGameClient>
 {
@@ -32,7 +27,7 @@ public sealed class GameHub : Hub<IGameClient>
     /// <summary>构造 Hub。</summary>
     /// <param name="scope">连接 ↔ 桌的绑定（多桌：解析本连接在哪一桌，D-0024）。</param>
     /// <param name="joinScope">加入入口（玩家与说书人两侧；自己解析所在桌）。</param>
-    /// <param name="tableAdmin">桌务（锁桌 / 解除席位绑定）。</param>
+    /// <param name="tableAdmin">桌务（访问模式 / 解除席位绑定）。</param>
     /// <param name="registry">连接登记表。</param>
     /// <param name="actors">身份解析（凭据 → 操作者）。</param>
     /// <param name="logger">日志。</param>
@@ -60,43 +55,24 @@ public sealed class GameHub : Hub<IGameClient>
     private Task<HubCommandExecutor> CommandsAsync() =>
         _scope.CommandsAsync(Context.GetHttpContext(), Context.ConnectionId, Context.ConnectionAborted);
 
-    /// <summary>玩家加入 / 重连（只凭票据的路径，D-0012）：签发连接凭据、返回重连包并**重投**未响应请求。</summary>
-    public Task<SeatJoinDto> JoinSeat(string ticket, long lastSequence) =>
-        _joinScope.JoinSeatAsync(
-            Clients.Caller,
-            Context.GetHttpContext(),
-            Context.ConnectionId,
-            Context.ConnectionAborted,
-            ticket,
-            lastSequence);
-
     /// <summary>
-    /// 玩家加入 / 重连（带账号会话，D-0021）：票据认领 / 只凭账号回到已认领席位。
+    /// 玩家凭**邀请码**加入 / 重连（D-0021 / D-0037）：票据认领，或只凭账号回到已认领席位。
     /// </summary>
     /// <remarks>
-    /// SignalR **不支持方法重载**（实测会抛 "Duplicate definitions"），所以账号路径单独一个方法名；
-    /// 它与 <see cref="JoinSeat"/> 走同一份实现，只有"是否带账号会话"不同。
+    /// 邀请码 = 说书人给的那一串「桌标识 + 席位票据」；它是邀请制桌与旅行者中途入场的唯一入口。
+    /// 入座必须登录（D-0037）：没有账号的路径已整个删除，匿名连接只是不能入座。SignalR 不支持
+    /// 方法重载，所以它单独一个方法名（与自助入座 <see cref="JoinTable"/> 并列）。
     /// </remarks>
-    public Task<SeatJoinDto> JoinSeatWithAccount(string ticket, string? accountSession, long lastSequence) =>
-        _joinScope.JoinSeatWithAccountAsync(
-            Clients.Caller,
-            Context.GetHttpContext(),
-            Context.ConnectionId,
-            Context.ConnectionAborted,
-            ticket,
-            accountSession,
-            lastSequence);
+    public Task<SeatJoinDto> JoinByInviteCode(string ticket, string? accountSession, long lastSequence) =>
+        _joinScope.JoinByInviteCodeAsync(Clients.Caller, Context.GetHttpContext(), Context.ConnectionId, Context.ConnectionAborted, ticket, accountSession, lastSequence);
 
     /// <summary>
-    /// 玩家**自助入座**（D-0025）：登录后选一个空席位坐下，**不需要任何票据**。
+    /// 玩家**自助入座**（D-0025 / D-0037）：登录后在**公开且未开局**的桌选一个空席位坐下，不要票据。
     /// </summary>
     /// <remarks>
-    /// 桌由本连接的 <c>?gameId=</c> 决定（与其余命令同源）。说书人票据仍然存在，
-    /// 但它只用于"成为说书人"；玩家这一侧从此不必等发票据。
+    /// 桌由本连接的 <c>?gameId=</c> 决定。邀请制桌与已开局的桌一律拒（迟到的旅行者凭邀请码进来），
+    /// 但**本人已认领的那一席永远回得去**——那是"回到座位"，不是自助入座。
     /// </remarks>
-    /// <param name="accountSession">账号会话（必须；游客仍走票据路径）。</param>
-    /// <param name="seat">要坐的席位号。</param>
-    /// <param name="lastSequence">客户端已见序号（重连补齐用）。</param>
     public Task<SeatJoinDto> JoinTable(string accountSession, int seat, long lastSequence) =>
         _joinScope.JoinTableAsync(
             Clients.Caller,
@@ -108,14 +84,9 @@ public sealed class GameHub : Hub<IGameClient>
             lastSequence);
 
     /// <summary>
-    /// 说书人加入（D-0027）：**只认这一桌的开桌账号**，签发连接凭据
-    /// （同局同一时刻只保留一条有效说书人连接）。
+    /// 说书人加入（D-0027）：**只认这一桌的开桌账号**，签发连接凭据（同局只保留一条有效连接）。
     /// </summary>
-    /// <remarks>
-    /// 票据已整个退场：进主持台不需要出示任何凭据，只需要"你是开这一桌的那个账号"。
-    /// 流程本体在 <see cref="HubJoinScope" /> / <see cref="HubJoinFlow" />（单文件 600 行门禁）。
-    /// </remarks>
-    /// <param name="accountSession">账号会话（服务端据此判定归属）。</param>
+    /// <remarks>进主持台不需要出示任何凭据，只需要"你是开这一桌的那个账号"；流程本体在 <see cref="HubJoinFlow"/>。</remarks>
     public Task<StorytellerJoinDto> JoinStorytellerWithAccount(string accountSession) =>
         _joinScope.JoinStorytellerWithAccountAsync(
             Context.GetHttpContext(),
@@ -265,12 +236,48 @@ public sealed class GameHub : Hub<IGameClient>
         return ExecuteAsync(actor, Commands().JoinTraveller(seat, character, alignment, revealDemonSeats), idempotencyKey);
     }
 
-    /// <summary>说书人 / 宿主把一名旅行者移出本局（D1）：席位与票据保留，不再计入任何人数口径（R-0044 第 6 条）。</summary>
+    /// <summary>
+    /// 说书人 / 宿主把一名旅行者移出本局（D1）：席位与票据保留，不再计入任何人数口径（R-0044 第 6 条）。
+    /// 说书人**始终保留直接移出**的权限（D-0037）：这一席若有待批的离场申请，会一并结清为"批准"。
+    /// </summary>
     public Task<CommandResultDto> RemoveTraveller(string credential, int seat, string? note, string idempotencyKey)
     {
         var actor = ResolveActor(credential);
         return ExecuteAsync(actor, Commands().RemoveTraveller(seat, note), idempotencyKey);
     }
+
+    /// <summary>
+    /// **旅行者本人**向说书人提出离场申请（D-0037）：玩家发起，等说书人裁定。
+    /// </summary>
+    /// <remarks>
+    /// 命令面不带席位（由连接凭据推导）；它不是自助离开——批准与执行在
+    /// <see cref="ResolveTravellerDeparture"/>，本方法只登记一条待批申请（进事件流、可回放）。
+    /// </remarks>
+    public Task<CommandResultDto> RequestTravellerDeparture(
+        string credential,
+        string? note,
+        string idempotencyKey) =>
+        ExecuteAsync(
+            ResolveActor(credential),
+            Commands().RequestTravellerDeparture(note),
+            idempotencyKey);
+
+    /// <summary>
+    /// 说书人**裁定**一条离场申请（D-0037）：批准即执行座位离场，驳回则本局继续。
+    /// </summary>
+    /// <remarks>
+    /// 批准与「直接移出」走**同一份**离场合法性判定；权限沿用说书人凭据闸——**本桌**的说书人只能裁本桌的申请。
+    /// </remarks>
+    public Task<CommandResultDto> ResolveTravellerDeparture(
+        string credential,
+        int seat,
+        bool approved,
+        string? note,
+        string idempotencyKey) =>
+        ExecuteAsync(
+            ResolveActor(credential),
+            Commands().ResolveTravellerDeparture(seat, approved, note),
+            idempotencyKey);
 
     /// <summary>说书人 / 宿主开启夜晚：服务端按规则表建表（口径是引擎输入，R-0014）。</summary>
     public Task<CommandResultDto> StartNight(
@@ -479,16 +486,17 @@ public sealed class GameHub : Hub<IGameClient>
     }
 
     /// <summary>
-    /// 锁桌 / 解锁（说书人，D-0025）：锁定后不再接受新的自助入座，已在座的玩家不受影响。
+    /// 桌的访问模式（说书人，D-0025 / D-0037）：`true` = **邀请制**（自助入座被拒、持邀请码者照进）。
     /// </summary>
     /// <remarks>
-    /// 需要它的理由很直接：玩家能自己进桌之后，说书人必须能在开局前把人挡在门外。
-    /// 权限沿用既有的说书人凭据闸——**本桌**的说书人只能锁本桌。
+    /// **切换即时生效并推给该桌所有连接**（说书人 + 在场玩家，不刷新不重连就变）。
+    /// 权限沿用说书人凭据闸——**本桌**的说书人只能改本桌。开局之后自助入座本来就被拦（见
+    /// <see cref="JoinTable"/>）：那条闸不靠这个开关，也不改写它的值。
     /// </remarks>
-    public async Task<bool> SetTableLock(string credential, bool isLocked)
+    public async Task<bool> SetTableInviteOnly(string credential, bool inviteOnly)
     {
         _ = ResolveStorytellerActor(credential);
-        return await _tableAdmin.SetLockAsync(await GameAsync(), isLocked, CallerContext.Of(Context.GetHttpContext(), Context.ConnectionId), Context.ConnectionAborted);
+        return await _tableAdmin.SetInviteOnlyAsync(await GameAsync(), inviteOnly, CallerContext.Of(Context.GetHttpContext(), Context.ConnectionId), Context.ConnectionAborted);
     }
 
     /// <summary>

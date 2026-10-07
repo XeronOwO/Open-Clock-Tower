@@ -128,7 +128,7 @@ public sealed class LegacyDatabaseUpgradeTests : IDisposable
         Assert.True(created.Ok, $"{created.Code}：{created.Message}");
 
         var (storyteller, credential) = await ConnectStorytellerAsync(created.GameId, registered.AccountSession!);
-        Assert.True(await storyteller.InvokeAsync<bool>("SetTableLock", credential, true));
+        Assert.True(await storyteller.InvokeAsync<bool>("SetTableInviteOnly", credential, true));
     }
 
     /// <summary>
@@ -272,6 +272,62 @@ public sealed class LegacyDatabaseUpgradeTests : IDisposable
         Assert.Equal(SchemaMigrationCatalog.LatestVersion, version);
         Assert.Equal("2026-01-01 00:00:00+00:00", await ReadCreatedAtAsync(_legacyDatabasePath, "default"));
         Assert.Null(await ReadCreatedAtAsync(_legacyDatabasePath, "never-played"));
+    }
+
+    /// <summary>
+    /// v3 迁移把老库的**访问模式列正名**（`IsLocked` → `IsInviteOnly`，D-0037）：改名、值不变、可逆。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 这一列的**效果**从来没变过（自助入座被拒、持票据者照进），变的是名字与口径：
+    /// 当年叫"锁桌"，审计因此把"锁桌没拦住票据入座"记成缺陷（G-A4-2）；按新的访问模型，
+    /// 那正是**邀请制**的语义。正名之外这一条还要证明两件事：**值一个字节都没动**
+    /// （邀请制的那一桌升级后仍然是邀请制），以及**退场列没有被顺手带回来**。
+    /// </para>
+    /// <para>
+    /// 不启宿主直接跑迁移：这里判的是迁移本身，而老库那两条 <c>Type='t'</c> 的假事件
+    /// 会让宿主在恢复时走降级路径——那噪音不属于这条判据（与 v2 那条同款）。
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task LegacyDatabase_V3Migration_RenamesAccessModeColumnAndKeepsItsValue()
+    {
+        await CreateLegacyDatabaseAsync();
+        // 老库里有一桌是"锁着"的（旧口径下的邀请制），它的值必须原样跟到新列名上。
+        await ExecuteSqlAsync(
+            _legacyDatabasePath,
+            """
+            UPDATE "Games" SET "IsLocked" = 1 WHERE "GameId" = 'default';
+            """);
+
+        await using var db = new GameDbContext(
+            new DbContextOptionsBuilder<GameDbContext>()
+                .UseSqlite($"Data Source={_legacyDatabasePath}")
+                .Options);
+        var version = await DatabaseSchemaUpgrader.UpgradeAsync(
+            db,
+            NullLogger.Instance,
+            CancellationToken.None);
+
+        Assert.Equal(SchemaMigrationCatalog.LatestVersion, version);
+
+        var upgraded = await ReadSchemaAsync(_legacyDatabasePath);
+        Assert.True(upgraded.HasColumn("Games", SchemaMigrationCatalog.InviteOnlyColumn));
+        Assert.False(upgraded.HasColumn("Games", SchemaMigrationCatalog.LegacyLockedColumn));
+        Assert.Equal(1, await ReadInviteOnlyAsync(_legacyDatabasePath, "default"));
+        Assert.Empty(SchemaComparer.Compare(ModelSchema(), upgraded));
+    }
+
+    /// <summary>读某一桌的访问模式列（正名之后的名字）。</summary>
+    private static async Task<long?> ReadInviteOnlyAsync(string databasePath, string gameId)
+    {
+        await using var connection = new SqliteConnection($"Data Source={databasePath}");
+        await connection.OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = $"SELECT \"{SchemaMigrationCatalog.InviteOnlyColumn}\" FROM \"Games\" WHERE \"GameId\" = $gameId;";
+        command.Parameters.AddWithValue("$gameId", gameId);
+        var value = await command.ExecuteScalarAsync();
+        return value is null or DBNull ? null : Convert.ToInt64(value);
     }
 
     /// <summary>把真机老库的结构与那一桌灌进临时库（用例自己造老库，不依赖任何外部数据）。</summary>

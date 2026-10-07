@@ -1,9 +1,12 @@
-/**
- * 玩家端连接：只做 JoinSeat / SubmitResponse 与推送接收（D-0013 §5）。
+﻿/**
+ * 玩家端连接：只做凭邀请码入座 / SubmitResponse 与推送接收（D-0013 §5）。
  *
  * 与说书人网关刻意分开：玩家连接**没有**、也不该有获取整份说书人视图的能力。
- * 零信任（D-0012）：JoinSeat 下发的**连接级凭据**只存在内存里，每条命令随参数出示；
- * 掉线重连必须重新用票据加入并换新凭据——旧连接的凭据在新连接上无效。
+ * 零信任（D-0012）：加入下发的**连接级凭据**只存在内存里，每条命令随参数出示；
+ * 掉线重连必须重新凭邀请码加入并换新凭据——旧连接的凭据在新连接上无效。
+ *
+ * 入座必须登录（D-0037）："没有账号、只凭票据入座"那条路已整个删除，所以这里的加入只有
+ * `JoinByInviteCode(ticket, accountSession, known)` 一条，账号会话**不再是可空参数**。
  *
  * 同步（D-0010 / 架构 §5，票据 player-information-resync-race）：推送与快照都是**同一份
  * 带序号的事实**，由 `PlayerViewMerge` 按序号合并后整份交给界面——网关是玩家视图的**唯一写入者**。
@@ -18,6 +21,7 @@ import {
 } from '@microsoft/signalr'
 import type {
   DecisionOptionDto,
+  DepartureRulingDto,
   InformationResultDto,
   JugglerGuessDto,
   KlutzChoiceDto,
@@ -31,6 +35,7 @@ import type {
   ReconnectBundleDto,
   ReplayViewDto,
   PlayerViewDto,
+  TableAccessDto,
 } from '@/contracts/game'
 import {
   asArray,
@@ -47,6 +52,7 @@ import {
   normalizeOption,
   normalizePlayerLife,
   normalizeSeatNames,
+  normalizeTableAccess,
 } from '@/display/format'
 import { normalizeReplayView } from '@/display/replay'
 import { HUB_PATH, type GatewayState } from '@/services/connectionState'
@@ -60,6 +66,12 @@ export interface PlayerCallbacks {
   onRequestVoided: (voided: OperationRequestVoidedDto) => void
   /** 请求已被响应（玩家本人或说书人代填）：界面据此清掉当前请求；先于 onView 发出。 */
   onRequestAnswered: (answered: OperationRequestAnsweredDto) => void
+  /**
+   * 桌的访问模式变了（D-0037）：说书人一切换就推给该桌全部连接，界面据此**不刷新不重连**改读数。
+   *
+   * 可选：它不参与视图合并（访问模式是会话信息，不是游戏状态），只影响"本桌：公开桌 / 邀请制"那一行。
+   */
+  onTableAccess?: (access: TableAccessDto) => void
   onState: (state: GatewayState) => void
   onDiagnostic: (message: string) => void
 }
@@ -92,8 +104,8 @@ export class PlayerGateway {
   private readonly connection: HubConnection
   private readonly merge = new PlayerViewMerge()
   private ticket = ''
-  /** 账号会话（D-0021）：只存内存，用于认领席位 / 只凭账号重连；不落盘、不渲染。 */
-  private accountSession: string | null = null
+  /** 账号会话（D-0021）：只存内存，用于凭邀请码入座 / 重连；不落盘、不渲染。空串 = 还没加入过。 */
+  private accountSession = ''
   /** 连接级凭据：只在内存中；票据才进 TicketStore，凭据绝不落盘。 */
   private credentialValue = ''
 
@@ -170,6 +182,14 @@ export class PlayerGateway {
         this.callbacks.onView(this.merge.snapshot())
       }
     })
+    // 桌的访问模式变了（D-0037）：说书人一拨开关，在场的人当场看到——这条推送就是"不刷新不重连就变"。
+    // 它**不**进合并态：访问模式是会话信息，不是游戏状态；权威读取口仍是大厅列表（补全初始条件）。
+    this.connection.on('ReceiveTableAccessChanged', (payload: unknown) => {
+      const access = normalizeTableAccess(payload)
+      if (access !== null) {
+        this.callbacks.onTableAccess?.(access)
+      }
+    })
     this.connection.onreconnecting(() => callbacks.onState('reconnecting'))
     this.connection.onreconnected(() => {
       callbacks.onState('connected')
@@ -188,7 +208,12 @@ export class PlayerGateway {
   }
 
   /**
-   * 加入席位并取重连包（快照 + 从本客户端已知序号起的全部**可见**事件）。
+   * **凭邀请码入座**（D-0037）：出示席位票据与账号会话，取重连包
+   * （快照 + 从本客户端已知序号起的全部**可见**事件）。
+   *
+   * 入座必须登录：无账号的游客路径（旧的 `JoinSeat`）已随 D-0037 整个删除，所以
+   * `accountSession` 不再是可空参数——未登录时上游不该调到它（大厅与邀请码入口都先拦一道）。
+   * 邀请码仍是「桌标识:席位票据」，桌标识属于连接（`?gameId=`），票据是冒号之后那一段。
    *
    * 同步口径（架构 §5、D-0010）：**快照序号就是权威 watermark**——服务端在锁内读全量事件后
    * 按接收者投影，快照与序号同源，连续性由服务端保证。可见事件只用于带出窗口内的定向变化
@@ -201,7 +226,7 @@ export class PlayerGateway {
    * 真实的事件位置，拿它当已知序号会把缺口事件窗口截断（架构 §5）。
    * 零信任口径（D-0012）：加入结果里的连接级凭据是后续发命令的唯一凭据；拿不到就显式失败。
    */
-  async joinSeat(ticket: string, accountSession: string | null = null): Promise<PlayerViewDto> {
+  async joinSeat(ticket: string, accountSession: string): Promise<PlayerViewDto> {
     this.ticket = ticket
     this.accountSession = accountSession
     if (this.connection.state === HubConnectionState.Disconnected) {
@@ -211,16 +236,17 @@ export class PlayerGateway {
     this.callbacks.onState('connected')
     const known = this.merge.eventAt
     const joined = normalizeSeatJoin(
-      accountSession === null
-        ? await this.connection.invoke<unknown>('JoinSeat', ticket, known)
-        : await this.connection.invoke<unknown>('JoinSeatWithAccount', ticket, accountSession, known),
+      await this.connection.invoke<unknown>('JoinByInviteCode', ticket, accountSession, known),
     )
 
     return this.applyJoinResult(joined, known)
   }
 
   /**
-   * **自助入座**（D-0025）：登录后选一个空席位坐下，不需要任何票据。
+   * **自助入座**（D-0025 / D-0037）：登录后在大厅点**公开桌**的空席位坐下，不需要任何票据。
+   *
+   * 只对公开且未开局的桌开放：邀请制桌与已开局的桌都必须凭邀请码（{@link joinSeat}）——
+   * 迟到的旅行者由说书人发邀请码进来。本人已认领的那一席例外，服务端允许"回到座位"。
    * @param seat 要坐的席位号。
    * @param accountSession 账号会话（必须；未登录时服务端会拒绝）。
    */
@@ -332,6 +358,21 @@ export class PlayerGateway {
       this.requireCredential(),
       exileIndex,
       voted,
+      idempotencyKey,
+    )
+  }
+
+  /**
+   * 旅行者本人向说书人**申请离场**（D-0037）：玩家发起、说书人裁定。
+   *
+   * 命令面不带席位：申请者由服务端从凭据推导（D-0012）。这不是自助离开——批准与执行在
+   * 说书人的裁定命令里；本方法只登记一条待批申请（进事件流、可回放）。
+   */
+  async requestTravellerDeparture(note: string | null, idempotencyKey: string): Promise<unknown> {
+    return this.connection.invoke<unknown>(
+      'RequestTravellerDeparture',
+      this.requireCredential(),
+      note,
       idempotencyKey,
     )
   }
@@ -656,7 +697,7 @@ export function normalizeBundle(raw: unknown): NormalizedReconnectBundle {
 /**
  * 未知载荷 → 玩家视图；缺席位 / 阶段时返回 null（表达不了"这是谁的视图"就不采纳）。
  *
- * 与 `JoinSeat` 快照里的 view 同一份解析：个人视图推送（`ReceivePlayerViewChanged`）与快照
+ * 与凭邀请码入座的快照里那份 view 同一份解析：个人视图推送（`ReceivePlayerViewChanged`）与快照
  * 走同一个序号闸，解析口径也必须同一份（D-0014）。
  */
 export function normalizePlayerView(raw: unknown): PlayerViewDto | null {
@@ -692,7 +733,31 @@ export function normalizePlayerView(raw: unknown): PlayerViewDto | null {
     canAskSavantQuestion: asBoolean(view['canAskSavantQuestion']) ?? false,
     awaitingSavantQuestion: asBoolean(view['awaitingSavantQuestion']) ?? false,
     exhaustedAbilities: asTextArray(view['exhaustedAbilities']),
+    // 旅行者离场（D-0037）：三个权限 / 状态位坏字段退化成 false / null（宁可少显示，
+    // 也不把"不知道"说成"你已经离场"）；裁定结论整条不可识别时当没有裁定。
+    departed: asBoolean(view['departed']) ?? false,
+    canRequestDeparture: asBoolean(view['canRequestDeparture']) ?? false,
+    hasPendingDeparture: asBoolean(view['hasPendingDeparture']) ?? false,
+    pendingDepartureNote: asSizedText(view['pendingDepartureNote'], 512),
+    lastDepartureRuling: normalizeDepartureRuling(view['lastDepartureRuling']),
   }
+}
+
+/** 未知载荷 → 最近一次离场裁定；缺席位 / 结论 / 序号时返回 null（不编一条裁定出来）。 */
+export function normalizeDepartureRuling(raw: unknown): DepartureRulingDto | null {
+  if (raw === null || typeof raw !== 'object') {
+    return null
+  }
+
+  const ruling = raw as Record<string, unknown>
+  const seat = asCount(ruling['seat'])
+  const approved = asBoolean(ruling['approved'])
+  const sequence = asCount(ruling['sequence'])
+  if (seat === null || approved === null || sequence === null) {
+    return null
+  }
+
+  return { seat, approved, note: asSizedText(ruling['note'], 512), sequence }
 }
 
 /** 加入包里 view 不可识别时的降级形状（旧口径：席位 0 / 阶段空串），只作兜底、不编事实。 */
@@ -713,6 +778,11 @@ function emptyPlayerView(): PlayerViewDto {
     canAskSavantQuestion: false,
     awaitingSavantQuestion: false,
     exhaustedAbilities: [],
+    departed: false,
+    canRequestDeparture: false,
+    hasPendingDeparture: false,
+    pendingDepartureNote: null,
+    lastDepartureRuling: null,
   }
 }
 

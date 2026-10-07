@@ -114,4 +114,10 @@ public sealed record StorytellerViewDto
 
     /// <summary>「失去能力」提示标记（R-0040）：限次能力用尽后挂在角色标记旁；玩家投影里没有它。</summary>
     public LostAbilityMarkerDto[] LostAbilityMarkers { get; init; } = [];
+
+    /// <summary>
+    /// 待说书人裁定的旅行者离场申请，按提出顺序（D-0037）。
+    /// 说书人据此批准 / 驳回；玩家投影里没有它（每个席位只看到自己那条申请的状态）。
+    /// </summary>
+    public DepartureRequestDto[] DepartureRequests { get; init; } = [];
 }

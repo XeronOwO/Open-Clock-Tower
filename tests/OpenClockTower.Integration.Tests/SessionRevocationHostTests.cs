@@ -13,7 +13,7 @@ namespace OpenClockTower.Integration.Tests;
 /// <para>
 /// M1 把撤销做到了"下一次进门"：登出 / 改口令之后 <c>AccountHub.Resume</c> 与重新 Join 都会被拒。
 /// 但连接级凭据一旦签发就与账号会话脱钩——**已经进门的连接继续有效**，直到刷新 / 关页 / 断线。
-/// 本文件是那一刀的回归面：每条"允许"都配一条反方向（别的账号、别的会话、游客都不受牵连）。
+/// 本文件是那一刀的回归面：每条"允许"都配一条反方向（别的账号、别的会话、同桌的别人都不受牵连）。
 /// </para>
 /// <para>
 /// 判据统一取"命令是否还在凭据闸里被拒"：撤销前拒绝来自领域闸（返回 DTO 或别的文案），
@@ -111,20 +111,27 @@ public sealed class SessionRevocationHostTests
         Assert.NotNull(await secondDevice.InvokeAsync<StorytellerViewDto>("GetStorytellerView"));
     }
 
-    /// <summary>反方向（隔离）：游客席位只凭票据入座，没有账号可撤——账号登出不该碰到它。</summary>
+    /// <summary>
+    /// 反方向（隔离）：登出只打**那一条会话**建立的连接——同桌的另一个人（另一个账号）不受牵连。
+    /// </summary>
+    /// <remarks>
+    /// 这一条的前身是"游客席位不受账号撤销牵连"：入座必须登录后（D-0037）游客整个消失，
+    /// 每条连接背后都有账号会话可撤。判据换成同族的**跨账号隔离**判据，覆盖面没有缩小：
+    /// 撤 A 的会话不能碰到同桌 B 的连接。
+    /// </remarks>
     [Fact]
-    public async Task Logout_DoesNotTouchGuestConnection()
+    public async Task Logout_DoesNotTouchOtherPlayersConnection()
     {
         await using var host = new TestServerHost(seatCount: 3);
         var account = await host.ConnectAccountAsync();
         var alice = await TestServerHost.RegisterAccountAsync(account, "alice", "爱丽丝", "password-123");
         await using var aliceSeat = await host.ConnectSeatAsync(new SeatId(1), accountSession: alice.AccountSession);
-        await using var guest = await host.ConnectSeatAsync(new SeatId(2));
+        await using var bobSeat = await host.ConnectSeatAsync(new SeatId(2));
 
         Assert.True((await account.InvokeAsync<AccountDto>("Logout", alice.AccountSession)).Ok);
 
         Assert.True(await IsRejectedByConnectionGateAsync(aliceSeat, "g-a2-1-account-after"));
-        Assert.False(await IsRejectedByConnectionGateAsync(guest, "g-a2-1-guest-after"));
+        Assert.False(await IsRejectedByConnectionGateAsync(bobSeat, "g-a2-1-other-player-after"));
     }
 
     /// <summary>

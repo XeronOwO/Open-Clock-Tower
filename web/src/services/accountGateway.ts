@@ -27,7 +27,8 @@ export interface LobbyTable {
   seatCapacity: number
   takenSeatCount: number
   started: boolean
-  locked: boolean
+  /** 是不是**邀请制桌**（D-0037）：邀请制桌不接受自助入座，必须凭邀请码；大厅里仍然列出来。 */
+  inviteOnly: boolean
   /** 已被占用的席位号：界面据此把座位按钮置灰，玩家不必"点一下试试"。 */
   occupiedSeatNumbers: number[]
   /** 这张桌是不是**我**开的（D-0027）：服务端按会话算好，前端不自己拼事实。 */
@@ -80,7 +81,7 @@ export function normalizeLobbyTables(raw: unknown): LobbyTable[] {
       seatCapacity: number('seatCapacity'),
       takenSeatCount: number('takenSeatCount'),
       started: flag('started'),
-      locked: flag('locked'),
+      inviteOnly: flag('inviteOnly'),
       occupiedSeatNumbers: seatNumbers('occupiedSeatNumbers'),
       createdByMe: flag('createdByMe'),
       mySeatNumbers: seatNumbers('mySeatNumbers'),

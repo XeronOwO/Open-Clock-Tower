@@ -132,6 +132,12 @@ public sealed record StorytellerView
     public IReadOnlyList<SeatAnnotation> Annotations { get; init; } = [];
 
     /// <summary>
+    /// 待说书人裁定的旅行者离场申请，按提出顺序（D-0037）。
+    /// 说书人据此批准 / 驳回；玩家投影里没有它（每个席位只在自己的投影里看到**自己那条**申请）。
+    /// </summary>
+    public IReadOnlyList<TravellerDepartureRequest> DepartureRequests { get; init; } = [];
+
+    /// <summary>
     /// 本局公开的「席位 → 玩家名」映射（D-0021）：与玩家投影同一份会话读模型；
     /// 没有玩家名的席位（游客）不出现。姓名只作公开呈现，不参与任何判定。
     /// </summary>

@@ -363,11 +363,13 @@ public sealed class TakeoverAndRecoveryTests
             Assert.Contains("恢复失败", joinView.Health.Reason ?? string.Empty);
 
             // 玩家侧现状：房间不可读时加入**显式失败**，且错误信息中性——"数据丢了"只说书人可见。
+            // 入座必须登录（D-0037），所以探针也要先有一张身份：用宿主夹具签一个账号会话。
             var setup = await revived.GetSetupAsync();
             var seatTicket = setup.Seats.Single(item => item.Seat == new SeatId(1)).Ticket;
+            var probeAccount = await revived.SeatFixtureAccountAsync(new SeatId(1));
             var raw = await revived.ConnectAnonymousAsync();
             var joinFailure = await Assert.ThrowsAsync<HubException>(() =>
-                raw.InvokeAsync<SeatJoinDto>("JoinSeat", seatTicket, 0L));
+                raw.InvokeAsync<SeatJoinDto>("JoinByInviteCode", seatTicket, probeAccount.AccountSession, 0L));
             Assert.Contains("加入暂时失败", joinFailure.Message);
             Assert.False(joinFailure.Message.Contains("事件载荷", StringComparison.Ordinal));
             Assert.False(joinFailure.Message.Contains("降级", StringComparison.Ordinal));

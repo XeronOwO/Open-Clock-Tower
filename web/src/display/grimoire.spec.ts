@@ -65,6 +65,7 @@ function viewOf(overrides: Partial<StorytellerViewDto> = {}): StorytellerViewDto
     pendingProtection: null,
     annotations: [],
     lostAbilityMarkers: [],
+    departureRequests: [],
     ...overrides,
   }
 }

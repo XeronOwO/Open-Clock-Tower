@@ -32,7 +32,7 @@ public sealed class HubActorResolver
         var validation = Validate(credential, connectionId, method);
         if (!validation.Accepted)
         {
-            throw new HubException("连接凭据无效：请先用票据加入（D-0012）");
+            throw new HubException("连接凭据无效：请先加入这一桌（D-0012）");
         }
 
         return validation.Kind == ActorKind.Player && validation.Seat is { } seat

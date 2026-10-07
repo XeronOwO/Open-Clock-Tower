@@ -12,9 +12,16 @@ namespace OpenClockTower.Integration.Tests;
 /// </summary>
 public sealed class AccountHostTests
 {
-    /// <summary>注册 → 认领 → 双端看到同一份「席位 → 玩家名」；游客席位没有名字。</summary>
+    /// <summary>
+    /// 注册 → 认领 → 双端看到同一份「席位 → 玩家名」；**没被任何人认领的席位不出现**。
+    /// </summary>
+    /// <remarks>
+    /// 这一条的前身是"游客席位没有名字"：入座必须登录之后（D-0037）游客整个消失，
+    /// 每个已入座的席位都必然有名字。判据换成同族的**覆盖**判据，覆盖面没有缩小：
+    /// 已认领的两席都出现在公开映射里，没人坐的第 3 席不出现。
+    /// </remarks>
     [Fact]
-    public async Task RegisterClaim_ShowsNameToEveryone_AndGuestStaysNameless()
+    public async Task RegisterClaim_ShowsNameToEveryone_AndUnclaimedSeatStaysNameless()
     {
         await using var host = new TestServerHost(seatCount: 3);
         var account = await host.ConnectAccountAsync();
@@ -27,16 +34,18 @@ public sealed class AccountHostTests
         var aliceBundle = host.Bundles[new SeatId(1)];
         Assert.Contains(aliceBundle.View.SeatNames, item => item.Seat == 1 && item.DisplayName == "爱丽丝");
 
-        // 同桌的游客（只凭票据）也收到同一份公开映射；他自己的席位没有名字。
-        await using var guest = await host.ConnectSeatAsync(new SeatId(2));
-        var guestBundle = host.Bundles[new SeatId(2)];
-        Assert.Contains(guestBundle.View.SeatNames, item => item.Seat == 1 && item.DisplayName == "爱丽丝");
-        Assert.DoesNotContain(guestBundle.View.SeatNames, item => item.Seat == 2);
+        // 同桌的另一名玩家（自己的账号）也收到同一份公开映射：两个人的名字都在，且各自看得到对方。
+        await using var bob = await host.ConnectSeatAsync(new SeatId(2));
+        var bobBundle = host.Bundles[new SeatId(2)];
+        Assert.Contains(bobBundle.View.SeatNames, item => item.Seat == 1 && item.DisplayName == "爱丽丝");
+        Assert.Contains(bobBundle.View.SeatNames, item => item.Seat == 2 && item.DisplayName == "夹具玩家2");
+        Assert.DoesNotContain(bobBundle.View.SeatNames, item => item.Seat == 3);
 
         // 说书人看到同一份（D-0021 矩阵 M1 行 2）。
         await using var storyteller = await host.ConnectStorytellerAsync();
         var view = await storyteller.InvokeAsync<StorytellerViewDto>("GetStorytellerView");
         Assert.Contains(view.SeatNames, item => item.Seat == 1 && item.DisplayName == "爱丽丝");
+        Assert.Contains(view.SeatNames, item => item.Seat == 2 && item.DisplayName == "夹具玩家2");
     }
 
     /// <summary>一席一账号、一账号一席：抢别人的席位 / 一个账号占两席都被显式拒绝。</summary>
@@ -233,9 +242,9 @@ public sealed class AccountHostTests
         await using var aliceSeat = await host.ConnectSeatAsync(new SeatId(1), accountSession: alice.AccountSession);
         await using var storyteller = await host.ConnectStorytellerAsync();
 
-        // 玩家连接不能解除绑定（身份闸）。
-        await using var guest = await host.ConnectSeatAsync(new SeatId(2));
-        await Assert.ThrowsAsync<HubException>(() => guest.InvokeAsync<bool>("ReleaseSeatBinding", 1));
+        // 玩家连接不能解除绑定（身份闸）——用**另一个玩家的连接**判，与是不是游客无关（D-0037 之后没有游客）。
+        await using var otherPlayer = await host.ConnectSeatAsync(new SeatId(2));
+        await Assert.ThrowsAsync<HubException>(() => otherPlayer.InvokeAsync<bool>("ReleaseSeatBinding", 1));
 
         Assert.True(await storyteller.InvokeAsync<bool>("ReleaseSeatBinding", 1));
         var view = await storyteller.InvokeAsync<StorytellerViewDto>("GetStorytellerView");

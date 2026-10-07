@@ -1,10 +1,10 @@
 namespace OpenClockTower.Contracts;
 
 /// <summary>
-/// 大厅里的一桌（D-0025）：玩家挑桌时需要知道的东西。
+/// 大厅里的一桌（D-0025 / D-0037）：玩家挑桌时需要知道的东西。
 /// </summary>
 /// <remarks>
-/// 刻意只含公开信息：桌名、人数、是否已开局、是否锁定。
+/// 刻意只含公开信息：桌名、人数、是否已开局、是不是邀请制。
 /// 票据、席位归属、局内状态一律不下发——那是入座之后的事（D-0012）。
 /// </remarks>
 public sealed record LobbyTableDto
@@ -30,8 +30,15 @@ public sealed record LobbyTableDto
     /// <summary>是否已开局（已经开过第一个夜晚或白天）。</summary>
     public required bool Started { get; init; }
 
-    /// <summary>是否锁定（锁定后不再接受新的入座）。</summary>
-    public required bool Locked { get; init; }
+    /// <summary>
+    /// 是不是**邀请制桌**（D-0037）：邀请制桌不接受自助入座，必须凭邀请码。
+    /// </summary>
+    /// <remarks>
+    /// 它是说书人那个开关的原始事实。**已开局的桌同样点不动**——那是另一条闸
+    /// （见 <see cref="Started"/>）：一局开始后自助入座就关了，迟到的旅行者由说书人发邀请码进来。
+    /// 大厅据此把两种情形合成一句「邀请制」并置灰座位按钮；服务端另有闸，前端只是不显示。
+    /// </remarks>
+    public required bool InviteOnly { get; init; }
 
     /// <summary>
     /// 已被占用的席位号（升序）。

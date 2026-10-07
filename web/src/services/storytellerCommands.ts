@@ -103,6 +103,22 @@ export function localFailure(message: string, kind: 'Rejected' | 'Failed' = 'Rej
   }
 }
 
+/**
+ * 本地合成的成功回执：**非命令方法**（服务端回的是值，不是 `CommandResultDto`）也要把结果
+ * 交给同一套展示与刷新路径。与 {@link localFailure} 放在一处是为了同一个理由：字段只在这一处补。
+ */
+export function localSuccess(message: string): CommandOutcome {
+  return {
+    ok: true,
+    kind: 'Accepted',
+    sequence: null,
+    message,
+    rebuild: null,
+    issuedSeat: null,
+    issuedSeatTicket: null,
+  }
+}
+
 /** 发一条命令（凭据永远随方法参数先出示）并规范化回执；传输层异常不吞，收敛成 Transport 回执。 */export async function invokeCommand(
   sender: CommandSender,
   method: string,
@@ -447,6 +463,47 @@ export function removeTraveller(
   idempotencyKey: string,
 ): Promise<CommandOutcome> {
   return invokeCommand(sender, 'RemoveTraveller', seat, note, idempotencyKey)
+}
+
+/**
+ * 裁定一条**离场申请**（D-0037）：`approved` = true 批准（该席位随即离场），false 驳回。
+ *
+ * 离场改成「玩家发起 → 说书人裁定」之后，这条是唯一能执行离场的地方之一
+ * （另一条是 {@link removeTraveller}：说书人**始终保留直接移出**的权限）。
+ * 两者的离场合法性判定在服务端是同一份；这里只转达，不替说书人拍板（D-0002）。
+ */
+export function resolveTravellerDeparture(
+  sender: CommandSender,
+  seat: number,
+  approved: boolean,
+  note: string | null,
+  idempotencyKey: string,
+): Promise<CommandOutcome> {
+  return invokeCommand(sender, 'ResolveTravellerDeparture', seat, approved, note, idempotencyKey)
+}
+
+/**
+ * 切换本桌的**访问模式**（D-0037）：true = 邀请制（自助入座关闭，要凭邀请码）。
+ *
+ * 它**不是命令**：服务端回的是新值本身（`bool`），不进事件流（访问模式是会话信息），
+ * 所以不能走 `invokeCommand`——那个入口解析的是命令回执，形状对不上。
+ * 拿不到确认（没凭据 / 传输异常 / 回执不是布尔）时返回 null：界面据此提示"没确认"，
+ * 绝不自作主张把界面上的读数改掉。
+ */
+export async function setTableInviteOnly(
+  sender: CommandSender,
+  inviteOnly: boolean,
+): Promise<boolean | null> {
+  if (sender.credential.length === 0) {
+    return null
+  }
+
+  try {
+    const reply = await sender.connection.invoke<unknown>('SetTableInviteOnly', sender.credential, inviteOnly)
+    return asBoolean(reply)
+  } catch {
+    return null
+  }
 }
 
 /** 裁定某席位「今天的死亡保护」（R-0048；怪咖：有趣 → 受保护）。只在流放达线待裁定时受理。 */

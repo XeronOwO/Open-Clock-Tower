@@ -54,10 +54,9 @@ public sealed class AuthorizationSurfaceHostTests
     /// </remarks>
     private static readonly MatrixRow[] Matrix =
     [
-        // —— 凭据签发路径：这四个方法不收连接凭据，"谁是谁"由票据与账号会话决定，不在本表驱动 ——
-        NotDriven("JoinSeat", "票据入座：票据面由 SeatBindingTests / AccountHostTests 覆盖，锁桌语义见 G-A4-2"),
-        NotDriven("JoinSeatWithAccount", "票据 + 账号会话入座：AccountHostTests.Join_WithInvalidAccountSession_IsRejected"),
-        NotDriven("JoinTable", "自助入座（必须登录）：SelfServiceJoinHostTests 五条反方向用例"),
+        // —— 凭据签发路径：这四个方法不收连接凭据，"谁是谁"由邀请码与账号会话决定，不在本表驱动 ——
+        NotDriven("JoinByInviteCode", "凭邀请码入座（必须登录，D-0037）：AccountHostTests.Join_WithInvalidAccountSession_IsRejected + SelfServiceJoinHostTests.InviteOnlyTable_RejectsSelfService_ButLetsInviteCodeHolderIn"),
+        NotDriven("JoinTable", "自助入座（必须登录 + 公开桌 + 未开局）：SelfServiceJoinHostTests 八条正反用例"),
         NotDriven("JoinStorytellerWithAccount", "主持台认开桌账号：MultiTableHostIsolationTests / LobbyHostTests"),
 
         // —— 玩家专属命令：说书人调必须被身份闸拒（反向），玩家调只要求"过了身份闸" ——
@@ -70,6 +69,7 @@ public sealed class AuthorizationSurfaceHostTests
         PlayerOnly("CastVote", [1, true, "g-a4-6-cast-vote"]),
         PlayerOnly("ProposeExile", [2, "g-a4-6-propose-exile"], "★ 流放提议（含死者，R-0044）"),
         PlayerOnly("CastExileVote", [1, true, "g-a4-6-cast-exile-vote"], "★ 流放表决举手"),
+        PlayerOnly("RequestTravellerDeparture", [null, "g-a4-6-request-departure"], "★ 离场申请：席位由凭据推导，玩家只能替自己申请"),
 
         // —— 说书人专属命令：玩家调必须被身份闸拒 ——
         StorytellerOnly("VoidRequest", ["req-not-current", "StorytellerForce", null, "g-a4-6-void-request"], "★ 强制作废"),
@@ -85,6 +85,7 @@ public sealed class AuthorizationSurfaceHostTests
         HostOnly("AssignCharacters", [Array.Empty<SeatCharacterAssignmentDto>(), "g-a4-6-assign-characters"], "★ 开局分配"),
         StorytellerOnly("JoinTraveller", [99, "barista", "Good", null, "g-a4-6-join-traveller"]),
         StorytellerOnly("RemoveTraveller", [99, null, "g-a4-6-remove-traveller"]),
+        StorytellerOnly("ResolveTravellerDeparture", [99, true, null, "g-a4-6-resolve-departure"], "★ 裁定离场申请：批准即执行座位离场"),
         HostOnly("StartNight", [99, "Original", "g-a4-6-start-night"], "★ 开夜"),
         HostOnly("StartDay", ["g-a4-6-start-day"]),
         StorytellerOnly("StartVoteSweep", [1, 3000, 1000, "g-a4-6-start-vote-sweep"], "★ 开始收票"),
@@ -105,7 +106,7 @@ public sealed class AuthorizationSurfaceHostTests
 
         // —— 桌务与查询：不走四道闸，Hub 层直接要求说书人身份（玩家被拒时抛 HubException）——
         StorytellerQuery("ReleaseSeatBinding", [99], "无界面入口，见 G-A4-7"),
-        StorytellerQuery("SetTableLock", [true], "无界面入口，见 G-A4-7；锁桌不拦票据路径见 G-A4-2"),
+        StorytellerQuery("SetTableInviteOnly", [true], "访问模式开关（D-0037）：切换后推给该桌全部连接"),
         StorytellerQuery("ProposeSetup", [null, null]),
         StorytellerQuery("GetStorytellerView", []),
 

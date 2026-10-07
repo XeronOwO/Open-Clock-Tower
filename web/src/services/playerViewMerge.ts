@@ -2,7 +2,7 @@
  * 玩家视图合并：把「快照 + 带序号的在线推送」折成一份单调不回退的视图。
  *
  * 背景（票据 `docs/backlog/todo/player-information-resync-race.md`）：
- * 玩家视图此前有两个写入者——在线推送的追加、`JoinSeat` 快照的整体覆盖——且推送不带序号，
+ * 玩家视图此前有两个写入者——在线推送的追加、加入快照的整体覆盖——且推送不带序号，
  * 客户端无法判断推送与快照的先后。服务端在锁内建快照（序号 N）后，N+1 的推送可能先到、
  * 随后被 N 快照覆盖，信息静默丢失（可恢复，但属于静默丢失）。
  *
@@ -17,13 +17,14 @@
  *   - 字段序号是"这份状态被表达时的序号"，可以来自推送，用于决定字段取舍；
  *   - `eventAt` 是**事件窗口水位**，只由快照推进，用于向服务端索要缺口事件。推送**不**推高它：
  *     白天投影这类"读时状态"的序号取自读取时的全局 head，可能领先于本席真实的事件位置，
- *     拿它当 `JoinSeat` 的已知序号会把缺口事件窗口整段截断（架构 §5 的"快照 + 从该序号起的全部事件"）。
+ *     拿它当加入命令的已知序号会把缺口事件窗口整段截断（架构 §5 的"快照 + 从该序号起的全部事件"）。
  *
  * 快照序号低于本地已知**不是坏数据**：那是"推送先到、响应后到"的正常竞态
  * （`applyBundle` 只对事件越界 / 倒退 / 重复报诊断）；而快照序号低于**事件窗口水位**意味着服务端
  * 事件流回退（数据丢失 / 从旧备份恢复）——那要显式重建合并态，见 `reset()`。
  */
 import type {
+  DepartureRulingDto,
   GameOutcomeDto,
   InformationResultDto,
   KlutzChoiceDto,
@@ -80,6 +81,17 @@ export class PlayerViewMerge {
   private awaitingSavantQuestionSequence = -1
   private exhaustedAbilities: string[] = []
   private exhaustedAbilitiesSequence = -1
+  /** 旅行者离场（D-0037）：本人已离场、能不能申请、待批理由与最近一次裁定，随快照按序号更新。 */
+  private departed = false
+  private departedSequence = -1
+  private canRequestDeparture = false
+  private canRequestDepartureSequence = -1
+  private hasPendingDeparture = false
+  private hasPendingDepartureSequence = -1
+  private pendingDepartureNote: string | null = null
+  private pendingDepartureNoteSequence = -1
+  private lastDepartureRuling: DepartureRulingDto | null = null
+  private lastDepartureRulingSequence = -1
   /** 已收到的信息结果：序号 → 条目（同一序号只可能有一条事实，天然去重）。 */
   private readonly information = new Map<number, InformationResultDto>()
   /** 事件窗口水位：只由快照推进（见文件头"两个水位"）。 */
@@ -183,6 +195,37 @@ export class PlayerViewMerge {
       changed = true
     }
 
+    // 离场申请的四个位（D-0037）：与权限位同款按序号取新——`null`（还没有裁定 / 没有待批申请）
+    // 也是合法值，照实合并；迟到的旧快照不会把"已批准"覆盖回"还在等"。
+    if (sequence > this.departedSequence) {
+      this.departed = view.departed
+      this.departedSequence = sequence
+      changed = true
+    }
+
+    if (sequence > this.canRequestDepartureSequence) {
+      this.canRequestDeparture = view.canRequestDeparture
+      this.canRequestDepartureSequence = sequence
+      changed = true
+    }
+
+    if (sequence > this.hasPendingDepartureSequence) {
+      this.hasPendingDeparture = view.hasPendingDeparture
+      this.hasPendingDepartureSequence = sequence
+    }
+
+    if (sequence > this.pendingDepartureNoteSequence) {
+      this.pendingDepartureNote = view.pendingDepartureNote
+      this.pendingDepartureNoteSequence = sequence
+      changed = true
+    }
+
+    if (sequence > this.lastDepartureRulingSequence) {
+      this.lastDepartureRuling = view.lastDepartureRuling
+      this.lastDepartureRulingSequence = sequence
+      changed = true
+    }
+
     for (const item of view.informationResults) {
       if (!this.information.has(item.sequence)) {
         this.information.set(item.sequence, item)
@@ -226,6 +269,16 @@ export class PlayerViewMerge {
     this.awaitingSavantQuestionSequence = -1
     this.exhaustedAbilities = []
     this.exhaustedAbilitiesSequence = -1
+    this.departed = false
+    this.departedSequence = -1
+    this.canRequestDeparture = false
+    this.canRequestDepartureSequence = -1
+    this.hasPendingDeparture = false
+    this.hasPendingDepartureSequence = -1
+    this.pendingDepartureNote = null
+    this.pendingDepartureNoteSequence = -1
+    this.lastDepartureRuling = null
+    this.lastDepartureRulingSequence = -1
     this.information.clear()
     this.eventSequence = 0
   }
@@ -326,6 +379,11 @@ export class PlayerViewMerge {
       canAskSavantQuestion: this.canAskSavantQuestion,
       awaitingSavantQuestion: this.awaitingSavantQuestion,
       exhaustedAbilities: [...this.exhaustedAbilities],
+      departed: this.departed,
+      canRequestDeparture: this.canRequestDeparture,
+      hasPendingDeparture: this.hasPendingDeparture,
+      pendingDepartureNote: this.pendingDepartureNote,
+      lastDepartureRuling: this.lastDepartureRuling,
     }
   }
 }

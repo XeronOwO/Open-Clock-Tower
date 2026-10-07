@@ -5,18 +5,21 @@
  * 在真界面上一路跑得通吗？**以及它的反面：伪造 / 跨账号 / 二次认领能不能被挡住？
  *
  * 开场（D-0027：票据已整个退场，说书人身份改由**开桌账号**认定）：说书人 = 注册夹具账号 →
- * 开一桌（4 席）→ 用这个账号进主持台；席位票据随开桌取（仍直读库的 `Games.SeatsJson`），
+ * 开一桌（5 席）→ 用这个账号进主持台；席位票据随开桌取（仍直读库的 `Games.SeatsJson`），
  * 说书人身份不再从库里掏凭据。
  *
- * 场景（4 席：1 / 2 / 3 是场景席，4 号留给"线级探针"专用，浏览器不坐）：
+ * 场景（5 席：1 / 2 / 3 是场景席，4 号留给"线级探针"专用（浏览器不坐，它也有自己的夹具账号），
+ * 5 号**空着**——D-0037 之后每一席都要一个账号，"同一账号认领第二席"那条反例需要一个没人坐的席位）：
  *   1) 玩家 A 在门上注册夹具账号 → 拿一次性恢复码 → 从大厅挑空席位认领 1 号（账号凭据接住，后面还要拿它立负向用例）；
  *   2) 玩家 B 注册夹具账号 → 认领 2 号：两席看到同一份公开席位名映射（「1 号 · A 的玩家名」+「2 号 · B 的玩家名」）；
  *   3) 玩家 C 注册夹具账号 → 凭**邀请码**（说书人面板上的「桌标识:席位票据」）坐 3 号：席位票据输入口已随票据退场，
- *      界面只剩「有邀请码？」这一条；C 有账号，所以席位标签显示玩家名（「3 号」回退只留给没有账号的席位）；
+ *      界面只剩「有邀请码？」这一条；C 有账号，所以席位标签显示玩家名（"没有名字就退回席位号"那一形态
+ *      本装置已无真机席位可取——每一席都有账号——由 `seatDisplayOf` 的单元测试覆盖）；
  *   4) A 改名「爱丽丝二世」：断言自己、B 的同桌名单、说书人魔典席位牌三处同步；
  *   5) 说书人上报 1 号死亡 → 复盘步骤文案用「1 号 · 爱丽丝二世」（界面级的"复盘文案不再是席位号"证据）；
- *   6) 负向：伪造账号会话 / 跨账号认领 / 同一账号认领第二席都必须被 Hub 显式拒绝，绝不静默降级成游客；
- *   7) 线级探针（第 4 席的真 SignalR 连接）记录改名推送的**序号与载荷**：把"服务端推没推、序号是多少"
+ *   6) 负向：伪造账号会话 / 跨账号认领 / 同一账号认领第二席 / **未登录的连接只凭票据**都必须被 Hub 显式拒绝，
+ *      绝不静默放行（D-0037：入座必须登录，没有账号的连接根本入不了座）；
+ *   7) 线级探针（第 4 席的真 SignalR 连接，也用自己的夹具账号入座）记录改名推送的**序号与载荷**：把"服务端推没推、序号是多少"
  *      从代码推演变成实测——这条推送与入座快照**同序号**（认领 / 改名是会话信息，不产生事件），
  *      所以玩家端按字段合并整视图时必须用 `sequence >=`（`web/src/services/playerViewMerge.ts`）。
  *      E30 首跑用 `>` 时第 4 步那三条断言真红过（推送到了、带新名、却被当旧数据丢弃），修好后全绿；
@@ -41,7 +44,7 @@
  *   node tools/verify-accounts.mjs --port 5414 --vite-port 5294           # 自定端口
  *
  * 段落（前缀执行 + 判定过滤：`--only` 与 `--from` 互斥，前面的段是必要前置、照跑但只有选中段计入判定）：
- *   boot · tickets · join-a · join-b · guest · rename · replay · drawer-names
+ *   boot · tickets · join-a · join-b · invite · rename · replay · drawer-names
  *   · negative · account-panel · onboarding · layout
  *
  * 外部耦合（换机器先核对 web/AGENTS.md §3.1）：宿主编译产物路径、SQLite 表 Games 的
@@ -57,7 +60,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { DatabaseSync } from 'node:sqlite'
 import { readAttributeBounded, readTextBounded } from './lib/bounded-text.mjs'
-import { openFreshTab, openTableAndHost, returnToSeat, seatByAccount, seatByInviteCode } from './lib/entrance.mjs'
+import { openFreshTab, openTableAndHost, registerProbeAccount, returnToSeat, seatByAccount, seatByInviteCode } from './lib/entrance.mjs'
 import { describeProfile, ensureServerArtifacts, extractProfileFlags, resolveProfile } from './lib/verify-profile.mjs'
 import { createChecker, createSectionRunner } from './lib/verify-sections.mjs'
 
@@ -78,11 +81,11 @@ const SECTIONS = [
   { id: 'tickets', title: '起 Vite（席位票据随开桌之后取）' },
   { id: 'join-a', title: '说书人开桌进主持台（账号身份）+ 玩家 A：注册 → 从大厅挑席认领 1 号' },
   { id: 'join-b', title: '玩家 B：注册 → 从大厅挑席认领 2 号（公开映射两席一致）' },
-  { id: 'guest', title: '玩家 C：注册账号 + 凭邀请码坐 3 号（游客票据路径）+ 线级探针入座' },
+  { id: 'invite', title: '玩家 C：注册账号 + 凭邀请码坐 3 号（邀请码路径）+ 线级探针入座' },
   { id: 'rename', title: '改名：A 自己 / B 同桌 / 说书人魔典三处同步 + 线级序号取证' },
   { id: 'replay', title: '复盘文案口径：上报 1 号死亡 → 步骤文案 + 刷新即自动回席（M1：不重新登录、不点席位）' },
   { id: 'drawer-names', title: '抽屉面姓名口径：状态账 / 最近状态变化 / 开局分配 / 席内注记' },
-  { id: 'negative', title: '负向：伪造 / 跨账号 / 二次认领 + 会话信息落库' },
+  { id: 'negative', title: '负向：未登录 / 伪造账号会话 / 跨账号 / 二次认领 + 会话信息落库' },
   { id: 'account-panel', title: '收尾：账号面板一次性恢复码' },
   { id: 'onboarding', title: '收尾：说明入口（悬停 / 点按 / Esc）' },
   { id: 'layout', title: '版面量度（内容高 + 整页截图）+ 控制台零错误' },
@@ -153,14 +156,16 @@ const seatNamePushLog = () =>
     .join(' ⏎ ')
 
 /**
- * 四个席位：1 = 账号 A，2 = 账号 B，3 = 账号 C（凭邀请码走游客票据那条路），
- * 4 = 线级探针专用（不坐浏览器，避免抢席位）。
+ * 五个席位：1 = 账号 A，2 = 账号 B，3 = 账号 C（凭邀请码入座），
+ * 4 = 线级探针专用（不坐浏览器，避免抢席位；它也有**自己的夹具账号**），
+ * 5 = **空着**：D-0037 之后每一席都要一个账号，"同一账号认领第二席"那条反例只能拿没人坐的席位来试。
  */
-const SEAT_COUNT = 4
+const SEAT_COUNT = 5
 const SEAT_A = 1
 const SEAT_B = 2
-const SEAT_GUEST = 3
+const SEAT_INVITE = 3
 const SEAT_PROBE = 4
+const SEAT_SPARE = 5
 
 const RENAMED = '爱丽丝二世'
 
@@ -177,7 +182,7 @@ const PUSH_METHODS = [
   'ReceiveSeatNamesChanged',
 ]
 
-/** 定向推送（只该到当事玩家）：游客"拿不到他人私有推送"只针对这些；阶段 / 席位名是公开信息。 */
+/** 定向推送（只该到当事玩家）："未登录 / 被拒的连接拿不到他人私有推送"只针对这些；阶段 / 席位名是公开信息。 */
 const TARGETED_METHODS = [
   'ReceiveOperationRequest',
   'ReceiveOperationRequestVoided',
@@ -294,50 +299,51 @@ async function main() {
   await bobPage.getByTestId('player-roster').waitFor({ timeout: 15_000 })
   await screenshot(bobPage, 'accounts-02-player-b')
 
-  if (!runner.begin('guest')) return
+  if (!runner.begin('invite')) return
   const carolPage = await newPage(browser, { width: 900, height: 1200 }, consoleErrors)
   // C：席位票据输入口已随票据退场，界面上只剩「有邀请码？」这一条（登录之后才看得见），
-  // 所以先注册账号、再凭说书人面板那一串「桌标识:席位票据」入座——D-0025 / D-0027 保留的游客票据路径。
+  // 所以先注册账号、再凭说书人面板那一串「桌标识:席位票据」入座——D-0025 / D-0037 保留的邀请码路径。
   const carolAccount = await seatByInviteCode(carolPage, {
     frontUrl: viteUrl,
-    code: `${table.gameId}:${seatTickets[SEAT_GUEST - 1].ticket}`,
+    code: `${table.gameId}:${seatTickets[SEAT_INVITE - 1].ticket}`,
     suffix: 'accounts-c',
   })
   await waitForLocatorContains(carolPage.getByTestId('player-roster'), `${SEAT_B} 号 · ${bobAccount.displayName}`, 30_000)
-  // 口径：认领席位的是**账号**，所以 C 的席位标签是「3 号 · 玩家名」；「3 号」回退只留给没有账号的席位
-  // （游客票据直连，比如本装置第 4 席的线级探针）。回退口径本身由 `seatDisplayOf` 的单元测试覆盖
+  // 口径：认领席位的是**账号**，所以 C 的席位标签是「3 号 · 玩家名」。
+  // "这一席没有名字就退回「N 号」"那一形态现在**没有真机席位可取**（D-0037 之后每一席都要登录，
+  // 包括线级探针那一席），所以它由 `seatDisplayOf` 的单元测试覆盖
   // （`web/src/display/format.spec.ts`：这一席没有名字 → 「N 号」），本装置不再有"没账号的浏览器席位"可断言。
   const carolSeatText = await waitForLocatorContains(
     carolPage.getByTestId('player-seat'),
-    `${SEAT_GUEST} 号 · ${carolAccount.displayName}`,
+    `${SEAT_INVITE} 号 · ${carolAccount.displayName}`,
     30_000,
   )
   check(
-    `C 凭邀请码入座后席位标签为「${SEAT_GUEST} 号 · ${carolAccount.displayName}」（有账号即显示玩家名）`,
-    carolSeatText.includes(`${SEAT_GUEST} 号 · ${carolAccount.displayName}`),
+    `C 凭邀请码入座后席位标签为「${SEAT_INVITE} 号 · ${carolAccount.displayName}」（有账号即显示玩家名）`,
+    carolSeatText.includes(`${SEAT_INVITE} 号 · ${carolAccount.displayName}`),
     carolSeatText,
   )
   // 同桌名单 = 有名字的席位 ∪ 自己（PlayerPanel.vue 的 roster）：自己那一行是名字 +「（你）」，
   // 这里断言整行文本，等于同时盯住"有名字"与"不重复列出"两件事。
   const carolRosterRow = compact(
     await carolPage
-      .locator(`[data-testid="player-roster"] li[data-seat="${SEAT_GUEST}"]`)
+      .locator(`[data-testid="player-roster"] li[data-seat="${SEAT_INVITE}"]`)
       .innerText()
       .catch(() => ''),
   )
   check(
-    `C 的同桌名单里 ${SEAT_GUEST} 号那一行是「${SEAT_GUEST} 号 · ${carolAccount.displayName}（你）」`,
-    carolRosterRow === `${SEAT_GUEST} 号 · ${carolAccount.displayName}（你）`,
-    `同桌 ${SEAT_GUEST} 号行「${carolRosterRow}」｜整份名单「${compact(await carolPage.getByTestId('player-roster').innerText())}」`,
+    `C 的同桌名单里 ${SEAT_INVITE} 号那一行是「${SEAT_INVITE} 号 · ${carolAccount.displayName}（你）」`,
+    carolRosterRow === `${SEAT_INVITE} 号 · ${carolAccount.displayName}（你）`,
+    `同桌 ${SEAT_INVITE} 号行「${carolRosterRow}」｜整份名单「${compact(await carolPage.getByTestId('player-roster').innerText())}」`,
   )
   check(
-    `C 的同桌名单里没有第二个 ${SEAT_GUEST} 号（有名席位与「自己」去重，同一席只出现一次）`,
-    (await carolPage.locator(`[data-testid="player-roster"] li[data-seat="${SEAT_GUEST}"]`).count()) === 1,
-    `li[data-seat="${SEAT_GUEST}"] 条数 ${await carolPage.locator(`[data-testid="player-roster"] li[data-seat="${SEAT_GUEST}"]`).count()}`,
+    `C 的同桌名单里没有第二个 ${SEAT_INVITE} 号（有名席位与「自己」去重，同一席只出现一次）`,
+    (await carolPage.locator(`[data-testid="player-roster"] li[data-seat="${SEAT_INVITE}"]`).count()) === 1,
+    `li[data-seat="${SEAT_INVITE}"] 条数 ${await carolPage.locator(`[data-testid="player-roster"] li[data-seat="${SEAT_INVITE}"]`).count()}`,
   )
   // 诊断区只在有内容时渲染，所以这里必须**非等待**读取：`innerText()` 在元素缺失时会白等满
   // Playwright 默认的 30s 超时（2026-10-04 实测：光是这一处就把本装置从 ~7s 拖到 ~37s，
-  // 分段耗时把 guest 段钉在 30.3s 才暴露出来）。缺失 = 没有诊断，不是失败。
+  // 分段耗时把 invite 段钉在 30.3s 才暴露出来）。缺失 = 没有诊断，不是失败。
   const diagnosticsBox = carolPage.locator('[data-testid="player-diagnostics"]')
   const carolDiagnostics =
     (await diagnosticsBox.count()) === 0 ? '' : compact(await readTextBounded(diagnosticsBox.first()))
@@ -347,9 +353,10 @@ async function main() {
     carolDiagnostics || '无诊断',
   )
   await carolPage.getByTestId('player-seat').waitFor({ timeout: 15_000 })
-  await screenshot(carolPage, 'accounts-03-player-guest-c')
+  await screenshot(carolPage, 'accounts-03-player-c-invite')
 
-  // 线级探针：一条真 SignalR 连接坐在**专属的第 4 席**（游客票据），逐条记录推送的序号与载荷。
+  // 线级探针：一条真 SignalR 连接坐在**专属的第 4 席**（凭邀请码 + 它自己的夹具账号：入座必须登录，D-0037），
+  // 逐条记录推送的序号与载荷。
   // ⚠ 每席位只保留一条连接（ConnectionRegistry.IssueForSeat）：探针若和某个浏览器页抢同一席，两边会互相
   // 顶替（E30 实测：探针一条推送都收不到，且宿主日志里的"推送=3/3"只统计**发送尝试**、不代表送达）——
   // 所以这里给它一个浏览器不用的席位，测的才是"服务端到底推没推、序号是多少"。
@@ -525,17 +532,27 @@ async function main() {
   probe = await connectHub(hubUrl)
   const forgedTicketA = seatTickets[SEAT_A - 1].ticket
 
+  // D-0037 的**反方向判据**（取代原先"没有账号、只凭票据入座"那条正向用例：那条路已整个删除）：
+  // 同一条裸连接，空账号会话与伪造账号会话都必须被 Hub 显式拒绝，且**文案分开钉**——
+  // 「没带会话」与「会话无效」是两种拒绝，任何一条静默放行都意味着"未登录也能入座"又回来了。
+  const noSession = await expectRejected(() => probe.invoke('JoinByInviteCode', forgedTicketA, '', 0))
+  check(
+    '不带账号会话调 JoinByInviteCode 被拒（文案含「入座需要先登录账号」：未登录的连接根本入不了座）',
+    noSession.ok && noSession.message.includes('入座需要先登录账号'),
+    noSession.message,
+  )
+
   const forged = await expectRejected(() =>
-    probe.invoke('JoinSeatWithAccount', forgedTicketA, '伪造账号会话-随机串-不该被认', 0),
+    probe.invoke('JoinByInviteCode', forgedTicketA, '伪造账号会话-随机串-不该被认', 0),
   )
   check(
-    '伪造账号会话调 JoinSeatWithAccount 被拒（收到 Hub 错误，不得静默按游客加入）',
-    forged.ok && forged.message.length > 0,
+    '伪造账号会话调 JoinByInviteCode 被拒（文案含「账号会话无效或已过期」，不得静默按未登录放行）',
+    forged.ok && forged.message.includes('账号会话无效或已过期'),
     forged.message,
   )
 
   const crossAccount = await expectRejected(() =>
-    probe.invoke('JoinSeatWithAccount', forgedTicketA, bobLogin.accountSession, 0),
+    probe.invoke('JoinByInviteCode', forgedTicketA, bobLogin.accountSession, 0),
   )
   check(
     'B 的账号会话 + A 的席位票据被拒（席位已被别的账号认领）',
@@ -544,10 +561,11 @@ async function main() {
   )
 
   // "一账号一席"要用**还没有绑定的席位**来试：席位已被别人认领时，认领服务先撞上"席位已被其他账号认领"
-  // （SeatBindingService：先查席位、再查这个账号），那条判据是上一个用例的事。4 号席是线级探针用**游客票据**
-  // 连的（不落绑定），所以它是这里唯一还空着的席位——用它才测得到"同一账号第二席"。
+  // （SeatBindingService：先查席位、再查这个账号），那条判据是上一个用例的事。D-0037 之后 1–4 号席
+  // 各有一个账号坐着（4 号是线级探针自己的夹具账号），所以本装置特意多开一席（5 号）**空着**——
+  // 拿它才测得到"同一账号第二席"（拿 1–4 号只会撞上"席位已被其他账号认领"，测的是另一条判据）。
   const secondSeat = await expectRejected(() =>
-    probe.invoke('JoinSeatWithAccount', seatTickets[SEAT_PROBE - 1].ticket, bobLogin.accountSession, 0),
+    probe.invoke('JoinByInviteCode', seatTickets[SEAT_SPARE - 1].ticket, bobLogin.accountSession, 0),
   )
   check(
     '同一账号认领第二席被拒（一账号一席）',
@@ -556,6 +574,7 @@ async function main() {
   )
 
   // 被拒的连接不得因此拿到任何身份：它连"我进了哪个席位"都答不出来（没有凭据可用）。
+  // 这是上面两条入座拒绝的**收尾判据**：拒绝之后这条连接仍然两手空空。
   const probeAfterReject = await expectRejected(() =>
     probe.invoke('SubmitResponse', '被拒连接凭空捏造的凭据', 'forged-request', 'seat:1', 'acc-forged-1', 0),
   )
@@ -566,11 +585,17 @@ async function main() {
   )
 
   const persisted = readAccountState(databasePath)
-  const expectedUsers = [table.username, aliceAccount.username, bobAccount.username, carolAccount.username].sort()
+  const expectedUsers = [
+    table.username,
+    aliceAccount.username,
+    bobAccount.username,
+    carolAccount.username,
+    seatProbe.account.username,
+  ].sort()
   check(
-    '绑定是会话信息而非事件：Users 落库说书人 + A / B / C 四个账号、SeatBindings 只有 1 / 2 / 3 号（说书人不坐席）',
+    '绑定是会话信息而非事件：Users 落库说书人 + A / B / C + 探针五个账号、SeatBindings 只有 1 / 2 / 3 / 4 号（说书人不坐席，空着的 5 号不落绑定）',
     persisted.users.join(',') === expectedUsers.join(',')
-      && persisted.bindings.join(',') === `${SEAT_A},${SEAT_B},${SEAT_GUEST}`,
+      && persisted.bindings.join(',') === `${SEAT_A},${SEAT_B},${SEAT_INVITE},${SEAT_PROBE}`,
     `Users=${persisted.users.join('|')}｜SeatBindings 席位=${persisted.bindings.join('|')}`,
   )
 
@@ -729,8 +754,13 @@ function rosterItem(page, seat) {
 /**
  * 线级探针：一条真 SignalR 席位连接，逐条记录推送的**序号与载荷**。
  * 用途是把"服务端到底推没推、推的序号是多少"从代码推演变成实测（E30 改名链路取证）。
+ *
+ * 入座必须登录（D-0037）：探针先注册**自己的夹具账号**，再拿账号会话 + 邀请码入座——
+ * 一账号一局只坐一席，所以这一席不能借用别的账号（借用会被"席位已经由其他账号认领"挡住）。
+ * 账号一并返回：负向段要拿它核对落库的 Users / SeatBindings。
  */
 async function joinSeatProbe(ticket) {
+  const account = await registerProbeAccount(signalR, accountHubUrl, `accounts-${SEAT_PROBE}`)
   const connection = await connectHub(hubUrl)
   const inbox = []
   for (const method of PUSH_METHODS) {
@@ -740,10 +770,10 @@ async function joinSeatProbe(ticket) {
     })
   }
 
-  const joined = await connection.invoke('JoinSeat', ticket, 0)
+  const joined = await connection.invoke('JoinByInviteCode', ticket, account.accountSession, 0)
   const snapshotSequence = Number(joined.bundle.sequence)
-  inbox.push({ method: 'JoinSeat', sequence: snapshotSequence, payload: joined })
-  return { connection, credential: joined.credential, snapshotSequence, inbox }
+  inbox.push({ method: 'JoinByInviteCode', sequence: snapshotSequence, payload: joined })
+  return { connection, credential: joined.credential, snapshotSequence, inbox, account }
 }
 
 /** 轮询探针收件箱直到出现满足条件的消息；超时返回 null（不猜、不吞）。 */
@@ -778,7 +808,7 @@ function recoveryCodeOf(text) {
   return (index >= 0 ? text.slice(index + 1) : text).replace(/\s+/g, '')
 }
 
-/** 账号 / 席位绑定的落库形状（会话信息；绑定只由**认领**产生，游客票据入座不落绑定）。 */
+/** 账号 / 席位绑定的落库形状（会话信息；绑定只由**认领**产生——认领要登录，D-0037 之后没有"无账号席位"）。 */
 function readAccountState(databasePathToRead) {
   const database = new DatabaseSync(databasePathToRead, { readOnly: true })
   try {

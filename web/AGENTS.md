@@ -21,13 +21,13 @@ Vue 3 + TypeScript + Vite 的单页应用，**两套视图同一个构建**，�
 GameServer__SeatCount=5 GameServer__DatabasePath=/tmp/oct.db \
   ASPNETCORE_URLS=http://localhost:5080 dotnet run --project src/OpenClockTower.Server
 
-# 2) 起前端（浏览器只连 Vite，/hub 由它代理到 5080）
+# 2) 起前端（/hub 由 Vite 代理到 5080）
 cd web && npm install && npm run dev     # http://localhost:5273
 ```
 
-账号是唯一的身份证（D-0027）：没登录时每个面只有一张登录卡（`features/account/AccountGate.vue`）；
-登录后会话由 `services/accountSession.ts` 的模块级单例持有，三个面共用（换面不重登），票据已整个退场；
-刷新不掉登录、关标签页即清（D-0029，边界见第 4 节）。
+账号是唯一的身份证（D-0027 / D-0037）：没登录只有一张登录卡（`features/account/AccountGate.vue`）；会话是
+`services/accountSession.ts` 的单例、三面共用，刷新不掉登录、关标签页即清（D-0029 / §4）；**入座必须登录**：
+公开桌点空席位坐下，邀请制 / 已开局的桌凭邀请码（`桌标识:席位票据`）。
 
 ## 3. 命令
 
@@ -37,14 +37,14 @@ cd web && npm install && npm run dev     # http://localhost:5273
 | `npm run typecheck` | `vue-tsc --noEmit` |
 | `npm run test` | vitest（纯函数与防御性渲染） |
 | `npm run build` | 类型检查 + 生产构建 |
-| `npm run gate` | 上面三样串起来跑 |
+| `npm run gate` | 三样串起来跑 |
 
 `web/` 不进 `OpenClockTower.slnx`（不引入 Node 到 .NET 构建链）。改动前端后，
 除 `dotnet build/test/format` 外必须补跑 `npm run gate`。
 
 ## 3.1 验收批次取证（说书人 + 玩家多客户端）
 
-装置清单（二十一个装置 / 夹具 / 档位 / 分段 / 退出码）在 `docs/acceptance/devices.md`；本页只留入口与外部耦合。
+装置清单（二十四个装置 / 夹具 / 档位 / 分段 / 退出码）见 `docs/acceptance/devices.md`；本页只留入口与耦合。
 
 ```bash
 node tools/verify-storyteller-panel.mjs        # 主装置：退出码 0 = 全部断言通过
@@ -52,7 +52,7 @@ node tools/verify-storyteller-panel.mjs        # 主装置：退出码 0 = 全�
 
 真宿主 + 真 Vite + 真 Chromium，按 `--seats` 每席开**独立浏览器上下文**（同一 SPA 的 `/play`）；
 截图与日志进 `artifacts/web/`（gitignored，可重生成）。默认迭代档（0.3s/槽、不落盘截图），
-**正式取证必须显式** `--quota 2 --screenshots-all`（一批一次、只对冻结版本）。
+**正式取证须显式** `--quota 2 --screenshots-all`（一批一次、只对冻结版本）。
 
 **外部耦合（换机器前先核对；逐条清单与失败表现见 `docs/acceptance/devices.md` §3）**：
 宿主编译产物路径 · SQLite `Games.SeatsJson` 列形状（读法收在 `tools/lib/entrance.mjs`）·
@@ -68,13 +68,13 @@ Node ≥ 22.5 + `npx playwright install chromium` · `--seats` 与 `--assign` �
   坏字段只降级该行，不许白屏。
 - **选项文案只换称呼、不丢语境**：`optionDisplayOf` 对 `seat:` 选项把「N 号玩家」换成「N 号 · 名字」，
   服务端预览的后半句（如「（已死亡）：…」）原样保留——那是玩家做选择的判据。
-- **凭据的落盘边界**（D-0012 / D-0029）：连接级凭据只存网关私有字段（内存），每条命令经
-  `CommandSender`（连接 + 凭据）发出，不渲染、不进日志；**账号会话凭据**持久化在 `sessionStorage`，
+- **凭据的落盘边界**（D-0012 / D-0029）：连接级凭据只存网关私有字段（内存），每条命令都带连接 + 凭据
+  （`CommandSender`），不渲染、不进日志；**账号会话凭据**持久化在 `sessionStorage`，
   唯一出口 `services/browserSession.ts`（启动经 `AccountHub.Resume` 确认后回到原处，关标签页即清）。
   掉线重连重新 Join 换新凭据——旧连接的凭据在新连接上无效。
 - **本地状态只允许是"呈现态"**：选中项、折叠、诊断消息；任何游戏状态一律来自视图推送，
   禁止在前端算出服务端没给的状态。
-- **同步**：掉线重连后整份重取视图（`GetStorytellerView` / `JoinSeat`），不做本地增量补齐、不加延迟窗口。
+- **同步**：掉线重连后整份重取视图（`GetStorytellerView` / `JoinByInviteCode`），不做本地增量、不加延迟窗口。
 - **文案**：角色与枚举的中文名在 `display/labels.ts`，来源 `docs/standard/terminology.md` §9；未知取值原样回显。
 - **控制字符清洗不用正则**：ESLint `no-control-regex` 会拦下 `[\u0000-\u001f]` 这类字面量
   （2026-10-03 实测报错）；逐字符判定 `codePoint < 0x20 || === 0x7f`，见 `display/format.ts`。

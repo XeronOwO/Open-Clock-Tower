@@ -33,9 +33,10 @@ public sealed class TestServerHost : IAsyncDisposable
     private readonly bool _deleteDatabaseOnDispose;
     private readonly List<HubConnection> _connections = [];
     private readonly Dictionary<GameId, FixtureAccount> _owners = [];
+    private FixtureAccounts? _fixtures;
 
-    /// <summary>夹具房主账号的口令（只活在夹具里；重启场景重新签发会话时沿用它）。</summary>
-    private const string FixtureOwnerPassword = "fixture-owner-pw";
+    /// <summary>夹具账号的签发台（入座必须登录，D-0037；按席位缓存账号）。</summary>
+    private FixtureAccounts Fixtures => _fixtures ??= new FixtureAccounts(_factory.Services);
 
     /// <summary>启动一个测试宿主。</summary>
     /// <param name="slotQuotaSeconds">槽位配额（秒）。</param>
@@ -138,7 +139,14 @@ public sealed class TestServerHost : IAsyncDisposable
         await _factory.Services.GetRequiredService<IGameCatalog>().FindAsync(GameId, CancellationToken.None)
         ?? throw new InvalidOperationException("测试宿主尚未播种会话票据");
 
-    /// <summary>以某席位加入（可挂收件回调）；返回带凭据的客户端。带 <paramref name="accountSession"/> 时同时认领席位（D-0021）。</summary>
+    /// <summary>
+    /// 以某席位加入（可挂收件回调）；返回带凭据的客户端。
+    /// </summary>
+    /// <param name="seat">席位号。</param>
+    /// <param name="accountSession">
+    /// 账号会话；null = 就地注册一个夹具账号（**入座必须登录**，D-0037：游客那条路径已整个删除）。
+    /// 同一席位的夹具账号会复用——重复调用同席（重连类用例）不会撞登录名。
+    /// </param>
     public async Task<GameClient> ConnectSeatAsync(
         SeatId seat,
         Action<OperationRequestDto>? onRequest = null,
@@ -190,25 +198,59 @@ public sealed class TestServerHost : IAsyncDisposable
         }
 
         await connection.StartAsync();
-        var joined = accountSession is null
-            ? await connection.InvokeCoreAsync<SeatJoinDto>("JoinSeat", [ticket, lastSequence])
-            : await connection.InvokeCoreAsync<SeatJoinDto>(
-                "JoinSeatWithAccount",
-                [ticket, accountSession, lastSequence]);
+        var session = accountSession ?? (await SeatFixtureAccountAsync(seat)).AccountSession;
+        var joined = await connection.InvokeCoreAsync<SeatJoinDto>(
+            "JoinByInviteCode",
+            [ticket, session, lastSequence]);
         Bundles[seat] = joined.Bundle;
         _connections.Add(connection);
         return new GameClient(connection, joined.Credential);
     }
 
-    /// <summary>只凭账号加入（D-0021）：不带票据，服务端按绑定解出席位（"认领之后的重连"路径）。</summary>
+    /// <summary>
+    /// 这一席的**夹具账号**（就地注册并缓存；入座必须登录，D-0037）。签发台在 <see cref="FixtureAccounts"/>。
+    /// </summary>
+    public Task<FixtureAccount> SeatFixtureAccountAsync(SeatId seat) => Fixtures.ForSeatAsync(seat);
+
+    /// <summary>只凭账号加入（D-0021 / D-0037）：不带票据，服务端按绑定解出席位（"认领之后的重连"路径）。</summary>
     public async Task<GameClient> ConnectSeatByAccountAsync(string accountSession, long lastSequence = 0)
     {
         var connection = CreateConnection();
         await connection.StartAsync();
         var joined = await connection.InvokeCoreAsync<SeatJoinDto>(
-            "JoinSeatWithAccount",
+            "JoinByInviteCode",
             [string.Empty, accountSession, lastSequence]);
         Bundles[new SeatId(joined.Bundle.View.Seat)] = joined.Bundle;
+        _connections.Add(connection);
+        return new GameClient(connection, joined.Credential);
+    }
+
+    /// <summary>
+    /// 以某席位凭邀请码加入**指定的那一桌**（多桌用例用；可挂访问模式推送回调，D-0037）。
+    /// </summary>
+    /// <param name="gameId">哪一桌（连接串里的 <c>?gameId=</c>）。</param>
+    /// <param name="seat">席位号。</param>
+    /// <param name="onAccess">访问模式推送回调（null = 不挂）。</param>
+    public async Task<GameClient> ConnectSeatToTableAsync(
+        GameId gameId,
+        SeatId seat,
+        Action<TableAccessDto>? onAccess = null)
+    {
+        var setup = await _factory.Services.GetRequiredService<IGameCatalog>().FindAsync(gameId, CancellationToken.None)
+            ?? throw new InvalidOperationException($"这张桌还没有会话信息：{gameId.Value}");
+        var ticket = setup.Seats.Single(item => item.Seat == seat).Ticket;
+        var connection = CreateConnection($"/hub/game?gameId={Uri.EscapeDataString(gameId.Value)}");
+        if (onAccess is not null)
+        {
+            connection.On<TableAccessDto>("ReceiveTableAccessChanged", onAccess);
+        }
+
+        await connection.StartAsync();
+        var session = (await SeatFixtureAccountAsync(seat)).AccountSession;
+        var joined = await connection.InvokeCoreAsync<SeatJoinDto>(
+            "JoinByInviteCode",
+            [ticket, session, 0L]);
+        Bundles[seat] = joined.Bundle;
         _connections.Add(connection);
         return new GameClient(connection, joined.Credential);
     }
@@ -285,26 +327,10 @@ public sealed class TestServerHost : IAsyncDisposable
     /// </summary>
     /// <remarks>
     /// 夹具只借这条路径造身份，不绕过任何产品判定；进主持台仍然要过真实的
-    /// <c>JoinStorytellerWithAccount</c>（房主才进得去）。
+    /// <c>JoinStorytellerWithAccount</c>（房主才进得去）。签发台本身在 <see cref="FixtureAccounts"/>。
     /// </remarks>
-    public async Task<FixtureAccount> RegisterAccountAsync(string username, string displayName, string password)
-    {
-        var accounts = _factory.Services.GetRequiredService<AccountService>();
-        var sessions = _factory.Services.GetRequiredService<AccountSessionRegistry>();
-
-        var outcome = await accounts.RegisterAsync(username, displayName, password, CancellationToken.None);
-        if (!outcome.Accepted || outcome.Account is null)
-        {
-            throw new InvalidOperationException($"夹具账号注册失败：{outcome.Code} {outcome.Message}");
-        }
-
-        return new FixtureAccount(
-            outcome.Account.Id,
-            outcome.Account.Username,
-            outcome.Account.DisplayName,
-            password,
-            sessions.Issue(outcome.Account.Id).Value);
-    }
+    public Task<FixtureAccount> RegisterAccountAsync(string username, string displayName, string password) =>
+        Fixtures.RegisterAsync(username, displayName, password);
 
     /// <summary>
     /// 新建一张桌并把它记在一个**夹具账号**名下（D-0027：桌归属开桌账号）。
@@ -319,23 +345,14 @@ public sealed class TestServerHost : IAsyncDisposable
         var catalog = _factory.Services.GetRequiredService<IGameCatalog>();
         if (await catalog.FindAsync(gameId, CancellationToken.None) is { CreatedByAccountId: { } ownerId } existing)
         {
-            var accounts = _factory.Services.GetRequiredService<IAccountStore>();
-            var sessions = _factory.Services.GetRequiredService<AccountSessionRegistry>();
-            var account = await accounts.FindByIdAsync(ownerId, CancellationToken.None)
-                ?? throw new InvalidOperationException($"这一桌的房主账号不存在：{ownerId.Value}");
-            _owners[gameId] = new FixtureAccount(
-                account.Id,
-                account.Username,
-                account.DisplayName,
-                FixtureOwnerPassword,
-                sessions.Issue(account.Id).Value);
+            _owners[gameId] = await Fixtures.ReissueSessionAsync(ownerId);
             return existing;
         }
 
         var owner = await RegisterAccountAsync(
             $"fixture-owner-{gameId.Value}",
             $"房主-{gameId.Value}",
-            FixtureOwnerPassword);
+            FixtureAccounts.FixtureOwnerPassword);
         return await RegisterTableAsync(gameId, seatCount, owner);
     }
 

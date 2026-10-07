@@ -105,6 +105,10 @@ public sealed class PlayerOwnCharacterHostTests
             $"席位 1 没有收到带本人角色的视图推送（最后：{own.LastOrDefault()?.Character ?? "无"}）");
 
         // 说书人上报换角 + 换阵营：1 号变成邪恶的贤者。
+        // 先清掉观察队列：入座 = 认领席位，服务端会推一条"席位名变了"的整视图（D-0021），
+        // 那一条发生在开局分配**之前**、角色本来就是空的——它不属于这条用例问的"换角会不会泄露"。
+        // 不清的话反方向断言会把"还没分配角色"误判成"换角串台"（本轮实测踩到）。
+        bystander.Clear();
         var reported = await storyteller.InvokeAsync<CommandResultDto>(
             "ReportSeatState",
             1,

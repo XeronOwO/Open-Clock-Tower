@@ -38,4 +38,11 @@ public interface IGameClient
     /// <param name="sequence">这份视图被表达时的序号（与快照同源，客户端按它合并）。</param>
     /// <param name="view">该席位的完整投影（不含任何他人字段）。</param>
     Task ReceivePlayerViewChanged(long sequence, PlayerViewDto view);
+
+    /// <summary>
+    /// 服务端推送"这一桌的访问模式变了"（D-0037）：说书人切换公开 / 邀请制后，
+    /// **该桌全部连接**（说书人 + 在场玩家）各收一条，界面不刷新不重连就跟着变。
+    /// </summary>
+    /// <param name="access">桌标识 + 新的访问模式（只有这两项，不含任何席位信息）。</param>
+    Task ReceiveTableAccessChanged(TableAccessDto access);
 }

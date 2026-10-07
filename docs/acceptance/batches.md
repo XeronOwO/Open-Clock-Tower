@@ -1856,8 +1856,7 @@ publish 目录）已按纪律移入回收站；MSBuild 复用节点已关。
 **留下的**：备份目录里 4 份备份（含升级前那份，定时器每天续上）。
 
 **残余与边界（本批明确不做）**：
-① **回滚演练**仍未做（G-A7-5 的"演练半"）：本批又给它添了一条实例（v2 是**可逆**的加列迁移——
-回滚只需把版本号改回去，部署文档 §9.3 已写明），但"换回旧包 + 旧库真跑一遍"没有旧版发布包可演；
+① **回滚演练**仍未做（G-A7-5 的"演练半"）：本批又给它添了一条实例（v2 是**可逆**的加列迁移——回滚只需把版本号改回去，部署文档 §9.3 已写明），但"换回旧包 + 旧库真跑一遍"没有旧版发布包可演；
 ② `StepPacerHostedService` 仍是**逐桌**心跳（每 200 ms 遍历在册桌）——G-A5-5 原文里与回收同批的那一条，
 它现在的兜底是桌数上限 + 回收（在册桌数不再无限增长），真想改成"按需心跳"是一次跨层改动；
 ③ 重连包缓存（G-A5-6 缓存半边）· CI（G-A7-1）· 健康检查语义（G-A7-2）· 日志轮转（G-A7-3）·
@@ -1866,6 +1865,122 @@ publish 目录）已按纪律移入回收站；MSBuild 复用节点已关。
 ⑤ 本批**未做**渗透测试与并发压测（审计页 §5 的"没覆盖"清单不变）。
 
 **本批票据**：`in-progress/web-hardening-programme.md`（**M5 第三刀完成**；票继续挂 in-progress 做 M5 剩余与 M6）。
+
+## 批次 E60（2026-10-07，D-0037：入座必须登录 · 公开 / 邀请制 · 开局闸 · 旅行者离场申请）
+
+**本批票据**：`docs/backlog/in-progress/table-access-and-traveller-departure.md`——需求方 2026-10-07 当面定调的
+七条口径。本批**不在加固计划内**（M5 剩余与 M6 已按需求方决定停办），但它顺带把审计 **G-A4-2** 结案：
+"锁桌不拦票据入座"按新的访问模型不是缺陷，而是**邀请制**的语义。
+
+**这一批解决什么**：
+
+1. **入座有两条入口**：一条是"没有账号、只凭席位票据入座"（`JoinSeat`），一条是登录后从大厅点空席位。
+   第二条做出来之后，第一条就成了**第二套免登录路径**——登录系统不再是唯一入口。本批把第一条整个删除。
+2. **"邀请制"当年只做了一半**：说书人的"锁桌"效果是"自助入座被拒、持票据者照进"，那正是邀请制的语义，
+   但名字与语义对不上（审计因此把它记成缺陷）。本批正名为**公开桌 / 邀请制桌**两种并列形态（库结构 v3）。
+3. **真正缺的闸在"开局之后"，而且只拦在前端**：自助入座从不判已开局，前端不显示按钮就成了唯一的闸——
+   这正是"前端不显示按钮不算鉴权"的反面案例。本批把闸补到服务端。
+4. **旅行者离场只有"说书人单方面移出"**：玩家想走没有那条"我申请、你裁定"的路。本批补上，
+   申请与裁定各一条事件进事件流、可回放。
+
+**本批取证构成**：
+
+| 取证 | 命令 | 结果 |
+|---|---|---|
+| **入座闸与访问模式（集成）** | `dotnet test tests/OpenClockTower.Integration.Tests --filter …SelfServiceJoinHostTests` | **8 条**：公开桌自助入座 · 同账号跨桌两席 · 占别人的席被拒 · 一账号一席 · 席位越界 · **未登录被拒**（空会话 / 伪造会话两种文案）· **邀请制桌：自助被拒而持码者照进**（G-A4-2 的正向判据）· **已开局：新人被拒、本人那一席照回、邀请码路径不受影响**（直接调 Hub，不看界面） |
+| **访问模式推送（集成）** | 同上 `--filter …TableAccessHostTests` | **5 条**：切换后**说书人与在场玩家各自收到**推送（再切回公开桌两端各再收到一条 false）· 别的桌一条都收不到（带阳性对照）· 重复设同一个值**不发空包** · 玩家改不了（说书人闸）· 大厅仍然列出邀请制桌并带标记 |
+| **离场申请端到端（集成）** | 同上 `--filter …TravellerDepartureHostTests` | **9 条**：申请后说书人视图与本人视图都出现等待态 · 重复申请被拒 · **非旅行者申请被拒** · 驳回（不离场 + 本人看得到结论 + 结论随快照下发）· 批准（席位真的离场、事件流三条**按序**、本人 `Departed`）· **无申请时裁定被拒** · 直接移出顺手结清申请 · **离场席位原票仍能重连**（R-0044 第 6 条不动）· 申请与裁定各成一个复盘步骤 |
+| **老库迁移 v3（集成）** | 同上 `--filter …LegacyDatabase_V3Migration` | 老库（真机 `sqlite_master` 抄本）升到 v3：`IsLocked` **没了**、`IsInviteOnly` 在、**值原样保留**（`IsLocked=1` → `IsInviteOnly=1`）、结构核对通过（`SchemaComparer.Compare` 空） |
+| **既有判据重指（6 处）** | 同上三个工程 | 每一处都换成**同族判据**而不是删掉：`AccountHostTests`（游客无名字 → **未认领的席位**不出名字）· `SessionRevocationHostTests`（游客不受撤销牵连 → **同桌另一个人**不受牵连）· `ConnectionRegistryTests`（同上，单测层）· `SelfServiceJoinHostTests.LockedTable_…` → `InviteOnlyTable_…` · `verify-accounts.mjs` 的 `guest` 段 → `invite` 段（未登录入座被拒）· `verify-zero-trust.mjs` 的"无账号第三方入座成功" → 未登录连接的两条拒绝判据 |
+| **门禁** | `dotnet test tests/OpenClockTower.NormativeGates.Tests` | **41 项全绿**：新增契约（`TableAccessDto` / `DepartureRequestDto` / `DepartureRulingDto`）**逐个登记进玩家投影扫描面或说书人专属清单**（不表态即红）· 单文件 600 行（`GameHub` 599 / `GameSession` 591 / `GameHub` 与 `TestServerHost` 各拆出一块）· 命令文本登记表收录两条新命令的自由文本 · 复盘覆盖率（两条新事件被 `TravellerReplayPresenter` 认领） |
+| **前端** | `cd web; npm run gate` | typecheck + eslint 无输出 · vitest **275 项**（新增：只走 `JoinByInviteCode` 的入座唯一路径 · 访问模式推送的交付与坏载荷 · 离场申请参数顺序 · 四个新视图位的归一化 · 访问模式开关与裁定区的 SSR 渲染锚点）· 生产构建通过 |
+| **先红后绿（11 处）** | 见下方"先红后绿"一节 | 逐处改坏源码复跑再还原 |
+| **界面装置（新建）** | `node tools/verify-table-access.mjs --build` | 见下方真机读数① |
+| **真机读数②：迁移 v3** | 部署（§7 流程）后看启动日志与 `db-report` | 见下方真机读数② |
+| 三条门禁（冻结版） | `dotnet format` / `dotnet build` / `dotnet test OpenClockTower.slnx` / `cd web; npm run gate` | format 就地通过 · 构建 **0 警告 0 错误** · **1464 项全绿**（门禁 41 / 内核 501 / 规则 494 / 集成 428）· 前端 gate 全绿 |
+
+**判据重指的边界（为什么不删判据）**：游客消失之后，原来那几条用例的**前提**没了，但每一条问的问题
+都还有意义（"没认领的席位不下发名字""撤销只打该打的那一条""没人管的桌不该被误删"），所以逐条换了同族的
+说法，覆盖面没有缩小。删掉它们才是真的丢证据。
+
+**先红后绿（12 处，逐处改坏源码复跑再还原）**：
+
+| # | 改坏什么 | 哪条红（实测） |
+|---|---|---|
+| 1 | `SeatJoinCoordinator.JoinBySeatAsync` 不再拒邀请制桌 | `InviteOnlyTable_RejectsNewJoin_ButKeepsExistingPlayers` → 失败 1 |
+| 2 | 同处不再拒已开局的桌 | `StartedTable_RejectsSelfServiceJoin_ButKeepsMyOwnSeat` → 失败 1 |
+| 3 | 同处把"本人那一席"的豁免一并去掉（一律拒） | 同上（第 ② 段：本人回座被误拒）→ 失败 1 |
+| 4 | `HubTableAdmin.SetInviteOnlyAsync` 不推访问模式 | `SwitchingToInviteOnly_PushesToStorytellerAndEverySeatedPlayer` → 失败 1 |
+| 5 | `LobbyService.ListAsync` 把 `InviteOnly` 写死 false | `Lobby_StillListsInviteOnlyTables_WithTheFlag` → 失败 1 |
+| 6 | `TravellerCommandDispatch.Resolve` 不再要求"有待批申请" | `Resolve_WithoutPendingRequest_IsRejected` → 失败 1 |
+| 7 | `TravellerCommandDispatch.Remove` 直接移出不结清待批申请 | `DirectRemoval_ClosesThePendingRequest` → 失败 1（折叠侧显式失败） |
+| 8 | v3 迁移改成空操作 | `LegacyDatabase_V3Migration_RenamesAccessModeColumnAndKeepsItsValue` → 失败 1 |
+| 9 | `TravellerGate` 让玩家也能裁定离场申请 | `PlayerConnection_MatchesAuthorizationMatrix` → 失败 1（【反向·玩家】） |
+| 10 | `CommandTextLimits` 撤销 `RequestTravellerDepartureCommand` 的登记 | 命令文本登记表门禁 → 失败 1 / 3 |
+| 11 | `PlayerProjectionLeakGateTests` 撤销 `DepartureRequestDto` 的登记 | 契约扫描面覆盖率门禁 → 失败 1 |
+| 12 | 界面装置首跑咬出的**真缺陷**：本人视图用"理由非 null"表示"有待批申请"，不写理由时整块离场区消失 | 新增用例 `Request_WithoutNote_StillShowsThePendingState` **先红**（失败 1）→ 拆出 `HasPendingDeparture` 后转绿（集成 429 全绿、装置 37 → **38 项**） |
+
+**一处过程教训（本机已记进 `AGENTS.local.md`）**：先红后绿"改坏→还原"如果只用 `Copy-Item` 还原，
+文件时间戳被保留、MSBuild 判定"输出最新"而跳过重建——后续全量测试会拿**改坏那一版**的产物跑出
+一大片假红（实测 429 条里红 279 条，报的是"缺 `IsInviteOnly`"）。**还原后必须 `dotnet build --no-incremental`**。
+
+**装置总跑（冻结版本，13 个受影响装置 + 主装置）**：
+
+| 装置 | 读数 |
+|---|---|
+| 主装置（**取证档** `--quota 2 --screenshots-all`） | **310 项全过**（178.6s；构建 + 5 席浏览器 + 三夜 + 涡流 + 重建 + 重连） |
+| `verify-table-access`（**本批新建**，38 项） | 全过（10.6s，默认档） |
+| `verify-accounts` | 全过 42 项（8.0s） |
+| `verify-zero-trust` | 全过 53 项（8.0s） |
+| `verify-entrance-usability` | 全过 34 项（12.6s） |
+| `verify-witch` / `verify-butcher` / `verify-mathematician` / `verify-madness` / `verify-winloss` | 全过 28 / 40 / 38 / 28 / 29 项（12.1 / 24.0 / 22.1 / 11.7 / 17.0s） |
+| `verify-bone-collector-juggler` / `verify-retention-day-info` | 全过 52 / 78 项（45.4 / 65.9s） |
+| `verify-pit-hag` | **红 1 / 34**（**本批之前就红**，见下） |
+| `verify-character-change` | **红 2 / 80**（**本批之前就红**，见下） |
+
+**装置总跑咬出的两处历史红（本批之前就有，已立票，不在本批修）**：
+
+- `verify-pit-hag`：`第二维渲染 25 个角色选项` 实测 **30**（25 名非旅行者 + 5 名旅行者，旅行者早就在花名册里）。
+  归因：在**本批之前的 HEAD `8ba2776`** 上跑同一装置，同样 `失败 1 / 34`、同一读数。
+  → 票 `docs/backlog/todo/pit-hag-character-option-count-stale.md`。
+- `verify-character-change`：复盘逐步回放走到最后一步（52/52）都找不到「恶魔击杀」与「换手」两个标记。
+  归因：同一个 HEAD 上跑，同样 `失败 2 / 80`、同一步数、同一序号（本批工作树上连跑两次也一样）。
+  → 票 `docs/backlog/todo/character-change-replay-marker-missing.md`（可能是某批让复盘真的少了这两步——
+  那要按产品回归查；也已写明"装置走法过期"是另一种可能）。
+
+**真机读数①：部署与迁移 v3**（2026-10-07，走部署文档 §7 全流程）：
+
+- 升级前先备一份（§7 第 0 步）：`backup` 命令落到备份目录，`轮转：保留最近 7 份，本次删除 0 份`；
+- 停服 → 清 `wwwroot/assets/*` → 解包 → `chmod -R u=rwX,go=rX` + 入口 755 → `chown -R root:clocktower`
+  与 `data/` 归运行用户 + `chmod 600 data/oct.db*` → 起服；
+- 启动日志：**`应用迁移 v3：访问模式正名：Games.IsLocked 改名为 IsInviteOnly（D-0037；一句 RENAME COLUMN，可逆）`** ·
+  `结构核对：表=6 · 索引=2 · 自愈=0 处 · 保留差异=0 处` ·
+  `数据库口径：… 结构版本=3/3 · 日志模式=wal · 同步级别=FULL · 写锁等待=5000ms`；
+- 库结构复核（`PRAGMA table_info(Games)`）：`IsInviteOnly INTEGER NOT NULL DEFAULT 0` 在原 `IsLocked` 的位置上，
+  **`IsLocked` 已不存在**；`PRAGMA user_version` = **3**；
+- 服务与备份定时器都 `active`；站点 `200` · `/healthz` `200`；备份目录 5 份（含升级前那份）。
+
+**真机读数②：部署实例上的黑盒验收**（走 nginx + 真站点，`node tools/verify-live-open-table.mjs --base-url … --seats 7`）：
+**25 项全过**（14.7s）——首页 / 注册 / 开桌 / 大厅 / 进主持台 / 开局分配 / 开夜 / 断线重连逐段有读数，
+走的是部署文档 §7 之后的那份产物（本批的界面改动在真站点上同样成立）。
+
+**清场（真机 + 本机）**：真机上本次验证留下的**测试桌 1 张 + 测试账号 1 个已按"停服 → 逐表删 → 起服"清掉**
+（复核：`Games=0 · Users=2 · integrity_check=ok`，只剩原本那两个账号）；上传的安装包 `/tmp/oct-linux.tar.gz`
+已删，`/tmp` 只剩系统文件；库结构仍是 **3/3**、站点仍 `200`、备份定时器仍 `active`（5 份备份保留）。
+本机 `artifacts/deploy`（48.7 MB 包 + publish 目录）按纪律移入回收站；用于归因的 HEAD 工作树已移入回收站
+（里面的 `web/node_modules` 是 junction，先确认主仓库的 `node_modules` 完好再迁的）；MSBuild 复用节点已关。
+
+**残余与边界（本批明确不做）**：
+
+① **邀请码仍是明文落库、不过期、不轮换**（审计 **G-A2-2**，High）：本批只把用它的**人**收窄
+（必须登录、且只出现在邀请制桌与旅行者路径），凭据形态一个字节没动。要真正收口得另开一条
+（给码加有效期 + 轮换）；在那之前，部署文档 §5.1 明确要求把它当"等同于口令的材料"对待。
+② **"开局即邀请制"是效果、不是落库**：`IsInviteOnly` 不因开局而改写，两条闸（邀请制 / 已开局）
+各判各的。好处是"公开桌开局后仍是公开桌"可以表达；代价是大厅那句「邀请制」由两条事实在前端合成。
+③ **`GameStateComparer` 的等价面仍有历史缺口**：这轮补了 `DepartureRequests`，但 `Activity` 与
+`VigormortisKills` 仍未参与"重建后账一致"的比对——与本批无关，登记在票据里避免下次重新发现。
+④ **手机端与"7 个真人同局"仍未在真机验过**（`multi-table-and-account-entry` 的残余，本批没动）。
+⑤ 加固计划的剩余条目（M5 剩余 + M6）按需求方决定**停办**，本批不是它的复工。
 
 ## 相关阅读
 

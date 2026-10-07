@@ -80,6 +80,14 @@ public sealed class GameSession
     /// <summary>本局标识。</summary>
     public GameId GameId { get; }
 
+    /// <summary>本局是否**已经开局**（开过第一个夜晚或白天）：大厅标记与自助入座的开局闸共用它（D-0037）。</summary>
+    /// <remarks>不加锁：读的是一个**不可变状态的引用**（只在锁内整体替换），要么旧要么新，不会是半成品。</remarks>
+    public bool HasStarted => _machine is not null;
+
+    /// <summary>某席位是否已经以旅行者身份**离场**（D-0037）：离场之后那一席不再接受入座。</summary>
+    /// <remarks>同 <see cref="HasStarted"/>：只读不可变状态的引用，不加锁。</remarks>
+    public bool HasDeparted(SeatId seat) => _state.HasDeparted(seat);
+
     /// <summary>从事件流恢复全部状态（服务端启动 / 重启后的唯一正确入口）。</summary>
     /// <exception cref="InvalidOperationException">事件流损坏时显式抛出，绝不静默继续。</exception>
     public async Task RestoreAsync(CancellationToken cancellationToken)

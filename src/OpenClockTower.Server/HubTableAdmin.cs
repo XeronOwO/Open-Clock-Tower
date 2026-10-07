@@ -4,7 +4,7 @@ using OpenClockTower.Kernel;
 namespace OpenClockTower.Server;
 
 /// <summary>
-/// **桌务**（说书人在开局前后的动作）：锁桌 / 解锁、解除席位绑定。
+/// **桌务**（说书人在开局前后的动作）：切换访问模式（公开 / 邀请制）、解除席位绑定。
 /// </summary>
 /// <remarks>
 /// <para>
@@ -30,21 +30,32 @@ public sealed class HubTableAdmin
         _dispatcher = dispatcher;
     }
 
-    /// <summary>锁桌 / 解锁：锁定后不再接受新的自助入座，已在座的玩家不受影响（D-0025）。</summary>
+    /// <summary>
+    /// 换访问模式（说书人）：邀请制桌不接受新的自助入座，必须凭邀请码（D-0037）。
+    /// </summary>
     /// <param name="game">哪一桌。</param>
-    /// <param name="isLocked">新的锁定状态。</param>
-    /// <param name="caller">发起这次调用的客户端地址与连接（审计要能回答"谁从哪来锁的桌"，M4 / G-A5-10）。</param>
+    /// <param name="inviteOnly">true = 邀请制；false = 公开桌。</param>
+    /// <param name="caller">发起这次调用的客户端地址与连接（审计要能回答"谁从哪来改的"，M4 / G-A5-10）。</param>
     /// <param name="cancellationToken">取消令牌。</param>
-    public async Task<bool> SetLockAsync(
+    /// <remarks>
+    /// **切换即时生效并推给该桌所有连接**（说书人 + 在场玩家，不刷新不重连就变）：
+    /// 只在真的改了的时候推——重复设同一个值推一次空包，等于给所有人发一条"什么都没发生"。
+    /// </remarks>
+    public async Task<bool> SetInviteOnlyAsync(
         GameInstance game,
-        bool isLocked,
+        bool inviteOnly,
         CallerContext caller,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(game);
 
-        await _lobby.UpdateLobbyAsync(game.GameId, name: null, isLocked, caller, cancellationToken);
-        return isLocked;
+        var changed = await _lobby.UpdateLobbyAsync(game.GameId, name: null, inviteOnly, caller, cancellationToken);
+        if (changed)
+        {
+            await _dispatcher.PushTableAccessChangedAsync(game, inviteOnly, cancellationToken);
+        }
+
+        return inviteOnly;
     }
 
     /// <summary>解除席位绑定（D-0021 误认领兜底）：清掉「席位 ↔ 账号」并把新名字推给本桌。</summary>

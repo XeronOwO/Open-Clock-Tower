@@ -423,6 +423,34 @@ export interface LostAbilityMarkerDto {
   note: string
 }
 
+/** 一条待说书人裁定的旅行者离场申请（D-0037）：只说书人视图里有它。 */
+export interface DepartureRequestDto {
+  /** 申请离场的席位。 */
+  seat: number
+  /** 旅行者给出的理由；可为 null。 */
+  note: string | null
+}
+
+/** 最近一次离场裁定的结论（D-0037）：只下发给**申请人本人**。 */
+export interface DepartureRulingDto {
+  /** 被裁定的席位（= 收件人本人）。 */
+  seat: number
+  /** true = 批准（该席位随即离场）；false = 驳回。 */
+  approved: boolean
+  /** 说书人给出的说明；可为 null。 */
+  note: string | null
+  /** 裁定事件在事件流里的序号。 */
+  sequence: number
+}
+
+/** 一桌的**访问模式**（D-0037）：说书人一切换就推给该桌全部连接（不刷新不重连也变）。 */
+export interface TableAccessDto {
+  /** 哪一桌；界面按它匹配"是不是本桌"，别的桌的读数不该改本桌那一行。 */
+  gameId: string
+  /** true = 邀请制（自助入座关闭，要凭邀请码）；false = 公开桌。 */
+  inviteOnly: boolean
+}
+
 /** 说书人视图：完整看板 + 兜底所需的一切（D-0014）。 */
 export interface StorytellerViewDto {
   sequence: number
@@ -474,6 +502,12 @@ export interface StorytellerViewDto {
   annotations: SeatAnnotationDto[]
   /** 「失去能力」提示标记（R-0040）：限次能力用尽后挂在角色标记旁；玩家投影里没有它。 */
   lostAbilityMarkers: LostAbilityMarkerDto[]
+  /**
+   * 待说书人裁定的旅行者离场申请（D-0037），按提出顺序；没有时为空数组。
+   *
+   * 申请理由只到这里与申请人本人：说书人裁定前它不进任何公开投影。
+   */
+  departureRequests: DepartureRequestDto[]
 }
 
 /** 命令回执。 */
@@ -577,6 +611,19 @@ export interface PlayerViewDto {
   awaitingSavantQuestion: boolean
   /** 本人已经用尽的一次性能力 slug（R-0040）；只列本人的。 */
   exhaustedAbilities: string[]
+  /**
+   * 本人是否已经以旅行者身份离场（D-0037）：界面据此说"你已离场"，
+   * 而不是显示成"还没有分配角色"（那会把一个明确事实说成未知）。
+   */
+  departed: boolean
+  /** 本人此刻能不能提出离场申请（在座的旅行者且没有待批申请；D-0037）。只对本人生效。 */
+  canRequestDeparture: boolean
+  /** 本人此刻**有没有待批的离场申请**（D-0037）：等待态看它——理由是可选字段，不能拿它代替。 */
+  hasPendingDeparture: boolean
+  /** 本人待批的离场申请理由；null = 没有待批申请**或**申请里没写理由（D-0037）。只对本人生效。 */
+  pendingDepartureNote: string | null
+  /** 最近一次**本人**离场裁定的结论；null = 还没有裁定过（D-0037）。只下发给申请人本人。 */
+  lastDepartureRuling: DepartureRulingDto | null
 }
 
 /** 推给玩家的操作请求（刻意不含槽位 / 轮次 / 进度）。 */

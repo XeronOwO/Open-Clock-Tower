@@ -49,7 +49,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { readAttributeBounded, readTextBounded } from './lib/bounded-text.mjs'
-import { openTableAndHost, seatByAccount } from './lib/entrance.mjs'
+import { openTableAndHost, registerProbeAccount, seatByAccount } from './lib/entrance.mjs'
 import { describeProfile, ensureServerArtifacts, extractProfileFlags, resolveProfile } from './lib/verify-profile.mjs'
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -85,6 +85,8 @@ const serverUrl = `http://localhost:${options.port}`
 const viteUrl = `http://localhost:${options.vitePort}`
 /** Hub 地址：桌标识在开桌之后才定得下来，所以这里是 `let`（见下面的赋值）。 */
 let hubUrl = `${serverUrl}/hub/game`
+/** 账号 Hub：线级探针入座前要先注册一个夹具账号（D-0037：入座必须登录）。 */
+const accountHubUrl = `${serverUrl}/hub/account`
 
 /** 六个席位（与 web/src/display/labels.ts 的花名册一致）：三条链路各要的角色都在。 */
 const ASSIGN = ['philosopher', 'dreamer', 'fang-gu', 'barber', 'klutz', 'mutant']
@@ -958,6 +960,8 @@ async function waitForSeatRequest(seat, timeoutMs) {
 
 /** 连一个真 SignalR 席位：记录每一次请求与每一条推送（供越权扫描）。 */
 async function connectSeat(seatTicket) {
+  // 入座必须登录（D-0037）：每调用一次 = 新席位 → **新夹具账号**（一账号一局只坐一席，共用会被拒）。
+  const probe = await registerProbeAccount(signalR, accountHubUrl, `cc-${seatTicket.seat}`)
   const connection = new signalR.HubConnectionBuilder().withUrl(hubUrl).configureLogging(signalR.LogLevel.None).build()
   const requests = []
   const messages = []
@@ -970,7 +974,7 @@ async function connectSeat(seatTicket) {
   }
 
   await connection.start()
-  const joined = await connection.invoke('JoinSeat', seatTicket.ticket, 0)
+  const joined = await connection.invoke('JoinByInviteCode', seatTicket.ticket, probe.accountSession, 0)
   return {
     requests,
     messages,

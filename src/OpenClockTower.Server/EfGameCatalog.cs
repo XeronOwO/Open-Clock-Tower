@@ -8,7 +8,7 @@ namespace OpenClockTower.Server;
 /// <remarks>
 /// 建桌时刻在**插入**那一支写一次（<see cref="GameSetupEntity.CreatedAt"/>）：它是这一行的事实，
 /// 由持久化层拿时钟盖一次章最省事，也不必让"建桌"这个领域动作多背一个时间参数。
-/// 更新（改名 / 锁桌 / 重存票据）一律不碰它——否则一桌改一次名就不会到期。
+/// 更新（改名 / 换访问模式 / 重存票据）一律不碰它——否则一桌改一次名就不会到期。
 /// </remarks>
 public sealed class EfGameCatalog : IGameCatalog
 {
@@ -50,7 +50,7 @@ public sealed class EfGameCatalog : IGameCatalog
                 SeatsJson = seatsJson,
                 CreatedByAccountId = setup.CreatedByAccountId?.Value,
                 Name = setup.Name,
-                IsLocked = setup.IsLocked,
+                IsInviteOnly = setup.IsInviteOnly,
                 CreatedAt = _clock.UtcNow,
             });
         }
@@ -59,7 +59,7 @@ public sealed class EfGameCatalog : IGameCatalog
             row.SeatsJson = seatsJson;
             row.CreatedByAccountId = setup.CreatedByAccountId?.Value;
             row.Name = setup.Name;
-            row.IsLocked = setup.IsLocked;
+            row.IsInviteOnly = setup.IsInviteOnly;
         }
 
         await db.SaveChangesAsync(cancellationToken);
@@ -81,7 +81,7 @@ public sealed class EfGameCatalog : IGameCatalog
     public async Task UpdateLobbyAsync(
         GameId gameId,
         string name,
-        bool isLocked,
+        bool isInviteOnly,
         CancellationToken cancellationToken)
     {
         await using var db = await _factory.CreateDbContextAsync(cancellationToken);
@@ -93,7 +93,7 @@ public sealed class EfGameCatalog : IGameCatalog
         }
 
         row.Name = name;
-        row.IsLocked = isLocked;
+        row.IsInviteOnly = isInviteOnly;
         await db.SaveChangesAsync(cancellationToken);
     }
 
@@ -103,6 +103,6 @@ public sealed class EfGameCatalog : IGameCatalog
         Seats = JsonSerializer.Deserialize<SeatTicket[]>(row.SeatsJson, Options) ?? [],
         CreatedByAccountId = row.CreatedByAccountId is { } owner ? new AccountId(owner) : null,
         Name = row.Name,
-        IsLocked = row.IsLocked,
+        IsInviteOnly = row.IsInviteOnly,
     };
 }

@@ -34,6 +34,7 @@ import LedgerPanel from '@/features/storyteller/LedgerPanel.vue'
 import AssignmentControl from '@/features/storyteller/AssignmentControl.vue'
 import DayControl from '@/features/storyteller/DayControl.vue'
 import TravellerControl from '@/features/storyteller/TravellerControl.vue'
+import TableAccessControl from '@/features/storyteller/TableAccessControl.vue'
 import PitHagNightPanel from '@/features/storyteller/PitHagNightPanel.vue'
 import OperationsControl from '@/features/storyteller/OperationsControl.vue'
 import GrimoireView from '@/features/storyteller/GrimoireView.vue'
@@ -73,6 +74,26 @@ const myTables = ref<LobbyTable[]>([])
 const tablesBusy = ref(false)
 const tablesNotice = ref('')
 
+/**
+ * 本桌的访问模式（D-0037）：null = 还不知道（大厅列表里没这一行、也还没收到推送）。
+ *
+ * 权威读取口是**大厅列表**（补全初始条件的正路）；`ReceiveTableAccessChanged` 只负责"不刷新不重连就变"。
+ * 查不到就留 null：界面说"—"，绝不把"不知道"写成"公开桌"。
+ */
+const inviteOnly = ref<boolean | null>(null)
+
+/** 从一份桌列表里取初值；没这一行就保持 null（不猜）。 */
+function syncInviteOnlyFrom(tables: readonly LobbyTable[], gameId: string | undefined): void {
+  if (gameId === undefined) {
+    return
+  }
+
+  const row = tables.find((table) => table.gameId === gameId)
+  if (row !== undefined) {
+    inviteOnly.value = row.inviteOnly
+  }
+}
+
 /** 开桌（D-0026：**登录即可**；D-0027：开完这一桌就记在你名下）。 */
 const openName = ref('')
 const openSeats = ref(7)
@@ -95,6 +116,8 @@ async function loadMyTables(): Promise<void> {
   try {
     const tables = await session.listTables()
     myTables.value = tables.filter((table) => table.createdByMe)
+    // 列表是访问模式的权威读取口（D-0037）：进桌时那一行就是初值，推送只负责"当场变"。
+    syncInviteOnlyFrom(myTables.value, gatewayGameId.value)
     tablesNotice.value = ''
   } catch (error) {
     tablesNotice.value = `读取「我主持的桌」失败：${error instanceof Error ? error.message : String(error)}`
@@ -216,6 +239,13 @@ function ensureGateway(gameId?: string): StorytellerGateway {
           connectionState.value = state
         },
         onDiagnostic: (message) => pushDiagnostic(message),
+        // 访问模式变了（D-0037）：说书人自己拨完开关也会收到这条（广播覆盖本桌全部连接）。
+        // 只认本桌：别的桌的读数不该改这一行。
+        onTableAccess: (access) => {
+          if (access.gameId === gatewayGameId.value) {
+            inviteOnly.value = access.inviteOnly
+          }
+        },
       },
       undefined,
       gameId,
@@ -255,6 +285,8 @@ async function enterTable(gameId: string): Promise<boolean> {
     await gatewayForTable.joinWithAccount(current.accountSession)
     credential.value = gatewayForTable.credential
     outcome.value = null
+    // 进桌即取访问模式初值（D-0037）：列表已经读回来了就用它，读不到就等推送 / 显示"—"。
+    syncInviteOnlyFrom(myTables.value, gameId)
     // 记住"我正在主持哪一桌"（M1 / D-0029）：刷新回来直接接回主持台，不用再从列表里点一次。
     session.rememberTable({ surface: 'storyteller', gameId, seat: null })
     return true
@@ -302,6 +334,8 @@ async function disconnect(): Promise<void> {
   await gateway?.stop()
   view.value = null
   credential.value = ''
+  // 离开这一桌：访问模式的读数跟着清掉（它属于"本桌"，不属于说书人）。
+  inviteOnly.value = null
   // 主动断开 = 主动离开这一桌（M1）：位置一起忘掉，别让下一次刷新又把人送回来。
   session.forgetTable()
 }
@@ -365,7 +399,7 @@ onBeforeUnmount(() => {
             <span>{{ table.name.length > 0 ? table.name : table.gameId }}</span>
             <span class="hint">
               {{ table.takenSeatCount }} / {{ table.seatCapacity }} 人 ·
-              {{ table.started ? '已开局' : '等人' }} · {{ table.locked ? '已锁定' : '可入座' }}
+              {{ table.started ? '已开局' : '等人' }} · {{ table.inviteOnly ? '邀请制' : '公开' }}
             </span>
             <button type="button" data-testid="host-enter" :disabled="joining" @click="enterTable(table.gameId)">
               进主持台
@@ -487,6 +521,13 @@ onBeforeUnmount(() => {
             </template>
           </div>
           <DayControl v-if="sender" :view="view!" :sender="sender" @outcome="showOutcome" />
+          <TableAccessControl
+            v-if="sender"
+            :invite-only="inviteOnly ?? false"
+            :sender="sender"
+            @update:invite-only="inviteOnly = $event"
+            @outcome="showOutcome"
+          />
           <TravellerControl v-if="sender" :view="view!" :sender="sender" :game-id="gatewayGameId" @outcome="showOutcome" />
           <PitHagNightPanel v-if="sender" :view="view!" :sender="sender" @outcome="showOutcome" />
           <OperationsControl v-if="sender" :view="view!" :sender="sender" @outcome="showOutcome" />

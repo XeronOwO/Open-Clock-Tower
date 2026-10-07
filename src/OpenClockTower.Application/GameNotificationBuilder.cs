@@ -225,6 +225,27 @@ public static class GameNotificationBuilder
                         Sequence = draft.Sequence,
                     });
                     break;
+
+                // 离场申请与裁定（D-0037）：**不是公开事实**——只有申请人本人与说书人该知道。
+                // 两条都定向推一次本人视图（申请 → 等待态出现；裁定 → 结论出现 / 界面转为"已离场"）。
+                // 说书人那边由批末那条 StorytellerViewChanged 覆盖（它每批都发）。
+                case TravellerDepartureRequestedEvent departureRequested:
+                    notifications.Add(new GameNotification
+                    {
+                        Kind = GameNotificationKind.PlayerViewChanged,
+                        Sequence = draft.Sequence,
+                        Seat = departureRequested.Seat,
+                    });
+                    break;
+
+                case TravellerDepartureResolvedEvent departureResolved:
+                    notifications.Add(new GameNotification
+                    {
+                        Kind = GameNotificationKind.PlayerViewChanged,
+                        Sequence = draft.Sequence,
+                        Seat = departureResolved.Seat,
+                    });
+                    break;
             }
         }
 

@@ -51,18 +51,15 @@ public sealed class HubJoinScope
         _logger = logger;
     }
 
-    /// <summary>玩家加入 / 重连（只凭票据，D-0012）。</summary>
-    public Task<SeatJoinDto> JoinSeatAsync(
-        IGameClient caller,
-        HttpContext? httpContext,
-        string connectionId,
-        CancellationToken aborted,
-        string ticket,
-        long lastSequence) =>
-        JoinSeatCoreAsync(caller, httpContext, connectionId, aborted, ticket, accountSession: null, lastSequence);
-
-    /// <summary>玩家加入 / 重连（带账号会话：票据认领，或只凭账号回到已认领席位，D-0021）。</summary>
-    public Task<SeatJoinDto> JoinSeatWithAccountAsync(
+    /// <summary>玩家凭**邀请码**加入 / 重连（D-0021 / D-0037）：票据认领，或只凭账号回到已认领席位。</summary>
+    /// <param name="caller">调用方（重投挂起请求用）。</param>
+    /// <param name="httpContext">本次连接的 HTTP 上下文（解析所属桌）。</param>
+    /// <param name="connectionId">连接标识。</param>
+    /// <param name="aborted">取消令牌。</param>
+    /// <param name="ticket">席位票据（邀请码里冒号之后那一段）。</param>
+    /// <param name="accountSession">账号会话（必须；入座必须登录，D-0037）。</param>
+    /// <param name="lastSequence">客户端已见序号。</param>
+    public Task<SeatJoinDto> JoinByInviteCodeAsync(
         IGameClient caller,
         HttpContext? httpContext,
         string connectionId,
@@ -70,14 +67,14 @@ public sealed class HubJoinScope
         string ticket,
         string? accountSession,
         long lastSequence) =>
-        JoinSeatCoreAsync(caller, httpContext, connectionId, aborted, ticket, accountSession, lastSequence);
+        JoinCoreAsync(caller, httpContext, connectionId, aborted, ticket, accountSession, lastSequence);
 
     /// <summary>
-    /// 玩家**自助入座**（D-0025）：登录后选一个空席位坐下，**不需要任何票据**。
+    /// 玩家**自助入座**（D-0025）：登录后在**公开且未开局**的桌选一个空席位坐下，不需要任何票据。
     /// </summary>
     /// <remarks>
-    /// 桌由本连接的 <c>?gameId=</c> 决定（与其余命令同源）。说书人票据仍然存在，
-    /// 但它只用于"成为说书人"；玩家这一侧从此不必等发票据。
+    /// 桌由本连接的 <c>?gameId=</c> 决定（与其余命令同源）。邀请制桌与已开局的桌一律拒——
+    /// 那两种场合都要凭邀请码（D-0037）；本人已认领的那一席除外（回到座位）。
     /// </remarks>
     public async Task<SeatJoinDto> JoinTableAsync(
         IGameClient caller,
@@ -122,7 +119,7 @@ public sealed class HubJoinScope
         return await flow.JoinStorytellerAsync(session);
     }
 
-    private async Task<SeatJoinDto> JoinSeatCoreAsync(
+    private async Task<SeatJoinDto> JoinCoreAsync(
         IGameClient caller,
         HttpContext? httpContext,
         string connectionId,

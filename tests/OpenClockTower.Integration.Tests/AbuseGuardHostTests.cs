@@ -346,7 +346,7 @@ public sealed class AbuseGuardHostTests : IDisposable
     }
 
     [Fact]
-    public async Task LockAndLogout_AuditLines_CarryOperatorAndSource()
+    public async Task InviteOnlyAndLogout_AuditLines_CarryOperatorAndSource()
     {
         StartHost();
         var account = await ConnectAccountAsync(ClientA);
@@ -354,11 +354,11 @@ public sealed class AbuseGuardHostTests : IDisposable
         var gameId = (await CreateTableAsync(account, registered.AccountSession)).GameId;
         var (storyteller, credential) = await JoinStorytellerAsync(gameId, registered.AccountSession!, ClientA);
 
-        Assert.True(await storyteller.InvokeAsync<bool>("SetTableLock", credential, true));
+        Assert.True(await storyteller.InvokeAsync<bool>("SetTableInviteOnly", credential, true));
 
-        var lockLine = await WaitForLogAsync(text => text.Contains("桌元数据已更新", StringComparison.Ordinal));
-        Assert.Contains("操作者账号=", lockLine, StringComparison.Ordinal);
-        Assert.Contains($"客户端={ClientA}", lockLine, StringComparison.Ordinal);
+        var accessLine = await WaitForLogAsync(text => text.Contains("桌元数据已更新", StringComparison.Ordinal));
+        Assert.Contains("操作者账号=", accessLine, StringComparison.Ordinal);
+        Assert.Contains($"客户端={ClientA}", accessLine, StringComparison.Ordinal);
 
         // 登出同样要能回答"谁从哪来"（M4 / G-A5-10）。
         Assert.True((await account.InvokeAsync<AccountDto>("Logout", registered.AccountSession)).Ok);

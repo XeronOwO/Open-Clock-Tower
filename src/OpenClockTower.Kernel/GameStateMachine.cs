@@ -52,6 +52,11 @@ public static class GameStateMachine
             // 旅行者离场：席位账移除 + 离场账登记 + 相关持续型效果 / 疯狂要求终止（R-0044 第 6 条）。
             TravellerDepartedEvent departed => ApplyTravellerDeparted(current, departed),
 
+            // 离场申请与裁定（D-0037）：改的是账里的待批表，不压维度、不产生效果。
+            // 申请可以由旅行者在任何时刻提出（含开局前），裁定由说书人给出。
+            TravellerDepartureRequestedEvent requested => ApplyDepartureRequested(current, requested),
+            TravellerDepartureResolvedEvent resolved => ApplyDepartureResolved(current, resolved),
+
             PersistentEffectAppliedEvent applied => ApplyPersistentEffectApplied(current, applied),
             PersistentEffectTerminatedEvent terminated => ApplyPersistentEffectTerminated(current, terminated),
             InstantaneousEffectAppliedEvent applied => current with
@@ -236,6 +241,15 @@ public static class GameStateMachine
                 $"事件流损坏：席位 {departed.Seat.Value} 已经离场，不能重复离场");
         }
 
+        // 有待批的离场申请时必须先结清它（D-0037）：否则复盘里会出现"申请悬着、人已经走了"
+        // 这种自相矛盾的账。产出方（TravellerCommandDispatch）一律先写结清事件再写离场事件。
+        if (state.DepartureRequestOf(departed.Seat) is { } openRequest)
+        {
+            throw new InvalidOperationException(
+                $"事件流损坏：席位 {departed.Seat.Value} 还有一条待批的离场申请（{openRequest.Note ?? "无说明"}），"
+                + "离场之前必须先结清它");
+        }
+
         var note = string.IsNullOrWhiteSpace(departed.Note) ? string.Empty : $"；说书人说明：{departed.Note}";
         var effectTermination = new EffectTermination
         {
@@ -297,6 +311,51 @@ public static class GameStateMachine
         }
 
         return next;
+    }
+
+    /// <summary>
+    /// 登记一条离场申请（D-0037）：同一席位同时只能有一条待批申请——重复申请属于事件流损坏
+    /// （命令侧已经在受理前拒绝，这里是第二道网，顺序损坏不静默丢一条）。
+    /// </summary>
+    private static GameState ApplyDepartureRequested(
+        GameState state,
+        TravellerDepartureRequestedEvent requested)
+    {
+        if (state.DepartureRequestOf(requested.Seat) is { } existing)
+        {
+            throw new InvalidOperationException(
+                $"事件流损坏：席位 {requested.Seat.Value} 已经有一条待批的离场申请（{existing.Note ?? "无说明"}），"
+                + "不能重复提出");
+        }
+
+        return state with
+        {
+            DepartureRequests =
+            [
+                .. state.DepartureRequests,
+                new TravellerDepartureRequest { Seat = requested.Seat, Note = requested.Note },
+            ],
+        };
+    }
+
+    /// <summary>结清一条离场申请（批准或驳回）：没有待批申请却要结清属于事件流损坏。</summary>
+    private static GameState ApplyDepartureResolved(
+        GameState state,
+        TravellerDepartureResolvedEvent resolved)
+    {
+        if (state.DepartureRequestOf(resolved.Seat) is null)
+        {
+            throw new InvalidOperationException(
+                $"事件流损坏：席位 {resolved.Seat.Value} 没有待批的离场申请，却要结清它");
+        }
+
+        return state with
+        {
+            DepartureRequests =
+            [
+                .. state.DepartureRequests.Where(request => request.Seat != resolved.Seat),
+            ],
+        };
     }
 
     private static GameState ApplyPersistentEffectApplied(GameState state, PersistentEffectAppliedEvent applied)

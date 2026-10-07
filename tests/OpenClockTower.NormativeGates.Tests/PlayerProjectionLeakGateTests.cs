@@ -48,9 +48,15 @@ public sealed partial class PlayerProjectionLeakGateTests
         Path.Combine("src", "OpenClockTower.Contracts", "SeatDisplayNameDto.cs"),
         // 账号自助结果（D-0021）：玩家可见契约（口令 / 会话是秘密，不落盘、不进日志）——同样登记进扫描面。
         Path.Combine("src", "OpenClockTower.Contracts", "AccountDto.cs"),
-        // 大厅列表（D-0025）：挑桌用的公开信息（桌名 / 人数 / 是否开局 / 是否锁定），
+        // 大厅列表（D-0025）：挑桌用的公开信息（桌名 / 人数 / 是否开局 / 是否邀请制），
         // 所有玩家都看得到；票据与席位归属**不在**这份契约里——登记进扫描面正是要让禁词扫描盯住这一点。
         Path.Combine("src", "OpenClockTower.Contracts", "LobbyTableDto.cs"),
+        // 访问模式（D-0037）：桌级公开事实（公开桌 / 邀请制），本桌全部连接都收得到——
+        // 它只有桌标识与一个布尔，登记进扫描面是让禁词扫描盯住"别顺手塞席位信息进来"。
+        Path.Combine("src", "OpenClockTower.Contracts", "TableAccessDto.cs"),
+        // 离场申请的**结论**（D-0037）：只下发给申请人本人（他自己那条申请的批 / 驳），
+        // 属于玩家面契约；"别人的申请与理由"不在它里面（那是说书人专属的 DepartureRequestDto）。
+        Path.Combine("src", "OpenClockTower.Contracts", "DepartureRulingDto.cs"),
     ];
 
     /// <summary>说书人专属契约（只在说书人视图 / 说书人命令里出现）；新增项必须人工复核。</summary>
@@ -83,6 +89,9 @@ public sealed partial class PlayerProjectionLeakGateTests
         "StepDigestDto.cs",
         "StorytellerJoinDto.cs",
         "StorytellerViewDto.cs",
+        // 待批的离场申请（D-0037）：**申请理由**只说书人与申请人本人可见；
+        // 这份契约（含全部席位与理由）只说书人视图里有它，故列为说书人专属。
+        "DepartureRequestDto.cs",
     };
 
     /// <summary>

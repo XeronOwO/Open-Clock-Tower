@@ -94,8 +94,28 @@ public static class GameProjection
 
             // 本人已用尽的一次性能力（重连后恢复"已用"状态，R-0040）：只列自己那一份。
             ExhaustedAbilities = ExhaustedFor(state, seat),
+
+            // 旅行者离场（D-0037）：离场事实、能不能申请、自己的待批申请与最近一次裁定——
+            // 四条都**只描述收件人本人**（其他席位的申请与裁定不进这个投影）。
+            Departed = state.HasDeparted(seat),
+            CanRequestDeparture = CanRequestDeparture(state, seat),
+            HasPendingDeparture = state.DepartureRequestOf(seat) is not null,
+            PendingDepartureNote = state.DepartureRequestOf(seat)?.Note,
+            LastDepartureRuling = trackers.LastDepartureRuling is { } ruling && ruling.Seat == seat
+                ? ruling
+                : null,
         };
     }
+
+    /// <summary>
+    /// 本人此刻能不能提出离场申请（D-0037）：本席在局、持有的是旅行者、且没有待批申请。
+    /// 同 <see cref="CanAskArtistQuestion"/>：这只是本人的权限位，真正的受理由内核按同一份账再判一次。
+    /// </summary>
+    private static bool CanRequestDeparture(GameState state, SeatId seat) =>
+        !state.HasDeparted(seat)
+        && state.DepartureRequestOf(seat) is null
+        && state.Seat(seat)?.CharacterValue is { } character
+        && SectsAndVioletsRoster.TypeOf(character) == CharacterType.Traveller;
 
     /// <summary>
     /// 玩家面的呆瓜选择记录：**只公开"选了什么"**。跳过记录的原因写的是能力为何没生效
@@ -279,6 +299,9 @@ public static class GameProjection
 
             // 说书人注记（D-0019）：自由文本提示标记只说书人可见；玩家投影里没有这条字段。
             Annotations = annotations,
+
+            // 待批的离场申请（D-0037）：说书人据此批准 / 驳回；玩家投影里没有它。
+            DepartureRequests = state.DepartureRequests,
 
             // 「失去能力」提示标记（R-0040）：限次能力用尽后挂在角色标记旁，由能力使用账本派生
             // （不新增事实，D-0010）；玩家投影里没有它（D-0012 §4.3）。

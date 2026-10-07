@@ -4,25 +4,32 @@ using OpenClockTower.Rules;
 namespace OpenClockTower.Application;
 
 /// <summary>
-/// 旅行者加入 / 离开命令的闸（票据 `traveller-and-exile` D1）：身份与参数形状检查。
+/// 旅行者加入 / 离开 / 离场申请命令的闸（票据 `traveller-and-exile` D1 + 本批 D-0037）：
+/// 身份与参数形状检查。
 /// </summary>
 /// <remarks>
 /// 从 <see cref="CommandGatePipeline"/> 拆出（单文件 600 行门禁，与 <see cref="VoteSweepGate"/> 同款）：
-/// 这里只回答"这条命令由谁发、参数形状对不对"；"这个席位能不能加入 / 离场"要读状态账，
+/// 这里只回答"这条命令由谁发、参数形状对不对"；"这个席位能不能加入 / 离场 / 申请"要读状态账，
 /// 在内核侧 <see cref="TravellerCommandDispatch"/> 判（与"配板闸只看名单、求解器看数据"同一分工）。
-/// 阶段上没有额外限制：加入 / 离场可以在**任意时刻**发生（含首个阶段之前；百科《旅行者》·
+/// 阶段上没有额外限制：四者都可以在**任意时刻**发生（含首个阶段之前；百科《旅行者》·
 /// 2026-10-04 抓取 · 旅行者运作方式）。
 /// </remarks>
 internal static class TravellerGate
 {
-    /// <summary>身份闸：加入 / 离开都是说书人（或宿主）的动作。</summary>
+    /// <summary>身份闸：加入 / 直接移出 / 裁定申请是说书人（或宿主）的动作；**申请离场是旅行者本人**的动作。</summary>
     internal static CommandRejection? IdentityRejection(GameCommand command, Actor actor) =>
         command switch
         {
-            JoinTravellerCommand or RemoveTravellerCommand when actor.Kind is ActorKind.Host or ActorKind.Storyteller
-                => null,
-            JoinTravellerCommand or RemoveTravellerCommand
-                => Reject("identity", "identity.storyteller_only", "只有说书人或宿主可以安排旅行者加入 / 离开"),
+            JoinTravellerCommand or RemoveTravellerCommand or ResolveTravellerDepartureCommand
+                when actor.Kind is ActorKind.Host or ActorKind.Storyteller => null,
+            JoinTravellerCommand or RemoveTravellerCommand or ResolveTravellerDepartureCommand
+                => Reject("identity", "identity.storyteller_only", "只有说书人或宿主可以安排旅行者加入 / 离开 / 裁定离场申请"),
+
+            // 申请由旅行者本人提出：席位从连接凭据推导，命令面无自称身份（D-0012）。
+            RequestTravellerDepartureCommand when actor.Kind == ActorKind.Player && actor.Seat is not null => null,
+            RequestTravellerDepartureCommand
+                => Reject("identity", "identity.player_only", "只有已入座的玩家本人可以提出离场申请"),
+
             _ => Reject("identity", "identity.unknown_traveller_command", "不是旅行者命令（防御性兜底）"),
         };
 
@@ -32,6 +39,9 @@ internal static class TravellerGate
         {
             JoinTravellerCommand join => CheckJoin(join, setup),
             RemoveTravellerCommand remove => SeatGate.CheckExists(remove.Seat, setup),
+            ResolveTravellerDepartureCommand resolve => SeatGate.CheckExists(resolve.Seat, setup),
+            // 申请面不带席位（它由凭据推导），因此没有名单可查；"是不是在座的旅行者"在内核侧判。
+            RequestTravellerDepartureCommand => null,
             _ => Reject("legality", "legality.unknown_traveller_command", "不是旅行者命令（防御性兜底）"),
         };
 

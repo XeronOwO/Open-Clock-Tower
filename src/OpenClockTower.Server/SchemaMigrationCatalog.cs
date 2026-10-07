@@ -75,8 +75,33 @@ public static class SchemaMigrationCatalog
         IsIrreversible: false,
         Apply: ApplyTableCreationTimeAsync);
 
+    /// <summary>
+    /// v3 · 访问模式正名：<c>Games.IsLocked</c> → <c>Games.IsInviteOnly</c>（D-0037）。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 为什么只改名不改语义以外的任何东西：这一列的**实际效果**一直是"自助入座被拒、持票据者照进"——
+    /// 那正是**邀请制**的语义，只是当年叫"锁桌"，于是审计把"锁桌没拦住票据入座"记成了缺陷
+    /// （G-A4-2）。按新的访问模型，那不是缺陷而是设计，本批把口径改成
+    /// "公开桌 / 邀请制桌"两种并列形态（D-0037），名字跟着改过来。
+    /// </para>
+    /// <para>
+    /// **可逆**：一条 <c>RENAME COLUMN</c>，回滚 = 反向改名（<c>IsInviteOnly</c> → <c>IsLocked</c>）
+    /// 并把库版本号改回 2（部署文档 §9.3）。数据一个字节都不动，默认值与 <c>NOT NULL</c> 形态照旧。
+    /// </para>
+    /// <para>
+    /// 守卫式：只在旧列还在、新列还没有时改。全新库跑到这里时 v1 建出来的正是旧列名——
+    /// 已应用过的迁移语句是**冻结**的，不许回去改 v1（那会让"跑过 v1 的老库"与"今天新建的库"分叉）。
+    /// </para>
+    /// </remarks>
+    private static readonly SchemaMigration TableAccessRename = new(
+        Version: 3,
+        Description: "访问模式正名：Games.IsLocked 改名为 IsInviteOnly（D-0037；一句 RENAME COLUMN，可逆）",
+        IsIrreversible: false,
+        Apply: ApplyTableAccessRenameAsync);
+
     /// <summary>本版认识的迁移，**按版本升序**。</summary>
-    public static IReadOnlyList<SchemaMigration> All { get; } = [Baseline, TableCreationTime];
+    public static IReadOnlyList<SchemaMigration> All { get; } = [Baseline, TableCreationTime, TableAccessRename];
 
     /// <summary>本版支持到哪一版（库的版本比它大 = 程序被回滚过，拒绝启动）。</summary>
     public static int LatestVersion => All[^1].Version;
@@ -237,6 +262,30 @@ public static class SchemaMigrationCatalog
             "UPDATE Games SET CreatedAt = "
             + "(SELECT MIN(RecordedAt) FROM Events WHERE Events.GameId = Games.GameId) "
             + "WHERE CreatedAt IS NULL;",
+            cancellationToken);
+    }
+
+    /// <summary>旧的访问模式列名（正名之前的写法；只在本迁移里出现）。</summary>
+    public const string LegacyLockedColumn = "IsLocked";
+
+    /// <summary>新的访问模式列名（实体、迁移与门禁共用同一个字符串）。</summary>
+    public const string InviteOnlyColumn = "IsInviteOnly";
+
+    /// <summary>v3 的动作：把旧列原地改名；两步都由列存在性守卫（重复跑是空操作）。</summary>
+    private static async Task ApplyTableAccessRenameAsync(
+        SchemaMigrationContext context,
+        CancellationToken cancellationToken)
+    {
+        var schema = await context.ReadSchemaAsync(cancellationToken);
+        if (schema.HasColumn("Games", InviteOnlyColumn) || !schema.HasColumn("Games", LegacyLockedColumn))
+        {
+            // 已经是新名字（或两列都没有——那是畸形库，交给启动时的结构核对去拒绝启动）：
+            // 迁移本身不猜、不建列，只做改名。
+            return;
+        }
+
+        await context.ExecuteAsync(
+            $"ALTER TABLE Games RENAME COLUMN {LegacyLockedColumn} TO {InviteOnlyColumn};",
             cancellationToken);
     }
 }

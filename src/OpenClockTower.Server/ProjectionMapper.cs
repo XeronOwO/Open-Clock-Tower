@@ -116,6 +116,19 @@ public static class ProjectionMapper
         CanAskSavantQuestion = view.CanAskSavantQuestion,
         AwaitingSavantQuestion = view.AwaitingSavantQuestion,
         ExhaustedAbilities = [.. view.ExhaustedAbilities],
+        Departed = view.Departed,
+        CanRequestDeparture = view.CanRequestDeparture,
+        HasPendingDeparture = view.HasPendingDeparture,
+        PendingDepartureNote = view.PendingDepartureNote,
+        LastDepartureRuling = view.LastDepartureRuling is { } ruling
+            ? new DepartureRulingDto
+            {
+                Seat = ruling.Seat.Value,
+                Approved = ruling.Approved,
+                Note = ruling.Note,
+                Sequence = ruling.Sequence,
+            }
+            : null,
     };
 
     /// <summary>胜负结论 → DTO（序号 = 这份结论被表达时的序号）。</summary>
@@ -465,6 +478,14 @@ public static class ProjectionMapper
             }
             : null,
         Annotations = [.. view.Annotations.Select(ToDto)],
+        DepartureRequests =
+        [
+            .. view.DepartureRequests.Select(request => new DepartureRequestDto
+            {
+                Seat = request.Seat.Value,
+                Note = request.Note,
+            }),
+        ],
         LostAbilityMarkers =
         [
             .. view.LostAbilityMarkers.Select(marker => new LostAbilityMarkerDto

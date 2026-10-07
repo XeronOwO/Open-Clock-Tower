@@ -199,6 +199,21 @@ internal sealed class GameCommandFactory
             Note = note,
         };
 
+    /// <summary>
+    /// 旅行者本人提出离场申请（D-0037）：命令面**不带席位**——申请者由连接凭据推导（D-0012）。
+    /// </summary>
+    internal GameCommand RequestTravellerDeparture(string? note) =>
+        new RequestTravellerDepartureCommand { Note = note };
+
+    /// <summary>说书人裁定一条离场申请（D-0037）：批准即执行座位离场，驳回则本局继续。</summary>
+    internal GameCommand ResolveTravellerDeparture(int seat, bool approved, string? note) =>
+        new ResolveTravellerDepartureCommand
+        {
+            Seat = new SeatId(seat),
+            Approved = approved,
+            Note = note,
+        };
+
     /// <summary>说书人 / 宿主开夜（口径是引擎输入，R-0014）。</summary>
     internal GameCommand StartNight(int nightNumber, string variant)
     {

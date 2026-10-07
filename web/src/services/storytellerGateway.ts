@@ -18,8 +18,13 @@ import {
   LogLevel,
   type HubConnection,
 } from '@microsoft/signalr'
-import type { ReplayViewDto, StorytellerJoinDto, StorytellerViewDto } from '@/contracts/game'
-import { asCredential, normalizeStorytellerView } from '@/display/format'
+import type {
+  ReplayViewDto,
+  StorytellerJoinDto,
+  StorytellerViewDto,
+  TableAccessDto,
+} from '@/contracts/game'
+import { asCredential, normalizeStorytellerView, normalizeTableAccess } from '@/display/format'
 import { normalizeReplayView } from '@/display/replay'
 import { HUB_PATH, type GatewayState } from '@/services/connectionState'
 
@@ -32,6 +37,12 @@ export { HUB_PATH } from '@/services/connectionState'
 export interface GatewayCallbacks {
   /** 视图整份替换。 */
   onView: (view: StorytellerViewDto) => void
+  /**
+   * 桌的访问模式变了（D-0037）：说书人自己拨开关也会收到（广播覆盖本桌全部连接）。
+   *
+   * 可选：它不参与视图替换（访问模式是会话信息，不是游戏状态），只影响本桌那一行读数。
+   */
+  onTableAccess?: (access: TableAccessDto) => void
   /** 连接状态变化。 */
   onState: (state: GatewayState) => void
   /** 需要人看懂的诊断信息（不吞异常）。 */
@@ -86,6 +97,15 @@ export class StorytellerGateway {
 
     this.connection.on('ReceiveStorytellerViewChanged', (payload: unknown) => {
       this.applyView(normalizeStorytellerView(payload))
+    })
+
+    // 桌的访问模式变了（D-0037）：说书人自己拨完开关也走这条——"切换即推"，不刷新不重连。
+    // 它**不**进视图（访问模式是会话信息），权威读取口仍是大厅列表（补全初始条件的那条正路）。
+    this.connection.on('ReceiveTableAccessChanged', (payload: unknown) => {
+      const access = normalizeTableAccess(payload)
+      if (access !== null) {
+        this.callbacks.onTableAccess?.(access)
+      }
     })
 
     // 重连成功 = 换了一条连接：身份绑定与视图都要重新建立，绝不沿用旧连接的状态。

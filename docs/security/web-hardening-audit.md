@@ -168,6 +168,10 @@ M4 滥用与风控 · M5 数据层与运维 · M6 开源与合规。
 - **影响**：拿到库或备份的人可以长期冒名入座（不受"8 小时会话过期"约束）；与"开源给陌生人部署"叠加后，备份外流 = 席位永久失守。
 - **修法**：票据只存哈希（像账号会话那样），或改成短寿命 + 一次性消费；比较改固定时间。
 - **怎么验证修好了**：库里不再有可用明文票据的读数 + 旧票据被拒的用例。
+- **本批（D-0037，E60）只收窄了用它的"人"，**没动凭据形态**：邀请码仍是那串明文票据
+  （明文存 `Games.SeatsJson`、不过期、不轮换），但用它的人从此必须**已登录**，
+  且它只出现在**邀请制桌**与**旅行者中途入场**两条路径上（无账号的 `JoinSeat` 已删除）。
+  所以这条差距**仍未清零**，"加有效期 + 轮换"要另开一条。
 
 #### G-A2-3 账号会话表没有上界：`List<Entry>` 只增不减，登出路径不清扫｜**Medium**｜M2（口径）+ M4（与限速同批）
 - **现状证据**：`src/OpenClockTower.Server/AccountSessionRegistry.cs` 的 `private readonly List<Entry> _sessions = [];`；`SweepExpired()` 只在 `Issue` 与 `TryResolve` 里调用，`Revoke` / `RevokeAllForAccount` **不清扫**；`TryResolve` 是 O(n) 逐条 `FixedTimeEquals`。
@@ -284,6 +288,17 @@ M4 滥用与风控 · M5 数据层与运维 · M6 开源与合规。
 - **影响**：说书人点"锁桌"以为关上了门，实际只关了自助那扇；持票（含泄露的旧票，见 G-A2-2）的人照样进。
 - **修法**：锁桌语义统一到 `JoinAsync`（或明确"票据不受锁影响"并改文案与文档）。
 - **怎么验证修好了**：锁桌后票据入座被拒的会红用例。
+- **结案（2026-10-07，D-0037，批次 E60）：按新模型这不是缺陷而是设计，收口方式改为"正名 + 改口径 + 补正向判据"。**
+  需求方把桌的访问模式定成**公开桌 / 邀请制桌**两种并列形态，而"自助入座被拒、持码者照进"正是
+  **邀请制**的语义——当年记成缺陷，是因为那一列叫"锁桌"、听起来该把所有人都挡住。
+  本批做的三件事：① 正名 `Games.IsLocked` → `Games.IsInviteOnly`（库结构 v3）；
+  ② 口径改成"两种访问模式"，说书人切换即推给全桌（`SetTableInviteOnly`）；
+  ③ 补上**正向判据**——`SelfServiceJoinHostTests.InviteOnlyTable_RejectsSelfService_ButLetsInviteCodeHolderIn`
+  同时钉住"没码的人被拒"与"持码的人进得来"。
+  产生这条读数的旧入口（无账号的 `JoinSeat`）已随"入座必须登录"整个删除，因此**这道闸不再需要补**：
+  今天能走 `JoinByInviteCode` 的人必然已登录、且必然持有一串有效邀请码。
+  另注：审计同族缺的另一半（**开局之后**自助入座只拦在前端）在本批补到了服务端，
+  判据是 `SelfServiceJoinHostTests.StartedTable_RejectsSelfServiceJoin_ButKeepsMyOwnSeat`。
 
 #### G-A4-3 连接声明的桌与凭据里的桌没有被核对｜**Medium**｜M2
 - **现状证据**：`CredentialValidation.Game` 被解析出来却没人使用，`Actor` 也没有桌字段——桌边界完全靠"签发与解析同源"这一事实成立。

@@ -18,6 +18,7 @@ import type {
   DayVoteSweepDto,
   DecisionOptionDto,
   DeferredDeathDto,
+  DepartureRequestDto,
   EffectDto,
   FangGuInfectionDto,
   GameOutcomeDto,
@@ -36,6 +37,7 @@ import type {
   SlotAbilityDto,
   StepDigestDto,
   StorytellerViewDto,
+  TableAccessDto,
 } from '@/contracts/game'
 
 /** 安全取字符串：非字符串或空串退化成 null。 */
@@ -874,6 +876,11 @@ export function normalizeStorytellerView(raw: unknown): StorytellerViewDto {
       .map(normalizeLostAbilityMarker)
       .filter((marker): marker is LostAbilityMarkerDto => marker !== null)
       .slice(0, MAX_LOST_ABILITY_MARKERS),
+    // 待批离场申请（D-0037）：坏条目单条丢弃，整体不消失——少显示一条，不编一个席位。
+    departureRequests: asArray<unknown>(view['departureRequests'])
+      .map(normalizeDepartureRequest)
+      .filter((request): request is DepartureRequestDto => request !== null)
+      .slice(0, MAX_DEPARTURE_REQUESTS),
   }
 }
 
@@ -897,6 +904,40 @@ export function normalizeLostAbilityMarker(raw: unknown): LostAbilityMarkerDto |
   }
 
   return { seat, ability, note: asSizedText(entry['note'], 512) ?? '' }
+}
+
+/**
+ * 未知载荷 → 桌的访问模式（D-0037 的 `ReceiveTableAccessChanged`）。
+ *
+ * 两个连接网关都要解析同一条推送，所以口径收在这里一处：缺桌标识或缺布尔位就返回 null——
+ * 那是"这次没听清"，界面宁可少更新一次，也不许把不确定的读数当成"公开桌"写上去。
+ */
+export function normalizeTableAccess(raw: unknown): TableAccessDto | null {
+  if (raw === null || typeof raw !== 'object') {
+    return null
+  }
+
+  const access = raw as Record<string, unknown>
+  const gameId = asText(access['gameId'])
+  const inviteOnly = asBoolean(access['inviteOnly'])
+  return gameId === null || inviteOnly === null ? null : { gameId, inviteOnly }
+}
+
+/** 待批离场申请的条数上限：一桌人就这么多，超出的一律丢弃（坏数据不撑爆面板）。 */
+export const MAX_DEPARTURE_REQUESTS = 64
+
+/**
+ * 归一化一条待批离场申请（D-0037）；缺席位时返回 null
+ * （宁可少一条，不编一个状态——服务端数据是输入，不是保证）。
+ */
+export function normalizeDepartureRequest(raw: unknown): DepartureRequestDto | null {
+  if (raw === null || typeof raw !== 'object') {
+    return null
+  }
+
+  const entry = raw as Record<string, unknown>
+  const seat = asSeatNumber(entry['seat'])
+  return seat === null ? null : { seat, note: asSizedText(entry['note'], 512) }
 }
 
 /** 待定死亡的条数上限：一桌人就这么多，超出的一律丢弃（坏数据不撑爆面板）。 */

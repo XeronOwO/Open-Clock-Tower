@@ -165,10 +165,10 @@ public sealed class LobbyHostTests : IDisposable
         Assert.Equal(7, created.SeatCount);
         Assert.False(string.IsNullOrWhiteSpace(created.GameId));
 
-        // 关键：他开的桌**就是**他的——用他的账号会话真的主持一下（锁桌）。
-        // `SetTableLock` 自己会校验"这条凭据是不是本桌说书人的"，所以它成功即证明身份成立。
+        // 关键：他开的桌**就是**他的——用他的账号会话真的主持一下（把这一桌改成邀请制）。
+        // `SetTableInviteOnly` 自己会校验"这条凭据是不是本桌说书人的"，所以它成功即证明身份成立。
         var (storyteller, credential) = await ConnectStorytellerAsync(created.GameId, registered.AccountSession!);
-        Assert.True(await storyteller.InvokeAsync<bool>("SetTableLock", credential, true));
+        Assert.True(await storyteller.InvokeAsync<bool>("SetTableInviteOnly", credential, true));
 
         // D-0027 的反方向判据：**另一个账号进不去这一桌的主持台**（不做身份交接 = 没有第二条路）。
         var stranger = await RegisterAsync(account, "not-the-owner", "路人乙");
@@ -177,14 +177,14 @@ public sealed class LobbyHostTests : IDisposable
             () => ConnectStorytellerAsync(created.GameId, stranger.AccountSession!));
 
         // 作用对象必须是**他开的那一桌**：视图里没有桌标识可断言，所以判据走这条闭环——
-        // 大厅列表里这一桌被锁、他开的**另一桌**没被锁（连接串里的 gameId 若被吞掉，锁的就会是别处）。
+        // 大厅列表里这一桌是邀请制、他开的**另一桌**不是（连接串里的 gameId 若被吞掉，改的就会是别处）。
         var other = await account.InvokeAsync<LobbyCreateResultDto>(
             "CreateTable", registered.AccountSession, "路人甲的另一桌", 5);
         Assert.True(other.Ok, other.Message);
 
         var tables = await account.InvokeAsync<IReadOnlyList<LobbyTableDto>>("ListTables", registered.AccountSession);
-        Assert.True(Assert.Single(tables, item => item.GameId == created.GameId).Locked);
-        Assert.False(Assert.Single(tables, item => item.GameId == other.GameId).Locked);
+        Assert.True(Assert.Single(tables, item => item.GameId == created.GameId).InviteOnly);
+        Assert.False(Assert.Single(tables, item => item.GameId == other.GameId).InviteOnly);
 
         // 归属由服务端算好（D-0027）：这两桌都是他开的；未登录的人看不到"我的桌"。
         Assert.All(

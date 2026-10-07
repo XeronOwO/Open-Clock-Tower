@@ -5,12 +5,20 @@ using OpenClockTower.Rules;
 namespace OpenClockTower.Application;
 
 /// <summary>
-/// 旅行者加入 / 离开的内核产出（票据 `traveller-and-exile` D1）：读账的状态相关校验 + 事件。
+/// 旅行者加入 / 离开 / 离场申请的内核产出（票据 `traveller-and-exile` D1 + 本批 D-0037）：
+/// 读账的状态相关校验 + 事件。
 /// </summary>
 /// <remarks>
+/// <para>
 /// 分派本身无副作用（只有日志）：加入产出「六维度账事件 + 加入事实 +（邪恶）私密揭示」，
 /// 离开产出「离场事实」；席位票据的签发与持久化在 <see cref="GameSession"/> 编排。
-/// 两个命令都允许在任意时刻发生，因此**必须原样透传步骤机状态**（不能把进行中的阶段抹掉）。
+/// 四条命令都允许在任意时刻发生，因此**必须原样透传步骤机状态**（不能把进行中的阶段抹掉）。
+/// </para>
+/// <para>
+/// 离场申请（D-0037）是"玩家发起 → 说书人裁定"：申请只登记一条待批事实（进状态账的待批表），
+/// 裁定批准时才走与直接移出**同一份**离场判定（<see cref="ValidateDeparture"/>）——两条路径共用
+/// 一个判据，不各写一份。
+/// </para>
 /// </remarks>
 internal static class TravellerCommandDispatch
 {
@@ -19,6 +27,7 @@ internal static class TravellerCommandDispatch
     /// <summary>分派一条旅行者命令。</summary>
     internal static CommandDispatchResult Dispatch(
         GameCommand command,
+        Actor actor,
         StepMachineState? machine,
         GameSetup setup,
         GameState state,
@@ -28,6 +37,8 @@ internal static class TravellerCommandDispatch
         {
             JoinTravellerCommand join => Join(join, machine, setup, state, gameId, logger),
             RemoveTravellerCommand remove => Remove(remove, machine, state, gameId, logger),
+            RequestTravellerDepartureCommand request => Request(request, actor, machine, state, gameId, logger),
+            ResolveTravellerDepartureCommand resolve => Resolve(resolve, machine, state, gameId, logger),
             _ => CommandDispatchResult.Rejected(new CommandRejection
             {
                 Code = "kernel.unsupported",
@@ -35,6 +46,7 @@ internal static class TravellerCommandDispatch
                 Gate = "kernel",
             }),
         };
+
 
     private static CommandDispatchResult Join(
         JoinTravellerCommand join,
@@ -156,53 +168,208 @@ internal static class TravellerCommandDispatch
         GameId gameId,
         ILogger logger)
     {
-        if (state.HasDeparted(remove.Seat))
+        if (ValidateDeparture(remove.Seat, machine, state) is { } failure)
         {
-            return Reject("legality.seat_departed", $"席位 {remove.Seat.Value} 已经离场");
+            return CommandDispatchResult.Rejected(failure);
         }
 
-        var entry = state.Seat(remove.Seat);
-        if (entry?.CharacterValue is not { } character)
+        var character = state.Seat(remove.Seat)!.CharacterValue!;
+        var events = new List<GameEvent>();
+
+        // 直接移出时顺手结清同一席位待批的离场申请（D-0037）：留着它，复盘里就会出现
+        // "人已经走了、申请还挂着"的自相矛盾的账（折叠侧对此显式失败）。
+        if (state.DepartureRequestOf(remove.Seat) is not null)
+        {
+            events.Add(new TravellerDepartureResolvedEvent
+            {
+                Seat = remove.Seat,
+                Approved = true,
+                Note = "说书人直接移出（未走申请流程）",
+            });
+        }
+
+        events.Add(new TravellerDepartedEvent { Seat = remove.Seat, Note = remove.Note });
+
+        logger.LogInformation(
+            "旅行者已离场：game={GameId} seat={Seat} character={Character} 说明={Note} 走申请流程={ThroughRequest}",
+            gameId,
+            remove.Seat.Value,
+            character.Value,
+            remove.Note,
+            state.DepartureRequestOf(remove.Seat) is not null);
+
+        return new CommandDispatchResult(machine, events, null);
+    }
+
+    /// <summary>
+    /// 旅行者提出离场申请（D-0037）：席位由**连接凭据**给出（<paramref name="actor"/>），
+    /// 只登记一条待批事实，不改变任何席位状态。
+    /// </summary>
+    /// <remarks>
+    /// 三条受理条件：该席位在局（未离场）、它持有的角色是旅行者、以及**没有别的申请在等**
+    /// （同一席位同时只能有一条待批申请——重复申请只会让说书人看到两条一样的条目）。
+    /// </remarks>
+    private static CommandDispatchResult Request(
+        RequestTravellerDepartureCommand request,
+        Actor actor,
+        StepMachineState? machine,
+        GameState state,
+        GameId gameId,
+        ILogger logger)
+    {
+        if (actor.Seat is not { } seat)
+        {
+            // 身份闸已要求 Player + Seat；到这里还没有说明接线漏了，显式拒绝而不是猜一席。
+            return Reject("legality.departure_actor_seat_unknown", "离场申请必须来自一个已入座的玩家");
+        }
+
+        if (state.HasDeparted(seat))
+        {
+            return Reject("legality.seat_departed", $"席位 {seat.Value} 已经离场：没有可再申请的离场");
+        }
+
+        if (state.DepartureRequestOf(seat) is { } open)
+        {
+            return Reject(
+                "legality.departure_already_requested",
+                $"席位 {seat.Value} 已经有一条待批的离场申请（{open.Note ?? "无说明"}）：等说书人裁定，不要重复提交");
+        }
+
+        if (state.Seat(seat)?.CharacterValue is not { } character)
         {
             return Reject(
                 "legality.traveller_not_joined",
-                $"席位 {remove.Seat.Value} 还没有加入任何旅行者：没有可移除的角色与生命标记");
+                $"席位 {seat.Value} 还没有角色：离场流程只适用于已经在局的旅行者（D-0022 范围）");
         }
 
         if (SectsAndVioletsRoster.TypeOf(character) != CharacterType.Traveller)
         {
             return Reject(
                 "legality.not_a_traveller",
-                $"席位 {remove.Seat.Value} 的角色 {character.Value} 不是旅行者：离场流程只适用于旅行者（D-0022 范围）");
-        }
-
-        // 流放未结清 / 钟盘收票进行中：不能把人从钟盘下拉走（票据「D2 实施口径」）。
-        // 否则会出现「目标已离场却流放成立」或「离场席位还挂在收票名册上」两种自相矛盾的账。
-        if (machine?.Day?.OpenDay is { } day)
-        {
-            if (day.OpenExile is { } openExile && openExile.Target == remove.Seat)
-            {
-                return Reject(
-                    "legality.traveller_exile_unsettled",
-                    $"席位 {remove.Seat.Value} 正在流放流程里（第 {openExile.Index} 条未结清）：先结清流放，再移出旅行者");
-            }
-
-            if (day.ActiveBallot is { } active && active.Sweep.Seats.Contains(remove.Seat))
-            {
-                return Reject(
-                    "legality.traveller_on_the_dial",
-                    $"钟盘收票还在走（{active.Describe()}）：先把它收完并计票，再移出席位 {remove.Seat.Value}");
-            }
+                $"席位 {seat.Value} 的角色 {character.Value} 不是旅行者：离场流程只适用于旅行者（D-0022 范围）");
         }
 
         logger.LogInformation(
-            "旅行者已离场：game={GameId} seat={Seat} character={Character} 说明={Note}",
+            "旅行者提出离场申请（等说书人裁定）：game={GameId} seat={Seat} character={Character} 说明={Note}",
             gameId,
-            remove.Seat.Value,
+            seat.Value,
             character.Value,
-            remove.Note);
+            request.Note);
 
-        return new CommandDispatchResult(machine, [new TravellerDepartedEvent { Seat = remove.Seat, Note = remove.Note }], null);
+        return new CommandDispatchResult(
+            machine,
+            [new TravellerDepartureRequestedEvent { Seat = seat, Note = request.Note }],
+            null);
+    }
+
+    /// <summary>
+    /// 说书人裁定一条离场申请（D-0037）：批准 → 结清申请 + 离场；驳回 → 只结清申请。
+    /// </summary>
+    /// <remarks>
+    /// 批准路径**必须先写结清事件再写离场事件**：折叠侧对"有待批申请却离场"显式失败
+    /// （顺序有语义，与麻脸巫婆之夜「追加死亡」的排序同一姿态）。
+    /// </remarks>
+    private static CommandDispatchResult Resolve(
+        ResolveTravellerDepartureCommand resolve,
+        StepMachineState? machine,
+        GameState state,
+        GameId gameId,
+        ILogger logger)
+    {
+        if (state.DepartureRequestOf(resolve.Seat) is not { } pending)
+        {
+            return Reject(
+                "legality.departure_not_requested",
+                $"席位 {resolve.Seat.Value} 没有待批的离场申请：没有可裁定的东西");
+        }
+
+        if (!resolve.Approved)
+        {
+            logger.LogInformation(
+                "离场申请被驳回（席位留在本局）：game={GameId} seat={Seat} 旅行者说明={RequestNote} 说书人说明={Note}",
+                gameId,
+                resolve.Seat.Value,
+                pending.Note,
+                resolve.Note);
+
+            return new CommandDispatchResult(
+                machine,
+                [new TravellerDepartureResolvedEvent { Seat = resolve.Seat, Approved = false, Note = resolve.Note }],
+                null);
+        }
+
+        // 批准与直接移出走**同一份**判定（人可能在这期间已经离场 / 流放已经挂上）。
+        if (ValidateDeparture(resolve.Seat, machine, state) is { } failure)
+        {
+            return CommandDispatchResult.Rejected(failure);
+        }
+
+        logger.LogInformation(
+            "离场申请已批准：game={GameId} seat={Seat} character={Character} 旅行者说明={RequestNote} 说书人说明={Note}",
+            gameId,
+            resolve.Seat.Value,
+            state.Seat(resolve.Seat)!.CharacterValue!.Value,
+            pending.Note,
+            resolve.Note);
+
+        return new CommandDispatchResult(
+            machine,
+            [
+                new TravellerDepartureResolvedEvent { Seat = resolve.Seat, Approved = true, Note = resolve.Note },
+                new TravellerDepartedEvent { Seat = resolve.Seat, Note = resolve.Note },
+            ],
+            null);
+    }
+
+    /// <summary>
+    /// 一条离场能不能执行（直接移出与"批准申请"共用这一份判据）。
+    /// </summary>
+    /// <returns>不能执行时给出拒绝；可以执行时返回 null。</returns>
+    /// <remarks>
+    /// 依据：百科《旅行者》· 2026-10-04 抓取 · 旅行者运作方式（离开 = 移除角色与生命标记）；
+    /// 口径见 `rulings.md` R-0044 第 6 条。流放 / 钟盘两条拒绝来自票据「D2 实施口径」：
+    /// 不能把人从钟盘下拉走，否则会出现「目标已离场却流放成立」这种自相矛盾的账。
+    /// </remarks>
+    private static CommandRejection? ValidateDeparture(SeatId seat, StepMachineState? machine, GameState state)
+    {
+        if (state.HasDeparted(seat))
+        {
+            return LegalityReject("legality.seat_departed", $"席位 {seat.Value} 已经离场");
+        }
+
+        var entry = state.Seat(seat);
+        if (entry?.CharacterValue is not { } character)
+        {
+            return LegalityReject(
+                "legality.traveller_not_joined",
+                $"席位 {seat.Value} 还没有加入任何旅行者：没有可移除的角色与生命标记");
+        }
+
+        if (SectsAndVioletsRoster.TypeOf(character) != CharacterType.Traveller)
+        {
+            return LegalityReject(
+                "legality.not_a_traveller",
+                $"席位 {seat.Value} 的角色 {character.Value} 不是旅行者：离场流程只适用于旅行者（D-0022 范围）");
+        }
+
+        if (machine?.Day?.OpenDay is { } day)
+        {
+            if (day.OpenExile is { } openExile && openExile.Target == seat)
+            {
+                return LegalityReject(
+                    "legality.traveller_exile_unsettled",
+                    $"席位 {seat.Value} 正在流放流程里（第 {openExile.Index} 条未结清）：先结清流放，再移出旅行者");
+            }
+
+            if (day.ActiveBallot is { } active && active.Sweep.Seats.Contains(seat))
+            {
+                return LegalityReject(
+                    "legality.traveller_on_the_dial",
+                    $"钟盘收票还在走（{active.Describe()}）：先把它收完并计票，再移出席位 {seat.Value}");
+            }
+        }
+
+        return null;
     }
 
     private static CommandDispatchResult Reject(string code, string message) =>

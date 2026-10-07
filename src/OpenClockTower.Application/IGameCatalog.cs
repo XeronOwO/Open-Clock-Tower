@@ -18,14 +18,15 @@ public interface IGameCatalog
     Task<IReadOnlyList<GameSetup>> ListAsync(CancellationToken cancellationToken);
 
     /// <summary>
-    /// 设置桌名与锁定状态（大厅元数据；不影响游戏内状态）。
+    /// 设置桌名与访问模式（大厅元数据；不影响游戏内状态）。
     /// </summary>
     /// <remarks>
+    /// 访问模式只有两种：公开（自助入座）与**邀请制**（要凭邀请码，D-0037）。
     /// 未知的桌**显式失败**，不凭空造一桌——建桌是另一个用例的职责（D-0025）。
     /// </remarks>
     Task UpdateLobbyAsync(
         GameId gameId,
         string name,
-        bool isLocked,
+        bool isInviteOnly,
         CancellationToken cancellationToken);
 }

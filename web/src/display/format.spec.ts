@@ -16,6 +16,7 @@ import {
   normalizeRoomHealth,
   normalizeSeatAnnotation,
   normalizeStorytellerView,
+  normalizeTableAccess,
   optionDisplayOf,
   replaceControlCharacters,
   seatDisplayOf,
@@ -371,6 +372,57 @@ describe('不可信输入的有界化（长度 / 范围，架构 §4.4）', () =
 
     expect(view.seats[0]?.madnesses).toHaveLength(1)
     expect(view.seats[0]?.madnesses[0]?.length).toBe(200)
+  })
+})
+
+describe('待批离场申请的归一化（D-0037）', () => {
+  it('缺省退化成空集合；坏条目只丢自己，不炸渲染', () => {
+    expect(normalizeStorytellerView(null).departureRequests).toEqual([])
+
+    const view = normalizeStorytellerView({
+      departureRequests: [
+        { seat: 2, note: '家里有事' },
+        { seat: 3, note: null },
+        // 坏席位（0 / 缺 / 非数字）说明不了"谁在申请"：单条丢弃，不编一个席位出来。
+        { seat: 0, note: '坏席位' },
+        { note: '缺席位' },
+        { seat: 'x', note: '席位不是数字' },
+        'not-an-object',
+      ],
+    })
+
+    expect(view.departureRequests).toEqual([
+      { seat: 2, note: '家里有事' },
+      { seat: 3, note: null },
+    ])
+  })
+
+  it('超长理由被截断（坏数据不把面板撑爆）', () => {
+    const view = normalizeStorytellerView({
+      departureRequests: [{ seat: 1, note: 'x'.repeat(4096) }],
+    })
+
+    expect(view.departureRequests[0]?.note).toHaveLength(512)
+  })
+})
+
+describe('桌的访问模式推送的归一化（D-0037）', () => {
+  it('缺桌标识或布尔位不是布尔就返回 null：不知道就别改界面上的读数', () => {
+    expect(normalizeTableAccess({ gameId: 'table-a', inviteOnly: true })).toEqual({
+      gameId: 'table-a',
+      inviteOnly: true,
+    })
+    expect(normalizeTableAccess({ gameId: 'table-a', inviteOnly: false })).toEqual({
+      gameId: 'table-a',
+      inviteOnly: false,
+    })
+
+    expect(normalizeTableAccess(null)).toBeNull()
+    expect(normalizeTableAccess({ inviteOnly: true })).toBeNull()
+    expect(normalizeTableAccess({ gameId: '', inviteOnly: true })).toBeNull()
+    expect(normalizeTableAccess({ gameId: 'table-a' })).toBeNull()
+    expect(normalizeTableAccess({ gameId: 'table-a', inviteOnly: 'yes' })).toBeNull()
+    expect(normalizeTableAccess({ gameId: 7, inviteOnly: true })).toBeNull()
   })
 })
 

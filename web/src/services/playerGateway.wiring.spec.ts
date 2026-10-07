@@ -1,6 +1,11 @@
-import { HubConnectionState, type HubConnection } from '@microsoft/signalr'
+﻿import { HubConnectionState, type HubConnection } from '@microsoft/signalr'
 import { describe, expect, it } from 'vitest'
-import type { InformationResultDto, PlayerViewDto, ReconnectBundleDto } from '@/contracts/game'
+import type {
+  InformationResultDto,
+  PlayerViewDto,
+  ReconnectBundleDto,
+  TableAccessDto,
+} from '@/contracts/game'
 import { PlayerGateway, normalizeRequest, type PlayerCallbacks } from '@/services/playerGateway'
 
 /**
@@ -81,6 +86,11 @@ const view = (overrides: Partial<PlayerViewDto> = {}): PlayerViewDto => ({
   canAskSavantQuestion: false,
   awaitingSavantQuestion: false,
   exhaustedAbilities: [],
+  departed: false,
+  canRequestDeparture: false,
+  hasPendingDeparture: false,
+  pendingDepartureNote: null,
+  lastDepartureRuling: null,
   ...overrides,
 })
 
@@ -99,20 +109,23 @@ const joinResult = (
   bundle: { sequence, view: viewValue, events },
 })
 
-/** 回调记录器：视图 / 说明 / 诊断按发生顺序记下来，顺序本身也是断言对象。 */
+/** 回调记录器：视图 / 说明 / 诊断 / 访问模式按发生顺序记下来，顺序本身也是断言对象。 */
 function recorder(): {
   callbacks: PlayerCallbacks
   views: PlayerViewDto[]
   diagnostics: string[]
   settled: string[]
+  accesses: TableAccessDto[]
 } {
   const views: PlayerViewDto[] = []
   const diagnostics: string[] = []
   const settled: string[] = []
+  const accesses: TableAccessDto[] = []
   return {
     views,
     diagnostics,
     settled,
+    accesses,
     callbacks: {
       onView: (next) => {
         views.push(next)
@@ -120,6 +133,7 @@ function recorder(): {
       },
       onRequestVoided: () => settled.push('voided'),
       onRequestAnswered: () => settled.push('answered'),
+      onTableAccess: (access) => accesses.push(access),
       onState: () => {},
       onDiagnostic: (message) => diagnostics.push(message),
     },
@@ -137,7 +151,7 @@ describe('玩家网关接线：补齐窗口', () => {
     const gateway = gatewayWith(fake, record.callbacks)
 
     fake.holdNext = true
-    const joining = gateway.joinSeat('ticket-1')
+    const joining = gateway.joinSeat('ticket-1', 'session-9')
     // 响应在飞：推送先到（旧语义下它会被随后落地的快照整体覆盖）。
     fake.receive('ReceiveInformationResult', { sequence: 6, ability: 'dreamer', content: '窗口内到达' })
     fake.release(joinResult(5, view({ informationResults: [information(5, 'clockmaker', '快照里已有')] })))
@@ -149,18 +163,19 @@ describe('玩家网关接线：补齐窗口', () => {
     expect(gateway.credential).toBe(credential('C'))
   })
 
-  it('推送不推高送去 JoinSeat 的已知序号：事件窗口不被截断（架构 §5）', async () => {
+  it('推送不推高送去加入命令的已知序号：事件窗口不被截断（架构 §5）', async () => {
     const fake = new FakeConnection()
     const record = recorder()
     const gateway = gatewayWith(fake, record.callbacks)
 
     fake.response = joinResult(10, view())
-    await gateway.joinSeat('ticket-1')
+    await gateway.joinSeat('ticket-1', 'session-9')
     fake.receive('ReceiveInformationResult', { sequence: 12, ability: 'oracle' })
     await gateway.resync()
 
-    expect(fake.invocations[0]?.args[1]).toBe(0)
-    expect(fake.invocations.at(-1)?.args[1]).toBe(10)
+    // 参数顺序是 (ticket, accountSession, known)：已知序号在第三位。
+    expect(fake.invocations[0]?.args[2]).toBe(0)
+    expect(fake.invocations.at(-1)?.args[2]).toBe(10)
   })
 
   it('重连包不可信被拒时仍采纳新凭据（不留在服务端已吊销的旧凭据上）', async () => {
@@ -174,7 +189,7 @@ describe('玩家网关接线：补齐窗口', () => {
       bundle: { sequence: 3, view: view(), events: [{ kind: 'PhaseStarted' }] },
     }
 
-    await expect(gateway.joinSeat('ticket-1')).rejects.toThrow(/不可识别/)
+    await expect(gateway.joinSeat('ticket-1', 'session-9')).rejects.toThrow(/不可识别/)
     expect(gateway.credential).toBe(credential('N'))
   })
 
@@ -187,13 +202,13 @@ describe('玩家网关接线：补齐窗口', () => {
       12,
       view({ phase: 'Day', informationResults: [information(11, 'oracle', '回退前的旧事实')] }),
     )
-    await gateway.joinSeat('ticket-1')
+    await gateway.joinSeat('ticket-1', 'session-9')
 
     fake.response = joinResult(
       10,
       view({ phase: 'FirstNight', informationResults: [information(11, 'dreamer', '回退后的新事实')] }),
     )
-    await gateway.joinSeat('ticket-1')
+    await gateway.joinSeat('ticket-1', 'session-9')
 
     const last = record.views.at(-1)
     expect(last?.phase).toBe('FirstNight')
@@ -212,7 +227,7 @@ describe('玩家网关接线：补齐窗口', () => {
         pendingRequest: { sequence: 5, requestId: 'r5', seat: 1, context: '请选择目标', options: [], secondaryOptions: [] },
       }),
     )
-    await gateway.joinSeat('ticket-1')
+    await gateway.joinSeat('ticket-1', 'session-9')
     record.settled.length = 0
 
     fake.receive('ReceiveOperationRequestVoided', {
@@ -232,7 +247,7 @@ describe('玩家网关接线：补齐窗口', () => {
     const gateway = gatewayWith(fake, record.callbacks)
 
     fake.response = joinResult(5, view({ phase: 'FirstNight', canAskArtistQuestion: false }))
-    await gateway.joinSeat('ticket-1')
+    await gateway.joinSeat('ticket-1', 'session-9')
 
     // 白天开始：服务端补推一份本人视图 → 提问入口出现（修复前该位只在快照里更新，入口永不出现）。
     fake.receive('ReceivePlayerViewChanged', 51, view({ phase: 'Day', canAskArtistQuestion: true }))
@@ -262,7 +277,7 @@ describe('玩家网关接线：补齐窗口', () => {
     const gateway = gatewayWith(fake, record.callbacks)
 
     fake.response = joinResult(50, view({ phase: 'Day', canAskArtistQuestion: true }))
-    await gateway.joinSeat('ticket-1')
+    await gateway.joinSeat('ticket-1', 'session-9')
     const before = record.views.length
 
     // 迟到的旧视图：序号低于字段水位，不覆盖。
@@ -280,8 +295,8 @@ describe('玩家网关接线：补齐窗口', () => {
   })
 })
 
-describe('账号加入路径（D-0021）', () => {
-  it('带账号会话走 JoinSeatWithAccount；补齐重连继续带同一会话', async () => {
+describe('凭邀请码入座（D-0037：入座必须登录）', () => {
+  it('凭邀请码入座走 JoinByInviteCode；补齐重连继续带同一会话', async () => {
     const fake = new FakeConnection()
     const record = recorder()
     const gateway = gatewayWith(fake, record.callbacks)
@@ -290,27 +305,41 @@ describe('账号加入路径（D-0021）', () => {
     await gateway.joinSeat('ticket-1', 'session-9')
 
     expect(fake.invocations[0]).toEqual({
-      method: 'JoinSeatWithAccount',
+      method: 'JoinByInviteCode',
       args: ['ticket-1', 'session-9', 0],
     })
 
     await gateway.resync()
 
     expect(fake.invocations.at(-1)).toEqual({
-      method: 'JoinSeatWithAccount',
+      method: 'JoinByInviteCode',
       args: ['ticket-1', 'session-9', 3],
     })
   })
 
-  it('不带账号会话仍是原来的 JoinSeat（游客路径不受影响）', async () => {
+  it('入座只剩这一条路：joinSeat 只发 JoinByInviteCode，账号会话没有"缺省即游客"的旁路', async () => {
     const fake = new FakeConnection()
     const record = recorder()
     const gateway = gatewayWith(fake, record.callbacks)
 
-    fake.response = joinResult(1, view())
-    await gateway.joinSeat('ticket-1')
+    fake.response = joinResult(2, view())
+    await gateway.joinSeat('ticket-1', 'session-9')
+    await gateway.resync()
 
-    expect(fake.invocations[0]).toEqual({ method: 'JoinSeat', args: ['ticket-1', 0] })
+    // 全程只出现新契约这一个方法名：旧的 JoinSeat / JoinSeatWithAccount 一个都不许再发。
+    expect(fake.invocations.map((call) => call.method)).toEqual([
+      'JoinByInviteCode',
+      'JoinByInviteCode',
+    ])
+    expect(
+      fake.invocations.some(
+        (call) => call.method === 'JoinSeat' || call.method === 'JoinSeatWithAccount',
+      ),
+    ).toBe(false)
+
+    // 账号会话是**必给**参数（两个形参、没有默认值）：arity = 2 就是"没有无账号分支"的静态判据——
+    // 旧签名写成 `accountSession: string | null = null`，arity 会是 1。
+    expect(PlayerGateway.prototype.joinSeat.length).toBe(2)
   })
 
   it('只凭账号（票据留空）也能加入：空票据原样下发，服务端按绑定解出席位', async () => {
@@ -322,9 +351,58 @@ describe('账号加入路径（D-0021）', () => {
     await gateway.joinSeat('', 'session-9')
 
     expect(fake.invocations[0]).toEqual({
-      method: 'JoinSeatWithAccount',
+      method: 'JoinByInviteCode',
       args: ['', 'session-9', 0],
     })
+  })
+
+  it('提出离场申请：命令面不带席位，凭据 + 理由 + 幂等键按契约顺序发出（D-0037）', async () => {
+    const fake = new FakeConnection()
+    const record = recorder()
+    const gateway = gatewayWith(fake, record.callbacks)
+
+    fake.response = joinResult(4, view())
+    await gateway.joinSeat('ticket-1', 'session-9')
+    fake.response = { kind: 'Accepted', sequence: 5 }
+    await gateway.requestTravellerDeparture('家里有事', 'key-depart')
+
+    expect(fake.invocations.at(-1)).toEqual({
+      method: 'RequestTravellerDeparture',
+      args: [credential('C'), '家里有事', 'key-depart'],
+    })
+  })
+})
+
+describe('桌的访问模式推送（D-0037）', () => {
+  it('收到 ReceiveTableAccessChanged 就交付回调：不刷新、不重连、不合并进视图', async () => {
+    const fake = new FakeConnection()
+    const record = recorder()
+    const gateway = gatewayWith(fake, record.callbacks)
+
+    fake.response = joinResult(5, view())
+    await gateway.joinSeat('ticket-1', 'session-9')
+    const viewsBefore = record.views.length
+
+    fake.receive('ReceiveTableAccessChanged', { gameId: 'table-a', inviteOnly: true })
+    expect(record.accesses).toEqual([{ gameId: 'table-a', inviteOnly: true }])
+
+    // 它不改游戏状态：视图一次都不该被这条推送动过。
+    expect(record.views.length).toBe(viewsBefore)
+  })
+
+  it('坏载荷（缺桌标识 / 布尔位不是布尔）不惊动界面：宁可少更新一次', async () => {
+    const fake = new FakeConnection()
+    const record = recorder()
+    const gateway = gatewayWith(fake, record.callbacks)
+
+    fake.response = joinResult(5, view())
+    await gateway.joinSeat('ticket-1', 'session-9')
+
+    fake.receive('ReceiveTableAccessChanged', { inviteOnly: true })
+    fake.receive('ReceiveTableAccessChanged', { gameId: 'table-a', inviteOnly: 'yes' })
+    fake.receive('ReceiveTableAccessChanged', null)
+
+    expect(record.accesses).toEqual([])
   })
 })
 

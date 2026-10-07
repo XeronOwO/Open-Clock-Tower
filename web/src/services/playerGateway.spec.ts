@@ -1,9 +1,10 @@
-import { describe, expect, it } from 'vitest'
+﻿import { describe, expect, it } from 'vitest'
 import type { ReconnectBundleDto } from '@/contracts/game'
 import {
   applyBundle,
   normalizeAnswered,
   normalizeBundle,
+  normalizeDepartureRuling,
   normalizeInformation,
   normalizePhaseStarted,
   normalizePlayerDay,
@@ -233,6 +234,11 @@ describe('重连补齐折叠（快照权威）', () => {
       canAskSavantQuestion: false,
       awaitingSavantQuestion: false,
       exhaustedAbilities: [],
+      departed: false,
+      canRequestDeparture: false,
+      hasPendingDeparture: false,
+  pendingDepartureNote: null,
+      lastDepartureRuling: null,
     },
     events,
   })
@@ -376,5 +382,69 @@ describe('个人视图推送的解析（与快照同一份口径，R-0040）', (
         alignment: 42,
       }),
     ).toMatchObject({ character: 'x'.repeat(64), alignment: null })
+  })
+
+  it('旅行者离场（D-0037）：四个位照实解析；坏字段只降级，不白屏', () => {
+    expect(
+      normalizePlayerView({
+        seat: 2,
+        phase: 'Day',
+        departed: true,
+        canRequestDeparture: false,
+        hasPendingDeparture: true,
+  pendingDepartureNote: '家里有事',
+        lastDepartureRuling: { seat: 2, approved: true, note: '路上小心', sequence: 31 },
+      }),
+    ).toMatchObject({
+      departed: true,
+      canRequestDeparture: false,
+      hasPendingDeparture: true,
+  pendingDepartureNote: '家里有事',
+      lastDepartureRuling: { seat: 2, approved: true, note: '路上小心', sequence: 31 },
+    })
+
+    // 旧服务端形状（这四个字段都没有）：退化成"没离场 / 不能申请 / 没有待批 / 没有裁定"，
+    // 绝不把"不知道"说成"你已经离场"。
+    expect(normalizePlayerView({ seat: 2, phase: 'FirstNight' })).toMatchObject({
+      departed: false,
+      canRequestDeparture: false,
+      hasPendingDeparture: false,
+  pendingDepartureNote: null,
+      lastDepartureRuling: null,
+    })
+
+    // 坏字段：权限位退化成 false、超长理由截断、结论缺一项就当没有裁定。
+    expect(
+      normalizePlayerView({
+        seat: 2,
+        phase: 'Day',
+        departed: 'yes',
+        canRequestDeparture: 1,
+        hasPendingDeparture: true,
+  pendingDepartureNote: 'x'.repeat(4096),
+        lastDepartureRuling: { seat: 2, approved: true },
+      }),
+    ).toMatchObject({
+      departed: false,
+      canRequestDeparture: false,
+      hasPendingDeparture: true,
+  pendingDepartureNote: 'x'.repeat(512),
+      lastDepartureRuling: null,
+    })
+  })
+
+  it('离场裁定的归一化：缺席位 / 结论 / 序号时返回 null（不编一条裁定出来）', () => {
+    expect(normalizeDepartureRuling(null)).toBeNull()
+    expect(normalizeDepartureRuling({ seat: 2, approved: true })).toBeNull()
+    expect(normalizeDepartureRuling({ approved: true, sequence: 9 })).toBeNull()
+    expect(normalizeDepartureRuling({ seat: 2, approved: 'yes', sequence: 9 })).toBeNull()
+
+    // 驳回且没有说明也是完整结论：note = null 是合法值，不是坏数据。
+    expect(normalizeDepartureRuling({ seat: 2, approved: false, note: null, sequence: 9 })).toEqual({
+      seat: 2,
+      approved: false,
+      note: null,
+      sequence: 9,
+    })
   })
 })

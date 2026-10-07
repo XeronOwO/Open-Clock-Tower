@@ -95,4 +95,38 @@ public sealed record PlayerView
     /// 只列本人的：其他人的用度是私密信息（D-0012 §4.3）。
     /// </summary>
     public IReadOnlyList<string> ExhaustedAbilities { get; init; } = [];
+
+    /// <summary>
+    /// 本人是否已经以旅行者身份**离场**（D-0037）：离场后角色与生命标记一并移除，
+    /// 界面据此说"你已离场"，而不是显示成"还没有分配角色"这种误导性的空态。
+    /// </summary>
+    public bool Departed { get; init; }
+
+    /// <summary>
+    /// 本人此刻能不能提出离场申请（在座的旅行者、且没有待批申请；D-0037）。
+    /// 只对本人生效——它是权限位，不是其他人的观察面；真正的受理由内核按同一份账再判一次。
+    /// </summary>
+    public bool CanRequestDeparture { get; init; }
+
+    /// <summary>
+    /// 本人此刻**有没有待批的离场申请**（D-0037）。
+    /// </summary>
+    /// <remarks>
+    /// 与 <see cref="PendingDepartureNote"/> 是两件事：理由是**可选**的，所以"理由为 null"既不等于
+    /// "没有申请"、也不该用来决定等待态显不显示。第一版把两件事挤进一个可空字符串，界面只能拿
+    /// "非 null"当判据，于是不写理由直接申请时本人页面上整块离场区消失（装置咬出来的真缺陷）。
+    /// </remarks>
+    public bool HasPendingDeparture { get; init; }
+
+    /// <summary>
+    /// 本人待批的离场申请理由；null = 没有待批申请**或**申请里没写理由（D-0037）。
+    /// 只对本人生效——其他玩家的投影里没有这条字段。
+    /// </summary>
+    public string? PendingDepartureNote { get; init; }
+
+    /// <summary>
+    /// 最近一次**本人**离场裁定的结论（批了还是驳了 + 说明）；null = 还没有裁定过（D-0037）。
+    /// 只给申请人本人——其他席位的裁定对他们没有意义，也不该下发（D-0012 §4.3）。
+    /// </summary>
+    public DepartureRulingSnapshot? LastDepartureRuling { get; init; }
 }

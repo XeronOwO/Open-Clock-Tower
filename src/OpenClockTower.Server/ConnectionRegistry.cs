@@ -14,6 +14,10 @@ namespace OpenClockTower.Server;
 /// 两条都有效的凭据（复核发现，2026-10-02）。
 /// </para>
 /// <para>
+/// **每条凭据背后都有一条账号会话**（D-0037）：入座必须登录，"只凭票据入座的游客"已整个删除，
+/// 于是撤销面覆盖全部连接，没有例外可言。
+/// </para>
+/// <para>
 /// **多桌（D-0024）**：席位与说书人都按桌分区。这不是可选的细节——甲桌的 1 号与乙桌的 1 号
 /// 是两张不同的席位，用全局 <see cref="SeatId"/> 作键会让两桌的路由互相覆盖：
 /// 甲桌的裁定会推到乙桌坐在同一席位号的人手上。连接的所属桌在签发凭据时确定，
@@ -61,8 +65,8 @@ public sealed class ConnectionRegistry
     public bool IsOccupied(GameId game) => _connectionGames.Values.Contains(game);
 
     /// <summary>玩家加入 / 重连：为这条连接签发凭据；同桌同席旧连接与同连接旧凭据立即作废。</summary>
-    /// <param name="session">授权这次入座的账号会话（M2 / G-A2-1）；只凭票据的游客为 null。</param>
-    public ConnectionCredential IssueForSeat(GameId game, SeatId seat, string connectionId, AccountSessionRef? session)
+    /// <param name="session">授权这次入座的账号会话（M2 / G-A2-1）：入座必须登录，所以它**不可为空**（D-0037）。</param>
+    public ConnectionCredential IssueForSeat(GameId game, SeatId seat, string connectionId, AccountSessionRef session)
     {
         lock (_gate)
         {
@@ -84,8 +88,8 @@ public sealed class ConnectionRegistry
 
     /// <summary>说书人加入 / 重连：为这条连接签发凭据；**本桌**其余说书人连接立即作废。</summary>
     /// <remarks>作废范围严格限定在本桌：甲桌换说书人不能把乙桌的说书人踢下线。</remarks>
-    /// <param name="session">授权这次加入的账号会话（M2 / G-A2-1：主持权也在撤销面内）。</param>
-    public ConnectionCredential IssueForStoryteller(GameId game, string connectionId, AccountSessionRef? session)
+    /// <param name="session">授权这次加入的账号会话（M2 / G-A2-1：主持权也在撤销面内；不可为空）。</param>
+    public ConnectionCredential IssueForStoryteller(GameId game, string connectionId, AccountSessionRef session)
     {
         lock (_gate)
         {
@@ -113,12 +117,12 @@ public sealed class ConnectionRegistry
             if (!_credentials.TryGetValue(connectionId, out var record)
                 || !_connectionGames.TryGetValue(connectionId, out var game))
             {
-                return CredentialValidation.Reject("这条连接没有有效凭据：请先用票据加入");
+                return CredentialValidation.Reject("这条连接没有有效凭据：请先入座（邀请码，或在大厅挑一个空席位）");
             }
 
             if (!record.Matches(credential))
             {
-                return CredentialValidation.Reject("凭据与这条连接不匹配：可能来自旧连接（重连必须重新出示票据）");
+                return CredentialValidation.Reject("凭据与这条连接不匹配：可能来自旧连接（重连必须重新入座）");
             }
 
             if (record.Kind == ActorKind.Player
@@ -126,7 +130,7 @@ public sealed class ConnectionRegistry
                     || !_seats.TryGetValue((game, seat), out var routed)
                     || !string.Equals(routed, connectionId, StringComparison.Ordinal)))
             {
-                return CredentialValidation.Reject("凭据身份与当前席位绑定不一致：请重新用票据加入");
+                return CredentialValidation.Reject("凭据身份与当前席位绑定不一致：请重新入座");
             }
 
             return CredentialValidation.Accept(record.Kind, record.Seat, game);
@@ -168,7 +172,7 @@ public sealed class ConnectionRegistry
 
     /// <summary>撤销某个账号授权的全部连接（口令重置等账号级失效，M2 / G-A2-1）；返回被撤的连接 id。</summary>
     public IReadOnlyList<string> RevokeAccount(AccountId account) =>
-        RevokeWhere(record => record.Session?.Account == account);
+        RevokeWhere(record => record.Session.Account == account);
 
     /// <summary>按记录匹配撤连接：先收集再撤（枚举期间不改字典），全程持同一把锁。</summary>
     private IReadOnlyList<string> RevokeWhere(Func<ConnectionCredentialRecord, bool> match)

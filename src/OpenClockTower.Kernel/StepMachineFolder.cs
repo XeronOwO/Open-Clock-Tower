@@ -134,6 +134,11 @@ internal static class StepMachineFolder
             TravellerJoinedEvent => state,
             TravellerDepartedEvent => state,
 
+            // 离场申请与裁定（D-0037）：它们折进**状态账**（GameState.DepartureRequests），
+            // 与席位变化同族——都在步骤机之外，都不允许把 null 变成"已开始"。
+            TravellerDepartureRequestedEvent => state,
+            TravellerDepartureResolvedEvent => state,
+
             DecisionPointRaisedEvent raised => ApplyDecisionPointRaised(state, raised),
             DecisionPointResolvedEvent resolved => ResolveDecision(state, resolved),
             SlotBlockedEvent blocked => Require(state, blocked) with

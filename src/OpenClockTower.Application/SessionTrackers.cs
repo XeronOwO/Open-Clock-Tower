@@ -72,6 +72,12 @@ public sealed class SessionTrackers
     /// <summary>最近一次被作废的操作请求；还没有作废过时为 null。</summary>
     public VoidedRequestSnapshot? LastVoidedRequest { get; private set; }
 
+    /// <summary>
+    /// 最近一次离场裁定（D-0037）；还没有裁定过时为 null。
+    /// 用途是让提出申请的旅行者在**刷新之后仍然看得到结果**（"被驳回"是事件，不是状态）。
+    /// </summary>
+    public DepartureRulingSnapshot? LastDepartureRuling { get; private set; }
+
     /// <summary>取**本计划内**某个槽位已结算的能力结论；还没结算为 null。</summary>
     public AbilityResolutionSnapshot? ResolutionFor(StepSlotId slotId) =>
         _slotResolutions.GetValueOrDefault(slotId);
@@ -149,6 +155,21 @@ public sealed class SessionTrackers
                     AppendInformationResult(information, draft.Sequence);
                     break;
 
+                // 离场申请与裁定（D-0037）：新申请提出即清掉上一次结论（同一席位只留最新一次），
+                // 裁定落下即记下结论——它要让申请人刷新后仍看得到"批了还是驳了"。
+                case TravellerDepartureRequestedEvent:
+                    LastDepartureRuling = null;
+                    break;
+                case TravellerDepartureResolvedEvent departureResolved:
+                    LastDepartureRuling = new DepartureRulingSnapshot
+                    {
+                        Seat = departureResolved.Seat,
+                        Approved = departureResolved.Approved,
+                        Note = departureResolved.Note,
+                        Sequence = draft.Sequence,
+                    };
+                    break;
+
                 // 说书人注记（D-0019）：独立注记账，与状态账同源折叠。
                 case SeatAnnotationAddedEvent:
                 case SeatAnnotationUpdatedEvent:
@@ -175,9 +196,9 @@ public sealed class SessionTrackers
         _annotations = SeatAnnotationLedger.Empty;
         LastResolution = null;
         LastVoidedRequest = null;
+        LastDepartureRuling = null;
         SlotStartedAt = null;
         PendingRequestSince = null;
-
         DateTimeOffset? lastSlotEnteredAt = null;
         long? lastSlotEnteredSequence = null;
         long? lastSweepAnchorSequence = null;
@@ -249,6 +270,20 @@ public sealed class SessionTrackers
                     AppendInformationResult(information, stored.Sequence);
                     break;
 
+                // 离场申请与裁定（D-0037）：重启 / 重建按事件流恢复同一个"最近一次结论"。
+                case TravellerDepartureRequestedEvent:
+                    LastDepartureRuling = null;
+                    break;
+                case TravellerDepartureResolvedEvent departureResolved:
+                    LastDepartureRuling = new DepartureRulingSnapshot
+                    {
+                        Seat = departureResolved.Seat,
+                        Approved = departureResolved.Approved,
+                        Note = departureResolved.Note,
+                        Sequence = stored.Sequence,
+                    };
+                    break;
+
                 // 说书人注记（D-0019）：重启 / 重建按事件流恢复同一本账。
                 case SeatAnnotationAddedEvent:
                 case SeatAnnotationUpdatedEvent:
@@ -285,6 +320,7 @@ public sealed class SessionTrackers
         _annotations = SeatAnnotationLedger.Empty;
         LastResolution = null;
         LastVoidedRequest = null;
+        LastDepartureRuling = null;
         SlotStartedAt = null;
         SlotEntrySequence = null;
         ClearBallotAnchor();
