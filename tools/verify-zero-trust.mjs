@@ -36,7 +36,7 @@ import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { readSeatTickets, registerProbeAccount } from './lib/entrance.mjs'
+import { issueInviteCodeViaHub, readSeatNumbers, registerProbeAccount } from './lib/entrance.mjs'
 import { describeProfile, ensureServerArtifacts, extractProfileFlags, resolveProfile } from './lib/verify-profile.mjs'
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -205,12 +205,21 @@ async function main() {
   hubUrl = `${serverUrl}/hub/game?gameId=${encodeURIComponent(gameId)}`
   console.log(`  夹具账号 ${host.username} 已开桌：game=${gameId}（${created.seatCount} 席）；游戏 Hub ${hubUrl}`)
 
-  const seatTickets = readSeatTickets(databasePath, gameId)
-  check('席位票据齐备（3 席）', seatTickets.length === 3, `实际 ${seatTickets.length} 张（game=${gameId}）`)
+  const seats = readSeatNumbers(databasePath, gameId)
+  check('席位名单齐备（3 席）', seats.length === 3, `实际 ${seats.length} 席（game=${gameId}）`)
 
   console.log('=== 3/6 篡改客户端：加入、分配、开夜、裁定 ===')
   const storyteller = await joinAsStoryteller(host.session)
   check('说书人加入并拿到连接凭据', storyteller.credential.length >= 16)
+
+  // D-0038：邀请码只存哈希，**没有任何"从库里掏凭据"的路**——装置与真人一样，
+  // 让说书人签发一次（就是面板上那一下按下去的同一个 Hub 方法），明文只在回执里出现这一回。
+  const seatTickets = []
+  for (const seat of seats) {
+    seatTickets.push(await issueInviteCodeViaHub(storyteller.connection, storyteller.credential, seat))
+  }
+
+  check('逐席签发邀请码（3 枚）', seatTickets.length === 3, `实际 ${seatTickets.length} 枚`)
 
   const players = new Map()
   for (const seatTicket of seatTickets) {

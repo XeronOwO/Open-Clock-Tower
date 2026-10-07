@@ -27,7 +27,7 @@ cd web && npm install && npm run dev     # http://localhost:5273
 
 账号是唯一的身份证（D-0027 / D-0037）：没登录只有一张登录卡（`features/account/AccountGate.vue`）；会话是
 `services/accountSession.ts` 的单例、三面共用，刷新不掉登录、关标签页即清（D-0029 / §4）；**入座必须登录**：
-公开桌点空席位坐下，邀请制 / 已开局的桌凭邀请码（`桌标识:席位票据`）。
+公开桌点空席位坐下，邀请制 / 已开局的桌凭邀请码（`桌标识:席位邀请码`，说书人在主持台为某一席签发）。
 
 ## 3. 命令
 

@@ -8,10 +8,12 @@ import {
   countVotes,
   forceAdvance,
   invokeCommand,
+  issueSeatInvitation,
   joinTraveller,
   localFailure,
   localSuccess,
   normalizeOutcome,
+  normalizeSeatInvitation,
   pitHagCasualty,
   proposeSetup,
   removeTraveller,
@@ -45,24 +47,22 @@ describe('命令回执规范化', () => {
       message: '',
       rebuild: null,
       issuedSeat: null,
-      issuedSeatTicket: null,
     })
     expect(normalizeOutcome({ kind: 'Duplicate', sequence: 12 }).ok).toBe(true)
   })
 
-  it('加入旅行者的回执带签发席位与票据；普通命令为 null（D1）', () => {
+  it('加入旅行者的回执带**追加的席位号**；凭据不在回执里（D-0038），普通命令为 null（D1）', () => {
     const joined = normalizeOutcome({
       kind: 'Accepted',
       sequence: 20,
       issuedSeat: 16,
+      // 服务端已经不发这个字段了：回执里就算混进来也不该被当成"签出来的邀请码"。
       issuedSeatTicket: 'T'.repeat(43),
     })
     expect(joined.issuedSeat).toBe(16)
-    expect(joined.issuedSeatTicket).toBe('T'.repeat(43))
 
     const plain = normalizeOutcome({ kind: 'Accepted', sequence: 21 })
     expect(plain.issuedSeat).toBeNull()
-    expect(plain.issuedSeatTicket).toBeNull()
   })
 
   it('重建回执带三项等价结论；非重建命令不带报告', () => {
@@ -264,6 +264,52 @@ describe('桌的访问模式不是命令（D-0037）', () => {
   })
 })
 
+describe('席位邀请码的签发（D-0038）', () => {
+  const credential = 'C'.repeat(43)
+
+  it('按 Hub 方法名与参数顺序发出，回执是完整邀请码（含桌标识）+ 到期时刻', async () => {
+    const invoke = vi.fn(async () => ({
+      seat: 3,
+      inviteCode: 'table-x:seat-3-abc',
+      expiresAt: '2026-10-09T12:00:00+00:00',
+    }))
+    const sender: CommandSender = { connection: { invoke } as unknown as HubConnection, credential }
+
+    expect(await issueSeatInvitation(sender, 3)).toEqual({
+      seat: 3,
+      inviteCode: 'table-x:seat-3-abc',
+      expiresAt: '2026-10-09T12:00:00+00:00',
+    })
+    expect(invoke).toHaveBeenCalledWith('IssueSeatInvitation', credential, 3)
+  })
+
+  it('没有凭据 / 席位号不合法就不发；传输异常与坏回执都收敛成 null（界面据此说"没签出来"）', async () => {
+    const unauthorized = vi.fn()
+    const empty: CommandSender = {
+      connection: { invoke: unauthorized } as unknown as HubConnection,
+      credential: '',
+    }
+    expect(await issueSeatInvitation(empty, 3)).toBeNull()
+    expect(await issueSeatInvitation({ connection: { invoke: unauthorized } as unknown as HubConnection, credential }, 0)).toBeNull()
+    expect(unauthorized).not.toHaveBeenCalled()
+
+    const broken = vi.fn(async () => {
+      throw new Error('connection lost')
+    })
+    expect(
+      await issueSeatInvitation({ connection: { invoke: broken } as unknown as HubConnection, credential }, 3),
+    ).toBeNull()
+
+    // 缺字段的半截回执不算数：凭据是转交给玩家的东西，宁可说"没签出来"。
+    const shaped = vi.fn(async () => ({ seat: 3, inviteCode: 'table-x:seat-3-abc' }))
+    expect(
+      await issueSeatInvitation({ connection: { invoke: shaped } as unknown as HubConnection, credential }, 3),
+    ).toBeNull()
+    expect(normalizeSeatInvitation(null)).toBeNull()
+    expect(normalizeSeatInvitation({ seat: '3' })).toBeNull()
+  })
+})
+
 describe('本地合成回执（非命令方法也走同一套展示路径）', () => {
   it('成功 / 失败两种形态字段齐备且 ok 与 kind 一致', () => {
     const ok = localSuccess('本桌已改为邀请制')
@@ -272,7 +318,6 @@ describe('本地合成回执（非命令方法也走同一套展示路径）', (
     expect(ok.message).toBe('本桌已改为邀请制')
     expect(ok.rebuild).toBeNull()
     expect(ok.issuedSeat).toBeNull()
-    expect(ok.issuedSeatTicket).toBeNull()
 
     const bad = localFailure('没能切换访问模式', 'Failed')
     expect(bad.ok).toBe(false)

@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.SignalR.Client;
 using OpenClockTower.Contracts;
 using OpenClockTower.Kernel;
 using OpenClockTower.Rules;
@@ -5,7 +6,7 @@ using OpenClockTower.Rules;
 namespace OpenClockTower.Integration.Tests;
 
 /// <summary>
-/// 旅行者加入 / 离开的真宿主链路（票据 `traveller-and-exile` D1）：席位落点、票据签发、
+/// 旅行者加入 / 离开的真宿主链路（票据 `traveller-and-exile` D1）：席位落点、邀请码、
 /// 邪恶旅行者的私密揭示、离场口径与护栏拒绝；跑的是真宿主 + 真 SignalR + 真 SQLite。
 /// </summary>
 /// <remarks>
@@ -69,9 +70,8 @@ public sealed class TravellerHostTests
             "test-traveller-join-16");
         Assert.Equal("Accepted", joined.Kind);
 
-        // 落点是指定席位：不动席位名单，因此不签发新票据。
+        // 落点是指定席位：不动席位名单，因此不追加任何席位。
         Assert.Null(joined.IssuedSeat);
-        Assert.Null(joined.IssuedSeatTicket);
 
         var view = await storyteller.InvokeAsync<StorytellerViewDto>("GetStorytellerView");
         var traveller = Assert.Single(view.Seats, entry => entry.Seat == 16);
@@ -90,11 +90,11 @@ public sealed class TravellerHostTests
     }
 
     /// <summary>
-    /// 追加席位：服务端分配席位号并签发新票据；玩家用这张票真的能加入；
-    /// 重复投递（同幂等键）仍回同一席位与同一张票，不生成第二张。
+    /// 追加席位：服务端分配席位号（**不签发凭据**，D-0038）；说书人随后为它签发邀请码，
+    /// 玩家拿那一枚真的能进来；重复投递（同幂等键）仍回同一席位，且**不会把已经发出去的码弄坏**。
     /// </summary>
     [Fact]
-    public async Task JoinTraveller_AppendsSeat_IssuesTicket_ThatCanJoin()
+    public async Task JoinTraveller_AppendsSeat_ThenIssuedInviteCode_CanJoin()
     {
         await using var host = new TestServerHost(seatCount: 3, autoStartTestNight: false);
         await using var storyteller = await host.ConnectStorytellerAsync();
@@ -108,12 +108,18 @@ public sealed class TravellerHostTests
             "test-traveller-append");
         Assert.Equal("Accepted", joined.Kind);
         Assert.Equal(4, joined.IssuedSeat);
-        Assert.False(string.IsNullOrWhiteSpace(joined.IssuedSeatTicket));
 
-        // 票据已落目录（持久化）：同一个真链路用票加入。
-        await using var traveller = await host.ConnectSeatAsync(new SeatId(4));
-        Assert.Equal(4, host.Bundles[new SeatId(4)].View.Seat);
+        // 凭据不在命令回执里（D-0038）：说书人另外签一枚，玩家凭它入座。
+        var code = await host.IssueInviteCodeAsync(new SeatId(4));
+        Assert.False(string.IsNullOrWhiteSpace(code));
 
+        var account = await host.SeatFixtureAccountAsync(new SeatId(4));
+        await using var traveller = await host.ConnectAnonymousAsync();
+        var seated = await traveller.InvokeAsync<SeatJoinDto>("JoinByInviteCode", code, account.AccountSession, 0L);
+        Assert.Equal(4, seated.Bundle.View.Seat);
+
+        // 重投一次：席位回得一样，而**刚才那一枚码仍然有效**——
+        // 幂等重试不该变成一次隐式轮换（那会把说书人已经转交出去的码弄坏）。
         var replay = await storyteller.InvokeAsync<CommandResultDto>(
             "JoinTraveller",
             null,
@@ -123,7 +129,10 @@ public sealed class TravellerHostTests
             "test-traveller-append");
         Assert.Equal("Duplicate", replay.Kind);
         Assert.Equal(joined.IssuedSeat, replay.IssuedSeat);
-        Assert.Equal(joined.IssuedSeatTicket, replay.IssuedSeatTicket);
+
+        await using var again = await host.ConnectAnonymousAsync();
+        var stillWorks = await again.InvokeAsync<SeatJoinDto>("JoinByInviteCode", code, account.AccountSession, 0L);
+        Assert.Equal(4, stillWorks.Bundle.View.Seat);
     }
 
     /// <summary>
@@ -215,9 +224,9 @@ public sealed class TravellerHostTests
         var view = await storyteller.InvokeAsync<StorytellerViewDto>("GetStorytellerView");
         Assert.DoesNotContain(view.Seats, entry => entry.Seat == travellerSeat.Value);
 
-        // 席位与票据保留：原票仍能加入（重连 / 复盘语义不动）。
+        // 席位与邀请码保留：原席位仍在名单里，重连凭账号绑定回得去（重连 / 复盘语义不动）。
         var setup = await host.GetSetupAsync();
-        Assert.Contains(setup.Seats, ticket => ticket.Seat == travellerSeat);
+        Assert.Contains(travellerSeat, setup.Seats);
         await using var reconnect = await host.ConnectSeatAsync(travellerSeat);
         Assert.Equal(travellerSeat.Value, host.Bundles[travellerSeat].View.Seat);
 

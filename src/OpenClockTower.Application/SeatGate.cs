@@ -16,7 +16,7 @@ internal static class SeatGate
     public static CommandRejection? CheckExists(SeatId seat, GameSetup? setup) =>
         setup is null
             ? Reject("legality.setup_missing", "本局还没有会话信息（席位名单）", "legality")
-            : setup.Seats.Any(item => item.Seat == seat)
+            : setup.Seats.Contains(seat)
                 ? null
                 : Reject("legality.seat_unknown", $"席位 {seat.Value} 不在本局席位名单里", "legality");
 }

@@ -231,7 +231,7 @@ public static class GameStateMachine
     /// 旅行者离场（百科《旅行者》· 2026-10-04 抓取 · 离开流程；`rulings.md` R-0044 第 6 条）：
     /// 席位账移除（角色与生命标记一并移除）、离场账登记；以该席位为**来源或目标**的持续型效果、
     /// 以及它下达的疯狂要求立即终止——离场后它们既没有来源、也没有对象。
-    /// 席位票据与座位号保留在会话信息里（不是本账的事）。
+    /// 席位与座位号保留在会话信息里（不是本账的事）。
     /// </summary>
     private static GameState ApplyTravellerDeparted(GameState state, TravellerDepartedEvent departed)
     {

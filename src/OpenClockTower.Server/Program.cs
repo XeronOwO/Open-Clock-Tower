@@ -36,6 +36,10 @@ var tableQuotaOptions = builder.Configuration
 var tableRetentionOptions = builder.Configuration
     .GetSection(TableRetentionOptions.SectionName)
     .Get<TableRetentionOptions>() ?? new TableRetentionOptions();
+// 席位邀请码的有效期（D-0038 / 审计 G-A2-2）：说书人签发的邀请码活多久，默认 24 小时。
+var seatInvitationOptions = builder.Configuration
+    .GetSection(SeatInvitationOptions.SectionName)
+    .Get<SeatInvitationOptions>() ?? new SeatInvitationOptions();
 
 builder.Services.Configure<GameServerOptions>(
     builder.Configuration.GetSection(GameServerOptions.SectionName));
@@ -49,6 +53,8 @@ builder.Services.Configure<TableQuotaOptions>(
     builder.Configuration.GetSection(TableQuotaOptions.SectionName));
 builder.Services.Configure<TableRetentionOptions>(
     builder.Configuration.GetSection(TableRetentionOptions.SectionName));
+builder.Services.Configure<SeatInvitationOptions>(
+    builder.Configuration.GetSection(SeatInvitationOptions.SectionName));
 
 // 传输面上限（M3 / G-A3-4）：**显式取值**，不吃框架默认（30 MB 请求体 / 无上限连接 / 30 秒请求头超时）。
 builder.WebHost.ConfigureKestrel(kestrel =>
@@ -97,6 +103,11 @@ builder.Services.AddSingleton<IGameCatalog, EfGameCatalog>();
 builder.Services.AddSingleton<IPasswordHasher, Pbkdf2PasswordHasher>();
 builder.Services.AddSingleton<IAccountStore, EfAccountStore>();
 builder.Services.AddSingleton<ISeatBindingStore, EfSeatBindingStore>();
+// 席位邀请凭据（D-0038 / 审计 G-A2-2）：邀请码只存哈希、带有效期、可轮换。
+// 它单独一张表、不再住在席位名单里——那样一次"追加席位"的整行回写会把刚签的邀请覆盖掉。
+builder.Services.AddSingleton(seatInvitationOptions);
+builder.Services.AddSingleton<ISeatInvitationStore, EfSeatInvitationStore>();
+builder.Services.AddSingleton<SeatInvitationService>();
 // 删除路径（M5 / G-A6-5）：桌退役（活跃度读数 + 五表联删）与账号注销（账号行 + 席位绑定 + 归属）。
 // 从前全仓一个删除方法都没有，清一张桌只能停服手工五表联删（部署文档 §9.4 的旧写法）。
 builder.Services.AddSingleton<ITableRetirementStore, EfTableRetirementStore>();
@@ -165,13 +176,16 @@ builder.Services.AddSingleton(provider => new HubJoinScope(
     provider.GetRequiredService<NotificationDispatcher>(),
     provider.GetRequiredService<ActionThrottle>(),
     provider.GetRequiredService<ILogger<GameHub>>()));
-// 桌务（锁桌 / 解除席位绑定）：单例、无状态协作者。
+// 桌务（访问模式 / 解除席位绑定 / 签发邀请码）：单例、无状态协作者。
 builder.Services.AddSingleton(provider => new HubTableAdmin(
     provider.GetRequiredService<LobbyService>(),
     provider.GetRequiredService<SeatJoinCoordinator>(),
     provider.GetRequiredService<NotificationDispatcher>()));
+// 查询类入口（配板建议 / 复盘页）：从 GameHub 拆出（单文件 600 行门禁），单例、无状态协作者。
+builder.Services.AddSingleton(provider => new HubQueryScope(
+    provider.GetRequiredService<ILogger<HubQueryScope>>()));
 
-// 加入 / 认领的席位定位与凭据签发（D-0021）：从 GameHub 拆出（单文件 600 行门禁）。
+// 加入 / 认领的席位定位与凭据签发（D-0021 / D-0038）：从 GameHub 拆出（单文件 600 行门禁）。
 // 多桌（D-0024）：本类不持有"当前是哪一局"，局面由调用方按次传入，所以这里没有 GameId / GameSession 依赖。
 builder.Services.AddSingleton(provider => new SeatJoinCoordinator(
     provider.GetRequiredService<IGameCatalog>(),
@@ -179,6 +193,7 @@ builder.Services.AddSingleton(provider => new SeatJoinCoordinator(
     provider.GetRequiredService<SeatBindingService>(),
     provider.GetRequiredService<AccountService>(),
     provider.GetRequiredService<AccountSessionRegistry>(),
+    provider.GetRequiredService<SeatInvitationService>(),
     provider.GetRequiredService<ILogger<SeatJoinCoordinator>>()));
 builder.Services.AddHostedService<GameBootstrapHostedService>();
 builder.Services.AddHostedService<StepPacerHostedService>();

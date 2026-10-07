@@ -528,6 +528,19 @@ export interface SeatCharacterAssignmentDto {
   character: string
 }
 
+/**
+ * 刚签发的席位邀请码（D-0038）：**明文只出现这一次**——说书人当场转交，服务端只留哈希。
+ *
+ * `inviteCode` 是完整形态（`桌标识:席位邀请码`），由服务端拼；玩家那一面整串粘进「有邀请码？」。
+ * 它**不上玩家的任何投影**（凭据不进事件流、不进日志）。
+ */
+export interface SeatInvitationDto {
+  seat: number
+  inviteCode: string
+  /** 到期时刻（ISO 字符串；到点即作废，说书人重新签发即可）。 */
+  expiresAt: string
+}
+
 /** 配板建议（说书人查询；瞬态、不落账、不进事件流）。 */
 export interface SetupProposalDto {
   ok: boolean

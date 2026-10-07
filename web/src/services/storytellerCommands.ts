@@ -11,7 +11,7 @@
  * 不提供"只给连接"的发命令入口。
  */
 import type { HubConnection } from '@microsoft/signalr'
-import type { SetupProposalDto } from '@/contracts/game'
+import type { SeatInvitationDto, SetupProposalDto } from '@/contracts/game'
 import { asBoolean, asNumber, asText } from '@/display/format'
 
 /** 一条命令的两个必要条件：连接 + 该连接的凭据（D-0012）。 */
@@ -37,10 +37,8 @@ export interface CommandOutcome {
   message: string
   /** 重建对比报告；非重建命令为 null。 */
   rebuild: RebuildReport | null
-  /** 加入旅行者且由服务端分配席位时签发的席位号；其它命令为 null（D1）。 */
+  /** 加入旅行者且由服务端分配席位时**追加的席位号**；其它命令为 null（D1）。 */
   issuedSeat: number | null
-  /** 签发的席位票据（只回给出命令的说书人，不进事件流 / 任何投影）；其它命令为 null。 */
-  issuedSeatTicket: string | null
 }
 
 /** 未知响应 → 回执；服务端字段缺失时降级，不编造"成功"。 */
@@ -53,7 +51,6 @@ export function normalizeOutcome(raw: unknown): CommandOutcome {
       message: '回执形状不可识别',
       rebuild: null,
       issuedSeat: null,
-      issuedSeatTicket: null,
     }
   }
 
@@ -83,7 +80,6 @@ export function normalizeOutcome(raw: unknown): CommandOutcome {
     message: parts.length > 0 ? parts.join('：') : '',
     rebuild,
     issuedSeat: asNumber(result['issuedSeat']),
-    issuedSeatTicket: asText(result['issuedSeatTicket']),
   }
 }
 
@@ -99,7 +95,6 @@ export function localFailure(message: string, kind: 'Rejected' | 'Failed' = 'Rej
     message,
     rebuild: null,
     issuedSeat: null,
-    issuedSeatTicket: null,
   }
 }
 
@@ -115,7 +110,6 @@ export function localSuccess(message: string): CommandOutcome {
     message,
     rebuild: null,
     issuedSeat: null,
-    issuedSeatTicket: null,
   }
 }
 
@@ -132,7 +126,6 @@ export function localSuccess(message: string): CommandOutcome {
       message: '尚未加入：没有连接凭据',
       rebuild: null,
       issuedSeat: null,
-      issuedSeatTicket: null,
     }
   }
 
@@ -147,7 +140,6 @@ export function localSuccess(message: string): CommandOutcome {
       message: error instanceof Error ? error.message : String(error),
       rebuild: null,
       issuedSeat: null,
-      issuedSeatTicket: null,
     }
   }
 }
@@ -439,7 +431,8 @@ export function rebuildRoom(
 /**
  * 加入一名旅行者（说书人 / 宿主；任意时刻可用，含开局前与阶段中）。
  *
- * `seat` = null 时由服务端**追加新席位**并签发新票据（回执里的 `issuedSeat` / `issuedSeatTicket`）；
+ * `seat` = null 时由服务端**追加新席位**（回执里的 `issuedSeat`）；**凭据不在这条回执里**（D-0038）——
+ * 说书人随后用 `issueSeatInvitation` 为那一席签发一枚邀请码（面板自动做这一步）。
  * 指定席位 = 落在本局**尚未分配**的席位（如 15+ 开局提前占好的高号席）。
  * `alignment` 是说书人私下裁定的阵营（Good / Evil），不进任何公开投影；
  * `revealDemonSeats` = 邪恶旅行者要被告知的存活恶魔席位（一名或全部；善良必须为空）。
@@ -504,6 +497,48 @@ export async function setTableInviteOnly(
   } catch {
     return null
   }
+}
+
+/**
+ * 为某个席位**签发（或轮换）邀请码**（D-0038）：明文只回这一次，重复调用即轮换（旧码当场失效）。
+ *
+ * 它**不是命令**：不进事件流（邀请凭据是会话信息）、回执也不是 `CommandResultDto`，
+ * 所以不走 `invokeCommand`。拿不到确认（没凭据 / 传输异常 / 回执形状不对）时返回 null：
+ * 界面据此说"没签出来"，绝不假装签成功——这一串是要转交给玩家的东西。
+ *
+ * 服务端只存哈希，所以**没有"再读回来"这条路**：签完必须当场显示、当场转交。
+ */
+export async function issueSeatInvitation(
+  sender: CommandSender,
+  seat: number,
+): Promise<SeatInvitationDto | null> {
+  if (sender.credential.length === 0 || !Number.isInteger(seat) || seat < 1) {
+    return null
+  }
+
+  try {
+    const reply = await sender.connection.invoke<unknown>('IssueSeatInvitation', sender.credential, seat)
+    return normalizeSeatInvitation(reply)
+  } catch {
+    return null
+  }
+}
+
+/** 邀请码回执的防御性解析（服务端数据是输入，不是保证）：缺字段或形状不对即视为没签出来。 */
+export function normalizeSeatInvitation(raw: unknown): SeatInvitationDto | null {
+  if (raw === null || typeof raw !== 'object') {
+    return null
+  }
+
+  const record = raw as Record<string, unknown>
+  const seat = asNumber(record['seat'])
+  const inviteCode = asText(record['inviteCode'])
+  const expiresAt = asText(record['expiresAt'])
+  if (seat === null || inviteCode === null || expiresAt === null) {
+    return null
+  }
+
+  return { seat, inviteCode, expiresAt }
 }
 
 /** 裁定某席位「今天的死亡保护」（R-0048；怪咖：有趣 → 受保护）。只在流放达线待裁定时受理。 */

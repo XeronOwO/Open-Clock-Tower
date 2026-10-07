@@ -318,8 +318,8 @@ public sealed class GameSession
                 case GateDecisionKind.Reject:
                     return Reject(envelope, decision.Rejection!);
                 case GateDecisionKind.Duplicate:
-                    // 重复投递的加入命令：把首次签发的席位与票据按原样回给说书人（回执里没有票据本身），
-                    // 客户端超时重试拿到的仍是同一张票，而不是第二张。
+                    // 重复投递的加入命令：把首次落库的**席位号**按原样回给说书人，好让客户端接着为它
+                    // 签发邀请码（邀请码不在这里回放——它只在签发那一次出现，D-0038）。
                     return AnnotateIssuedTravellerSeat(
                         await SessionCommit.ReplayAsync(
                             _store,
@@ -328,8 +328,7 @@ public sealed class GameSession
                             envelope,
                             decision.Receipt!,
                             cancellationToken),
-                        envelope,
-                        setup);
+                        envelope);
                 default:
                     break;
             }
@@ -339,7 +338,7 @@ public sealed class GameSession
                 return await RebuildAsync(envelope, rebuild, cancellationToken);
             }
 
-            // 旅行者加入：把"未指定席位"解析成服务端追加的新席位与票据（纯对象，不落库）；
+            // 旅行者加入：把"未指定席位"解析成服务端追加的新席位（纯对象，不落库；邀请码另行签发，D-0038）；
             // 之后的分派 / 提交都按解析后的命令与席位名单走。
             var issue = TravellerSeatIssuer.Resolve(setup, envelope.Command);
             var effectiveSetup = issue?.Setup ?? setup;
@@ -366,8 +365,8 @@ public sealed class GameSession
 
             var recordedAt = _clock.UtcNow;
 
-            // 新席位要落目录（票据是玩家的入场凭据）：先存后提交，提交失败按补偿回滚；
-            // 崩在两者之间时目录里会多一个未入局席位，说书人可对该席位重试加入（票据仍是同一张）。
+            // 新席位要落目录：先存后提交，提交失败按补偿回滚；
+            // 崩在两者之间时目录里会多一个未入局席位，说书人可对该席位重试加入。
             if (issue is { } issued)
             {
                 await _catalog.SaveAsync(issued.Setup, cancellationToken);
@@ -400,8 +399,7 @@ public sealed class GameSession
                     Sequence = commit.Sequence,
                     Events = commit.Events,
                     Notifications = commit.Notifications,
-                    IssuedSeat = issue?.Ticket.Seat,
-                    IssuedSeatTicket = issue?.Ticket.Ticket,
+                    IssuedSeat = issue?.Seat,
                 };
             }
             catch
@@ -419,9 +417,9 @@ public sealed class GameSession
                         _logger.LogError(
                             rollbackFailure,
                             "旅行者加入失败后目录回滚失败：game={GameId} seat={Seat}——"
-                                + "席位已写入目录但事件未提交，请说书人对该席位重试加入（票据仍是同一张）或重建房间",
+                                + "席位已写入目录但事件未提交，请说书人**指定该席位**重试加入或重建房间",
                             GameId,
-                            rollback.Ticket.Seat.Value);
+                            rollback.Seat.Value);
                     }
                 }
 
@@ -541,12 +539,16 @@ public sealed class GameSession
     private IReadOnlyList<SeatId> SeatList() => InGameSeats.Derive(_setup, _state);
 
     /// <summary>
-    /// 重复投递的加入命令：从首次落库的事实里取回席位、从会话信息里取回同一张票据，
-    /// 让超时重试的客户端也能把票转交给新到场的玩家（不生成第二张）。
+    /// 重复投递的加入命令：从首次落库的事实里取回**追加出来的席位号**，
+    /// 让超时重试的说书人面板知道该给哪一席签发邀请码（不会追加第二个席位）。
     /// </summary>
-    private CommandResult AnnotateIssuedTravellerSeat(CommandResult replay, CommandEnvelope envelope, GameSetup? setup)
+    /// <remarks>
+    /// 刻意**不回放邀请码**（D-0038）：凭据只在签发那一次出现，服务端只留哈希，
+    /// 因此"重投一次就把明文再吐一遍"这条路根本不存在。面板据此提示说书人重新签发。
+    /// </remarks>
+    private static CommandResult AnnotateIssuedTravellerSeat(CommandResult replay, CommandEnvelope envelope)
     {
-        if (setup is null || envelope.Command is not JoinTravellerCommand { Seat: null })
+        if (envelope.Command is not JoinTravellerCommand { Seat: null })
         {
             return replay;
         }
@@ -557,11 +559,7 @@ public sealed class GameSession
             return replay;
         }
 
-        return replay with
-        {
-            IssuedSeat = joined.Seat,
-            IssuedSeatTicket = setup.Seats.FirstOrDefault(item => item.Seat == joined.Seat)?.Ticket,
-        };
+        return replay with { IssuedSeat = joined.Seat };
     }
 
     private CommandResult Reject(CommandEnvelope envelope, CommandRejection rejection)

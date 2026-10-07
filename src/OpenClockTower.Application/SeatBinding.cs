@@ -6,7 +6,7 @@ namespace OpenClockTower.Application;
 /// 席位绑定（D-0021）：本局「席位 ↔ 账号」的认领关系。
 /// </summary>
 /// <remarks>
-/// 属**会话信息**（与席位票据同类），不进事件流、不进 <c>GameState</c>；
+/// 属**会话信息**（与席位邀请凭据同类），不进事件流、不进 <c>GameState</c>；
 /// 一席一账号、一账号一席（由存储的唯一索引保证）。
 /// </remarks>
 public sealed record SeatBinding

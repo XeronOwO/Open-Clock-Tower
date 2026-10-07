@@ -76,4 +76,18 @@ public sealed class HubTableAdmin
 
         return released;
     }
+
+    /// <summary>
+    /// 为某个席位签发（或轮换）邀请码（D-0038）：明文只回这一次，库里只留哈希。
+    /// </summary>
+    /// <remarks>
+    /// 编排在 <see cref="SeatJoinCoordinator.IssueInvitationAsync"/>（与解绑同族：都是说书人对席位的动作）。
+    /// 不是游戏命令、不产生事件，因此也不推给任何人——它是说书人一个人的事。
+    /// </remarks>
+    public Task<IssuedSeatInvitation> IssueInvitationAsync(
+        GameInstance game,
+        SeatId seat,
+        CallerContext caller,
+        CancellationToken cancellationToken) =>
+        _join.IssueInvitationAsync(game, seat, caller, cancellationToken);
 }

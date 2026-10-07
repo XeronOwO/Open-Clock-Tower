@@ -41,7 +41,7 @@ public sealed class GameRegistry : ITableUnloader
 
     /// <summary>构造注册表（组合根：装配一局所需的依赖都在这里）。</summary>
     /// <param name="store">事件存储（按 GameId 过滤）。</param>
-    /// <param name="catalog">会话目录（席位票据、归属与桌元数据）。</param>
+    /// <param name="catalog">会话目录（席位名单、归属与桌元数据）。</param>
     /// <param name="bindings">席位绑定（装载席位名读模型）。</param>
     /// <param name="accounts">账号（装载席位名读模型）。</param>
     /// <param name="abilities">角色契约目录（各局共用，无状态）。</param>

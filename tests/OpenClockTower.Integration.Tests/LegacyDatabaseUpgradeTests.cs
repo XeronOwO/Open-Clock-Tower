@@ -1,11 +1,15 @@
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http.Connections;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
+using OpenClockTower.Application;
 using OpenClockTower.Contracts;
+using OpenClockTower.Kernel;
 using OpenClockTower.Server;
 
 namespace OpenClockTower.Integration.Tests;
@@ -316,6 +320,83 @@ public sealed class LegacyDatabaseUpgradeTests : IDisposable
         Assert.False(upgraded.HasColumn("Games", SchemaMigrationCatalog.LegacyLockedColumn));
         Assert.Equal(1, await ReadInviteOnlyAsync(_legacyDatabasePath, "default"));
         Assert.Empty(SchemaComparer.Compare(ModelSchema(), upgraded));
+    }
+
+    /// <summary>
+    /// v4 迁移把老库里的**明文席位票据抹掉**（D-0038 / 审计 G-A2-2）：席位列只剩席位号，
+    /// 旧的那一串码进不来，而说书人新签的一枚照进——升级不该把老桌变成进不去的孤岛。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 老形态是 <c>[{"seat":{"value":1},"ticket":"seat-1-legacy"}, …]</c>：**凭据就住在席位名单里**。
+    /// 本版把凭据搬进自己的表（只存哈希），于是那一批明文必须当场作废——抹掉的是明文本身，
+    /// 这也是这条迁移**不可逆**的原因（旧程序拿回旧包也读不了这个库）。
+    /// </para>
+    /// <para>
+    /// 判据分三半，缺一条都不算收口：**库里读不到明文**（席位列的读数）、**旧码进不来**
+    /// （真链路入座被拒）、**新码进得来**（没有为了安全把功能弄坏）。
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task LegacyTicketEraDatabase_PlaintextTicketsAreErased_AndOldCodesAreRejected()
+    {
+        await CreateLegacyDatabaseAsync();
+        StartHost();
+        await using var account = await ConnectAccountAsync();
+        var registered = await RegisterAsync(account, "legacy-code", "旧码探针");
+        Assert.True(registered.Ok, registered.Message);
+
+        // ① 库里只剩席位号：两位席位都在（名单没丢），而 ticket 字段与它携带的明文一起没了。
+        Assert.Equal("[1,2]", await ReadSeatsJsonAsync(_legacyDatabasePath, "default"));
+        Assert.Equal(SchemaMigrationCatalog.LatestVersion, await ReadUserVersionAsync(_legacyDatabasePath));
+        Assert.True((await ReadSchemaAsync(_legacyDatabasePath)).HasTable(SchemaMigrationCatalog.SeatInvitationTable));
+
+        // ② 旧码进不来：服务端没有它的哈希，凭据表里根本没有这一条。
+        await using var game = await ConnectGameAsync("default");
+        var rejected = await Assert.ThrowsAsync<HubException>(
+            () => game.InvokeAsync<SeatJoinDto>("JoinByInviteCode", "seat-1-legacy", registered.AccountSession, 0L));
+        Assert.Contains("邀请码无效", rejected.Message, StringComparison.Ordinal);
+
+        // ③ 新签的一枚照进：老桌照常能进人（升级没有把它的入口一起关掉）。
+        var issued = await _host!.Services
+            .GetRequiredService<SeatInvitationService>()
+            .IssueAsync(new GameId("default"), new SeatId(1), CancellationToken.None);
+        var joined = await game.InvokeAsync<SeatJoinDto>(
+            "JoinByInviteCode",
+            issued.Code,
+            registered.AccountSession,
+            0L);
+        Assert.Equal(1, joined.Bundle.View.Seat);
+    }
+
+    /// <summary>读某一桌的席位列（库里那一列的**原文**：判"明文没了"必须看它，而不是看 EF 读回来的对象）。</summary>
+    private static async Task<string?> ReadSeatsJsonAsync(string databasePath, string gameId)
+    {
+        await using var connection = new SqliteConnection($"Data Source={databasePath};Pooling=False");
+        await connection.OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT SeatsJson FROM Games WHERE GameId = $id;";
+        command.Parameters.AddWithValue("$id", gameId);
+        var value = await command.ExecuteScalarAsync();
+        return value is null or DBNull ? null : (string)value;
+    }
+
+    /// <summary>连一条**玩家侧**的游戏连接（不加入，只是拿它试入座）。</summary>
+    private async Task<HubConnection> ConnectGameAsync(string gameId)
+    {
+        var connection = new HubConnectionBuilder()
+            .WithUrl(
+                new Uri(_host!.Server.BaseAddress, $"/hub/game?gameId={Uri.EscapeDataString(gameId)}"),
+                options =>
+                {
+                    options.HttpMessageHandlerFactory = _ => _host.Server.CreateHandler();
+                    options.Transports = HttpTransportType.LongPolling;
+                })
+            .Build();
+
+        await connection.StartAsync();
+        _connections.Add(connection);
+        return connection;
     }
 
     /// <summary>读某一桌的访问模式列（正名之后的名字）。</summary>

@@ -182,8 +182,28 @@ export function clockTimeOf(recordedAt: string | null | undefined): string {
   return parsed.toLocaleTimeString('zh-CN', { hour12: false })
 }
 
-/** 秒数 → 「N 秒」；未知时 null。 */
-export function waitingSecondsTextOf(waitingSeconds: number | null | undefined): string | null {
+/** 到期时刻 → 本地「M月D日 HH:mm」；解析不了就原样回显。 */
+export function expiryTextOf(expiresAt: string | null | undefined): string {
+  if (typeof expiresAt !== 'string' || expiresAt.length === 0) {
+    return '—'
+  }
+
+  const parsed = new Date(expiresAt)
+  if (Number.isNaN(parsed.getTime())) {
+    return expiresAt
+  }
+
+  // 只到分钟：邀请码的有效期是小时级的，秒级读数没有意义，反而占位置（D-0038：默认 24 小时）。
+  return parsed.toLocaleString('zh-CN', {
+    month: 'numeric',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  })
+}
+
+/** 秒数 → 「N 秒」；未知时 null。 */export function waitingSecondsTextOf(waitingSeconds: number | null | undefined): string | null {
   const seconds = asNumber(waitingSeconds)
   return seconds === null ? null : `${seconds.toFixed(1)} 秒`
 }

@@ -20,6 +20,7 @@ public sealed class GameHub : Hub<IGameClient>
     private readonly HubGameScope _scope;
     private readonly HubJoinScope _joinScope;
     private readonly HubTableAdmin _tableAdmin;
+    private readonly HubQueryScope _queries;
     private readonly ConnectionRegistry _registry;
     private readonly HubActorResolver _actors;
     private readonly ILogger<GameHub> _logger;
@@ -27,7 +28,8 @@ public sealed class GameHub : Hub<IGameClient>
     /// <summary>构造 Hub。</summary>
     /// <param name="scope">连接 ↔ 桌的绑定（多桌：解析本连接在哪一桌，D-0024）。</param>
     /// <param name="joinScope">加入入口（玩家与说书人两侧；自己解析所在桌）。</param>
-    /// <param name="tableAdmin">桌务（访问模式 / 解除席位绑定）。</param>
+    /// <param name="tableAdmin">桌务（访问模式 / 解除席位绑定 / 签发邀请码）。</param>
+    /// <param name="queries">查询类入口（配板建议 / 复盘页）。</param>
     /// <param name="registry">连接登记表。</param>
     /// <param name="actors">身份解析（凭据 → 操作者）。</param>
     /// <param name="logger">日志。</param>
@@ -35,6 +37,7 @@ public sealed class GameHub : Hub<IGameClient>
         HubGameScope scope,
         HubJoinScope joinScope,
         HubTableAdmin tableAdmin,
+        HubQueryScope queries,
         ConnectionRegistry registry,
         HubActorResolver actors,
         ILogger<GameHub> logger)
@@ -42,6 +45,7 @@ public sealed class GameHub : Hub<IGameClient>
         _scope = scope;
         _joinScope = joinScope;
         _tableAdmin = tableAdmin;
+        _queries = queries;
         _registry = registry;
         _actors = actors;
         _logger = logger;
@@ -55,24 +59,11 @@ public sealed class GameHub : Hub<IGameClient>
     private Task<HubCommandExecutor> CommandsAsync() =>
         _scope.CommandsAsync(Context.GetHttpContext(), Context.ConnectionId, Context.ConnectionAborted);
 
-    /// <summary>
-    /// 玩家凭**邀请码**加入 / 重连（D-0021 / D-0037）：票据认领，或只凭账号回到已认领席位。
-    /// </summary>
-    /// <remarks>
-    /// 邀请码 = 说书人给的那一串「桌标识 + 席位票据」；它是邀请制桌与旅行者中途入场的唯一入口。
-    /// 入座必须登录（D-0037）：没有账号的路径已整个删除，匿名连接只是不能入座。SignalR 不支持
-    /// 方法重载，所以它单独一个方法名（与自助入座 <see cref="JoinTable"/> 并列）。
-    /// </remarks>
+    /// <summary>玩家凭**邀请码**加入 / 重连（D-0021 / D-0037）：流程本体在 <see cref="HubJoinScope"/>。</summary>
     public Task<SeatJoinDto> JoinByInviteCode(string ticket, string? accountSession, long lastSequence) =>
         _joinScope.JoinByInviteCodeAsync(Clients.Caller, Context.GetHttpContext(), Context.ConnectionId, Context.ConnectionAborted, ticket, accountSession, lastSequence);
 
-    /// <summary>
-    /// 玩家**自助入座**（D-0025 / D-0037）：登录后在**公开且未开局**的桌选一个空席位坐下，不要票据。
-    /// </summary>
-    /// <remarks>
-    /// 桌由本连接的 <c>?gameId=</c> 决定。邀请制桌与已开局的桌一律拒（迟到的旅行者凭邀请码进来），
-    /// 但**本人已认领的那一席永远回得去**——那是"回到座位"，不是自助入座。
-    /// </remarks>
+    /// <summary>玩家**自助入座**（D-0025 / D-0037）：登录后在公开且未开局的桌挑一个空席位坐下，不要邀请码。</summary>
     public Task<SeatJoinDto> JoinTable(string accountSession, int seat, long lastSequence) =>
         _joinScope.JoinTableAsync(
             Clients.Caller,
@@ -83,10 +74,7 @@ public sealed class GameHub : Hub<IGameClient>
             seat,
             lastSequence);
 
-    /// <summary>
-    /// 说书人加入（D-0027）：**只认这一桌的开桌账号**，签发连接凭据（同局只保留一条有效连接）。
-    /// </summary>
-    /// <remarks>进主持台不需要出示任何凭据，只需要"你是开这一桌的那个账号"；流程本体在 <see cref="HubJoinFlow"/>。</remarks>
+    /// <summary>说书人加入（D-0027）：只认这一桌的开桌账号；流程本体在 <see cref="HubJoinFlow"/>。</summary>
     public Task<StorytellerJoinDto> JoinStorytellerWithAccount(string accountSession) =>
         _joinScope.JoinStorytellerWithAccountAsync(
             Context.GetHttpContext(),
@@ -500,8 +488,32 @@ public sealed class GameHub : Hub<IGameClient>
     }
 
     /// <summary>
-    /// 查询开局配板建议（只读、不落账）：按官方分布表 + 在场角色的设置调整生成建议。
-    /// 随机只作显式输入——种子可由客户端传入、缺省由服务端生成并回传（R-0041 / R-0042）。
+    /// 为某个席位**签发（或轮换）邀请码**（D-0038）：说书人把它转交给玩家，明文只出现这一次。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 邀请制桌的固定席位、中途到场的旅行者都靠它进门（大厅的座位按钮在这两种桌上点不动）。
+    /// 重复调用即**轮换**：旧的那一枚当场失效——码发错人时这就是收场动作。
+    /// </para>
+    /// <para>
+    /// 权限沿用说书人凭据闸：**本桌**的说书人只能给自己这一桌签，别桌的码签不出来。
+    /// 明文不进日志（只记短指纹），也不推给任何人——它是说书人一个人的事。
+    /// </para>
+    /// </remarks>
+    public async Task<SeatInvitationDto> IssueSeatInvitation(string credential, int seat)
+    {
+        _ = ResolveStorytellerActor(credential);
+        var game = await GameAsync();
+        var issued = await _tableAdmin.IssueInvitationAsync(
+            game,
+            new SeatId(seat),
+            CallerContext.Of(Context.GetHttpContext(), Context.ConnectionId),
+            Context.ConnectionAborted);
+        return ProjectionMapper.ToDto(game.GameId, issued);
+    }
+
+    /// <summary>
+    /// 查询开局配板建议（只读、不落账；生成逻辑在 <see cref="HubQueryScope.ProposeSetupAsync"/>）。
     /// </summary>
     /// <param name="nonTravellerCount">
     /// 配板覆盖的非旅行者人数（R-0046：旅行者是叠加角色，不占镇民 / 外来者 / 爪牙 / 恶魔名额）；
@@ -510,8 +522,11 @@ public sealed class GameHub : Hub<IGameClient>
     public async Task<SetupProposalDto> ProposeSetup(string credential, string? seed, int? nonTravellerCount)
     {
         _ = ResolveStorytellerActor(credential);
-        var result = await (await GameAsync()).Session.ProposeSetupAsync(seed, nonTravellerCount, Context.ConnectionAborted);
-        return ProjectionMapper.ToDto(result);
+        return await HubQueryScope.ProposeSetupAsync(
+            await GameAsync(),
+            seed,
+            nonTravellerCount,
+            Context.ConnectionAborted);
     }
 
     /// <summary>说书人查询当前视图（变更时同时会推送，客户端不需要轮询）。</summary>
@@ -522,35 +537,17 @@ public sealed class GameHub : Hub<IGameClient>
     }
 
     /// <summary>
-    /// 查询一页复盘（D-0020 / R-0043）：说书人随时可看（实时面），玩家只有本局结束之后才允许——
-    /// 可见性闸在 Application 强制；Server 只翻译身份与拒绝。
+    /// 查询一页复盘（D-0020 / R-0043）：说书人随时可看，玩家只有本局结束之后才允许
+    /// （可见性闸与中性文案在 <see cref="HubQueryScope.GetReplayAsync"/>）。
     /// </summary>
-    /// <param name="credential">连接级凭据（D-0012）。</param>
-    /// <param name="afterSequence">客户端已拿到的最大事件序号；首次传 0。</param>
-    /// <param name="pageSize">本页最多返回的步骤数（Application 侧钳制）。</param>
-    public async Task<ReplayViewDto> GetReplay(string credential, long afterSequence, int pageSize)
-    {
-        var actor = ResolveActor(credential);
-        try
-        {
-            var replay = await (await GameAsync()).Replay.ReadAsync(
-                actor,
-                afterSequence,
-                pageSize,
-                Context.ConnectionAborted);
-            return ProjectionMapper.ToDto(replay);
-        }
-        catch (ReplayAccessDeniedException exception)
-        {
-            // 中性文案：只说明什么时候可以看，不泄露任何局面信息（R-0043）。
-            _logger.LogInformation(
-                "复盘查询被拒：connection={ConnectionId} kind={Kind} 原因={Reason}",
-                Context.ConnectionId,
-                actor.Kind,
-                exception.Message);
-            throw new HubException(exception.Message);
-        }
-    }
+    public async Task<ReplayViewDto> GetReplay(string credential, long afterSequence, int pageSize) =>
+        await _queries.GetReplayAsync(
+            ResolveActor(credential),
+            await GameAsync(),
+            afterSequence,
+            pageSize,
+            Context.ConnectionId,
+            Context.ConnectionAborted);
 
     /// <inheritdoc />
     public override async Task OnDisconnectedAsync(Exception? exception)

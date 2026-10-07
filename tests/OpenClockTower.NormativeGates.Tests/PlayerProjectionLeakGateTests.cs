@@ -81,6 +81,9 @@ public sealed partial class PlayerProjectionLeakGateTests
         "SeatAnnotationDto.cs",
         "SeatChangeDto.cs",
         "SeatCharacterAssignmentDto.cs",
+        // 刚签发的席位邀请码（D-0038）：**它就是一枚凭据**，只回给签发它的说书人一次
+        // （明文不进事件流、不进任何玩家投影、不进日志）；列进说书人专属正是让这件事有个名字。
+        "SeatInvitationDto.cs",
         "SeatStateDto.cs",
         "SeatStateFactDto.cs",
         "SetupProposalDto.cs",

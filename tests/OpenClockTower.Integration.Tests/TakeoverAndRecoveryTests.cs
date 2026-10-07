@@ -364,8 +364,7 @@ public sealed class TakeoverAndRecoveryTests
 
             // 玩家侧现状：房间不可读时加入**显式失败**，且错误信息中性——"数据丢了"只说书人可见。
             // 入座必须登录（D-0037），所以探针也要先有一张身份：用宿主夹具签一个账号会话。
-            var setup = await revived.GetSetupAsync();
-            var seatTicket = setup.Seats.Single(item => item.Seat == new SeatId(1)).Ticket;
+            var seatTicket = await revived.IssueInviteCodeAsync(new SeatId(1));
             var probeAccount = await revived.SeatFixtureAccountAsync(new SeatId(1));
             var raw = await revived.ConnectAnonymousAsync();
             var joinFailure = await Assert.ThrowsAsync<HubException>(() =>

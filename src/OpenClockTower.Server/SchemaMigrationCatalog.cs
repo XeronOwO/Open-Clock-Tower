@@ -100,8 +100,36 @@ public static class SchemaMigrationCatalog
         IsIrreversible: false,
         Apply: ApplyTableAccessRenameAsync);
 
+    /// <summary>
+    /// v4 · **席位邀请凭据**：建 <c>SeatInvitations</c> 表，并把老库里的明文席位票据抹掉（D-0038）。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 为什么需要它（审计 G-A2-2，High）：邀请码此前就是席位票据本身——<c>seat-2-&lt;GUID&gt;</c>
+    /// **明文**写进 <c>Games.SeatsJson</c>、与席位同寿、不可作废。拿到库或备份的人可以长期冒名入座，
+    /// 不受"8 小时会话过期"的约束。本版把凭据搬到自己的表里（只存 SHA-256 + 到期时刻），
+    /// 于是**老库里那一批明文码必须当场作废**：这是本迁移的第二半，也是它不可逆的原因。
+    /// </para>
+    /// <para>
+    /// <b>不可逆</b>：抹掉的是明文本身——旧程序拿回旧包也读不了这个库（它按
+    /// <c>[{"seat":…,"ticket":…}]</c> 解析席位列，读到 <c>[1,2]</c> 会直接反序列化失败），
+    /// 而且那些邀请码已经不存在了。回滚只能连库一起回（部署文档 §9.3）。
+    /// </para>
+    /// <para>
+    /// 守卫式：建表带 <c>IF NOT EXISTS</c>，抹明文那一条只动**元素是对象**的老形态行
+    /// （新形态是整数数组），因此重复跑是空操作。
+    /// </para>
+    /// </remarks>
+    private static readonly SchemaMigration SeatInvitationCredentials = new(
+        Version: 4,
+        Description: "席位邀请凭据：建 SeatInvitations 表（一席一行，只存哈希 + 到期时刻）"
+                     + " + 把老库 Games.SeatsJson 里的明文席位票据抹成席位号数组（D-0038）",
+        IsIrreversible: true,
+        Apply: ApplySeatInvitationCredentialsAsync);
+
     /// <summary>本版认识的迁移，**按版本升序**。</summary>
-    public static IReadOnlyList<SchemaMigration> All { get; } = [Baseline, TableCreationTime, TableAccessRename];
+    public static IReadOnlyList<SchemaMigration> All { get; } =
+        [Baseline, TableCreationTime, TableAccessRename, SeatInvitationCredentials];
 
     /// <summary>本版支持到哪一版（库的版本比它大 = 程序被回滚过，拒绝启动）。</summary>
     public static int LatestVersion => All[^1].Version;
@@ -287,5 +315,52 @@ public static class SchemaMigrationCatalog
         await context.ExecuteAsync(
             $"ALTER TABLE Games RENAME COLUMN {LegacyLockedColumn} TO {InviteOnlyColumn};",
             cancellationToken);
+    }
+
+    /// <summary>席位邀请凭据表名（实体、迁移与体检读数共用同一个字符串）。</summary>
+    public const string SeatInvitationTable = "SeatInvitations";
+
+    /// <summary>
+    /// 席位邀请凭据表的 DDL（形态与 EF 模型一致：主键 <c>(GameId, Seat)</c>、<c>Hash</c> 是 32 字节 BLOB）。
+    /// </summary>
+    private static readonly string CreateSeatInvitationsTableSql =
+        $"""
+        CREATE TABLE IF NOT EXISTS "{SeatInvitationTable}" (
+            "GameId" TEXT NOT NULL,
+            "Seat" INTEGER NOT NULL,
+            "Hash" BLOB NOT NULL,
+            "ExpiresAt" TEXT NOT NULL,
+            CONSTRAINT "PK_{SeatInvitationTable}" PRIMARY KEY ("GameId", "Seat")
+        );
+        """;
+
+    /// <summary>
+    /// 把老库席位行里的明文票据抹成"只有席位号"的数组。
+    /// </summary>
+    /// <remarks>
+    /// 老形态是 <c>[{"seat":{"value":1},"ticket":"seat-1-…"}, …]</c>（<c>SeatId</c> 是记录结构，
+    /// 因此席位号自己也序列化成了对象），新形态是 <c>[1,2,…]</c>。
+    /// 判据取"第一个元素是对象"：新形态的元素是整数，重复跑自然落到空操作。
+    /// </remarks>
+    private static readonly string StripSeatTicketSql =
+        """
+        UPDATE Games SET SeatsJson = (
+            SELECT json_group_array(json_extract(value, '$.seat.value'))
+            FROM json_each(Games.SeatsJson)
+        )
+        WHERE json_valid(SeatsJson) AND json_type(SeatsJson, '$[0]') = 'object';
+        """;
+
+    /// <summary>v4 的动作：先建表（空库与老库走同一条路），再把老形态的明文票据抹掉。</summary>
+    private static async Task ApplySeatInvitationCredentialsAsync(
+        SchemaMigrationContext context,
+        CancellationToken cancellationToken)
+    {
+        await context.ExecuteAsync(CreateSeatInvitationsTableSql, cancellationToken);
+
+        // 抹明文这一步**不认"有没有装过"**：它只认行里的形态。于是三种库都对——
+        // 全新库（席位列本来就是整数数组，什么也不动）、从 v3 升上来的库（抹掉明文）、
+        // 以及重复启动（已经是整数数组，空操作）。
+        await context.ExecuteAsync(StripSeatTicketSql, cancellationToken);
     }
 }

@@ -66,7 +66,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { DatabaseSync } from 'node:sqlite'
 import { readAttributeBounded, readTextBounded } from './lib/bounded-text.mjs'
-import { openTableAndHost, readSeatTickets, registerOnGate, seatByAccount, seatByInviteCode } from './lib/entrance.mjs'
+import { issueInviteCode, openTableAndHost, registerOnGate, seatByAccount, seatByInviteCode } from './lib/entrance.mjs'
 import { describeProfile, ensureServerArtifacts, extractProfileFlags, resolveProfile } from './lib/verify-profile.mjs'
 import { createChecker, createSectionRunner } from './lib/verify-sections.mjs'
 
@@ -368,12 +368,13 @@ async function main() {
   await screenshot(observer.page, 'tableaccess-03-lobby-invite-only')
 
   if (!runner.begin('invite')) return
-  // 矩阵行 4 的正向判据：邀请制桌里，**持邀请码的人进得来**（码 = 桌标识:席位票据，票据从库里读）。
-  const observerCode = `${table.gameId}:${seatTicketOf(table.gameId, SEAT_OBSERVER)}`
+  // 矩阵行 4 的正向判据：邀请制桌里，**持邀请码的人进得来**。
+  // 码由说书人**当场签发**（D-0038）：库里只有哈希，读不回来——面板那一下是唯一的来源。
+  const observerCode = await issueInviteCode(storytellerPage, SEAT_OBSERVER)
   await joinByInviteCodeFromLobby(observer.page, observerCode)
   const observerSeat = await waitForLocatorContains(observer.page.getByTestId('player-seat'), `${SEAT_OBSERVER} 号`, WINDOW_MS)
   check(
-    `矩阵行 4 正向：持邀请码者在大厅「有邀请码？」里入座成功（${SEAT_OBSERVER} 号，票据取自库）`,
+    `矩阵行 4 正向：持邀请码者在大厅「有邀请码？」里入座成功（${SEAT_OBSERVER} 号，码由说书人当场签发）`,
     observerSeat.includes(`${SEAT_OBSERVER} 号`),
     `席位标签「${observerSeat}」｜用的码「${observerCode}」`,
   )
@@ -433,11 +434,13 @@ async function main() {
     issued.seat === String(SEAT_TRAVELLER) && issued.code.length > 0,
     `traveller-issued[data-seat]=${readable(issued.seat)}｜转交的码「${issued.code}」`,
   )
-  const travellerTicket = seatTicketOf(table.gameId, SEAT_TRAVELLER)
+  // D-0038：面板转交的那一串**不会落在库里**——把"库里没有可用明文"变成一次真机读数。
+  const travellerSecret = issued.code.slice(issued.code.indexOf(':') + 1)
+  const stored = readInvitationStorage(table.gameId)
   check(
-    '面板上转交的邀请码 = 库里这一席的「桌标识:席位票据」（转交的那一串就是入场的钥匙，对得上）',
-    travellerTicket.length > 0 && issued.code === `${table.gameId}:${travellerTicket}`,
-    `面板「${issued.code}」｜库「${table.gameId}:${travellerTicket}」`,
+    '库里读不到这一串明文（席位名单与凭据表里都只有席位号与哈希，D-0038）',
+    travellerSecret.length > 0 && !stored.includes(travellerSecret),
+    `面板「${issued.code}」｜库里两列的原文都不含它（长度 ${stored.length}）`,
   )
 
   const traveller = await newPage(browser, VIEWPORT_PLAYER, consoleErrors)
@@ -507,14 +510,15 @@ async function main() {
     issuedRejected.seat === String(SEAT_REJECTED) && issuedRejected.code.length > 0,
     `traveller-issued[data-seat]=${readable(issuedRejected.seat)}｜转交的码「${issuedRejected.code}」`,
   )
-  const rejectedTicket = seatTicketOf(table.gameId, SEAT_REJECTED)
+  // D-0038：**重新签发即轮换**——同一席再签一枚，上一枚当场失效（码发错人时的收场动作）。
+  const rotatedRejected = await issueInviteCode(storytellerPage, SEAT_REJECTED)
   check(
-    '第二名旅行者的邀请码同样与库里的票据对得上',
-    rejectedTicket.length > 0 && issuedRejected.code === `${table.gameId}:${rejectedTicket}`,
-    `面板「${issuedRejected.code}」｜库「${table.gameId}:${rejectedTicket}」`,
+    `重新签发 ${SEAT_REJECTED} 号席的邀请码：新的一枚与上一枚不同（轮换，旧的当场作废）`,
+    rotatedRejected !== issuedRejected.code && rotatedRejected.startsWith(`${table.gameId}:`),
+    `上一枚「${issuedRejected.code}」｜新的一枚「${rotatedRejected}」`,
   )
   const rejected = await newPage(browser, VIEWPORT_PLAYER, consoleErrors)
-  await seatByInviteCode(rejected.page, { frontUrl: viteUrl, code: issuedRejected.code, suffix: 'ta-t2' })
+  await seatByInviteCode(rejected.page, { frontUrl: viteUrl, code: rotatedRejected, suffix: 'ta-t2' })
   await requireLocator(
     rejected.page.getByTestId('departure-request'),
     1,
@@ -747,9 +751,16 @@ function describeLive(label, probe) {
   return `${label}：文档标记=${probe.mark ?? '丢了（文档被换过）'}｜新增导航 framed=${probe.frames} load=${probe.loads}｜hub 连接 ${probe.socketsBefore}→${probe.sockets}`
 }
 
-/** 库里这一席的票据（`Games.SeatsJson`；席位票据的读法收在 `entrance.mjs` 的 `readSeatTickets`）。 */
-function seatTicketOf(gameId, seat) {
-  return readSeatTickets(databasePath, gameId).find((item) => item.seat === seat)?.ticket ?? ''
+/** 库里与邀请码有关的两列**原文**：席位名单（只剩席位号）+ 凭据表（只有哈希）。 */
+function readInvitationStorage(gameId) {
+  const database = new DatabaseSync(databasePath)
+  try {
+    const seats = database.prepare('SELECT SeatsJson FROM Games WHERE GameId = ?').get(gameId)?.SeatsJson ?? ''
+    const hashes = database.prepare('SELECT Hash FROM SeatInvitations WHERE GameId = ?').all(gameId)
+    return `${seats}\n${hashes.map((row) => String(row.Hash)).join('\n')}`
+  } finally {
+    database.close()
+  }
 }
 
 /**

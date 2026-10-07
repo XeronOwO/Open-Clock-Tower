@@ -1,4 +1,4 @@
-﻿<script setup lang="ts">
+<script setup lang="ts">
 /**
  * 玩家视图（同一 SPA 的另一套视图，D-0004）。
  *
@@ -243,7 +243,7 @@ async function resumeSeat(): Promise<void> {
   }
 }
 
-/** 邀请码入座（兜底路径）：说书人给的席位票据，写成「桌标识:票据」。 */
+/** 邀请码入座（兜底路径）：说书人给的那一串，写成「桌标识:席位邀请码」。 */
 const inviteCode = ref('')
 const inviteBusy = ref(false)
 const inviteNotice = ref('')
@@ -252,7 +252,7 @@ const inviteNotice = ref('')
  * 用邀请码入座：**这是给"大厅点不动"的场合留的一条路**——桌是邀请制（或已开局）时，
  * 说书人新签发的旅行者席位、以及换设备的兜底，都走这里。
  *
- * 码写成 `桌标识:席位票据`（说书人面板显示的就是这个形态）：桌标识属于连接，
+ * 码写成 `桌标识:席位邀请码`（说书人面板显示的就是这个形态）：桌标识属于连接，
  * 光有票据不知道连哪一桌。**入座必须登录**（D-0037）：没有账号就没有"你是哪一席"，
  * 所以未登录时这里直接拦下并说明，绝不把 null 当账号会话发出去。
  */
@@ -266,7 +266,7 @@ async function joinByInviteCode(): Promise<void> {
   const raw = inviteCode.value.trim()
   const separator = raw.indexOf(':')
   if (separator <= 0 || separator === raw.length - 1) {
-    inviteNotice.value = '邀请码要写成「桌标识:席位票据」——说书人面板上显示的就是这一串'
+    inviteNotice.value = '邀请码要写成「桌标识:席位邀请码」——说书人面板上显示的就是这一串'
     return
   }
 
@@ -773,10 +773,10 @@ onBeforeUnmount(() => {
       <details class="invite" data-testid="seat-invite">
         <summary>有邀请码？凭邀请码入座</summary>
         <p class="hint">
-          说书人给你的那一串，形态是「桌标识:席位票据」（他面板上显示的就是它）；要先登录才能入座。
+          说书人给你的那一串，形态是「桌标识:席位邀请码」（他面板上显示的就是它）；要先登录才能入座。
         </p>
         <div class="row">
-          <input v-model="inviteCode" data-testid="seat-invite-code" placeholder="桌标识:席位票据" spellcheck="false" />
+          <input v-model="inviteCode" data-testid="seat-invite-code" placeholder="桌标识:席位邀请码" spellcheck="false" />
           <button type="button" :disabled="inviteBusy" data-testid="seat-invite-join" @click="joinByInviteCode()">
             入座
           </button>

@@ -3,8 +3,9 @@
  * 旅行者管理（D1 / D7 / D-0037）：说书人把旅行者加入本局（任意时刻，含开局前与阶段中）或移出，
  * 并**裁定**玩家自己提出的离场申请（D-0037：玩家发起 → 说书人裁定）。
  *
- * 加入 = 新席位：`seat` 留空时服务端**追加席位**并签发新票据（回执里的 issuedSeat /
- * issuedSeatTicket，说书人转交给新到场的玩家）；指定席位 = 落在本局尚未分配的高号席。
+ * 加入 = 新席位：`seat` 留空时服务端**追加席位**（回执里的 issuedSeat）；
+ * **邀请码不在那条回执里**（D-0038）——说书人随后为那一席签发一枚（本组件在加入成功后自动做这一步，
+ * 说书人的手感仍是一次点击），明文只出现这一次、只在本组件内存里，刷新后不再显示。
  * 阵营由说书人私下裁定（不进任何公开投影）；邪恶旅行者的揭示目标由说书人指定（一名或全部）。
  * 平台只校验与转达（D-0002）；真正的拒绝在服务端，这里只做"别让你点空"的呈现（web/AGENTS §4）。
  *
@@ -12,12 +13,14 @@
  * 训练有素的旅行者要临时走人时，说书人不必先等谁提申请。
  */
 import type { StorytellerViewDto } from '@/contracts/game'
-import { seatTextOf } from '@/display/format'
+import { expiryTextOf, seatTextOf } from '@/display/format'
 import { characterLabelOf, ROSTER } from '@/display/labels'
 import { newIdempotencyKey } from '@/services/idempotency'
 import {
+  issueSeatInvitation,
   joinTraveller,
   localFailure,
+  localSuccess,
   removeTraveller,
   resolveTravellerDeparture,
   type CommandOutcome,
@@ -25,20 +28,8 @@ import {
 } from '@/services/storytellerCommands'
 import { computed, ref } from 'vue'
 
-const props = defineProps<{ view: StorytellerViewDto; sender: CommandSender; gameId?: string }>()
+const props = defineProps<{ view: StorytellerViewDto; sender: CommandSender }>()
 const emit = defineEmits<{ outcome: [CommandOutcome] }>()
-
-/**
- * 邀请码：**桌标识 + 席位票据**。
- *
- * 光有票据，玩家那一面不知道该连哪一桌（桌标识属于连接，多桌 D-0024）；
- * 说书人把这一串交出去，玩家在「有邀请码？」里粘一次就能入座——中途到场的旅行者走的就是这条路。
- */
-const inviteCode = computed(() =>
-  props.gameId === undefined || props.gameId.length === 0
-    ? (issued.value?.ticket ?? '')
-    : `${props.gameId}:${issued.value?.ticket ?? ''}`,
-)
 
 /** 首版五名旅行者（术语表 §9 的镜像；提交后由服务端按花名册复核，选错会被显式拒绝）。 */
 const travellers = ROSTER.filter((profile) => profile.type === '旅行者')
@@ -51,8 +42,15 @@ const removeSeat = ref<number | null>(null)
 const removeNote = ref('')
 const busy = ref(false)
 
-/** 加入成功后要转交的票据：只在本组件内存里，刷新 / 重连后不再显示（它是入场凭据）。 */
-const issued = ref<{ seat: number; ticket: string } | null>(null)
+/**
+ * 刚签发的邀请码（**明文只在这一刻存在**，服务端只留哈希）。
+ *
+ * 所以它只活在本组件内存里：刷新 / 重连之后拿不回来——这不是"忘了显示"，是凭据形态本身。
+ */
+const issued = ref<{ seat: number; inviteCode: string; expiresAt: string } | null>(null)
+
+/** 到期时刻的人话读数（坏值只降级这一行，不白屏——web/AGENTS §4）。 */
+const invitedUntil = computed(() => expiryTextOf(issued.value?.expiresAt))
 
 /** 账上已观测的席位（含角色名）：揭示范围与移出目标都从这里选，服务端再复核。 */
 const seats = computed(() =>
@@ -100,8 +98,40 @@ async function join(): Promise<void> {
     ),
   )
 
-  if (outcome.ok && outcome.issuedSeat !== null && outcome.issuedSeatTicket !== null) {
-    issued.value = { seat: outcome.issuedSeat, ticket: outcome.issuedSeatTicket }
+  if (outcome.ok && outcome.issuedSeat !== null) {
+    // 加入成功 = 席位已经追加好了；凭据另外签发一次（D-0038）。
+    // 签不出来就**如实说**：席位已经进去了，只是这一枚码没拿到——再点一次"重新生成"即可。
+    const invitation = await issueSeatInvitation(props.sender, outcome.issuedSeat)
+    if (invitation === null) {
+      emit(
+        'outcome',
+        localFailure(`已加入 ${outcome.issuedSeat} 号席，但邀请码没签出来：请再点一次「重新生成邀请码」`, 'Failed'),
+      )
+      return
+    }
+
+    issued.value = invitation
+  }
+}
+
+/** 为当前这一席**重新签发**（轮换）：旧的那一枚当场失效（D-0038）。 */
+async function reissue(): Promise<void> {
+  if (issued.value === null) {
+    return
+  }
+
+  busy.value = true
+  try {
+    const invitation = await issueSeatInvitation(props.sender, issued.value.seat)
+    if (invitation === null) {
+      emit('outcome', localFailure('没能重新签发邀请码：服务端没有确认（凭据失效或连接中断）', 'Failed'))
+      return
+    }
+
+    issued.value = invitation
+    emit('outcome', localSuccess(`${invitation.seat} 号席的邀请码已重新签发：上一枚当场作废`))
+  } finally {
+    busy.value = false
   }
 }
 
@@ -196,9 +226,18 @@ async function resolveDeparture(seat: number, approved: boolean): Promise<void> 
     </div>
 
     <p v-if="issued" class="ticket" data-testid="traveller-issued" :data-seat="issued.seat">
-      新席位 <strong>{{ issued.seat }}</strong> 的邀请码（请立即转交给新到场的玩家；刷新后不再显示）——
+      新席位 <strong>{{ issued.seat }}</strong> 的邀请码（请立即转交给新到场的玩家；**刷新后不再显示**）——
       他在「加入一桌」那一面的「有邀请码？」里粘这一串即可：
-      <span class="mono">{{ inviteCode }}</span>
+      <span class="mono">{{ issued.inviteCode }}</span>
+    </p>
+    <!-- 「重新生成」刻意留在这一段**外面**：`traveller-issued` 的正文必须**以邀请码收尾**
+         （装置按"最后一段"取码，按钮文案混进去会把码读坏——实测咬到过一次）。 -->
+    <p v-if="issued" class="hint" data-testid="traveller-invite-expiry">
+      这一枚到 {{ invitedUntil }} 之前有效；重新生成会让上一枚**当场作废**（服务端只存它的哈希，
+      所以没有任何地方能把它再读回来）。
+      <button type="button" :disabled="busy" data-testid="traveller-reissue" @click="reissue()">
+        重新生成邀请码
+      </button>
     </p>
 
     <div class="row">
@@ -214,7 +253,10 @@ async function resolveDeparture(seat: number, approved: boolean): Promise<void> 
       <input v-model="removeNote" placeholder="移出说明（可选，会进事件流）" />
       <button type="button" :disabled="busy" data-testid="traveller-remove" @click="remove()">移出</button>
     </div>
-    <p class="hint">移出保留席位与票据，但不再计入任何人数口径（流放分母 / 胜负 / 投票；R-0044 第 6 条）。</p>
+    <p class="hint">
+      移出保留**席位与账号认领**（重连照样回得去，R-0044 第 6 条），但不再计入任何人数口径
+      （流放分母 / 胜负 / 投票）；要让这一席再进人，重新签一枚邀请码即可。
+    </p>
 
     <!-- 待批离场申请（D-0037）：玩家发起、说书人裁定。没有申请时整块不渲染。 -->
     <div v-if="departureRequests.length > 0" class="departures" data-testid="traveller-departures">

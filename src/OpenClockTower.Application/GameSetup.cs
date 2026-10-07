@@ -1,6 +1,8 @@
+using OpenClockTower.Kernel;
+
 namespace OpenClockTower.Application;
 
-/// <summary>一局的会话信息：谁拿着哪张席位票据、这张桌归谁 + 大厅元数据（服务端持久化，重启后仍有效）。</summary>
+/// <summary>一局的会话信息：这一桌有哪些席位、这张桌归谁 + 大厅元数据（服务端持久化，重启后仍有效）。</summary>
 /// <remarks>
 /// <para>
 /// 大厅元数据（<see cref="Name"/> / <see cref="IsInviteOnly"/>）与归属（<see cref="CreatedByAccountId"/>）
@@ -16,8 +18,15 @@ public sealed record GameSetup
     /// <summary>游戏标识。</summary>
     public required GameId GameId { get; init; }
 
-    /// <summary>各席位的票据（邀请码里冒号之后那一段；D-0037 起它只作邀请码用）。</summary>
-    public required IReadOnlyList<SeatTicket> Seats { get; init; }
+    /// <summary>
+    /// 本局的**席位名单**（有哪些席位；席位号不算凭据，进不进人由席位认领与邀请码管）。
+    /// </summary>
+    /// <remarks>
+    /// 这里**只有席位号**（D-0038）：邀请码是另一条线上的凭据——它只存哈希、带有效期、可轮换，
+    /// 由 <c>SeatInvitationService</c> 单独持有。两者从前挤在同一个类型里（`SeatTicket` =
+    /// 席位 + 明文票据），于是"读一次席位名单"顺带把明文凭据读进了内存与备份。
+    /// </remarks>
+    public required IReadOnlyList<SeatId> Seats { get; init; }
 
     /// <summary>
     /// 开桌账号（这一桌归谁）。

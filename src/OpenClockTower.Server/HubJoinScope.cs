@@ -51,12 +51,19 @@ public sealed class HubJoinScope
         _logger = logger;
     }
 
-    /// <summary>玩家凭**邀请码**加入 / 重连（D-0021 / D-0037）：票据认领，或只凭账号回到已认领席位。</summary>
+    /// <summary>
+    /// 玩家凭**邀请码**加入 / 重连（D-0021 / D-0037）：核验邀请码定位席位并认领，或只凭账号回到已认领席位。
+    /// </summary>
+    /// <remarks>
+    /// 邀请码 = 说书人给的那一串「桌标识 + 席位邀请码」（D-0038：只存哈希、有有效期、可轮换）；
+    /// 它是邀请制桌与旅行者中途入场的唯一入口——大厅的座位按钮在这两种桌上点不动。
+    /// 入座必须登录（D-0037）：没有账号的路径已整个删除，匿名连接只是不能入座。
+    /// </remarks>
     /// <param name="caller">调用方（重投挂起请求用）。</param>
     /// <param name="httpContext">本次连接的 HTTP 上下文（解析所属桌）。</param>
     /// <param name="connectionId">连接标识。</param>
     /// <param name="aborted">取消令牌。</param>
-    /// <param name="ticket">席位票据（邀请码里冒号之后那一段）。</param>
+    /// <param name="ticket">邀请码（`桌标识:` 之后那一段）。</param>
     /// <param name="accountSession">账号会话（必须；入座必须登录，D-0037）。</param>
     /// <param name="lastSequence">客户端已见序号。</param>
     public Task<SeatJoinDto> JoinByInviteCodeAsync(

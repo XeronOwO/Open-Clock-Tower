@@ -27,13 +27,11 @@ public sealed record CommandResult
     public RoomRebuildReport? Rebuild { get; init; }
 
     /// <summary>
-    /// 本次为旅行者加入签发的席位；仅"加入旅行者且服务端分配席位"的命令非空（含重复投递回填）。
+    /// 本次为旅行者加入**追加的席位**；仅"加入旅行者且服务端分配席位"的命令非空（含重复投递回填）。
     /// </summary>
+    /// <remarks>
+    /// 回执里**没有凭据**（D-0038）：邀请码由说书人另行签发（<c>IssueSeatInvitation</c>），
+    /// 明文只在签发那一次出现。命令回执会被重投回放，把凭据放进去等于让它反复出现。
+    /// </remarks>
     public SeatId? IssuedSeat { get; init; }
-
-    /// <summary>
-    /// 本次签发的席位票据（说书人转交给新到场的玩家）；仅"加入旅行者且服务端分配席位"的命令非空。
-    /// 票据是入场凭据：只回给出命令的说书人，不进事件流、不进投影。
-    /// </summary>
-    public string? IssuedSeatTicket { get; init; }
 }

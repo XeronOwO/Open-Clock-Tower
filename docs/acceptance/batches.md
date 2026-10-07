@@ -2050,6 +2050,54 @@ NormativeGates 41 · Integration 429）· `dotnet format` 就地通过（无额�
 3. E60 的其余残余（邀请码形态 G-A2-2 · `GameStateComparer` 的 `Activity` / `VigormortisKills` ·
    手机端与 7 真人同局）本批未动。
 
+## 批次 E63（2026-10-08，席位邀请码的凭据形态：只存哈希 · 有有效期 · 可轮换）
+
+冻结版本：`main` @ `68e08bf` + 本批改动（代码、装置与文档同一批）。
+
+- 票：审计差距 **G-A2-2**（High，"席位票据是明文落库、永不过期的第二套 bearer 凭据"）**收口**；
+  口径登记在 `docs/decisions/active.md` **D-0038**，审计页原地补了修复记录与"怎么验证修好了"的读数。
+- **落地**：
+  1. **凭据与名单分家**：`GameSetup.Seats` 只剩**席位号**（`SeatTicket` 类型退场），
+     `Games.SeatsJson` 存 `[1,2,3]`；邀请码搬到自己的表 `SeatInvitations`（一席一行，主键 `(GameId, Seat)`），
+     只存 **SHA-256 + 到期时刻**。
+  2. **签发与核验各只有一处**：`SeatInvitationService`（256 位随机、固定时间比较、逐条比完不提前退出、
+     日志只写短指纹、默认 24 小时有效、覆盖即轮换）；说书人在主持台对某个席位点一下
+     （`IssueSeatInvitation`；界面锚点见 `docs/acceptance/devices.md` §3）——**这是唯一的签发入口**。
+  3. **旅行者加入不再签发凭据**：`JoinTraveller` 只追加席位并回出席位号；`CommandResultDto.IssuedSeatTicket`
+     删除（命令回执会被重投回放，凭据不该走那条路）。面板在加入成功后**自动补一次签发**，说书人的手感仍是一次点击。
+  4. **结构 v4（不可逆）**：建 `SeatInvitations` + 把老库席位列里的 `ticket` 抹掉（那一步就是"旧的明文邀请码全部作废"）。
+- **先红后绿**：`SeatInvitationHostTests.InviteCode_IsNotStoredInPlaintext` 在本批改动**之前**跑过——
+  它按当时的 API 从目录里取出明文票据并断言"库里没有它"，**红**（明文就在 `Games.SeatsJson` 里）；
+  改动后同一判据（升级成读**库文件字节 + WAL**）转绿，另 4 条（轮换 / 过期 / 跨桌 / 持码者进得来）同批转绿。
+  老库 v4 的抹除那一步另做过**改坏复跑**：注释掉 `StripSeatTicketSql` → 迁移用例红（席位列仍是老形态、库里仍有明文），还原后绿。
+- **用例**：集成 5 条新面（`SeatInvitationHostTests`）+ 老库 v4 迁移 1 条 + 既有用例重指 2 处
+  （旅行者加入 / 各处取码改为"让说书人签发"）· 前端 3 条新面（gateway 的签发与防御性解析 · 面板锚点）·
+  **门禁 2 条**（新 Hub 方法的授权面表态 · 新契约的投影扫描面登记）。
+
+装置读数（本批实测；**迭代档**，除主装置那一行）：
+
+| 装置 | 读数 |
+|---|---|
+| 主装置 `verify-storyteller-panel`（**取证档** `--quota 2 --screenshots-all --build`） | **310 项全过 · 跳过 0**（分段全绿：annotation 16 / night1 53 / day1 48 / traveller 31 / night2-3 70 / vortox 14 / rebuild 13 / reconnect 10 / final 3） |
+| `verify-table-access` | **38 项全过**（9.7s）：新增两条读数——「面板转交的那一串不在库里的两列原文里」·「重新签发后新码 ≠ 旧码（轮换）」，且观测者/旅行者/被驳回者三类玩家都凭**当场签发**的码入座 |
+| `verify-zero-trust` | **54 项全过**（取码改成"说书人逐席签发"的线级调用；不再直读库） |
+| 其余 **16 台**辅助装置（accounts 42 · witch 28 · butcher 40 · madness 28 · winloss 29 · entrance-usability 34 · mathematician 38 · death-triggers 73 · setup-randomizer 58 · retro-info 56 · seamstress-artist 82 · pit-hag 35 · character-change 89 · bone-collector-juggler 52 · retention-day-info 78 · full-game 49） | **全过**（它们共用同一条被改过的路径：开桌后由面板逐席签发取码、`traveller-issued` 读码） |
+
+门禁：build **0 警告 0 错误** · 全量 **1477 通过**（Kernel 501 · Rules 501 · NormativeGates 41 · Integration 434）·
+`dotnet format` 就地通过 · 前端 `npm run gate`（typecheck + 278 单测 + 构建）通过。
+
+**残余**：
+1. `verify-replay-scale` 在本轮扫描里**红**：`ReportSeatState` 撞上"写文本每个窗口最多 120 次"的动作限速
+   （`HubException: 写文本（注记 / 说明 / 原因）每个窗口最多 120 次`）。**与本批改动无关**（本批没碰限速与那条命令），
+   是装置自身的用量与限速阈值的交互——需要装置侧把限速放宽（或分段），另立待办。
+2. `verify-transport-hardening` / `verify-abuse-guard` / `verify-retention-and-erasure` / `verify-live-open-table`
+   需要**已经在跑的宿主**（本机 5080 或部署实例），本轮没有起常驻宿主，因此**未跑**——它们与本批改动无交集，
+   但"没跑"就是没跑，记在这里。
+3. **装置侧的命名债**：`openTableAndHost` 返回的 `seatTickets` / 各装置里的 `seatTicket` 现在装的是
+   **签发出来的邀请码**（名字里那个"票据"已经不存在了）。本轮**刻意不改名**：那是 20 多个装置文件的机械改名，
+   改完必须逐台跑一遍才敢说没破——留作独立的小工作项（与本条一起记进票里）。
+4. 被盗码者**先到先得**这件事没变（席位认领本身就是一次性的）；不做"用过即焚"是 D-0038 的显式选择。
+
 ## 相关阅读
 
 - 验收规程：`docs/acceptance/AGENTS.md`

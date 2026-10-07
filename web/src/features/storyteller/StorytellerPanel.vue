@@ -528,7 +528,7 @@ onBeforeUnmount(() => {
             @update:invite-only="inviteOnly = $event"
             @outcome="showOutcome"
           />
-          <TravellerControl v-if="sender" :view="view!" :sender="sender" :game-id="gatewayGameId" @outcome="showOutcome" />
+          <TravellerControl v-if="sender" :view="view!" :sender="sender" @outcome="showOutcome" />
           <PitHagNightPanel v-if="sender" :view="view!" :sender="sender" @outcome="showOutcome" />
           <OperationsControl v-if="sender" :view="view!" :sender="sender" @outcome="showOutcome" />
           <AssignmentControl

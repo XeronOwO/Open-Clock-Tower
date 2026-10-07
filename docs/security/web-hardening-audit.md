@@ -171,7 +171,29 @@ M4 滥用与风控 · M5 数据层与运维 · M6 开源与合规。
 - **本批（D-0037，E60）只收窄了用它的"人"，**没动凭据形态**：邀请码仍是那串明文票据
   （明文存 `Games.SeatsJson`、不过期、不轮换），但用它的人从此必须**已登录**，
   且它只出现在**邀请制桌**与**旅行者中途入场**两条路径上（无账号的 `JoinSeat` 已删除）。
-  所以这条差距**仍未清零**，"加有效期 + 轮换"要另开一条。
+- **修复记录（D-0038，2026-10-08，批次 E63）——本条收口**：
+  - **落地**：邀请码从"住在席位名单里的明文票据"变成**自己的凭据**——新表 `SeatInvitations`
+    （主键 `(GameId, Seat)`，一席一行）只存 **SHA-256 哈希 + 到期时刻**；签发与核验收在
+    `SeatInvitationService`（256 位随机、固定时间比较、日志只写短指纹、逐条比完不提前退出）；
+    有效期默认 **24 小时**（`GameServer:SeatInvitation:LifetimeHours`，可配）；**重复签发即轮换**
+    （覆盖旧哈希，旧码当场失效）。座位名单与凭据**分家**：`GameSetup.Seats` 只剩席位号，
+    `Games.SeatsJson` 存 `[1,2,3]`，`SeatTicket` 类型退场。
+  - **结构 v4（不可逆）**：建 `SeatInvitations` 表 + 把老库 `SeatsJson` 里的 `ticket` 字段抹掉
+    （那次 UPDATE 就是"把旧的明文邀请码全部作废"）。升级后旧码一律进不来，说书人重新签发即可。
+  - **签发入口只有一处**：说书人在主持台对某个席位点一下（`IssueSeatInvitation`，席位页与旅行者页各一个入口）。
+    旅行者加入（`JoinTraveller`）因此**不再签发凭据**，只追加席位并回出席位号——命令回执会被重投回放，
+    把凭据放进去等于让它反复出现；`CommandResultDto.IssuedSeatTicket` 随之删除。
+  - **怎么验证修好了（审计要求的读数）**：①**库文件里没有明文**——`SeatInvitationHostTests.InviteCode_IsNotStoredInPlaintext`
+    把库 + WAL 当字节读一遍，断言签发出来的那一串不在里面（同时反向证明持码者**真的进得来**）；
+    ②**旧票据被拒**——`.Rotation_InvalidatesThePreviousCode`（轮换后旧码进不来、新码照进）·
+    `.ExpiredInviteCode_IsRejected`（有效期 0 时当场过期）· `.InviteCode_FromAnotherTable_IsRejected`（跨桌无效）·
+    `LegacyDatabaseUpgradeTests.LegacyTicketEraDatabase_PlaintextTicketsAreErased_AndOldCodesAreRejected`
+    （老库升级：席位列只剩 `[1,2]`、旧码 `seat-1-legacy` 被拒、新签的一枚照进）。
+  - **装置读数**：`verify-table-access` 真机读到两条新判据——"面板转交的那一串不在库里的两列原文里"
+    与"重新签发后新码 ≠ 旧码（轮换）"；`verify-zero-trust` 改成"让说书人签发"取码（不再直读库）。
+  - **仍未含**：被盗码者**先到先得**这件事没变（席位认领本身就是一次性的，码不是"第二因素"）；
+    设备侧"过期前提醒说书人"这类体验打磨不在本批。
+- **本条从 High 清零（2026-10-08）**：剩下的只有上面那条"有意保留"的边界，不再是差距。
 
 #### G-A2-3 账号会话表没有上界：`List<Entry>` 只增不减，登出路径不清扫｜**Medium**｜M2（口径）+ M4（与限速同批）
 - **现状证据**：`src/OpenClockTower.Server/AccountSessionRegistry.cs` 的 `private readonly List<Entry> _sessions = [];`；`SweepExpired()` 只在 `Issue` 与 `TryResolve` 里调用，`Revoke` / `RevokeAllForAccount` **不清扫**；`TryResolve` 是 O(n) 逐条 `FixedTimeEquals`。
@@ -889,7 +911,7 @@ M4 滥用与风控 · M5 数据层与运维 · M6 开源与合规。
 
 | 里程碑 | 条数 | 拿走的 Critical / High |
 |---|---|---|
-| M2 授权与越权 | 18 | **Critical**：G-A2-1（撤销只到"下一次进门"）· **High**：G-A1-2（哈希参数）· G-A1-5（登录名口径）· G-A2-2（票据明文）· G-A2-5（并发登录顶线） |
+| M2 授权与越权 | 18 | **Critical**：G-A2-1（撤销只到"下一次进门"）· **High**：G-A1-2（哈希参数）· G-A1-5（登录名口径）· ~~G-A2-2（票据明文）~~ **已修（D-0038，E63）** · G-A2-5（并发登录顶线） |
 | M3 传输与部署安全 | 7 | **Critical**：G-A3-1（全站明文 HTTP）· **High**：G-A3-2（零安全头）· G-A3-3（真实 IP）· G-A3-4（限流与上限）· G-A5-7（连接数无上限） |
 | M4 滥用与风控 | 8 | **Critical**：G-A1-1（三个账号入口零限速）· G-A5-2（注册零限制）· G-A5-5（开桌无配额）· **High**：G-A5-6（重复加入读全量）· G-A5-8（自由文本）· G-A5-10（审计日志缺身份） |
 | M5 数据层与运维（含工程底座） | 25 | **High**：~~G-A6-1（守卫不管索引约束）~~ **已修** · G-A6-4 已修 · ~~G-A6-5（无删除路径）~~ **已修** · ~~G-A1-6（无注销）~~ **已修** · G-A1-8 |

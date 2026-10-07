@@ -45,6 +45,20 @@ describe('访问模式开关（D-0037）', () => {
     expect(html).toContain('data-invite-only="true"')
     expect(html).toContain('改成公开桌')
   })
+
+  it('席位邀请码的签发入口就在这一块（D-0038）：填席位号 → 签发 → 当场显示', async () => {
+    const html = await render(TableAccessControl, { inviteOnly: true, sender: FAKE_SENDER })
+
+    // 锚点是装置要用的：填席位、点签发、读转交的那一串。
+    expect(html).toContain('data-testid="invite-seat"')
+    expect(html).toContain('data-testid="invite-issue"')
+    // 没签发之前不留空壳读数（与离场申请那块同款）。
+    expect(html).not.toContain('invite-issued')
+    // 轮换的代价必须写在脸上：重新签发会让上一枚作废。
+    expect(html).toContain('重新签发会让上一枚当场作废')
+    // "一席一枚"这条口径也要先说清（说书人才知道不必给同一席发两枚）。
+    expect(html).toContain('每一席只有一枚有效邀请码')
+  })
 })
 
 describe('待批离场申请的裁定区（D-0037）', () => {

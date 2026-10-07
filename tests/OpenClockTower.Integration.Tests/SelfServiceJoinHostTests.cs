@@ -210,8 +210,8 @@ public sealed class SelfServiceJoinHostTests
             () => selfService.InvokeAsync<SeatJoinDto>("JoinTable", alice, 2, 0L));
         Assert.Contains("邀请制", rejected.Message, StringComparison.Ordinal);
 
-        // ② 持邀请码的人照进：邀请码 = 说书人给的那一串「桌标识:席位票据」，这里用票据那一段。
-        var ticket = setup.Seats.Single(item => item.Seat == new SeatId(2)).Ticket;
+        // ② 持邀请码的人照进：邀请码 = 说书人签发给 2 号席的那一枚（`桌标识:席位邀请码`，这里用凭据那一段）。
+        var ticket = await host.IssueInviteCodeAsync(TableA, new SeatId(2));
         await using var invited = await ConnectTableAsync(host, TableA);
         var joined = await invited.InvokeAsync<SeatJoinDto>("JoinByInviteCode", ticket, alice, 0L);
         Assert.False(string.IsNullOrWhiteSpace(joined.Credential));
@@ -267,7 +267,7 @@ public sealed class SelfServiceJoinHostTests
         Assert.False(string.IsNullOrWhiteSpace(back.Credential));
 
         // ③ 迟到的旅行者由说书人发邀请码进来：邀请码路径不受开局闸影响。
-        var ticket = setup.Seats.Single(item => item.Seat == new SeatId(3)).Ticket;
+        var ticket = await host.IssueInviteCodeAsync(TableA, new SeatId(3));
         await using var latecomer = await ConnectTableAsync(host, TableA);
         var invited = await latecomer.InvokeAsync<SeatJoinDto>("JoinByInviteCode", ticket, bob, 0L);
         Assert.False(string.IsNullOrWhiteSpace(invited.Credential));

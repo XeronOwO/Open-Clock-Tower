@@ -33,6 +33,8 @@ public sealed class TestServerHost : IAsyncDisposable
     private readonly bool _deleteDatabaseOnDispose;
     private readonly List<HubConnection> _connections = [];
     private readonly Dictionary<GameId, FixtureAccount> _owners = [];
+    private readonly SemaphoreSlim _inviteGate = new(initialCount: 1, maxCount: 1);
+    private readonly Dictionary<(string Game, int Seat), string> _inviteCodes = [];
     private FixtureAccounts? _fixtures;
 
     /// <summary>夹具账号的签发台（入座必须登录，D-0037；按席位缓存账号）。</summary>
@@ -46,12 +48,17 @@ public sealed class TestServerHost : IAsyncDisposable
     /// <param name="autoStartTestNight">
     /// 启动后是否开启测试夹具夜晚。恢复失败等待显式重开的场景传 false。
     /// </param>
+    /// <param name="seatInvitationLifetimeHours">
+    /// 席位邀请码的有效期（小时）；null = 用产品默认值（D-0038）。传 0 = 签出来当场过期，
+    /// 拿它验"过期这条路真的会拒"。
+    /// </param>
     public TestServerHost(
         double slotQuotaSeconds = 3600,
         int seatCount = 3,
         string? databasePath = null,
         bool deleteDatabaseOnDispose = true,
-        bool autoStartTestNight = true)
+        bool autoStartTestNight = true,
+        int? seatInvitationLifetimeHours = null)
     {
         _databasePath = databasePath ?? Path.Combine(Path.GetTempPath(), $"oct-test-{Guid.NewGuid():N}.db");
         _deleteDatabaseOnDispose = deleteDatabaseOnDispose;
@@ -61,6 +68,12 @@ public sealed class TestServerHost : IAsyncDisposable
             builder.UseSetting("GameServer:SlotQuotaSeconds", slotQuotaSeconds.ToString(CultureInfo.InvariantCulture));
             builder.UseSetting("GameServer:SeatCount", seatCount.ToString(CultureInfo.InvariantCulture));
             builder.UseSetting("GameServer:PacerIntervalMilliseconds", "50");
+            if (seatInvitationLifetimeHours is { } lifetimeHours)
+            {
+                builder.UseSetting(
+                    "GameServer:SeatInvitation:LifetimeHours",
+                    lifetimeHours.ToString(CultureInfo.InvariantCulture));
+            }
             // 夹具会把注册与登录调用很多次，而限速的键在 TestServer 下是"未知地址"这一个桶
             // （连接是内存里的，没有对端 IP）。**限速本身由 AccountThrottleHostTests 用生产值单独判**，
             // 这里只是不让夹具的正常往返被它误伤。
@@ -140,6 +153,60 @@ public sealed class TestServerHost : IAsyncDisposable
         ?? throw new InvalidOperationException("测试宿主尚未播种会话票据");
 
     /// <summary>
+    /// 说书人视角的**签发邀请码**（D-0038）：真链路上是面板上那一下"生成邀请码"，测试直接走同一个服务。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 明文只在这里拿到一次（服务端只留哈希），所以用例要自己拿着它用——没有"过一会儿再读回来"这条路。
+    /// </para>
+    /// <para>
+    /// **同一个（桌，席位）只签一次并记住它**：说书人不会为每一次入座反复轮换（重复签发会作废前一枚），
+    /// 而并发入座类用例恰恰要求"同一枚码被多条连接同时出示"。要验轮换本身，用
+    /// <see cref="RotateInviteCodeAsync"/>。
+    /// </para>
+    /// </remarks>
+    public async Task<string> IssueInviteCodeAsync(GameId gameId, SeatId seat)
+    {
+        var key = (gameId.Value, seat.Value);
+        await _inviteGate.WaitAsync();
+        try
+        {
+            if (_inviteCodes.TryGetValue(key, out var cached))
+            {
+                return cached;
+            }
+
+            return _inviteCodes[key] = await IssueCoreAsync(gameId, seat);
+        }
+        finally
+        {
+            _inviteGate.Release();
+        }
+    }
+
+    /// <summary>默认桌上某席位的邀请码（说书人视角的签发）。</summary>
+    public Task<string> IssueInviteCodeAsync(SeatId seat) => IssueInviteCodeAsync(GameId, seat);
+
+    /// <summary>**重新签发**（轮换）某席位的邀请码：旧的那一枚当场失效（D-0038）。</summary>
+    public async Task<string> RotateInviteCodeAsync(GameId gameId, SeatId seat)
+    {
+        var code = await IssueCoreAsync(gameId, seat);
+        _inviteCodes[(gameId.Value, seat.Value)] = code;
+        return code;
+    }
+
+    /// <summary>默认桌上某席位的**新**邀请码（轮换）。</summary>
+    public Task<string> RotateInviteCodeAsync(SeatId seat) => RotateInviteCodeAsync(GameId, seat);
+
+    private async Task<string> IssueCoreAsync(GameId gameId, SeatId seat)
+    {
+        var issued = await _factory.Services
+            .GetRequiredService<SeatInvitationService>()
+            .IssueAsync(gameId, seat, CancellationToken.None);
+        return issued.Code;
+    }
+
+    /// <summary>
     /// 以某席位加入（可挂收件回调）；返回带凭据的客户端。
     /// </summary>
     /// <param name="seat">席位号。</param>
@@ -159,8 +226,7 @@ public sealed class TestServerHost : IAsyncDisposable
         Action<long, PlayerViewDto>? onPlayerViewChanged = null,
         string? accountSession = null)
     {
-        var setup = await GetSetupAsync();
-        var ticket = setup.Seats.Single(item => item.Seat == seat).Ticket;
+        var ticket = await IssueInviteCodeAsync(GameId, seat);
         var connection = CreateConnection();
         if (onRequest is not null)
         {
@@ -236,9 +302,7 @@ public sealed class TestServerHost : IAsyncDisposable
         SeatId seat,
         Action<TableAccessDto>? onAccess = null)
     {
-        var setup = await _factory.Services.GetRequiredService<IGameCatalog>().FindAsync(gameId, CancellationToken.None)
-            ?? throw new InvalidOperationException($"这张桌还没有会话信息：{gameId.Value}");
-        var ticket = setup.Seats.Single(item => item.Seat == seat).Ticket;
+        var ticket = await IssueInviteCodeAsync(gameId, seat);
         var connection = CreateConnection($"/hub/game?gameId={Uri.EscapeDataString(gameId.Value)}");
         if (onAccess is not null)
         {

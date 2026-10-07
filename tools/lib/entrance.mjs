@@ -9,7 +9,10 @@
  * 这样改有三个好处，都是这次改造想要的姿态：
  *   1. 装置不再依赖任何"从库里掏凭据"的旁路，跑的就是人跑的那条路；
  *   2. 说书人身份跟着**账号**走，所以"换设备还能回来"从此是被装置持续验证的行为；
- *   3. 席位票据的读法收在一处（`readSeatTickets`）——那张票还没退场，D-0027 明确留给了下一张票。
+ *   3. 入席凭据的取法收在一处（`issueInviteCode` / `issueInviteCodeViaHub`）——
+ *      从前是"直读库里的席位票据"（`readSeatTickets`），D-0038 之后**库里读不到凭据了**
+ *      （邀请码只存哈希、明文只在签发那一次出现），于是装置改成"让说书人签发一次"，
+ *      与真人按下那个按钮走的是同一条路。库那边只剩席位名单（`readSeatNumbers`）。
  *
  * M1（D-0029）之后"回来"这条路径又变了一次：账号会话进 `sessionStorage`，**刷新即自动回到原席**
  * （`returnToSeat` 不再重新登录）；而**新标签页**仍必须重新登录（`openFreshTab`）——
@@ -18,7 +21,9 @@
  * 依赖的界面锚点（改界面时以这里为准）：`account-tab-register` / `account-username` /
  * `account-display-name` / `account-password` / `account-register` / `account-profile` /
  * `open-table-name` / `open-table-seats` / `open-table-submit` / `[data-my-table]` /
- * `host-enter` / `grimoire` / `player-lobby` / `[data-table]` / `[data-seat]` / `player-seat`。
+ * `host-enter` / `grimoire` / `player-lobby` / `[data-table]` / `[data-seat]` / `player-seat`
+ * / `invite-seat` / `invite-issue` / `invite-issued`（`data-seat` + `.mono`；D-0038 的签发入口，
+ * 每台装置开桌之后都要用它拿码——库里读不到）。
  *
  * 访问模式与旅行者离场那一批（D-0037）的锚点也登记在这里——`docs/acceptance/devices.md` §3 指明
  * "锚点如改名要同步本清单"，而它们不归本模块使用（用它们的是 `verify-table-access.mjs`，本模块只当登记处）：
@@ -52,38 +57,104 @@ const USERNAME_MAX_LENGTH = 24
 let nameCounter = 0
 
 /**
- * 读一桌的席位票据（**仍然直读库**：席位票据本身没动，见 D-0027 的残余）。
+ * 读一桌的**席位名单**（D-0038 起 `Games.SeatsJson` 只存席位号：`[1,2,3]`）。
+ *
+ * ⚠️ 这里**读不到邀请码**，也不该去读：邀请码只存哈希、明文只在签发那一次出现。
+ * 取码只有一条路——让说书人签发（界面上是 `issueInviteCode`，线级是 `issueInviteCodeViaHub`）。
+ *
  * @param {string} databasePath SQLite 路径。
  * @param {string} gameId 哪一桌。
- * @returns {{seat: number, ticket: string}[]} 按席位号升序。
+ * @returns {number[]} 席位号，升序。
  */
-export function readSeatTickets(databasePath, gameId) {
+export function readSeatNumbers(databasePath, gameId) {
   const database = new DatabaseSync(databasePath)
   try {
     const row = database.prepare('SELECT SeatsJson FROM Games WHERE GameId = ?').get(gameId)
     if (row === undefined || typeof row.SeatsJson !== 'string') {
-      throw new Error(`数据库里没有这一桌的席位票据：game=${gameId}（Games.SeatsJson）`)
+      throw new Error(`数据库里没有这一桌的席位名单：game=${gameId}（Games.SeatsJson）`)
     }
 
     const parsed = JSON.parse(row.SeatsJson)
-    if (!Array.isArray(parsed) || parsed.length === 0) {
-      throw new Error('席位票据 JSON 形状不可识别')
+    if (!Array.isArray(parsed)) {
+      throw new Error(`席位名单 JSON 形状不可识别：${row.SeatsJson}`)
     }
 
     return parsed
-      .map((item) => ({ seat: seatNumberOf(item?.seat), ticket: String(item?.ticket ?? '') }))
-      .filter((item) => Number.isFinite(item.seat) && item.ticket.length > 0)
-      .sort((left, right) => left.seat - right.seat)
+      .map((item) => seatNumberOf(item))
+      .filter((seat) => Number.isFinite(seat))
+      .sort((left, right) => left - right)
   } finally {
     database.close()
   }
 }
 
 /**
+ * 让说书人面板为某一席**签发邀请码**（D-0038），读出转交的那一串（`桌标识:席位邀请码`）。
+ *
+ * 这是装置取码的正路之一（另一条是线级的 {@link issueInviteCodeViaHub}）：面板上那一段就是真用法——
+ * 填席位号 → 点签发 → 把 `.mono` 里那一串交给玩家。**刷新 / 再查都拿不回来**，所以必须当场读。
+ *
+ * @param {import('playwright').Page} page 说书人那一页（停在主持台）。
+ * @param {number} seat 哪一席。
+ * @returns {Promise<string>} 完整邀请码（含桌标识）。
+ */
+export async function issueInviteCode(page, seat) {
+  await page.getByTestId('invite-seat').fill(String(seat))
+  await page.getByTestId('invite-issue').click()
+
+  // 按 `data-seat` 定位：这样读到的一定是**这一席刚签的那一枚**，不会捡到上一席的读数。
+  const issued = page.locator(`[data-testid="invite-issued"][data-seat="${seat}"]`)
+  await issued.waitFor({ timeout: ACTION_TIMEOUT_MS })
+  const code = (await issued.locator('.mono').innerText()).trim()
+  if (code.length === 0) {
+    throw new Error(`面板没有给出 ${seat} 号席的邀请码`)
+  }
+
+  return code
+}
+
+/**
+ * 线级等价物：直接调 `IssueSeatInvitation`（说书人连接 + 连接凭据）。
+ *
+ * 无浏览器的装置（如 `verify-zero-trust`）走这条；它就是面板那一下按下去的同一个方法。
+ * 返回**旧形状** `{seat, ticket}`（`ticket` = 冒号之后那一段），因为各装置一直按这个形状往下传。
+ *
+ * @param {{invoke: (method: string, ...args: unknown[]) => Promise<unknown>}} connection 游戏 Hub 连接。
+ * @param {string} credential 说书人连接凭据。
+ * @param {number} seat 哪一席。
+ */
+export async function issueInviteCodeViaHub(connection, credential, seat) {
+  const issued = await connection.invoke('IssueSeatInvitation', credential, seat)
+  const inviteCode = String(issued?.inviteCode ?? '')
+  if (inviteCode.length === 0) {
+    throw new Error(`${seat} 号席的邀请码没有签出来：${JSON.stringify(issued)}`)
+  }
+
+  return { seat, ticket: inviteCode.slice(inviteCode.indexOf(':') + 1) }
+}
+
+/**
+ * 逐席签发邀请码（1..seatCount）：开桌之后的常规动作，也是各装置拿到入席凭据的唯一来源。
+ *
+ * @param {import('playwright').Page} page 说书人那一页。
+ * @param {number} seatCount 席位数量。
+ * @returns {Promise<{seat: number, ticket: string}[]>} 按席位号升序（`ticket` = 冒号之后那一段）。
+ */
+export async function issueSeatInviteCodes(page, seatCount) {
+  const issued = []
+  for (let seat = 1; seat <= seatCount; seat += 1) {
+    const code = await issueInviteCode(page, seat)
+    issued.push({ seat, ticket: code.slice(code.indexOf(':') + 1) })
+  }
+
+  return issued
+}
+
+/**
  * 开一桌并以它的开桌账号进主持台（装置的开场动作）。
  *
- * 全程走界面：门 → 注册 → 开一桌 → 「我主持的桌」里点「进主持台」。
- * 返回的 `seatTickets` 供装置接着让玩家入座。
+ * 全程走界面：门 → 注册 → 开一桌 → 「我主持的桌」里点「进主持台」**→ 逐席签发邀请码**（D-0038）。
+ * 返回的 `seatTickets` 供装置接着让玩家入座；它是**当场签发出来的**（库里只有哈希，读不回来）。
  *
  * @param {import('playwright').Page} page 说书人那一页（未打开也行，本函数会打开）。
  * @param {{frontUrl: string, databasePath: string, seats: number, serverUrl?: string, suffix?: string, name?: string}} options
@@ -119,7 +190,7 @@ export async function openTableAndHost(page, options) {
     username,
     displayName,
     password,
-    seatTickets: readSeatTickets(options.databasePath, gameId),
+    seatTickets: await issueSeatInviteCodes(page, options.seats),
     // Node SignalR 客户端（装置里的"线级探针"）不再能连"没声明桌"的地址（D-0027），
     // 所以顺手给出这条连接该用的地址——装置把它赋给 hubUrl 即可。
     hubUrl:

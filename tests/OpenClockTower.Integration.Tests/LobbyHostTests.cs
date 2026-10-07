@@ -7,6 +7,8 @@ using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.DependencyInjection;
 using OpenClockTower.Application;
 using OpenClockTower.Contracts;
+using OpenClockTower.Kernel;
+using OpenClockTower.Server;
 
 namespace OpenClockTower.Integration.Tests;
 
@@ -376,7 +378,12 @@ public sealed class LobbyHostTests : IDisposable
         var setupB = await catalog.FindAsync(new GameId(second.GameId), CancellationToken.None);
         Assert.Equal(5, setupA!.Seats.Count);
         Assert.Equal(6, setupB!.Seats.Count);
-        Assert.Empty(setupA.Seats.Select(seat => seat.Ticket).Intersect(setupB.Seats.Select(seat => seat.Ticket)));
+
+        // 邀请码是**签发出来**的，不是建桌时预生成的（D-0038）：两桌各自签同一席，拿到的码必须不同。
+        var invitations = _host.Services.GetRequiredService<SeatInvitationService>();
+        var codeA = await invitations.IssueAsync(new GameId(first.GameId), new SeatId(1), CancellationToken.None);
+        var codeB = await invitations.IssueAsync(new GameId(second.GameId), new SeatId(1), CancellationToken.None);
+        Assert.NotEqual(codeA.Code, codeB.Code);
 
         // 归属（D-0027）：两桌都记在同一个开桌账号名下，两张桌**各自独立**地归他。
         var owner = new AccountId(registered.Id);

@@ -98,7 +98,6 @@ internal static class SetupProposalQuery
         var proposal = composed.Proposal!;
         // 非旅行者按 D1 落在低号席（旅行者以「追加席位」进入 = 高号席）；建议只覆盖非旅行者部分。
         var seats = setup.Seats
-            .Select(item => item.Seat)
             .OrderBy(seat => seat.Value)
             .Take(nonTravellers)
             .ToList();

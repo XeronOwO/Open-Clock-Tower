@@ -7,7 +7,7 @@ namespace OpenClockTower.Application;
 /// </summary>
 /// <remarks>
 /// <para>
-/// 旅行者离场后席位票据与座位号仍然保留（重连 / 复盘语义不动），所以"谁还在局里"不能只看
+/// 旅行者离场后席位与账号认领仍然保留（重连 / 复盘语义不动），所以"谁还在局里"不能只看
 /// <see cref="GameSetup.Seats"/>；离场事实记在 <see cref="GameState.DepartedSeats"/>。
 /// 所有需要"本局座次"的调用点（结算上下文、胜负求值、投影、开夜 / 开白天建表）统一读这里，
 /// 离场者不计入任何人数口径（`rulings.md` R-0044 第 6 条）。
@@ -34,7 +34,6 @@ public static class InGameSeats
         return
         [
             .. setup.Seats
-                .Select(ticket => ticket.Seat)
                 .Where(seat => !departed.Contains(seat))
                 .OrderBy(seat => seat.Value),
         ];

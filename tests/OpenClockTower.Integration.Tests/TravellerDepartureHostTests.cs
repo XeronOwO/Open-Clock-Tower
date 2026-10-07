@@ -227,8 +227,8 @@ public sealed class TravellerDepartureHostTests
                 "流程直接移出",
                 "departure-reconnect-remove")).Kind);
 
-        var setup = await host.GetSetupAsync();
-        var ticket = setup.Seats.Single(item => item.Seat == TravellerSeat).Ticket;
+        // 离场保留席位：说书人为这一席再签一枚邀请码，持码者仍进得来（本人视图会说"你已离场"）。
+        var ticket = await host.IssueInviteCodeAsync(TravellerSeat);
         var account = await host.SeatFixtureAccountAsync(TravellerSeat);
         await using var raw = await host.ConnectAnonymousAsync();
 

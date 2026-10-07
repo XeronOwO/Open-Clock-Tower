@@ -19,7 +19,20 @@ public static class ProjectionMapper
         SnapshotEquivalent = result.Rebuild?.SnapshotEquivalent,
         LedgerEquivalent = result.Rebuild?.LedgerEquivalent,
         IssuedSeat = result.IssuedSeat?.Value,
-        IssuedSeatTicket = result.IssuedSeatTicket,
+    };
+
+    /// <summary>
+    /// 刚签发的席位邀请码 → DTO：**明文只在这一条回执里**（D-0038），邀请码由服务端拼成完整形态。
+    /// </summary>
+    /// <remarks>
+    /// `桌标识:凭据` 这个形态只在服务端定义一处：玩家那一面把它整串粘进「有邀请码？」，
+    /// 冒号之前是桌（连接用）、之后是凭据（核验用）。面板因此只负责原样显示。
+    /// </remarks>
+    public static SeatInvitationDto ToDto(GameId gameId, IssuedSeatInvitation issued) => new()
+    {
+        Seat = issued.Seat.Value,
+        InviteCode = $"{gameId.Value}:{issued.Code}",
+        ExpiresAt = issued.ExpiresAt,
     };
 
     /// <summary>配板建议 → DTO（服务端生成的种子、非旅行者 / 旅行者人数、席位映射、净分布与显式说明）。</summary>

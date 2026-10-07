@@ -107,6 +107,7 @@ public sealed class AuthorizationSurfaceHostTests
         // —— 桌务与查询：不走四道闸，Hub 层直接要求说书人身份（玩家被拒时抛 HubException）——
         StorytellerQuery("ReleaseSeatBinding", [99], "无界面入口，见 G-A4-7"),
         StorytellerQuery("SetTableInviteOnly", [true], "访问模式开关（D-0037）：切换后推给该桌全部连接"),
+        StorytellerQuery("IssueSeatInvitation", [1], "签发席位邀请码（D-0038）：明文只回一次，重复调用即轮换"),
         StorytellerQuery("ProposeSetup", [null, null]),
         StorytellerQuery("GetStorytellerView", []),
 

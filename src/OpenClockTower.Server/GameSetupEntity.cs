@@ -1,6 +1,6 @@
 namespace OpenClockTower.Server;
 
-/// <summary>会话表行：席位票据、归属与大厅元数据，重启后仍然有效（D-0011 硬约束 2 的前提）。</summary>
+/// <summary>会话表行：席位名单、归属与大厅元数据，重启后仍然有效（D-0011 硬约束 2 的前提）。</summary>
 /// <remarks>
 /// <para>
 /// 多桌（D-0024）之后本表每个在册的桌一行，主键仍是游戏标识。
@@ -21,7 +21,7 @@ public sealed class GameSetupEntity
     /// <summary>游戏标识（主键）。</summary>
     public string GameId { get; set; } = string.Empty;
 
-    /// <summary>席位票据 JSON（邀请码里冒号之后那一段；D-0037）。</summary>
+    /// <summary>席位名单 JSON（**只有席位号** `[1,2,3]`；D-0038：邀请码只存哈希，不在这里）。</summary>
     public string SeatsJson { get; set; } = "[]";
 
     /// <summary>开桌账号（这一桌归谁）；升级前的老桌为 null = 没有房主。</summary>

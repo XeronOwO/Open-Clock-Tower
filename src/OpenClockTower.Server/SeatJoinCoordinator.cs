@@ -5,8 +5,8 @@ using OpenClockTower.Kernel;
 namespace OpenClockTower.Server;
 
 /// <summary>
-/// 加入 / 重连的席位定位与账号认领（D-0012 / D-0021）：票据 → 席位、账号会话 → 认领 / 解出席位，
-/// 签发连接凭据并取回重连包。
+/// **席位这一层的编排**（D-0012 / D-0021 / D-0038）：加入 / 重连的席位定位与账号认领、
+/// 说书人对席位的两个动作（解绑、签发邀请码）。
 /// </summary>
 /// <remarks>
 /// <para>
@@ -14,10 +14,14 @@ namespace OpenClockTower.Server;
 /// 只做"身份 → 席位 → 凭据 + 快照"的编排；推送与请求重投仍由 Hub 完成。
 /// </para>
 /// <para>
-/// **两条路径**（D-0037）：①凭邀请码 + 账号会话 → 票据定位席位并认领（邀请制桌与旅行者的唯一入口）；
+/// **两条路径**（D-0037）：①凭邀请码 + 账号会话 → 核验邀请码定位席位并认领（邀请制桌与旅行者的唯一入口）；
 /// ②只带账号 → 按绑定解出席位（认领之后的重连）。"没有账号、只凭票据入座"那条路整个删除：
 /// 入座必须登录，账号会话从此**不是可空参数**。客户端声明一律不认（D-0012）：
-/// 票据与会话只用于**定位**，授权仍由服务端签发的凭据链判定。
+/// 邀请码与会话只用于**定位**，授权仍由服务端签发的凭据链判定。
+/// </para>
+/// <para>
+/// 邀请码从"住在席位上的明文票据"改成**单独核验的凭据**（D-0038 / 审计 G-A2-2）：
+/// 它与席位名单不是一回事，因此这里多一道"核验出来的席位得真在名单里"的显式判定。
 /// </para>
 /// </remarks>
 public sealed class SeatJoinCoordinator
@@ -27,6 +31,7 @@ public sealed class SeatJoinCoordinator
     private readonly SeatBindingService _bindings;
     private readonly AccountService _accounts;
     private readonly AccountSessionRegistry _sessions;
+    private readonly SeatInvitationService _invitations;
     private readonly ILogger<SeatJoinCoordinator> _logger;
 
     /// <summary>构造加入编排。</summary>
@@ -41,6 +46,7 @@ public sealed class SeatJoinCoordinator
         SeatBindingService bindings,
         AccountService accounts,
         AccountSessionRegistry sessions,
+        SeatInvitationService invitations,
         ILogger<SeatJoinCoordinator> logger)
     {
         _catalog = catalog;
@@ -48,12 +54,13 @@ public sealed class SeatJoinCoordinator
         _bindings = bindings;
         _accounts = accounts;
         _sessions = sessions;
+        _invitations = invitations;
         _logger = logger;
     }
 
     /// <summary>执行一次加入：定位席位、按需认领、签发凭据并取回重连包。</summary>
     /// <param name="game">本次加入落在哪一桌（多桌，D-0024）。</param>
-    /// <param name="ticket">席位票据（邀请码里冒号之后那一段）；空 = 只凭账号回到已认领席位。</param>
+    /// <param name="ticket">邀请码（`桌标识:` 之后那一段）；空 = 只凭账号回到已认领席位。</param>
     /// <param name="accountSession">账号会话（必须；入座必须登录，D-0037）。</param>
     /// <param name="lastSequence">客户端已见序号。</param>
     /// <param name="connectionId">连接标识。</param>
@@ -113,7 +120,7 @@ public sealed class SeatJoinCoordinator
         var accountId = session.Account;
 
         var seatId = new SeatId(seat);
-        if (!setup.Seats.Any(item => item.Seat == seatId))
+        if (!setup.Seats.Contains(seatId))
         {
             _logger.LogWarning(
                 "自助入座被拒（席位越界）：game={GameId} seat={Seat} 本桌席位={Capacity}",
@@ -250,7 +257,7 @@ public sealed class SeatJoinCoordinator
             throw new HubException("本局还没有会话信息");
         }
 
-        if (!setup.Seats.Any(item => item.Seat == seat))
+        if (!setup.Seats.Contains(seat))
         {
             _logger.LogWarning(
                 "解除绑定被拒（席位不在名单）：game={GameId} seat={Seat} 席位={Capacity} 客户端={Client}",
@@ -277,6 +284,62 @@ public sealed class SeatJoinCoordinator
             caller.Client);
 
         return released;
+    }
+
+    /// <summary>
+    /// 为某个席位**签发（或轮换）邀请码**（D-0038 / 审计 G-A2-2）：明文只回这一次，库里只留哈希。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 与 <see cref="ReleaseBindingAsync"/> 同族：都是说书人对**席位**做的会话级动作，
+    /// 不是游戏命令、不产生事件、不进复盘。放在这里是因为"席位合不合法"只该有一处判据。
+    /// </para>
+    /// <para>
+    /// **重复签发 = 轮换**：旧的那一枚当场失效（"码发错人了"因此有一个干净的收场）；
+    /// **有效期**由 <see cref="SeatInvitationOptions"/> 定，到期即作废，不需要任何清理动作。
+    /// </para>
+    /// </remarks>
+    /// <param name="game">哪一桌。</param>
+    /// <param name="seat">为哪一个席位签发。</param>
+    /// <param name="caller">发起这次调用的客户端地址与连接（M4 / G-A5-10：审计要能回答"谁从哪来签的"）。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    public async Task<IssuedSeatInvitation> IssueInvitationAsync(
+        GameInstance game,
+        SeatId seat,
+        CallerContext caller,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(game);
+
+        var setup = await LoadSetupAsync(game, caller.ConnectionId, cancellationToken);
+        if (!setup.Seats.Contains(seat))
+        {
+            // 席位不在名单里就签不出码：否则会造出一张指向不存在席位的通行证，
+            // 而那张通行证的失败点落在**玩家**那一面（他拿到手才知道进不去）。
+            _logger.LogWarning(
+                "签发邀请码被拒（席位不在名单）：game={GameId} seat={Seat} 席位={Capacity}"
+                + " 操作者账号={AccountId} 连接={ConnectionId} 客户端={Client}",
+                game.GameId.Value,
+                seat.Value,
+                setup.Seats.Count,
+                setup.CreatedByAccountId?.Value,
+                caller.ConnectionId,
+                caller.Client);
+            throw new HubException($"这一桌没有 {seat.Value} 号席位（共 {setup.Seats.Count} 席）");
+        }
+
+        var issued = await _invitations.IssueAsync(game.GameId, seat, cancellationToken);
+        _logger.LogInformation(
+            "已为席位签发邀请码：game={GameId} seat={Seat} 到期={ExpiresAt:o} 操作者账号={AccountId}"
+            + " 连接={ConnectionId} 客户端={Client}",
+            game.GameId.Value,
+            seat.Value,
+            issued.ExpiresAt,
+            setup.CreatedByAccountId?.Value,
+            caller.ConnectionId,
+            caller.Client);
+
+        return issued;
     }
 
     private async Task<GameSetup> LoadSetupAsync(
@@ -348,7 +411,11 @@ public sealed class SeatJoinCoordinator
         }
     }
 
-    /// <summary>定位席位：票据优先；没有票据时按账号绑定解出（认领之后的"只凭账号重连"路径）。</summary>
+    /// <summary>定位席位：邀请码优先；没有邀请码时按账号绑定解出（认领之后的"只凭账号重连"路径）。</summary>
+    /// <remarks>
+    /// 邀请码那一支是**核验**而不是查找（D-0038）：出示的那一串与服务端存的哈希做固定时间比较，
+    /// 命中且未过期才给出它指向的席位。因此库里没有可用明文凭据，而"过期"与"轮换"都能当场生效。
+    /// </remarks>
     private async Task<SeatId> ResolveSeatAsync(
         GameInstance game,
         GameSetup setup,
@@ -361,15 +428,30 @@ public sealed class SeatJoinCoordinator
 
         if (!string.IsNullOrEmpty(ticket))
         {
-            var seatTicket = setup.Seats.FirstOrDefault(
-                item => string.Equals(item.Ticket, ticket, StringComparison.Ordinal));
-            if (seatTicket is null)
+            var redemption = await _invitations.RedeemAsync(game.GameId, ticket, cancellationToken);
+            if (!redemption.Accepted || redemption.Seat is not { } invited)
             {
-                _logger.LogWarning("加入被拒：邀请码里的席位票据无效 connection={ConnectionId}", connectionId);
-                throw new HubException("邀请码无效：这一桌没有这个席位票据");
+                _logger.LogWarning(
+                    "加入被拒（邀请码）：connection={ConnectionId} 原因={Reason} 指纹={Fingerprint}",
+                    connectionId,
+                    redemption.Reason,
+                    SecretToken.FingerprintOf(ticket));
+                throw new HubException(InvitationRejectionMessage(redemption.Reason));
             }
 
-            return seatTicket.Seat;
+            if (!setup.Seats.Contains(invited))
+            {
+                // 邀请还在、席位却不在名单里（席位被裁掉 / 畸形库）：这道闸从前由"票据就住在席位上"隐式保证，
+                // 拆开之后必须显式判——否则会给一个不存在的席位建出绑定。
+                _logger.LogWarning(
+                    "加入被拒（邀请码指向的席位不在名单里）：game={GameId} seat={Seat} connection={ConnectionId}",
+                    game.GameId.Value,
+                    invited.Value,
+                    connectionId);
+                throw new HubException($"邀请码无效：{invited.Value} 号席位不在这一桌的名单里");
+            }
+
+            return invited;
         }
 
         var binding = await _bindings.ResolveSeatAsync(game.GameId, accountId, cancellationToken);
@@ -384,6 +466,18 @@ public sealed class SeatJoinCoordinator
             accountId);
         throw new HubException("这个账号还没有认领席位：请用邀请码加入一次，或从大厅挑一个空席位");
     }
+
+    /// <summary>
+    /// 邀请码被拒时给玩家看的话（D-0038）：**过期**与**根本没有**分开说。
+    /// </summary>
+    /// <remarks>
+    /// 分开是有用的、不泄露的：说这句话的人手里本来就拿着那枚码，"它过期了"只帮他做对下一件事
+    /// （去找说书人再要一个，而不是怀疑自己粘错了）；对没有码的人来说两条文案都只是"进不去"。
+    /// </remarks>
+    private static string InvitationRejectionMessage(string reason) =>
+        reason == SeatInvitationRedemption.ExpiredReason
+            ? "邀请码已过期：请向说书人再要一个"
+            : "邀请码无效：这一桌没有这枚邀请码";
 
     /// <summary>认领席位并更新席位名读模型；返回 true = 本次**新建**了绑定（需要推送新名字）。</summary>
     private async Task<bool> ClaimSeatAsync(
