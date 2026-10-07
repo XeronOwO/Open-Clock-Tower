@@ -31,6 +31,9 @@ internal sealed class CollectingLoggerProvider(ConcurrentQueue<string> sink) : I
             TState state,
             Exception? exception,
             Func<TState, Exception?, string> formatter) =>
-            sink.Enqueue($"[{logLevel}] {category}: {formatter(state, exception)}");
+            sink.Enqueue(
+                exception is null
+                    ? $"[{logLevel}] {category}: {formatter(state, exception)}"
+                    : $"[{logLevel}] {category}: {formatter(state, exception)} | 异常：{exception.GetType().Name}: {exception.Message}");
     }
 }

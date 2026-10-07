@@ -3328,8 +3328,12 @@ async function forceVoidPending(page, reason, note) {
 }
 
 /**
- * 在复盘面板上逐步向前扫描，直到当前步骤的标记列表出现目标文案（D-0020 / E29 同款口径：
+ * 在复盘面板上逐步向前扫描，直到**当前步骤**的标记列表出现目标文案（D-0020 / E29 同款口径：
  * 只读 `replay-marker-list`，避免复盘摘要与牌面同名词误判；单向扫描，从当前位置继续）。
+ *
+ * 两处走查纪律（2026-10-07 与角色变更装置同批修正，那里实测咬到过）：
+ * ① 每步点一次「下一步」并让出**一帧**（`requestAnimationFrame`）等 Vue 把新步刷进 DOM；
+ * ② 连续多步时按钮短暂 disabled，这时**重试同一步**而不是往下点，否则会整段跳过。
  */
 async function scanReplayForMarker(page, label, maxSteps = 2000) {
   return page.evaluate(
@@ -3345,18 +3349,36 @@ async function scanReplayForMarker(page, label, maxSteps = 2000) {
         return (list?.textContent ?? '').replace(/\s+/g, ' ').trim()
       }
       const readProgress = () => (progress.textContent ?? '').replace(/\s+/g, ' ').trim()
+      const raf = () => new Promise((resolve) => requestAnimationFrame(() => resolve()))
 
-      for (let index = 0; index < limit; index += 1) {
+      // 步进预算与"卡住"预算分开：重试同一步不算用掉步数，但**连续卡住 30 次**（约 0.5 秒）
+      // 就判定按钮不再恢复（加载失败 / 面板被替换），显式收场——不许把走查挂在这里。
+      let steps = 0
+      let stalled = 0
+      while (steps < limit && stalled < 30) {
+        const before = readProgress()
         const markers = readMarkers()
         if (markers.includes(wanted)) {
-          return { found: true, progress: readProgress(), markers }
+          return { found: true, progress: before, markers }
         }
 
         next.click()
-        await new Promise((resolve) => setTimeout(resolve, 0))
+        await raf()
+        // 按钮 disabled 时 click 不生效（连续多步的节流）：重试同一步，不把这一步跳过去。
+        if (readProgress() === before) {
+          stalled += 1
+          await raf()
+        } else {
+          stalled = 0
+          steps += 1
+        }
       }
 
-      return { found: false, progress: readProgress(), markers: readMarkers() }
+      return {
+        found: false,
+        progress: stalled >= 30 ? `${readProgress()}（走查卡住：按钮 0.5 秒内没有推进）` : readProgress(),
+        markers: readMarkers(),
+      }
     },
     { wanted: label, limit: maxSteps },
   )

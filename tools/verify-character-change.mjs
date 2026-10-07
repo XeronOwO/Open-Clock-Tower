@@ -559,13 +559,28 @@ async function runPresentGrantScene() {
     { label: '醉酒', name: 'cc-16-replay-drunk' },
     { label: '换角', name: 'cc-17-replay-character-change' },
     // 恶魔击杀取「第三夜新方古（5 号）击杀理发师（4 号）」这一步；侵染时原方古自死不画箭头。
-    { label: '恶魔击杀', name: 'cc-18-replay-kill-arrow', require: `${KLUTZ_SEAT} 号 → ${BARBER_SEAT} 号` },
+    // 席位判据是**结构化**的（「N 号」两串都在本步标记里）：玩家名插在数字之间，整句会被名字切断。
+    {
+      label: '恶魔击杀',
+      name: 'cc-18-replay-kill-arrow',
+      require: [`${KLUTZ_SEAT} 号`, `${BARBER_SEAT} 号`],
+    },
     { label: '换手', name: 'cc-19-replay-role-rebind' },
     { label: '中毒', name: 'cc-20-replay-poison' },
   ]
   for (const target of replayTargets) {
+    // 席位要求**参与判定**（不只是走查的过滤条件）：否则走查器落到哪一步都算过，
+    // 断言会在"标记确实缺失"或"走查漏步"两种情况下一起假绿。
     const found = await scanReplayForMarker(storytellerPage, target.label, { require: target.require })
+    const stepMatches =
+      target.require === undefined || target.require.every((token) => found.markers.includes(token))
     check(`复盘逐步回放到「${target.label}」标记步骤`, found.found, found.progress)
+    // 正反两向都在同一条断言里：阳性 = 走到的是那一步（5 号 → 4 号）；阴性 = 它不含别的席位对。
+    check(
+      `「${target.label}」走到的是这一局的那一步（标记必须含 ${target.require?.join(' 与 ') ?? '（无额外要求）'}）`,
+      target.require === undefined ? true : stepMatches,
+      `命中步骤：${found.progress}；本步标记：${found.markers}`,
+    )
     if (!found.found) {
       continue
     }
@@ -809,40 +824,75 @@ async function replayMarkerText(page) {
 }
 
 /**
- * 在复盘面板上逐步向前扫描，直到当前步骤的标记列表里出现目标文案（`require` 再要求一段标记文本）。
- * 只读 `replay-marker-list`（当前步的标记），不读牌面 / 摘要，避免同名词误判；
- * 每步点一次「下一步」并让出一轮事件循环等 Vue 渲染，超时由 maxSteps 兜底。
+ * 在复盘面板上逐步向前扫描，直到**当前步骤**的标记列表里出现目标文案。
+ *
+ * 口径（E60 后修正两处，都是装置自己的错，不是产品回归）：
+ * ① **只读当前一步的标记列表**（`replay-marker-list` 的条目 / 圆盘图例条目），不读牌面与摘要，
+ *    避免把牌面上的同名词误判成本步的复盘标记——读法与玩家名无关，席位名插在数字之间也不会漏判；
+ * ② 每步点一次「下一步」并让出**一帧**（`requestAnimationFrame`）等 Vue 把新步刷进 DOM；
+ *    连续多步时按钮短暂 disabled，这时**重试同一步**而不是往下点，否则会整段跳过。
+ *
+ * 匹配基准是**标记名 + 结构化席位**（`markerTexts` 给的「N 号」串），不是拼好的整句——
+ * 玩家名由说书人自由填、随时会变（D-0021 把名字插进席位文案之后，写死的整句必然过期）。
  */
-async function scanReplayForMarker(page, label, { require: requireText, maxSteps = 2000 } = {}) {
+async function scanReplayForMarker(page, label, { require: requireTexts = [] } = {}) {
   return page.evaluate(
-    async ({ wanted, required, limit }) => {
+    async ({ wanted, required }) => {
       const next = document.querySelector('[data-testid="replay-next"]')
       const progress = document.querySelector('[data-testid="replay-progress"]')
       if (next === null || progress === null) {
         return { found: false, progress: '（复盘面板未渲染）', markers: '' }
       }
 
-      const readMarkers = () => {
-        const list = document.querySelector('[data-testid="replay-marker-list"]')
-        return (list?.textContent ?? '').replace(/\s+/g, ' ').trim()
-      }
       const readProgress = () => (progress.textContent ?? '').replace(/\s+/g, ' ').trim()
-      const matches = (markers) =>
-        markers.includes(wanted) && (required === null || markers.includes(required))
+      const raf = () => new Promise((resolve) => requestAnimationFrame(() => resolve()))
+      const readMarkers = () => {
+        const texts = []
+        // 标记列表（当前步的标记）与圆盘图例（与实时魔典同口径）都算；两者都不含牌面 / 摘要文案。
+        for (const root of document.querySelectorAll('[data-testid="replay-marker-list"], [data-testid="replay-markers"]')) {
+          for (const entry of root.querySelectorAll('li, button')) {
+            texts.push((entry.textContent ?? '').replace(/\s+/g, ' ').trim())
+          }
+        }
 
-      for (let index = 0; index < limit; index += 1) {
-        const markers = readMarkers()
-        if (matches(markers)) {
-          return { found: true, progress: readProgress(), markers }
+        return texts
+      }
+
+      const matches = (texts) =>
+        texts.some((text) => text.includes(wanted))
+        && (required.length === 0
+          || required.every((token) => texts.some((text) => text.includes(token))))
+
+      // 步进预算与"卡住"预算分开：重试同一步不算用掉步数，但**连续卡住 30 次**（约 0.5 秒）
+      // 就判定按钮不再恢复（加载失败 / 面板被替换），显式收场——不许把走查挂在这里。
+      let steps = 0
+      let stalled = 0
+      while (steps < 120 && stalled < 30) {
+        const before = readProgress()
+        const texts = readMarkers()
+        if (matches(texts)) {
+          return { found: true, progress: before, markers: texts.join(' | ') }
         }
 
         next.click()
-        await new Promise((resolve) => setTimeout(resolve, 0))
+        await raf()
+        // 按钮 disabled 时 click 不生效（连续多步的节流）：重试同一步，不把这一步跳过去。
+        if (readProgress() === before) {
+          stalled += 1
+          await raf()
+        } else {
+          stalled = 0
+          steps += 1
+        }
       }
 
-      return { found: false, progress: readProgress(), markers: readMarkers() }
+      return {
+        found: false,
+        progress: stalled >= 30 ? `${readProgress()}（走查卡住：按钮 0.5 秒内没有推进）` : readProgress(),
+        markers: readMarkers().join(' | '),
+      }
     },
-    { wanted: label, required: requireText ?? null, limit: maxSteps },
+    { wanted: label, required: requireTexts },
   )
 }
 
